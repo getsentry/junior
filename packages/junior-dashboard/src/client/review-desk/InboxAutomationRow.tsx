@@ -105,22 +105,14 @@ export function InboxAutomationRow(props: {
       >
         <TriangleAlert
           aria-hidden="true"
-          className={cn(
-            "col-start-1 row-start-1 mt-[0.15rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700",
-            comfortable && "mt-[0.25rem]",
-          )}
+          className="col-start-1 row-start-1 mt-[0.25rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700"
           data-inbox-slot="dot"
         />
         <span
           className="col-start-2 row-start-1 grid min-w-0 gap-1"
           data-inbox-slot="title"
         >
-          <span
-            className={cn(
-              "truncate font-medium leading-snug text-dashboard-text",
-              comfortable ? "text-base" : "text-sm",
-            )}
-          >
+          <span className="truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {automation.title}
           </span>
           {comfortable ? null : (

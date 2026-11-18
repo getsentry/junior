@@ -8,8 +8,7 @@ import type {
   ConversationReportEvent,
   ReviewItemActionBody,
   ReviewItemPayload,
-  WakeAutomationCreateBody,
-  WakeAutomationPayload,
+  InboxSnoozeCreateBody,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -340,8 +339,8 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
-/** The viewer's snoozes, by id. A snooze hides one Conversation's row. */
-const snoozes = new Map<string, Omit<WakeAutomationPayload, "itemIds">>();
+/** When each snoozed Conversation's row wakes. */
+const snoozes = new Map<string, number>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockReviewItems(): void {
@@ -349,66 +348,29 @@ export function resetMockReviewItems(): void {
   snoozes.clear();
 }
 
-function snoozeWakesAtMs(snooze: Pick<WakeAutomationPayload, "triggers">) {
-  const timer = snooze.triggers.find((trigger) => "firesAt" in trigger);
-  return timer && "firesAt" in timer ? Date.parse(timer.firesAt) : Infinity;
-}
-
 /** The Conversations whose rows a snooze hides now. */
 function snoozedConversationIds(nowMs: number): Set<string> {
   return new Set(
-    [...snoozes.values()]
-      .filter((snooze) => snoozeWakesAtMs(snooze) > nowMs)
-      .map((snooze) => snooze.subject.conversationId),
+    [...snoozes].flatMap(([conversationId, wakeAtMs]) =>
+      wakeAtMs > nowMs ? [conversationId] : [],
+    ),
   );
 }
 
-/** Snooze a mock row, like `POST /api/automations`. It replaces the last. */
-export function snoozeMockRow(
-  nowMs: number,
-  body: WakeAutomationCreateBody,
-): Omit<WakeAutomationPayload, "itemIds"> {
-  for (const [id, snooze] of snoozes) {
-    if (snooze.subject.conversationId === body.subject.conversationId) {
-      snoozes.delete(id);
-    }
-  }
-  const snooze = {
-    ...body,
+/** Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last. */
+export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
+  snoozes.set(body.conversationId, Date.parse(body.wakeAt));
+  return {
+    conversationId: body.conversationId,
     createdAt: new Date(nowMs).toISOString(),
-    id: `mock-snooze-${snoozes.size + 1}-${nowMs}`,
-    status: "active" as const,
+    id: `mock-snooze-${body.conversationId}-${nowMs}`,
+    wakeAt: body.wakeAt,
   };
-  snoozes.set(snooze.id, snooze);
-  return snooze;
 }
 
-/** Wake a mock row, like `DELETE /api/automations/:id`. */
-export function wakeMockSnooze(id: string): boolean {
-  return snoozes.delete(id);
-}
-
-/** List the snoozes that hide a mock row now, like the API. */
-export function readMockSnoozes(nowMs: number): WakeAutomationPayload[] {
-  const open = readMockReviewItems(nowMs, {});
-  return [...snoozes.values()].flatMap((snooze) => {
-    const items = open.filter(
-      (item) => item.addedByConversationId === snooze.subject.conversationId,
-    );
-    // Like the API, the row is named after its newest open item.
-    const newest = [...items].sort((x, y) =>
-      y.createdAt.localeCompare(x.createdAt),
-    )[0];
-    return snoozeWakesAtMs(snooze) > nowMs && newest
-      ? [
-          {
-            ...snooze,
-            itemIds: items.map((item) => item.id),
-            title: newest.title,
-          },
-        ]
-      : [];
-  });
+/** Wake a mock row, like `DELETE /api/inbox/snoozes`. */
+export function wakeMockRow(conversationId: string): void {
+  snoozes.delete(conversationId);
 }
 
 function payload(seed: MockItemSeed): ReviewItemPayload {
@@ -574,7 +536,7 @@ export function readMockReviewItemCounts(nowMs: number) {
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: readMockSnoozes(nowMs).length,
+    snoozed: snoozedConversationIds(nowMs).size,
   };
 }
 

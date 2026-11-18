@@ -1,8 +1,12 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
-import type { AutomationListItem } from "@sentry/junior/api/schema";
+import type {
+  AutomationListItem,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
@@ -194,7 +198,6 @@ export function InboxList(props: {
       ? [linkedClosed, ...done.items]
       : done.items;
   // A snoozed item is still open. Its link opens Snoozed, with its row.
-  // The snoozes list can say so before Snoozed's own rows load.
   const linkedSnoozed = linkedId ? data.snoozes.hidesItem(linkedId) : false;
   const snoozedKey = linkedId
     ? data.snoozedRows.find((row) =>
@@ -285,7 +288,7 @@ export function InboxList(props: {
     }
     if (!linked.data) return;
     if (linked.data.status === "open") {
-      // Until the snoozes load, an open item may still be snoozed. If they
+      // Until Snoozed loads, an open item may still be snoozed. If it
       // cannot load, the link cannot tell, so it opens no row.
       if (linkedSnoozed === undefined) {
         if (data.snoozes.failed) void navigate(listPath, { replace: true });
@@ -350,6 +353,8 @@ export function InboxList(props: {
     }
   };
 
+  // The items of each row that this render shows, by row key.
+  const rowItems = new Map<string, readonly ReviewItemPayload[]>();
   const bundleRow = (
     row: InboxBundle,
     options: {
@@ -366,6 +371,7 @@ export function InboxList(props: {
     } = {},
   ) => {
     const key = options.key ?? row.key;
+    rowItems.set(key, row.items);
     return (
       <InboxRow
         bundle={row}
@@ -611,7 +617,7 @@ export function InboxList(props: {
             action={sweepControl(data.todoRows, "To do")}
             badge={
               data.todoCount > 0 ? (
-                <span className="mb-0.5 rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+                <span className="text-xs font-medium tabular-nums text-dashboard-text-muted">
                   {data.todoCount}
                 </span>
               ) : null
@@ -769,6 +775,26 @@ export function InboxList(props: {
         ))
       );
   }
+
+  // An open row whose items close elsewhere, as when an agent or a Watch
+  // closes them, leaves as it does on Dismiss, and the next row opens. The
+  // data holds its items until then. Other rows leave with the read.
+  const openItems = rowItems.get(expandedKey) ?? [];
+  const { closedElsewhere, holdOpenRow } = data;
+  useEffect(() => holdOpenRow(openItems));
+  useEffect(() => () => holdOpenRow([]), [holdOpenRow]);
+  const closedKey =
+    openItems.length > 0 &&
+    openItems.every((item) => closedElsewhere.includes(item))
+      ? expandedKey
+      : undefined;
+  // The row goes at once, before `leave` restores its shut card.
+  const leaveClosed = useEffectEvent((key: string) =>
+    leave(key, () => flushSync(() => holdOpenRow([]))),
+  );
+  useEffect(() => {
+    if (closedKey) leaveClosed(closedKey);
+  }, [closedKey]);
 
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];

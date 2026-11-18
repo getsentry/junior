@@ -446,13 +446,13 @@ export type {
   ReviewItemPayload,
 } from "./schema/review-item";
 export {
-  wakeAutomationCreateSchema,
-  wakeAutomationListSchema,
-  wakeAutomationSchema,
-} from "./schema/wake-automation";
+  inboxSnoozeCreateSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
 export type {
-  WakeAutomationCreateBody,
-  WakeAutomationPayload,
-} from "./schema/wake-automation";
+  InboxSnoozeCreateBody,
+  InboxSnoozeSubjectBody,
+} from "./schema/inbox-snooze";
 export { versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

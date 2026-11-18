@@ -454,9 +454,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     // The list scrolls in its own pane too.
-    await page.getByRole("link", { name: /^Back to/ }).click();
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     const conversationList = page
-      .getByRole("region", { exact: true, name: "Inbox" })
+      .getByRole("region", { exact: true, name: "Conversations" })
       .locator(".overflow-y-auto")
       .first();
     await expect

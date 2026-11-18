@@ -3,12 +3,14 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 /**
  * Build the dashboard route for a conversation id. An `askItemId` shows the
  * transcript record of that Review item. A `turnId` opens the start of that
- * Turn in the event log. `reviewItems` opens the Review items panel.
+ * Turn in the event log. A `messageId` shows that Message in the transcript.
+ * `reviewItems` opens the Review items panel.
  */
 export function conversationPath(
   conversationId: string,
   options?: {
     askItemId?: string | undefined;
+    messageId?: string | undefined;
     reviewItems?: boolean;
     turnId?: string | undefined;
   },
@@ -19,6 +21,9 @@ export function conversationPath(
     params.set(CONVERSATION_ASK_PARAM, options.askItemId);
   }
   if (options?.turnId) params.set(CONVERSATION_TURN_PARAM, options.turnId);
+  if (options?.messageId) {
+    params.set(CONVERSATION_MESSAGE_PARAM, options.messageId);
+  }
   if (options?.reviewItems) {
     params.set(CONVERSATION_REVIEW_PARAM, CONVERSATION_REVIEW_OPEN);
   }
@@ -108,8 +113,21 @@ export const CONVERSATION_REVIEW_OPEN = "open";
 /** Query param that opens the start of one Turn in the event log. */
 export const CONVERSATION_TURN_PARAM = "turn";
 
+/** Query param that shows one Message in the transcript by its id. */
+export const CONVERSATION_MESSAGE_PARAM = "message";
+
 /** Query param that shows the transcript record of one Review item. */
 export const CONVERSATION_ASK_PARAM = "ask";
+
+/** Find the sequence number of the event that stored a Message. */
+export function messageEventSeq(
+  events: readonly ConversationReportEvent[] | undefined,
+  messageId: string,
+): number | undefined {
+  return events?.find(
+    ({ data }) => data.type === "message" && data.messageId === messageId,
+  )?.seq;
+}
 
 /** Find the sequence number of the event that started a Turn. */
 export function turnStartedEventSeq(

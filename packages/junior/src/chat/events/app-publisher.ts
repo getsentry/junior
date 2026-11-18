@@ -1,6 +1,5 @@
 import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import pLimit from "p-limit";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
@@ -16,6 +15,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { mapBounded } from "@/chat/fan-out";
 
 // Each Watch check reads the state adapter. Bound the reads for a webhook
 // with many events.
@@ -45,28 +45,27 @@ export function createEventAppPublisher(args: {
       // Event automations still key by destination team until that store is
       // conversation-owned.
       const eventAutomationTeamId = await resolveBotSlackTeamId();
-      const limit = pLimit(WATCH_MATCH_CONCURRENCY);
       const [subscriptions, tasks] = await Promise.all([
-        Promise.all(
-          events.map((event) =>
-            limit(() =>
-              findMatchingWatches({
-                data: event.data,
-                eventType: event.eventType,
-                namespace: event.namespace,
-                identifier: event.identifier,
-                state: work.state,
-              }),
-            ),
-          ),
-        ),
-        // With no team, Snoozes still match.
-        findMatchingEventAutomations(
-          getDb(),
+        mapBounded(
           events,
-          eventAutomationTeamId,
-          getEventCatalog(),
+          (event) =>
+            findMatchingWatches({
+              data: event.data,
+              eventType: event.eventType,
+              namespace: event.namespace,
+              identifier: event.identifier,
+              state: work.state,
+            }),
+          WATCH_MATCH_CONCURRENCY,
         ),
+        eventAutomationTeamId
+          ? findMatchingEventAutomations(
+              getDb(),
+              events,
+              eventAutomationTeamId,
+              getEventCatalog(),
+            )
+          : Promise.resolve([]),
       ]);
       return [...subscriptions, ...tasks].some((matched) => matched.length > 0);
     },
@@ -80,16 +79,16 @@ export function createEventAppPublisher(args: {
           namespace: input.namespace,
           state: work.state,
         }),
-        collectEventAutomationMatchKeys(getDb(), {
-          catalog: getEventCatalog(),
-          ...(input.data ? { data: input.data } : undefined),
-          eventTypes: input.eventTypes,
-          identifiers: input.identifiers,
-          namespace: input.namespace,
-          ...(eventAutomationTeamId
-            ? { teamId: eventAutomationTeamId }
-            : undefined),
-        }),
+        eventAutomationTeamId
+          ? collectEventAutomationMatchKeys(getDb(), {
+              catalog: getEventCatalog(),
+              ...(input.data ? { data: input.data } : undefined),
+              eventTypes: input.eventTypes,
+              identifiers: input.identifiers,
+              namespace: input.namespace,
+              teamId: eventAutomationTeamId,
+            })
+          : Promise.resolve([] as string[]),
       ]);
       return [...new Set([...watchKeys, ...taskKeys])].sort();
     },
@@ -104,12 +103,12 @@ export function createEventAppPublisher(args: {
           slackTeamId: eventAutomationTeamId,
           state: work.state,
         }),
-        ingestEventAutomations(event, {
-          queue,
-          ...(eventAutomationTeamId
-            ? { teamId: eventAutomationTeamId }
-            : undefined),
-        }),
+        eventAutomationTeamId
+          ? ingestEventAutomations(event, {
+              queue,
+              teamId: eventAutomationTeamId,
+            })
+          : Promise.resolve(),
       ]);
     },
   };

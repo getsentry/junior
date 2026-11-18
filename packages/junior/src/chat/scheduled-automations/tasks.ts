@@ -122,7 +122,6 @@ export async function readScheduledAutomation(
       and(
         eq(juniorAutomations.id, taskId),
         eq(juniorAutomations.kind, "scheduled"),
-        eq(juniorAutomations.action, "run"),
       ),
     )
     .limit(1);
@@ -139,7 +138,6 @@ async function readListedScheduledAutomations(
     .where(
       and(
         eq(juniorAutomations.kind, "scheduled"),
-        eq(juniorAutomations.action, "run"),
         ne(juniorAutomations.status, "deleted"),
         teamId === undefined ? undefined : eq(juniorAutomations.teamId, teamId),
       ),

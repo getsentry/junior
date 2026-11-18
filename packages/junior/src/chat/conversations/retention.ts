@@ -5,14 +5,14 @@
  * from `last_activity_at` and deleted wholesale by a dedicated cron. Visibility
  * is resolved at purge time through the parent chain to the root's destination,
  * so no expiry is ever stored and a public↔private flip takes effect on the next
- * pass. Attachment files use their own 30-day window, and so do completed
- * Snoozes.
+ * pass. Attachment files use their own 30-day window, and so do snoozes
+ * that have woken or been undone.
  */
 import { collectAttachmentGarbage } from "@/chat/attachments/store";
 import { collectAttachmentUploadGarbage } from "@/chat/attachments/uploads";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { logException, logInfo, withLogContext } from "@/chat/logging";
-import { deleteExpiredWakeAutomations } from "@/chat/wake-automations/store";
+import { deleteExpiredInboxSnoozes } from "@/chat/inbox-snoozes/store";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { purgeConversationTree, selectExpiredRoots } from "./sql/purge";
 
@@ -66,6 +66,7 @@ export async function runRetentionPurge(
   let purged = 0;
   let failed = 0;
   let conversations = 0;
+  /* oxlint-disable no-await-in-loop -- Purge one tree at a time to bound database load. */
   for (const root of roots) {
     await withLogContext({ conversationId: root.conversationId }, async () => {
       try {
@@ -87,6 +88,7 @@ export async function runRetentionPurge(
       }
     });
   }
+  /* oxlint-enable no-await-in-loop */
   const attachmentResult = args.attachmentStorage
     ? await collectAttachmentGarbage({
         db: executor,
@@ -101,14 +103,14 @@ export async function runRetentionPurge(
         storage: args.attachmentStorage,
       })
     : { deleted: 0 };
-  const wakeAutomations = await deleteExpiredWakeAutomations(
+  const inboxSnoozes = await deleteExpiredInboxSnoozes(
     executor.db(),
     args.nowMs,
   );
   logInfo("retention.purge.completed", {
     "app.retention.attachments": attachmentResult.deleted,
     "app.retention.attachment_uploads": uploadResult.deleted,
-    "app.retention.wake_automations": wakeAutomations,
+    "app.retention.inbox_snoozes": inboxSnoozes,
     "app.retention.scanned": roots.length,
     "app.retention.purged": purged,
     "app.retention.failed": failed,

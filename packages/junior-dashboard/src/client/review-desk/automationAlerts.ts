@@ -4,9 +4,9 @@ import { useEffect, useReducer } from "react";
 
 import type { SnoozeChoice } from "./snoozeChoices";
 
-// Item snoozes live on the server as wake Automations. An Automation alert
-// is not a Review item, so no wake Automation can hide it; it is put away in
-// this browser, and the server count never sees these keys.
+// Item snoozes live on the server. An Automation alert is not a Review
+// item, so a server snooze cannot hide it; it is put away in this browser,
+// and the server count never sees these keys.
 const STORAGE_KEY = "junior:inbox:automation-alerts";
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;

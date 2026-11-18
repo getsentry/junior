@@ -199,27 +199,6 @@ export const grab = {
   title: "Cover the Friday deploy",
 };
 
-/** A snooze on one Conversation's row, as `POST /api/automations` makes it. */
-function mockSnooze(id: string, conversationId: string, untilMs: number) {
-  return {
-    action: "wake" as const,
-    createdAt: new Date(untilMs - 86_400_000).toISOString(),
-    id,
-    status: "active" as const,
-    subject: { conversationId },
-    triggers: [
-      { kind: "new_item" as const },
-      {
-        events: ["timer.fired"],
-        firesAt: new Date(untilMs).toISOString(),
-        kind: "event" as const,
-        namespace: "junior",
-        resourceType: "timer",
-      },
-    ] as const,
-  };
-}
-
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
   status: string;
@@ -230,8 +209,9 @@ type MockItem = Omit<typeof license, "status"> & {
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
  * keeps an answered item open, so a test can answer it twice. Snoozes live
- * here too, as wake Automations: a snoozed row leaves the viewer's lists
- * until its timer passes `now`, which is the test's clock.
+ * here too: a snoozed row leaves the viewer's lists until its time passes
+ * `now`, which is the test's clock. The versions token moves with them, as
+ * on the server.
  */
 export async function mockReviewItems(
   page: Page,
@@ -244,7 +224,7 @@ export async function mockReviewItems(
     failActions?: string[];
     keepOpen?: boolean;
     /**
-     * The time a snooze timer is checked against: the page's pinned clock
+     * The time a snooze's wake time is checked against: the page's pinned clock
      * by default. A test that moves the clock passes the page's time.
      */
     now?: () => number | Promise<number>;
@@ -255,79 +235,62 @@ export async function mockReviewItems(
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
+  /** When each snoozed Conversation's row wakes. */
   const snoozes = new Map(
-    (options.snoozes ?? []).map((snooze, index) => [
-      `snooze-${index}`,
-      mockSnooze(`snooze-${index}`, snooze.conversationId, snooze.untilMs),
+    (options.snoozes ?? []).map((snooze) => [
+      snooze.conversationId,
+      snooze.untilMs,
     ]),
   );
-  /** The open items of each row that a snooze hides now, by snooze id. */
-  const asleep = async () => {
+  /** Snoozes made or undone, which move the versions token as on the server. */
+  let snoozeChanges = 0;
+  /** The Conversations with an open row that a snooze hides now. */
+  const snoozedRows = async () => {
     const nowMs = await (options.now ?? (() => NOW_MS))();
-    return new Map(
-      [...snoozes].flatMap(([id, snooze]) => {
-        const itemIds = open
-          .filter(
-            (i) => i.addedByConversationId === snooze.subject.conversationId,
-          )
-          .map((i) => i.id);
-        // A Conversation with no title is named after its newest item.
-        const newest = open
-          .filter(
-            (i) => i.addedByConversationId === snooze.subject.conversationId,
-          )
-          .sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0];
-        return Date.parse(snooze.triggers[1].firesAt) > nowMs && newest
-          ? [[id, { ...snooze, itemIds, title: newest.title }] as const]
-          : [];
-      }),
-    );
-  };
-  const snoozedRows = async () =>
-    new Set(
-      [...(await asleep()).values()].map(
-        (snooze) => snooze.subject.conversationId,
+    return new Set(
+      [...snoozes].flatMap(([conversationId, untilMs]) =>
+        untilMs > nowMs &&
+        open.some((i) => i.addedByConversationId === conversationId)
+          ? [conversationId]
+          : [],
       ),
     );
-  await page.route(
-    (url) =>
-      /\/api\/automations(\/snoozes|\/snooze-[^/]+)?$/.test(url.pathname),
-    async (route) => {
-      const request = route.request();
-      const path = new URL(request.url()).pathname;
-      if (path.endsWith("/snoozes")) {
-        return route.fulfill({
-          json: { snoozes: [...(await asleep()).values()] },
-        });
-      }
-      if (request.method() === "POST" && path.endsWith("/automations")) {
-        const body = request.postDataJSON();
-        if (body?.action !== "wake") return route.fallback();
-        // A new snooze on a row replaces the viewer's last one.
-        for (const [id, snooze] of snoozes) {
-          if (snooze.subject.conversationId === body.subject.conversationId) {
-            snoozes.delete(id);
-          }
-        }
-        const id = `snooze-${snoozes.size}-${Date.now()}`;
-        const snooze = {
+  };
+  await page.route("**/api/inbox/snoozes", async (route) => {
+    const request = route.request();
+    const body = request.postDataJSON();
+    if (request.method() === "POST") {
+      // A new snooze on a row replaces the viewer's last one.
+      snoozes.set(body.conversationId, Date.parse(body.wakeAt));
+      snoozeChanges++;
+      return route.fulfill({
+        json: {
           ...body,
           createdAt: new Date().toISOString(),
-          id,
-          status: "active",
-        };
-        snoozes.set(id, snooze);
-        return route.fulfill({ json: snooze, status: 201 });
-      }
-      const id = path.match(/\/automations\/(snooze-[^/]+)$/)?.[1];
-      if (request.method() === "DELETE" && id) {
-        return snoozes.delete(decodeURIComponent(id))
-          ? route.fulfill({ status: 204 })
-          : route.fulfill({ json: { error: "Not found" }, status: 404 });
-      }
-      return route.fallback();
-    },
-  );
+          id: `snooze-${snoozes.size}-${Date.now()}`,
+        },
+        status: 201,
+      });
+    }
+    if (request.method() === "DELETE") {
+      snoozes.delete(body.conversationId);
+      snoozeChanges++;
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+  await page.route("**/api/versions**", async (route) => {
+    const response = await route.fetch();
+    const versions = await response.json();
+    const sleeping = [...(await snoozedRows())].sort().join(",");
+    return route.fulfill({
+      json: {
+        ...versions,
+        reviewItems: `${versions.reviewItems}:${snoozeChanges}:${sleeping}`,
+      },
+      response,
+    });
+  });
   let open = (options.open ?? [
     rollout,
     license,
@@ -360,7 +323,7 @@ export async function mockReviewItems(
           codeChanges: needsViewer.filter(
             (i) => i.subject?.objectType === "code_change",
           ).length,
-          snoozed: (await asleep()).size,
+          snoozed: (await snoozedRows()).size,
         },
       });
     }
@@ -498,8 +461,8 @@ export async function mockViewerCodeChanges(
 }
 
 /**
- * The head of the Inbox row titled `title`. A click or Enter expands the
- * row in place; only Open leaves the list.
+ * The head of the Inbox row titled `title`. A click or Enter opens the
+ * row's Conversation. On a row for one item, it expands the row in place.
  */
 export function rowHead(scope: Page | Locator, title: string) {
   return scope
@@ -511,13 +474,23 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action. A click on the head only expands the row.
+ * row's Open action.
  */
 export async function openRow(head: Locator) {
   await head.hover();
   await head
     .locator("xpath=ancestor::*[@data-inbox-row][1]")
     .getByRole("link", { name: "Open conversation" })
+    .first()
+    .click();
+}
+
+/** Expand the Inbox row whose head is `head` in place, with an ask pill. */
+export async function expandRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  await row
+    .getByRole("button")
+    .and(row.locator('[aria-controls^="inbox-row-"]'))
     .first()
     .click();
 }

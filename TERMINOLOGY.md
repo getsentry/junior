@@ -66,12 +66,8 @@ Canonical words for Junior code and docs. One concept, one word.
   by `accounts.service-account` and connected by an Admin (dashboard or
   `junior service-account connect`). It serves Actors with no own connection;
   `accounts.user-oauth: false` makes it the only path.
-- **Automation**: triggers plus an action, with a creator. The `run` action
-  runs an instruction or skill with ordered outcomes. The `wake` action brings
-  an Inbox row back and runs no Turn.
-- **Snooze**: a one-shot Automation with the `wake` action on one Inbox row
-  (its subject). It wakes on the first of its triggers: a timer Event, another
-  Event, or a new Review item in the row's Conversation.
+- **Automation**: a saved instruction run later, with a creator, trigger,
+  instruction, and ordered outcomes.
 - **Schedule**: a time trigger. **Scheduled** / **Event automation**: an
   Automation with a Schedule / Event trigger.
 - **Automation version**: one saved definition (title, instruction, trigger,
@@ -158,6 +154,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Item. **Assignee**: a User or Everyone (anyone who can see it).
 - **Done** (Inbox): the view of done and dismissed Review items. Not
   Conversation archive.
+- **Snooze**: one User hides one Inbox row (a root Conversation, or one
+  Review item in it) until a time, or until a trigger wakes it. Not an
+  Automation. **Snoozed** (Inbox): the view of the User's snoozed rows.
 - **Plan**: the durable list of work that outlives a Turn in one
   Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
   entry, with a status and one Assignee: the Conversation's own agent, one of

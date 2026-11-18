@@ -7,10 +7,6 @@ import {
 import { useAutomationPagesData } from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "../../../components/ui/toggle-group";
-import {
   ActiveFilterChips,
   FilterToggle,
 } from "../../components/filters/FilterToolbar";
@@ -39,15 +35,10 @@ import {
   useInboxFocus,
 } from "../../../review-desk/inboxFocus";
 import { timeGroups } from "../../../review-desk/inboxModel";
-import {
-  useSnoozesData,
-  useWakeSnoozes,
-} from "../../../review-desk/inboxSnoozes";
 import { scrollPages } from "../../../review-desk/inboxQueries";
 import { PageEnd } from "../../../review-desk/PageEnd";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
-import { SnoozeRow } from "./SnoozeRow";
 
 const EMPTY: AutomationListItem[] = [];
 
@@ -60,30 +51,12 @@ const LANDING_PAGE_SIZE = "50";
 const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 /**
- * Which Automations the page lists, by action: the ones that run (the
- * default), the viewer's snoozes, or both. The `action` URL value holds it;
- * the values stay `runs`, `snoozes` and `all`, so saved links keep working.
- */
-const ACTIONS = [
-  { label: "Scheduled", value: "runs" },
-  { label: "Snoozed", value: "snoozes" },
-  { label: "Everything", value: "all" },
-] as const;
-
-type ActionFilter = (typeof ACTIONS)[number]["value"];
-
-function actionFilter(value: string | null): ActionFilter {
-  return ACTIONS.find((action) => action.value === value)?.value ?? "runs";
-}
-
-/**
  * Landing page for Automations, in the Inbox's style: To do first, the
  * viewer's Automations that need attention as the Inbox lists them, then
  * the rest by latest run, grouped as Today, This week, and Earlier. Mine
  * shows the viewer's own; All shows every visible one. Each card shows
  * recent runs and the next run, and opens in place for more, so the page
- * answers "is my work healthy" without opening each Automation. The
- * action filter shows the viewer's snoozes instead, or too.
+ * answers "is my work healthy" without opening each Automation.
  */
 export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
@@ -110,17 +83,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
       ([key, value]) => [key, String(value)],
     ),
   );
-  const action = actionFilter(searchParams.get("action"));
-  const showRuns = action !== "snoozes";
-  const showSnoozes = action !== "runs";
-  const pages = useAutomationPagesData(
-    props.enabled && showRuns,
-    request.toString(),
-  );
-  const snoozesQuery = useSnoozesData(props.enabled && showSnoozes);
-  const snoozes = snoozesQuery.data?.snoozes ?? [];
-  const wake = useWakeSnoozes();
-  const [snoozesCollapsed, setSnoozesCollapsed] = useState(false);
+  const pages = useAutomationPagesData(props.enabled, request.toString());
   const { query } = pages;
   const more = scrollPages(query);
   const setFilter = (key: string, value: string) => {
@@ -136,7 +99,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
     setSearchParams(next, { replace: true });
   };
   // The first page carries the filter options and counts.
-  const list = showRuns ? pages.first : undefined;
+  const list = pages.first;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtered = LANDING_FILTERS.some((key) => searchParams.has(key));
   // To do is the Inbox's own list, so its count matches the Automations
@@ -144,9 +107,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
   const inbox = useInboxData();
   const todo = filtered ? EMPTY : inbox.todoAutomations;
   const automations = pages.automations;
-  const loading = showRuns
-    ? !list && !query.error
-    : !snoozesQuery.data && !snoozesQuery.error;
+  const loading = !list && !query.error;
   const scroll = usePaneRowScroll("automations", Boolean(list));
   // The Inbox's one pointer driver moves these cards too.
   const [expanded, setExpanded] = useState<string>();
@@ -167,20 +128,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
       <HeaderBar
         actions={
           <>
-            <ToggleGroup
-              aria-label="Show"
-              onValueChange={(values) => {
-                const next = values[0];
-                if (next) setFilter("action", next === "runs" ? "" : next);
-              }}
-              value={[action]}
-            >
-              {ACTIONS.map((option) => (
-                <ToggleGroupItem key={option.value} value={option.value}>
-                  {option.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
             <AutomationScopeTabs scope={scope} search={location.search} />
             <Link
               className={buttonVariants({ variant: "ghost" })}
@@ -220,7 +167,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             {loading ? (
               <PageContentSkeleton label="Loading automations" variant="list" />
             ) : null}
-            {showRuns && query.error ? (
+            {query.error ? (
               <InlineError>
                 Automations could not be loaded.{" "}
                 <Button variant="outline" onClick={() => void query.refetch()}>
@@ -228,28 +175,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
                 </Button>
               </InlineError>
             ) : null}
-            {showSnoozes && snoozesQuery.error ? (
-              <InlineError>
-                Snoozes could not be loaded.{" "}
-                <Button
-                  variant="outline"
-                  onClick={() => void snoozesQuery.refetch()}
-                >
-                  Try again
-                </Button>
-              </InlineError>
-            ) : null}
-            {action === "snoozes" &&
-            snoozesQuery.data &&
-            snoozes.length === 0 ? (
-              <InboxEmptyState label="Nothing snoozed" />
-            ) : null}
-            {list &&
-            automations.length === 0 &&
-            todo.length === 0 &&
-            // Everything lists snoozes too, so it is empty only when they are.
-            (!showSnoozes ||
-              (!snoozesQuery.isPending && snoozes.length === 0)) ? (
+            {list && automations.length === 0 && todo.length === 0 ? (
               <InboxEmptyState
                 label={
                   filtered
@@ -278,26 +204,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
                   />
                 </InboxPreviewGate>
               </InboxFocusProvider>
-            ) : null}
-            {showSnoozes ? (
-              <InboxSection
-                collapsed={snoozesCollapsed}
-                count={snoozes.length}
-                label="Snoozes"
-                onToggle={() => setSnoozesCollapsed((collapsed) => !collapsed)}
-              >
-                {snoozes.map((snooze) => (
-                  <SnoozeRow
-                    key={snooze.id}
-                    onWake={() => wake.mutate([snooze.id])}
-                    snooze={snooze}
-                    waking={
-                      wake.isPending &&
-                      Boolean(wake.variables?.includes(snooze.id))
-                    }
-                  />
-                ))}
-              </InboxSection>
             ) : null}
             {list ? (
               <PageEnd

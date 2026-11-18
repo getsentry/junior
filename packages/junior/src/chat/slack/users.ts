@@ -286,6 +286,7 @@ async function listWorkspaceUsers(options: {
   let pages = 0;
   let totalScanned = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (pages < options.maxPages) {
     pages++;
 
@@ -319,6 +320,7 @@ async function listWorkspaceUsers(options: {
     }
     cursor = nextCursor;
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     matches,

@@ -320,9 +320,6 @@ export async function claimDueScheduledRun(
       .where(
         and(
           eq(juniorAutomations.kind, "scheduled"),
-          // A wake's timer is due at `next_run_at_ms` too, but it runs no
-          // Turn. `settleDueWakeAutomations` settles it in bulk.
-          eq(juniorAutomations.action, "run"),
           eq(juniorAutomations.status, "active"),
           or(
             and(
@@ -339,6 +336,7 @@ export async function claimDueScheduledRun(
       .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
 
     for (const row of rows) {
+      // oxlint-disable-next-line no-await-in-loop -- Statements in one transaction run one at a time.
       const run = await withScheduledAutomationLock(
         tx,
         row.id,

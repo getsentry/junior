@@ -4,8 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
@@ -17,6 +19,7 @@ import { useInboxSnoozes } from "./inboxSnoozes";
 import {
   useLinkedConversationTitles,
   useReviewItemData,
+  useReviewItemStates,
   useReviewItemsData,
 } from "./queries";
 import {
@@ -114,7 +117,16 @@ function useBuildInboxData(input: {
       void fetchNextSnoozed();
     }
   }, [fetchNextSnoozed, fetchingSnoozed, moreSnoozed, snoozedFailed]);
-  const snoozes = useInboxSnoozes(signedIn);
+  const snoozedLoaded = !snoozedPending && !snoozedFailed && !moreSnoozed;
+  const snoozedItemIds = useMemo(
+    () =>
+      snoozedLoaded ? new Set(snoozedItems.map((item) => item.id)) : undefined,
+    [snoozedItems, snoozedLoaded],
+  );
+  const snoozes = useInboxSnoozes({
+    failed: snoozedFailed,
+    itemIds: snoozedItemIds,
+  });
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -124,16 +136,59 @@ function useBuildInboxData(input: {
     (id: string) => setLinkedItems((current) => ({ ...current, open: id })),
     [setLinkedItems],
   );
+  // The items of the open Inbox row, as the list last showed them. When a
+  // read shows them closed, as when an agent or a Watch closes them, they
+  // stay until the row leaves as it does on Dismiss.
+  const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
+  const holdOpenRow = useCallback(
+    (items: readonly ReviewItemPayload[]) =>
+      setOpenRow((current) =>
+        current.length === items.length &&
+        current.every((item, index) => item === items[index])
+          ? current
+          : items,
+      ),
+    [],
+  );
   // The server leaves snoozed items out of `loaded`, so a linked item joins
   // only once the snoozes show that none hides it.
   const linkedAwake =
     linked?.status === "open" &&
     snoozes.hidesItem(linked.id) === false &&
     !loaded.some((item) => item.id === linked.id);
-  const list = useMemo(
+  const read = useMemo(
     () => (linkedAwake && linked ? [...loaded, linked] : loaded),
     [linked, linkedAwake, loaded],
   );
+  // Before the first read, no item has left it.
+  const missing = useMemo(
+    () =>
+      itemsQuery.data
+        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        : [],
+    [itemsQuery.data, openRow, read],
+  );
+  // An item can leave the loaded pages and still be open, so each one's
+  // own read says whether it closed. Until then, it stays.
+  const states = useReviewItemStates(missing.map((item) => item.id));
+  const closedElsewhere = useMemo(
+    () =>
+      // A row with an item still open stays, without the closed ones.
+      missing.length === openRow.length &&
+      states.every((state) => state === "closed")
+        ? missing
+        : [],
+    [missing, openRow, states],
+  );
+  const list = useMemo(() => {
+    const held = missing.flatMap((item, index) => {
+      const state = states[index] ?? "pending";
+      if (state === "pending") return [item];
+      if (state !== "closed") return [state];
+      return closedElsewhere.length > 0 ? [item] : [];
+    });
+    return held.length > 0 ? [...read, ...held] : read;
+  }, [closedElsewhere, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -239,10 +294,13 @@ function useBuildInboxData(input: {
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     awake,
+    /** The open row's items, held after a read shows them all closed. */
+    closedElsewhere,
     conversationById,
     conversationRows,
     counts,
     feed,
+    holdOpenRow,
     includedId: linkedId,
     includeItem,
     inFlight,
@@ -261,7 +319,7 @@ function useBuildInboxData(input: {
     snoozedRead: {
       failed: snoozedFailed,
       /** Every page is read, so an empty list means nothing is snoozed. */
-      loaded: !snoozedPending && !snoozedFailed && !moreSnoozed,
+      loaded: snoozedLoaded,
       loading: fetchingSnoozed,
       /** Loaded with no read in flight, so a missing row is not snoozed. */
       settled:

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
   audit,
+  expandRow,
   mockReviewItems,
   openRow,
   rollout,
@@ -51,7 +52,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const list = page.getByRole("region", { name: "Conversations" });
     const scroller = list.locator(".overflow-y-auto").first();
     const head = rowHead(list, checkout);
-    await head.click();
+    await expandRow(head);
     // The row opens with a height animation. A scroll during it stops short,
     // and the list keeps moving after the test reads the place.
     const opened = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
@@ -61,12 +62,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The open row pushes this one below the fold, so the reader scrolls.
     const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
     await triage.scrollIntoViewIfNeeded();
-    // A pointer that rests on a compact row expands it in place, and the
-    // click on Open would scroll to reach it. Back restores the place the
-    // reader left from, so scroll to Open and read the place once it holds.
+    // Back restores the place the reader left from, so scroll to Open and
+    // read the place once it holds.
     await triage.hover();
     const row = triage.locator("xpath=ancestor::*[@data-inbox-row][1]");
-    await expect(row).toHaveAttribute("data-grown", "true");
     const open = row.getByRole("link", { name: "Open conversation" }).first();
     await open.scrollIntoViewIfNeeded();
     const target = await row.elementHandle();
@@ -536,7 +535,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       await screenshot(page, "inbox-phone-list", { lightTheme: true });
 
-      await rowHead(todo, checkout).click();
+      await expandRow(rowHead(todo, checkout));
       const asks = page.getByRole("region", { name: `${checkout}: asks` });
       await expect(asks).toContainText(rollout.title);
       await asks.getByRole("link", { name: "Open conversation" }).click();
@@ -611,7 +610,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
-  test("a click expands a row in place, and Open opens its Conversation", async ({
+  test("a click or Enter on a row opens its Conversation, and a pill expands it", async ({
     dashboard,
     page,
   }) => {
@@ -619,17 +618,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, checkout);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
 
+    // The head is a link to the Conversation, not a disclosure.
+    await expect(head).not.toHaveAttribute("aria-expanded");
     await head.click();
-    await expect(asks).toBeVisible();
-    await expect(head).toHaveAttribute("aria-expanded", "true");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await head.click();
-    await expect(asks).toHaveCount(0);
-    // Enter toggles it too.
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
     await head.press("Enter");
-    await expect(asks).toBeVisible();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    // A click on the head outside its link opens the Conversation too.
+    await row.locator('[data-inbox-slot="dot"]').click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    await expect(row).not.toHaveAttribute("data-expanded");
 
     // Ctrl/⌘-click keeps the link: a new tab opens, and the list stays.
     const [tab] = await Promise.all([
@@ -638,14 +642,47 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     await expect(tab).toHaveURL(/\/conversations\//);
     await tab.close();
+    // So does a middle click on the head outside its link.
+    const [middle] = await Promise.all([
+      page.context().waitForEvent("page"),
+      row.locator('[data-inbox-slot="dot"]').click({ button: "middle" }),
+    ]);
+    await expect(middle).toHaveURL(/\/conversations\//);
+    await middle.close();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(asks).toBeVisible();
 
+    // An ask pill expands the row in place.
+    await expandRow(head);
+    await expect(asks).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
     await asks.getByRole("link", { name: "Open conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.goBack();
     await openRow(head);
     await expect(page).toHaveURL(/\/conversations\//);
+  });
+
+  test("a row keeps its height under the pointer, and a click opens its Conversation", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.clock.install();
+    await mockReviewItems(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = page.getByRole("region", { name: "Conversations" });
+    const head = rowHead(list, checkout);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await expect(head).toBeVisible();
+    const height = () =>
+      row.evaluate((node) => (node as HTMLElement).offsetHeight);
+    const before = await height();
+    await head.hover();
+    await page.clock.runFor(1000);
+    expect(await height()).toBe(before);
+    await head.click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    await expect(row).not.toHaveAttribute("data-expanded");
   });
 
   test("a drag in In flight moves only that pin in the stored order", async ({

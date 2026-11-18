@@ -59,11 +59,6 @@ import {
   personParamsSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
   attachObjectLinkBodySchema,
@@ -92,14 +87,7 @@ import {
   readMockObjectLinks,
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
-import {
-  actOnMockReviewItem,
-  answerMockReviewItemByReply,
-  readMockReviewItem,
-  readMockReviewItemCounts,
-  readMockReviewItems,
-  readMockWaitingConversations,
-} from "./review-items";
+import { answerMockReviewItemByReply } from "./review-items";
 import {
   markMockConversationRead,
   withMockReadPosition,
@@ -147,7 +135,7 @@ import {
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
-import { addMockSnoozeRoutes } from "./snooze-routes";
+import { addMockReviewItemRoutes } from "./review-item-routes";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
@@ -491,18 +479,26 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
-    if ("event" in query.data || "turn" in query.data) {
+    if (
+      "event" in query.data ||
+      "message" in query.data ||
+      "turn" in query.data
+    ) {
       const around = readMockConversationEventsAround(
         params.data.conversationId,
         "event" in query.data
           ? { event: query.data.event }
-          : { turn: query.data.turn },
+          : "message" in query.data
+            ? { message: query.data.message }
+            : { turn: query.data.turn },
       );
       return around === "turn-not-found"
         ? errorResponse("Turn not found.", 404)
-        : around
-          ? jsonResponse(conversationEventPageSchema, around)
-          : errorResponse("Conversation not found.", 404);
+        : around === "message-not-found"
+          ? errorResponse("Message not found.", 404)
+          : around
+            ? jsonResponse(conversationEventPageSchema, around)
+            : errorResponse("Conversation not found.", 404);
     }
     // Mock details fit one page and have no unread cursor, so mock history
     // pages only backward from cursors.
@@ -894,59 +890,7 @@ export function createMockReportingApi(): Hono<{
       spend: "mock",
     }),
   );
-  // Answer Review item reads and actions from the mock items, so the
-  // dashboard does not query a database that has no review item tables.
-  app.get("/review-items", (c) => {
-    const {
-      conversationId,
-      for: forViewer,
-      q,
-      snoozed,
-      status,
-    } = c.req.query();
-    return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, {
-        closed: Boolean(status && status !== "open"),
-        conversationId,
-        // A search and a Conversation's own list still show snoozed rows.
-        forViewer: forViewer === "viewer" && !q && !conversationId,
-        q: q || undefined,
-        snoozed: snoozed === "true",
-      }),
-    });
-  });
-  app.get("/review-items/count", (c) =>
-    jsonResponse(reviewItemCountSchema, {
-      ...(c.req.query("include")?.split(",").includes("automations")
-        ? {
-            automations: mockAutomationCollection(
-              readMockAutomationList(),
-              new URLSearchParams({ owner: "me", scope: "attention" }),
-            ).total,
-          }
-        : undefined),
-      ...readMockReviewItemCounts(NOW_MS),
-    }),
-  );
-  app.get("/review-items/waiting-conversations", () =>
-    jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversations: readMockWaitingConversations(NOW_MS).conversations,
-    }),
-  );
-  app.get("/review-items/:id", (c) => {
-    const item = readMockReviewItem(NOW_MS, c.req.param("id"));
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
-  app.post("/review-items/:id/actions", async (c) => {
-    const body = reviewItemActionSchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid action.", 400);
-    const item = actOnMockReviewItem(NOW_MS, c.req.param("id"), body.data);
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
+  addMockReviewItemRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(
@@ -972,7 +916,6 @@ export function createMockReportingApi(): Hono<{
       truncated: false,
     });
   });
-  addMockSnoozeRoutes(app);
   app.get("/automations/:id", (c) => {
     const automation = readMockAutomationList().automations.find(
       (automation) => automation.id === c.req.param("id"),

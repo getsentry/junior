@@ -10,7 +10,6 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import pLimit from "p-limit";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
@@ -19,7 +18,7 @@ import {
   readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
@@ -348,11 +347,8 @@ export async function deleteMcpAuthSessionsForUserProvider(
   const indexKey = sessionIndexKey(userId, provider);
   const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
 
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  await Promise.all(
-    authSessionIds.map((authSessionId) =>
-      limit(() => stateAdapter.delete(sessionKey(authSessionId))),
-    ),
+  await mapBounded(authSessionIds, (authSessionId) =>
+    stateAdapter.delete(sessionKey(authSessionId)),
   );
 
   await stateAdapter.delete(indexKey);
@@ -367,15 +363,8 @@ export async function getLatestMcpAuthSessionForUserProvider(
     await stateAdapter.get(sessionIndexKey(userId, provider)),
   );
 
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const sessions = await Promise.all(
-    authSessionIds.map((authSessionId) =>
-      limit(async () =>
-        parseMcpAuthSession(
-          await readMcpAuthSession(stateAdapter, authSessionId),
-        ),
-      ),
-    ),
+  const sessions = await mapBounded(authSessionIds, async (authSessionId) =>
+    parseMcpAuthSession(await readMcpAuthSession(stateAdapter, authSessionId)),
   );
   let latestSession: McpAuthSessionState | undefined;
   for (const session of sessions) {

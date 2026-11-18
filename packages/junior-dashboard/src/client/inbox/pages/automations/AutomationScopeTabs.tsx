@@ -45,7 +45,7 @@ export function AutomationScopeTabs(props: {
             className={cn(
               "flex h-8 items-center gap-1.5 rounded-[0.625rem] px-3 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
               on
-                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                ? "bg-dashboard-surface-active text-dashboard-text"
                 : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
             )}
             key={scope.key}

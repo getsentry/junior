@@ -130,7 +130,8 @@
       "files": ["packages/*/src/**"],
       "rules": {
         "junior/bounded-fan-out": "error",
-        "junior/no-service-fallback": "error"
+        "junior/no-service-fallback": "error",
+        "junior/prefer-map-bounded": "error"
       }
     },
     {

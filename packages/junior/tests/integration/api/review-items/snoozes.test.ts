@@ -1,34 +1,40 @@
-import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { upsertLinkedIdentity } from "@/chat/identities/sql";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { juniorAutomations, juniorReviewItemAssignees } from "@/db/schema";
+import { getDb } from "@/chat/db";
+import { eq } from "drizzle-orm";
+import { juniorInboxSnoozes, juniorReviewItemAssignees } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
-import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
   addItem,
   addNotice,
   api,
   conversation,
-  NEW_ITEM,
   NOTHING_SNOOZED,
   NOW_MS,
   PRIVATE_ROOT,
-  PULL_REQUEST_REVIEW_WAKES,
   ROOT,
-  timer,
   user,
-  wakeOnPullRequestReview,
 } from "../../../fixtures/snoozes";
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Every stored snooze, oldest wake time first. */
+async function storedSnoozes() {
+  return getDb()
+    .select({
+      reason: juniorInboxSnoozes.reason,
+      status: juniorInboxSnoozes.status,
+      wakeAtMs: juniorInboxSnoozes.wakeAtMs,
+    })
+    .from(juniorInboxSnoozes)
+    .orderBy(juniorInboxSnoozes.wakeAtMs, juniorInboxSnoozes.createdAt);
+}
 
 describe("snoozes", () => {
   let fixture: ConversationFixture;
@@ -57,28 +63,19 @@ describe("snoozes", () => {
       waiting: [ROOT],
     };
     expect(await asAna.inbox()).toEqual(awake);
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
     const versionBefore = await asAna.versions();
 
-    const created = await asAna.snooze({
-      action: "wake",
-      subject: { conversationId: ROOT },
-      triggers: [NEW_ITEM, timer(NOW_MS + 3 * 60 * 60 * 1000)],
-    });
+    const created = await asAna.snooze(
+      { conversationId: ROOT },
+      NOW_MS + 3 * HOUR_MS,
+    );
     expect(created.status).toBe(201);
-    const snooze = (await created.json()) as { id: string };
 
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
-    // Snoozed shows the row, from the server.
     expect(await asAna.snoozed()).toEqual({
       count: 1,
       items: ["Review acme entry"],
-      snoozes: [
-        {
-          items: 1,
-          subject: { conversationId: ROOT },
-          title: "Review acme entry",
-        },
-      ],
     });
     expect(await asAna.versions()).not.toBe(versionBefore);
     // Each snooze has its own User.
@@ -86,26 +83,29 @@ describe("snoozes", () => {
     expect(await asBob.snoozed()).toEqual(NOTHING_SNOOZED);
 
     // Only its creator can undo it.
-    expect((await asBob.unsnooze(snooze.id)).status).toBe(404);
-    expect((await asAna.unsnooze(snooze.id)).status).toBe(204);
+    expect((await asBob.unsnooze({ conversationId: ROOT })).status).toBe(204);
+    expect((await asAna.inbox()).count).toBe(0);
+    expect((await asAna.unsnooze({ conversationId: ROOT })).status).toBe(204);
     expect(await asAna.inbox()).toEqual(awake);
-    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
+    expect(await storedSnoozes()).toEqual([
+      {
+        reason: "unsnoozed",
+        status: "cancelled",
+        wakeAtMs: NOW_MS + 3 * HOUR_MS,
+      },
+    ]);
   });
 
-  it("wakes on the first trigger: a due timer, or a new item", async () => {
+  it("wakes at its time or on a new item, whichever comes first", async () => {
     const ana = await user("ana@example.com");
     await addItem(ROOT, [ana], "Review acme entry");
     const asAna = api(fixture, ana);
-    const snooze = (subject: Record<string, string>) =>
-      asAna.snooze({
-        action: "wake",
-        subject,
-        triggers: [NEW_ITEM, timer(NOW_MS + 60_000)],
-      });
 
-    expect((await snooze({ conversationId: ROOT })).status).toBe(201);
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + 60_000)).status,
+    ).toBe(201);
     expect((await asAna.inbox()).count).toBe(0);
-    // The timer is due. The row is awake before the heartbeat settles it.
+    // The time has come. The row is awake before the heartbeat settles it.
     vi.setSystemTime(NOW_MS + 60_000);
     expect((await asAna.inbox()).count).toBe(1);
     await runHeartbeat({
@@ -118,18 +118,20 @@ describe("snoozes", () => {
       }),
       nowMs: Date.now(),
     });
-    const [settled] = await getDb()
-      .select({ status: juniorAutomations.status })
-      .from(juniorAutomations)
-      .where(eq(juniorAutomations.action, "wake"));
-    expect(settled).toEqual({ status: "completed" });
+    expect(await storedSnoozes()).toEqual([
+      { reason: "time", status: "woken", wakeAtMs: NOW_MS + 60_000 },
+    ]);
 
-    // A timer in the past cannot snooze.
-    expect((await snooze({ conversationId: ROOT })).status).toBe(400);
+    // A time in the past cannot snooze.
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + 60_000)).status,
+    ).toBe(400);
 
     // A new item in the Conversation wakes the row, whoever it is for.
     vi.setSystemTime(NOW_MS);
-    expect((await snooze({ conversationId: ROOT })).status).toBe(201);
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + HOUR_MS)).status,
+    ).toBe(201);
     expect((await asAna.inbox()).count).toBe(0);
     const bob = await user("bob@example.com");
     await addItem(ROOT, [bob], "Review globex entry");
@@ -138,18 +140,22 @@ describe("snoozes", () => {
       inbox: ["Review acme entry"],
       waiting: [ROOT],
     });
+    expect((await storedSnoozes())[1]).toEqual({
+      reason: "new_item",
+      status: "woken",
+      wakeAtMs: NOW_MS + HOUR_MS,
+    });
   });
 
-  it("changes the versions token when a snooze timer is due, before the heartbeat", async () => {
+  it("changes the versions token when a snooze is due, before the heartbeat", async () => {
     const ana = await user("ana@example.com");
     // A notice waits on nobody, so no count moves when it wakes.
     await addNotice(ROOT, [ana], "Acme entry merged");
     const asAna = api(fixture, ana);
-    const created = await asAna.snooze({
-      action: "wake",
-      subject: { conversationId: ROOT },
-      triggers: [NEW_ITEM, timer(NOW_MS + 60_000)],
-    });
+    const created = await asAna.snooze(
+      { conversationId: ROOT },
+      NOW_MS + 60_000,
+    );
     expect(created.status).toBe(201);
     const asleep = await asAna.versions();
     vi.setSystemTime(NOW_MS + 59_000);
@@ -162,37 +168,20 @@ describe("snoozes", () => {
     const ana = await user("ana@example.com");
     await addItem(ROOT, [ana], "Review acme entry");
     const asAna = api(fixture, ana);
-    const snooze = (firesAtMs: number) =>
-      asAna.snooze({
-        action: "wake",
-        subject: { conversationId: ROOT },
-        triggers: [NEW_ITEM, timer(firesAtMs)],
-      });
+    const snooze = (wakeAtMs: number) =>
+      asAna.snooze({ conversationId: ROOT }, wakeAtMs);
 
     expect((await snooze(NOW_MS + 60_000)).status).toBe(201);
     expect((await snooze(NOW_MS + 120_000)).status).toBe(201);
-    const rows = await getDb()
-      .select({
-        nextRunAtMs: juniorAutomations.nextRunAtMs,
-        status: juniorAutomations.status,
-        statusReason: juniorAutomations.statusReason,
-      })
-      .from(juniorAutomations)
-      .where(eq(juniorAutomations.action, "wake"))
-      .orderBy(juniorAutomations.nextRunAtMs);
-    expect(rows).toEqual([
-      {
-        nextRunAtMs: NOW_MS + 60_000,
-        status: "completed",
-        statusReason: "replaced",
-      },
-      { nextRunAtMs: NOW_MS + 120_000, status: "active", statusReason: null },
+    expect(await storedSnoozes()).toEqual([
+      { reason: "replaced", status: "cancelled", wakeAtMs: NOW_MS + 60_000 },
+      { reason: null, status: "active", wakeAtMs: NOW_MS + 120_000 },
     ]);
-    // The first timer is due, but the row stays asleep until the second.
+    // The first time has come, but the row stays asleep until the second.
     vi.setSystemTime(NOW_MS + 60_000);
     expect((await asAna.inbox()).count).toBe(0);
 
-    // Overlapping snoozes replace in turn and both succeed.
+    // Overlapping snoozes replace in turn and all succeed.
     const overlapping = await Promise.all([
       snooze(NOW_MS + 180_000),
       snooze(NOW_MS + 240_000),
@@ -201,79 +190,10 @@ describe("snoozes", () => {
     expect(overlapping.map((response) => response.status)).toEqual([
       201, 201, 201,
     ]);
-    const active = await getDb()
-      .select({ id: juniorAutomations.id })
-      .from(juniorAutomations)
-      .where(eq(juniorAutomations.status, "active"));
-    expect(active).toHaveLength(1);
-  });
-
-  it("keeps one active snooze per User, whichever identity makes it", async () => {
-    const linked = await user("ana@example.com");
-    await upsertLinkedIdentity(getSqlExecutor(), linked.id, {
-      kind: "user",
-      provider: "github",
-      providerSubjectId: "ana-gh",
-    });
-    const ana = (await resolveViewerUserFromSql(getDb(), "ana@example.com"))!;
-    expect(ana.identities).toHaveLength(2);
-    await addItem(ROOT, [ana], "Review acme entry");
-    // Two sessions of one User, each seeing a different identity.
-    const sessions = ana.identities.map((identity) =>
-      api(fixture, { ...ana, identities: [identity] }),
+    const active = (await storedSnoozes()).filter(
+      (row) => row.status === "active",
     );
-    const snoozeAs = (session: (typeof sessions)[number], firesAtMs: number) =>
-      session.snooze({
-        action: "wake",
-        subject: { conversationId: ROOT },
-        triggers: [NEW_ITEM, timer(firesAtMs)],
-      });
-
-    expect((await snoozeAs(sessions[0]!, NOW_MS + 60_000)).status).toBe(201);
-    expect((await snoozeAs(sessions[1]!, NOW_MS + 120_000)).status).toBe(201);
-    const overlapping = await Promise.all([
-      snoozeAs(sessions[0]!, NOW_MS + 180_000),
-      snoozeAs(sessions[1]!, NOW_MS + 240_000),
-    ]);
-    expect(overlapping.map((response) => response.status)).toEqual([201, 201]);
-    const active = await getDb()
-      .select({ id: juniorAutomations.id })
-      .from(juniorAutomations)
-      .where(eq(juniorAutomations.status, "active"));
     expect(active).toHaveLength(1);
-  });
-
-  it("does not let a snooze wake on Slack channel messages", async () => {
-    const ana = await user("ana@example.com");
-    await addItem(ROOT, [ana], "Review acme entry");
-    const asAna = api(fixture, ana);
-
-    for (const trigger of [
-      { identifier: "CPRIVATE" },
-      { match: { channelId: "CPRIVATE" } },
-    ]) {
-      const response = await asAna.snooze({
-        action: "wake",
-        subject: { conversationId: ROOT },
-        triggers: [
-          NEW_ITEM,
-          {
-            kind: "event",
-            namespace: "slack",
-            resourceType: "channel",
-            events: ["message.posted"],
-            ...trigger,
-          },
-        ],
-      });
-      expect(response.status).toBe(400);
-    }
-    expect(
-      await getDb()
-        .select()
-        .from(juniorAutomations)
-        .where(eq(juniorAutomations.action, "wake")),
-    ).toEqual([]);
   });
 
   it("shows nothing in Snoozed once the viewer loses access to the row", async () => {
@@ -287,19 +207,10 @@ describe("snoozes", () => {
     );
     const asAna = api(fixture, ana);
     const subject = { conversationId: PRIVATE_ROOT, reviewItemId: itemId };
-    expect(
-      (
-        await asAna.snooze({
-          action: "wake",
-          subject,
-          triggers: [NEW_ITEM, timer(NOW_MS + 60_000)],
-        })
-      ).status,
-    ).toBe(201);
+    expect((await asAna.snooze(subject, NOW_MS + HOUR_MS)).status).toBe(201);
     expect(await asAna.snoozed()).toEqual({
       count: 1,
       items: ["Review private entry"],
-      snoozes: [{ items: 1, subject, title: "Review private entry" }],
     });
 
     // A private item is for its assignees only.
@@ -326,72 +237,9 @@ describe("snoozes", () => {
       { conversationId: PRIVATE_ROOT, reviewItemId: itemId },
       { conversationId: "slack:CSNOOZE:missing" },
     ]) {
-      const response = await asBob.snooze({
-        action: "wake",
-        subject,
-        triggers: [NEW_ITEM],
-      });
+      const response = await asBob.snooze(subject, NOW_MS + HOUR_MS);
       expect(response.status).toBe(404);
     }
-    expect(
-      await getDb()
-        .select()
-        .from(juniorAutomations)
-        .where(eq(juniorAutomations.action, "wake")),
-    ).toEqual([]);
-  });
-
-  it("wakes a snooze, which has no Slack team, on a GitHub Event that the app publishes", async () => {
-    try {
-      expect(await wakeOnPullRequestReview(fixture)).toEqual(
-        PULL_REQUEST_REVIEW_WAKES,
-      );
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("decides an Event wake at the ingest time, not the wall clock", async () => {
-    try {
-      await useGitHubEvents();
-      const ana = await user("ana@example.com");
-      await addItem(ROOT, [ana], "Review junior#7");
-      const created = await api(fixture, ana).snooze({
-        action: "wake",
-        subject: { conversationId: ROOT },
-        triggers: [
-          NEW_ITEM,
-          timer(NOW_MS + 60_000),
-          {
-            kind: "event",
-            namespace: "github",
-            resourceType: "pull_request",
-            identifier: "getsentry/junior#7",
-            events: ["pull_request.review.approved"],
-          },
-        ],
-      });
-      expect(created.status).toBe(201);
-      // The wall clock is past the timer, but the Event came before it.
-      vi.setSystemTime(NOW_MS + 120_000);
-      await ingestEventAutomations(
-        {
-          eventKey: "github:snooze:ingest-time",
-          eventType: "pull_request.review.approved",
-          identifier: "getsentry/junior#7",
-          namespace: "github",
-          occurredAtMs: NOW_MS + 30_000,
-          trustedSummary: "A pull request was reviewed.",
-        },
-        { nowMs: NOW_MS + 30_000, queue: fixture.queue },
-      );
-      const [row] = await getDb()
-        .select({ statusReason: juniorAutomations.statusReason })
-        .from(juniorAutomations)
-        .where(eq(juniorAutomations.action, "wake"));
-      expect(row).toEqual({ statusReason: "pull_request.review.approved" });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    expect(await storedSnoozes()).toEqual([]);
   });
 });

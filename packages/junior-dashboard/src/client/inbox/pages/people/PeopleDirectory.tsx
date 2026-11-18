@@ -16,7 +16,6 @@ import {
 import { DirectoryMetric } from "../../../components/directory/DirectoryMetric";
 import { Card } from "../../../components/layout/Card";
 import { CardHeader } from "../../../components/layout/CardHeader";
-import { cn } from "../../../styles";
 import {
   formatCompactNumber,
   formatCostSummary,
@@ -167,7 +166,7 @@ export function PeopleDirectory(props: {
                 icon={
                   <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
                 }
-                iconClassName="bg-amber-500/[0.07] text-amber-300 group-hover:border-amber-500/25"
+                iconClassName="bg-dashboard-fill-soft text-dashboard-text-muted group-hover:border-dashboard-border-strong"
                 title={actorName(person)}
               />
               <DirectoryMetric
@@ -181,16 +180,8 @@ export function PeopleDirectory(props: {
                     <span className="whitespace-nowrap">
                       {formatCostSummary({ total: window.costUsd }) || "$0.00"}
                     </span>
-                    <span
-                      className={cn(
-                        "whitespace-nowrap font-mono text-2xs leading-none",
-                        Math.abs(delta) < 0.005
-                          ? "text-dashboard-text-muted"
-                          : delta > 0
-                            ? "text-amber-300/80"
-                            : "text-cyan-300/75",
-                      )}
-                    >
+                    {/* The sign tells the direction, so the delta needs no color. */}
+                    <span className="whitespace-nowrap font-sans text-xs leading-none tabular-nums text-dashboard-text-muted">
                       {formatSpendDelta(delta)}
                     </span>
                   </span>

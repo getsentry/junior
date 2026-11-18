@@ -500,6 +500,7 @@ async function processConversationWorkInContext(
   try {
     let hasRun = false;
     let resumeIfStopped = false;
+    /* oxlint-disable no-await-in-loop -- Each slice reads the work state that the slice before it left. */
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -763,6 +764,7 @@ async function processConversationWorkInContext(
         break;
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     const completion = await completeConversationWork({
       conversationId,
