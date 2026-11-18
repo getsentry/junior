@@ -489,6 +489,29 @@ describe("conversation tree state", () => {
     await cancelWatch({ conversationId: childConversationId, id: timer.id });
     await expect(fixture.treeState(conversationId)).resolves.toBeUndefined();
 
+    // A stop in the tree ends its Watches, so the feed token moves.
+    await createTimerWatch({
+      afterMs: 600_000,
+      conversationId: childConversationId,
+      intent: "Check the deployment again.",
+      toolCallId: "tree-timer-again",
+    });
+    const feedToken = async () => {
+      const response = await fixture.request("/api/versions");
+      return ((await response.json()) as { conversations: string })
+        .conversations;
+    };
+    const watching = await feedToken();
+    const childStopped = await fixture.request(
+      `${detailPath(childConversationId)}/stop`,
+      { method: "POST" },
+    );
+    expect(childStopped.status).toBe(200);
+    await expect(
+      fixture.feedTreeState(conversationId),
+    ).resolves.toBeUndefined();
+    expect(await feedToken()).not.toBe(watching);
+
     // A stopped Conversation starts no Turn for its Watches.
     await watchDeployment(conversationId);
     await expect(fixture.treeState(conversationId)).resolves.toBe("waiting");

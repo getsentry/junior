@@ -303,10 +303,14 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * dashboard can record which inputs moved it.
  *
  * The token holds only what a feed row shows, so a Task moves it only when
- * the tree state moves. Watches live outside SQL; the Turn that makes one
- * ends and moves the status. Every Event of a live Turn moves
- * `last_activity_at`, but a running row shows its running state in place of
- * the age, so the token holds no activity for it. Other rows show an age in whole minutes, so the
+ * the tree state moves. Watches live outside SQL. A Turn makes or cancels
+ * one, and the end of that Turn moves the status or the tree's work, so a
+ * read after it sees the Watch. A stop anywhere in the tree moves it too,
+ * since a stopped Conversation's Watches start no Turn. A Watch that
+ * expires on its own moves nothing, so its row shows `waiting` until the
+ * feed reads again. Every Event of a live Turn moves `last_activity_at`, but
+ * a running row shows its running state in place of the age, so the token
+ * holds no activity for it. Other rows show an age in whole minutes, so the
  * token holds its minute. The end of the Turn moves the status.
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
@@ -326,6 +330,7 @@ export function conversationFeedVersionQuery(
     .select({
       version: sql<string>`concat_ws(':',
         count(*) filter (where ${feedTree.archivedAt} is not null),
+        count(*) filter (where ${feedTree.stoppedAt} is not null),
         coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
         bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
           eq(juniorReviewItems.addedByConversationId, feedTree.conversationId),
