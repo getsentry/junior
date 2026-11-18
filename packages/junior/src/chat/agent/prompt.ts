@@ -204,32 +204,14 @@ function renderInputParts(instruction: AgentInstruction): string[] {
   );
 }
 
-/** The skill that a Turn injects, and what the `<skill>` block lists with it. */
-export type ExplicitSkill = {
-  skill: Skill;
-  /**
-   * Manual-only skills that the model can also load this Turn. The block
-   * names them because `<available-skills>` leaves them out.
-   */
-  loadableSkillNames: readonly string[];
-};
-
 /** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions({
-  skill,
-  loadableSkillNames,
-}: ExplicitSkill): string {
+export function renderExplicitSkillInstructions(skill: Skill): string {
   return [
     "<skill>",
     `<name>${escapeXml(skill.name)}</name>`,
     `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
     `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
     `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
-    ...(loadableSkillNames.length > 0
-      ? [
-          `<loadable_skills>${escapeXml(loadableSkillNames.join(", "))}</loadable_skills>`,
-        ]
-      : []),
     skill.body,
     "</skill>",
   ].join("\n");
@@ -651,7 +633,10 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  explicitSkill: ExplicitSkill | null;
+  /** The skill that an Automation in skill mode names; the prompt injects it. */
+  automationSkill: Skill | null;
+  /** Skills that the person named this Turn; the model loads them itself. */
+  invokedSkillNames: readonly string[];
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -740,6 +725,7 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
+        invokedSkillNames: args.invokedSkillNames,
         // Only changes that others made after the plan version that history
         // shows. The model's own changes are in its tool results.
         planDelta: planItems
@@ -777,11 +763,11 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.explicitSkill
+    ...(args.automationSkill
       ? [
           {
             type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
+            text: renderExplicitSkillInstructions(args.automationSkill),
           },
         ]
       : []),

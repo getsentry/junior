@@ -53,24 +53,6 @@ export function loadableSkills(
   );
 }
 
-/**
- * Name the loadable manual-only skills that are not loaded yet.
- * `<available-skills>` leaves them out, so the model sees them only here.
- */
-export function unloadedManualSkillNames(
-  availableSkills: SkillMetadata[],
-  invokedSkillNames: readonly string[],
-  loadedSkills: readonly Skill[],
-): string[] {
-  return loadableSkills(availableSkills, invokedSkillNames, loadedSkills)
-    .filter(
-      (skill) =>
-        skill.disableModelInvocation === true &&
-        !loadedSkills.some((loaded) => loaded.name === skill.name),
-    )
-    .map((skill) => skill.name);
-}
-
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
 export async function discoverRunSkills(args: {
   skillDirs?: string[] | undefined;
@@ -155,22 +137,22 @@ function loadedSkillNames(messages: readonly PiMessage[]): string[] {
 }
 
 /**
- * Load the first invoked skill. A resumed slice also restores every skill
- * that loaded earlier in this Turn, so the skills those reference stay
- * loadable. Skills from earlier Turns are never restored. Returns the
- * invoked skill, or else the last restored one.
+ * Load the skill that an Automation in skill mode names. A resumed slice
+ * also restores every skill that loaded earlier in this Turn, so the skills
+ * those reference stay loadable. Skills from earlier Turns are never
+ * restored. Returns the Automation's skill, which the prompt injects.
  */
 export async function loadRunSkill(args: {
   activeSkills: Skill[];
+  automationSkill: SkillMetadata | undefined;
   currentTurnMessages: readonly PiMessage[];
-  invokedSkills: readonly SkillMetadata[];
   resumed: boolean;
   skillSandbox: SkillSandbox;
 }): Promise<Skill | null> {
-  const invokedName = args.invokedSkills[0]?.name;
+  const automationName = args.automationSkill?.name;
   const names = [
     ...new Set([
-      ...(invokedName ? [invokedName] : []),
+      ...(automationName ? [automationName] : []),
       ...(args.resumed ? loadedSkillNames(args.currentTurnMessages) : []),
     ]),
   ];
@@ -182,8 +164,5 @@ export async function loadRunSkill(args: {
       upsertActiveSkill(args.activeSkills, skill);
     }
   }
-  if (invokedName) {
-    return loaded[0] ?? null;
-  }
-  return loaded.filter((skill) => skill !== null).at(-1) ?? null;
+  return automationName ? (loaded[0] ?? null) : null;
 }

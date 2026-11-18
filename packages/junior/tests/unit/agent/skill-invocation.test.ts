@@ -14,6 +14,7 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import { agentInvocationInputText } from "@/chat/agent-invocations/work";
 import { instructionForInputs } from "@/chat/agent/prompt";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 
 const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;
@@ -151,26 +152,30 @@ describe("loadRunSkill", () => {
       content: [{ type: "text", text: "loaded" }],
       timestamp: 1,
     });
-    const restore = async (resumed: boolean) => {
+    const restore = async (
+      resumed: boolean,
+      automationSkill?: SkillMetadata,
+    ) => {
       const activeSkills: Skill[] = [];
-      const explicit = await loadRunSkill({
+      const injected = await loadRunSkill({
         activeSkills,
+        automationSkill,
         currentTurnMessages: [
           loadSkillResult("release"),
           loadSkillResult("signoff", true),
         ],
-        invokedSkills: [available[0]!],
         resumed,
         skillSandbox: new SkillSandbox(available, activeSkills),
       });
-      return { activeSkills, explicit };
+      return { activeSkills, injected };
     };
 
     try {
+      // A skill that a person names is never injected; only `loadSkill`
+      // results from this Turn come back.
       const resumed = await restore(true);
-      expect(resumed.explicit?.name).toBe("triage");
+      expect(resumed.injected).toBeNull();
       expect(resumed.activeSkills.map((skill) => skill.name)).toEqual([
-        "triage",
         "release",
       ]);
       // `release` names `$signoff`, so it stays loadable after the resume.
@@ -180,10 +185,38 @@ describe("loadRunSkill", () => {
         ),
       ).toContain("signoff");
 
-      const fresh = await restore(false);
-      expect(fresh.activeSkills.map((skill) => skill.name)).toEqual(["triage"]);
+      expect((await restore(false)).activeSkills).toEqual([]);
+
+      // An Automation in skill mode injects its skill.
+      const automation = await restore(false, available[0]);
+      expect(automation.injected?.name).toBe("triage");
+      expect(automation.activeSkills.map((skill) => skill.name)).toEqual([
+        "triage",
+      ]);
     } finally {
       await fs.rm(root, { force: true, recursive: true });
     }
+  });
+});
+
+describe("invoked skills in the Turn context", () => {
+  it("lists the skills that the person named, without their instructions", () => {
+    const context = buildTurnContextPrompt({
+      includeSessionContext: false,
+      invokedSkillNames: ["triage", "release"],
+    });
+
+    expect(context).toContain(
+      ["<invoked-skills>", "- triage", "- release", "</invoked-skills>"].join(
+        "\n",
+      ),
+    );
+    expect(context).not.toContain("<skill>");
+    expect(
+      buildTurnContextPrompt({
+        includeSessionContext: false,
+        invokedSkillNames: [],
+      }),
+    ).toBeNull();
   });
 });

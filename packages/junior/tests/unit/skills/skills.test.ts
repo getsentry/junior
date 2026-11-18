@@ -10,7 +10,7 @@ import {
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
 import type { Skill, SkillMetadata } from "@/chat/skills";
-import { loadableSkills, unloadedManualSkillNames } from "@/chat/agent/skills";
+import { loadableSkills } from "@/chat/agent/skills";
 import { renderTaskInput } from "@/chat/task-input";
 
 async function writeSkillFile(
@@ -226,34 +226,6 @@ describe("skills", () => {
         ],
       ),
     ).toEqual(["brief", "sum"]);
-  });
-
-  it("names the loadable manual-only skills that are not loaded yet", () => {
-    const loaded = (body: string): Skill => ({ ...stubSkills[0]!, body });
-    const manualSkills: SkillMetadata[] = [
-      ...stubSkills,
-      {
-        name: "launch-signoff",
-        description: "Sign-off code",
-        skillPath: "/tmp/launch-signoff",
-        disableModelInvocation: true,
-      },
-    ];
-
-    expect(
-      unloadedManualSkillNames(
-        manualSkills,
-        ["brief", "weather-lookup"],
-        [loaded("Get the code from $launch-signoff.")],
-      ),
-    ).toEqual(["weather-lookup", "launch-signoff"]);
-    expect(
-      unloadedManualSkillNames(
-        manualSkills,
-        ["weather-lookup"],
-        [{ ...manualSkills[2]!, body: "Report the weather." }],
-      ),
-    ).toEqual([]);
   });
 
   it("treats agents/openai.yaml allow_implicit_invocation: false as manual-only", async () => {

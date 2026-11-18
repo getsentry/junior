@@ -48,7 +48,11 @@ describe("Skills", () => {
     const loads = toolCallsOf("loadSkill", result);
     expect(loads.map((call) => call.status)).not.toContain("error");
     expect(loadedSkillNames(result)).toEqual(
-      expect.arrayContaining(["launch-checks", "launch-signoff"]),
+      expect.arrayContaining([
+        "launch-review",
+        "launch-checks",
+        "launch-signoff",
+      ]),
     );
     expect(result.replies).toHaveLength(1);
     expect(result.replies[0]!.text).toContain("ORCHID-42");
@@ -57,8 +61,8 @@ describe("Skills", () => {
   test("when one message invokes two manual-only skills, use both", async ({
     run,
   }) => {
-    // Junior injects the first skill. The second is manual-only, so the
-    // agent must load it by the name the message gave.
+    // Junior injects neither skill. The agent loads each one by the name
+    // that the message gave.
     const result = await run(
       slackMention(
         "$weather-lookup Vienna, and also give me the $launch-signoff code for Atlas",
@@ -68,7 +72,9 @@ describe("Skills", () => {
     expect(
       toolCallsOf("loadSkill", result).map((call) => call.status),
     ).not.toContain("error");
-    expect(loadedSkillNames(result)).toContain("launch-signoff");
+    expect(loadedSkillNames(result)).toEqual(
+      expect.arrayContaining(["weather-lookup", "launch-signoff"]),
+    );
     expect(result.replies).toHaveLength(1);
     expect(result.replies[0]!.text).toContain("ORCHID-42");
     await expect(result).toSatisfyJudge(
