@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { getDb } from "@/chat/db";
+import { insertReviewItem } from "@/chat/review-items/store";
 import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../../../fixtures/conversation-brief";
 import {
@@ -80,6 +81,30 @@ describe("getConversation MCP tool", () => {
       .update(juniorConversations)
       .set({ executionStatus: "running" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+    // An open action item reads `needs_input` while the Turn runs.
+    await insertReviewItem(getDb(), {
+      addedByConversationId: CONVERSATION_ID,
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      body: "Pick one.",
+      conversationIds: [CONVERSATION_ID],
+      dedupeKey: "running-ask",
+      kind: "action",
+      nowMs: Date.now(),
+      request: {
+        question: "Ship now?",
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Ship" }, { label: "Wait" }],
+          },
+        ],
+      },
+      title: "Ship the release?",
+      visibility: "public",
+    });
 
     const running = await call("getConversation", {
       conversationId: CONVERSATION_ID,
@@ -89,7 +114,7 @@ describe("getConversation MCP tool", () => {
       conversation: { turnActive: false },
     });
     expect(running.structuredContent).toMatchObject({
-      conversation: { turnActive: true },
+      conversation: { status: "needs_input", turnActive: true },
     });
   });
 
