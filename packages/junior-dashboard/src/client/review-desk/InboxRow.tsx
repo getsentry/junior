@@ -225,6 +225,8 @@ type InboxRowProps = {
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
   cardActions?(item: ReviewItemPayload): InboxCardActions;
+  /** A row with one ask shows its Snooze and Dismiss on hover. */
+  itemActions?: boolean;
   conversation?: Conversation;
   conversationId: string;
   /** Set on a pinned row of a list that drags pins into a new order. */
@@ -269,7 +271,7 @@ export function InboxRow(props: InboxRowProps) {
   useAnimatedHeight(cardRef, String(props.expanded));
   const open = props.bundle?.items.filter((item) => item.status === "open");
   const quickActions =
-    open?.length === 1 && props.cardActions ? (
+    props.itemActions && open?.length === 1 && props.cardActions ? (
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}

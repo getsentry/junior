@@ -194,6 +194,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a Conversations row with one ask keeps its Pin and Archive", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [rollout] });
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const row = page.locator(
+      `li[data-inbox-row="conversation:${conversationId}"]`,
+    );
+    await row.hover();
+    await expect(row.getByRole("button", { name: /^Archive / })).toBeVisible();
+    await expect(
+      row.getByRole("button", { exact: true, name: "Dismiss" }),
+    ).toHaveCount(0);
+  });
+
   test.describe("on a touch screen", () => {
     test.use({ hasTouch: true });
 

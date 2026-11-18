@@ -419,6 +419,8 @@ export function InboxList(props: {
       <InboxRow
         bundle={row}
         cardActions={cardActions(key, options)}
+        // Conversations rows keep their Pin and Archive.
+        itemActions={view !== "conversations"}
         conversation={
           // The stack's title names its Conversation.
           options.stacked
