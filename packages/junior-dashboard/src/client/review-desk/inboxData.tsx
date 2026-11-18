@@ -289,13 +289,12 @@ function useBuildInboxData(input: {
     conversations.filter((conversation) => conversation.pinnedAt),
   );
   const running = conversations.filter(
-    (conversation) =>
-      conversation.status === "working" && !conversation.pinnedAt,
+    (conversation) => conversation.turnActive && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedRunning: Conversation[]) => [
     ...unpinnedRunning,
-    ...pinned.filter((conversation) => conversation.status === "working"),
-    ...pinned.filter((conversation) => conversation.status !== "working"),
+    ...pinned.filter((conversation) => conversation.turnActive),
+    ...pinned.filter((conversation) => !conversation.turnActive),
   ];
 
   const todoAutomations = automations.filter(

@@ -581,7 +581,7 @@ function InboxRowBody(
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
   const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversation?.status === "working";
+  const running = conversation?.turnActive ?? false;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =

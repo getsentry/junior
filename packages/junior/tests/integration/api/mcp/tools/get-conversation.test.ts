@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../../../fixtures/conversation-brief";
 import {
   connectMcpTools,
@@ -62,6 +64,33 @@ describe("getConversation MCP tool", () => {
       cursor: expect.any(String),
     });
     expect(result.structuredContent).not.toHaveProperty("brief.record");
+  });
+
+  it("reports a running Turn apart from the status", async () => {
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    const call = await connectMcpTools();
+    const idle = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+    await getDb()
+      .update(juniorConversations)
+      .set({ executionStatus: "running" })
+      .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+
+    const running = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(idle.structuredContent).toMatchObject({
+      conversation: { turnActive: false },
+    });
+    expect(running.structuredContent).toMatchObject({
+      conversation: { turnActive: true },
+    });
   });
 
   it("returns the messages after a cursor and a cursor to continue from", async () => {
