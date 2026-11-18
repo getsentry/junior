@@ -31,6 +31,7 @@ import {
 import { TranscriptSearchProvider } from "./transcriptSearch";
 import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
 import type { TranscriptHistory } from "./transcriptAroundHistory";
+import { useMessageLinkJump } from "./useMessageLinkJump";
 import {
   TurnContextPanelProvider,
   type TurnContextPanel,
@@ -44,6 +45,8 @@ export function Transcript(props: {
   live?: boolean;
   /** The stored read position of the viewer. */
   lastReadSeq?: number | undefined;
+  /** Scroll to this Message once the loaded rows hold it. */
+  linkedMessageId?: string | undefined;
   loadingPreviousPage?: boolean;
   /**
    * Newer pages between the read position and the latest. They load on
@@ -110,6 +113,12 @@ export function Transcript(props: {
 
   const { revealAsk } = props;
   const { showRow } = bottomPinning;
+  const linkSeq = useMessageLinkJump({
+    content: bottomPinning.contentElement,
+    events: props.transcript?.events,
+    messageId: view === "rich" ? props.linkedMessageId : undefined,
+    showRow,
+  });
   const askReveal = useMemo(
     () => (revealAsk ? { ...revealAsk, showRow } : undefined),
     [revealAsk, showRow],
@@ -220,7 +229,7 @@ export function Transcript(props: {
                     conversation={props.transcript}
                     pendingMessages={props.pendingMessages}
                     responding={props.responding ?? props.live ?? false}
-                    revealSeq={props.revealSeq}
+                    revealSeq={props.revealSeq ?? linkSeq}
                     scrollAnchorKey={bottomPinning.scrollAnchorKey}
                     unread={props.unread}
                   />
