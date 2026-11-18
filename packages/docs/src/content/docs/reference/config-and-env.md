@@ -249,9 +249,10 @@ can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
 Threads alike. The model can archive a finished Thread with `archiveAgent`.
 
-By default, only the root Conversation can start child agents. Set
-`limits.maxAgentDepth` to let child agents start their own child agents. For
-example, `1` lets a child agent start child agents, and those cannot start more.
+By default, a child agent of the root Conversation can start its own child
+agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
+many levels of child agents can start their own. `0` lets only the root
+Conversation start child agents.
 
 Each event automation can start at most 10 runs in a rolling minute. Set
 `limits.eventAutomationRunLimit.maxRuns` to change the count. Set
