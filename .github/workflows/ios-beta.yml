@@ -4,6 +4,11 @@ name: iOS Beta
 # Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`.
 on:
   workflow_dispatch:
+  # TEMP: prove the pipeline from #3606. Remove before merge.
+  pull_request:
+    paths:
+      - apps/ios/**
+      - .github/workflows/ios-beta.yml
 
 permissions:
   contents: read
@@ -15,6 +20,7 @@ concurrency:
 jobs:
   testflight:
     name: Upload to TestFlight
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'armcknight/ios-testflight-beta'
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
@@ -22,6 +28,8 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
@@ -39,6 +47,8 @@ jobs:
           private-key: ${{ secrets.IOS_CODESIGN_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: apple-apps-codesigning
+          # The beta lane only reads the match repo.
+          permission-contents: read
 
       - name: Build and upload to TestFlight
         run: scripts/testflight.sh
