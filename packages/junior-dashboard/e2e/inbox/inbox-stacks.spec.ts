@@ -173,9 +173,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     // They use the action bar's words.
     await expect(quick("Snooze")).toHaveText("Snooze");
     await expect(quick("Dismiss")).toHaveText("Dismiss");
-    await expect(
-      row.getByRole("link", { name: "Open conversation" }),
-    ).toBeVisible();
+    // Open goes to the child that asked, at its ask.
+    const open = row.getByRole("link", { name: "Open conversation" });
+    await expect(open).toBeVisible();
+    await expect(open).toHaveAttribute(
+      "href",
+      `/conversations/${encodeURIComponent(childReview.addedByConversationId)}?ask=${childReview.id}`,
+    );
     await quick("Dismiss").click();
     await expect(row).toHaveCount(0);
     await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);

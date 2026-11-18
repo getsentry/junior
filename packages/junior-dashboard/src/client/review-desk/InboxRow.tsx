@@ -201,7 +201,8 @@ function RowItem(props: {
         ) : null}
         {item.subject ? (
           <ReviewItemSubjectPreview
-            conversationId={props.conversationId}
+            // The Conversation that added the item keeps its subject card.
+            conversationId={item.addedByConversationId}
             subject={item.subject}
           />
         ) : null}
@@ -227,10 +228,19 @@ function RowItem(props: {
   );
 }
 
-/** Where the row opens: at the record of its newest ask, when it has one. */
+/**
+ * Where the row opens. A row for one item, as in a stack, opens the
+ * Conversation that added it, also a child's, at the ask's record. A row for
+ * a Conversation opens it, at its newest ask when that Conversation added it.
+ */
 function rowConversationPath(props: InboxRowProps): string {
-  return conversationPath(props.conversationId, {
-    askItemId: props.bundle?.newest.id,
+  const newest = props.bundle?.newest;
+  const id =
+    newest && props.itemTitle !== undefined
+      ? newest.addedByConversationId
+      : props.conversationId;
+  return conversationPath(id, {
+    askItemId: newest?.addedByConversationId === id ? newest.id : undefined,
   });
 }
 
