@@ -185,6 +185,7 @@ export function conversationDetailQueryOptions(
         ),
       );
     },
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The open Conversation polls fast while a reply streams in.
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS

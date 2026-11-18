@@ -515,24 +515,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     }).toPass();
     expect(oldestAttempts).toBe(1);
 
-    // The Inbox shows its first rows. The failure does not stop the rows
-    // that are already loaded from showing as the reader scrolls.
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Inbox\b/ })
-      .click();
+    // The Inbox ends after the first rows of Earlier, so it reads no older
+    // page, and the failure does not show there.
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await nav.getByRole("link", { name: /^Inbox\b/ }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    const last = page.getByRole("link", { name: /Older conversation 40\b/ });
+    const toDone = page.getByRole("link", { name: "Older work is in Done" });
     await expect(async () => {
       await scrollToEnd("Inbox");
-      await expect(last).toBeVisible({ timeout: 1000 });
+      await expect(toDone).toBeVisible({ timeout: 1000 });
     }).toPass();
-    // Once they all show, Try again loads the failed page.
+    await expect(retry).toHaveCount(0);
+    expect(oldestAttempts).toBe(1);
+
+    // Back in Conversations, Try again loads the failed page.
+    await nav.getByRole("link", { name: /^Conversations\b/ }).click();
     await expect(async () => {
-      await scrollToEnd("Inbox");
+      await scrollToEnd("Conversations");
       await expect(retry).toBeVisible({ timeout: 1000 });
     }).toPass();
-    expect(oldestAttempts).toBe(1);
     await retry.click();
     await expect(
       page.getByRole("link", { name: /The oldest conversation/ }),

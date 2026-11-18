@@ -11,7 +11,7 @@ import {
  * dashboard connect prompt expire after this time, so the parked Turn cannot
  * resume after it.
  */
-const AUTHORIZATION_WAIT = sql.raw(`interval '24 hours'`);
+const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The request and the events that end its wait: the person connected, or a
@@ -28,11 +28,17 @@ const AUTHORIZATION_WAIT_EVENT_TYPES = [
   "turn_failed",
 ];
 
+/** The oldest request that still waits, on the app clock. */
+function authorizationWaitStart(): string {
+  return new Date(Date.now() - AUTHORIZATION_WAIT_MS).toISOString();
+}
+
 /**
  * SQL: the Conversation waits on a person to finish an authorization. A Turn
  * that needs a connection parks with execution `idle`, so only the durable
  * `authorization_requested` event shows the wait: it is the newest of these
- * events and has not expired.
+ * events and has not expired. Build it for each query: it binds the app
+ * clock, which also dated the request.
  */
 export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
   return authorizationWait(conversationId, sql`true`);
@@ -41,7 +47,7 @@ export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
 /**
  * SQL: the Conversation waits on this User to finish an authorization. The
  * request names the person by their User id, or by the Slack user id of
- * one of their Identities.
+ * one of their Identities. Build it for each query, as `awaitsAuthorization`.
  */
 export function awaitsAuthorizationFrom(
   conversationId: AnyPgColumn,
@@ -65,7 +71,7 @@ function authorizationWait(
   const events = juniorConversationEvents;
   return sql<boolean>`coalesce((
     select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > now() - ${AUTHORIZATION_WAIT}
+      and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz
       and ${requester}
     from ${events}
     where ${events.conversationId} = ${conversationId}

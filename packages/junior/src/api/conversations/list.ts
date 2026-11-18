@@ -182,7 +182,7 @@ async function conversationRows(
 ) {
   const rows = db
     .select({
-      ...conversationRecordColumns,
+      ...conversationRecordColumns(),
       // Keep microseconds so the next page starts exactly after this row.
       activityCursor: sql<string>`to_char(${juniorConversations.lastActivityAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       // A row with no stored time yet, from before the column, reads it

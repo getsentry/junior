@@ -13,8 +13,11 @@ import {
   juniorUsers,
 } from "@/db/schema";
 
-/** The columns of one Conversation record, for `selectConversationRecords`. */
-export const conversationRecordColumns = {
+/**
+ * The columns of one Conversation record, for `selectConversationRecords`.
+ * Build them for each query: the status binds the app clock.
+ */
+export const conversationRecordColumns = () => ({
   conversation: juniorConversations,
   status: conversationStatusSql(juniorConversations),
   location: juniorDestinations,
@@ -25,7 +28,7 @@ export const conversationRecordColumns = {
   identitySubjectId: juniorIdentities.providerSubjectId,
   identityTenantId: juniorIdentities.providerTenantId,
   userDisplayName: juniorUsers.displayName,
-};
+});
 
 /** Left-join conditions from a Conversation to its record tables. */
 export const conversationRecordJoins = {
@@ -40,7 +43,7 @@ export const conversationRecordJoins = {
  */
 export function selectConversationRecords(db: JuniorDatabase) {
   return db
-    .select(conversationRecordColumns)
+    .select(conversationRecordColumns())
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
     .leftJoin(juniorIdentities, conversationRecordJoins.identity)
