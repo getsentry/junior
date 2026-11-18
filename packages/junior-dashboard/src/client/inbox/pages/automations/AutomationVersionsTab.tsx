@@ -40,6 +40,7 @@ import { TriggerFilters } from "../../../pages/automations/TriggerFilters";
 import { refreshChangedAutomation } from "../../../review-desk/inboxQueries";
 import { formatRelativeTime } from "../../../time";
 import { getDashboardAgentName } from "../../../agentName";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
 
 /** Search param that selects the version to compare. */
 export const AUTOMATION_VERSION_PARAM = "version";
@@ -277,14 +278,20 @@ function VersionListItem(props: {
           </StatusChip>
         ) : null}
       </span>
-      <span className="truncate text-xs text-dashboard-text-muted">
+      <span
+        className={cn(fadeOverflowClass, "text-xs text-dashboard-text-muted")}
+        ref={fadeWhenOverflowing}
+      >
         {versionEditor(version)} ·{" "}
         <time dateTime={version.createdAt}>
           {formatRelativeTime(version.createdAt)}
         </time>
       </span>
       {props.changes ? (
-        <span className="truncate text-xs text-dashboard-text-muted">
+        <span
+          className={cn(fadeOverflowClass, "text-xs text-dashboard-text-muted")}
+          ref={fadeWhenOverflowing}
+        >
           {props.changes}
         </span>
       ) : null}

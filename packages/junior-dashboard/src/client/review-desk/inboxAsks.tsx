@@ -6,6 +6,7 @@ import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import { itemNeedsViewer } from "./reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 
@@ -125,7 +126,12 @@ export function Pill(props: { pill: AskPill }) {
     >
       <AskKindIcon className="size-3" kind={pill.kind} />
       {pill.label ? (
-        <span className="min-w-0 truncate font-medium">{pill.label}</span>
+        <span
+          className={cn(fadeOverflowClass, "font-medium")}
+          ref={fadeWhenOverflowing}
+        >
+          {pill.label}
+        </span>
       ) : null}
       {pill.ref ? (
         <span

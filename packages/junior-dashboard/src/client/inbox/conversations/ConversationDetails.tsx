@@ -39,6 +39,8 @@ import {
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
 import { formatRelativeTime, formatTime } from "../../time";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { cn } from "../../styles";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -112,7 +114,13 @@ export function ConversationDetails(props: {
             >
               <ArrowLeft aria-hidden="true" size={15} />
             </Button>
-            <h2 className="m-0 truncate font-sans text-sm font-semibold text-dashboard-text">
+            <h2
+              className={cn(
+                fadeOverflowClass,
+                "m-0 font-sans text-sm font-semibold text-dashboard-text",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               Memories
             </h2>
           </div>
@@ -241,7 +249,11 @@ function BriefCard(props: { brief: Brief }) {
             ·
           </span>
           <time
-            className="truncate text-xs font-normal text-dashboard-text-muted"
+            className={cn(
+              fadeOverflowClass,
+              "text-xs font-normal text-dashboard-text-muted",
+            )}
+            ref={fadeWhenOverflowing}
             dateTime={brief.updatedAt}
             title={formatTime(brief.updatedAt, {
               dateStyle: "medium",

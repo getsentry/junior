@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { FeedbackDialog } from "./FeedbackDialog";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -284,11 +285,23 @@ export function ProfileMenu({
       <div className="flex min-w-0 items-center gap-2.5">
         <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
+          <p
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate text-xs text-dashboard-text-muted">
+            <p
+              className={cn(
+                fadeOverflowClass,
+                "mt-0.5 mb-0 text-xs text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {email}
             </p>
           ) : null}
@@ -436,11 +449,23 @@ export function ProfileMenu({
       >
         <ProfileAvatar user={identity.user} />
         <div className="min-w-0">
-          <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
+          <p
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-xs font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate font-sans text-xs text-dashboard-text-muted">
+            <p
+              className={cn(
+                fadeOverflowClass,
+                "mt-0.5 mb-0 font-sans text-xs text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {email}
             </p>
           ) : null}
@@ -487,7 +512,12 @@ export function ProfileMenu({
           user={identity.user}
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="truncate font-medium leading-tight">{name}</span>
+          <span
+            className={cn(fadeOverflowClass, "font-medium leading-tight")}
+            ref={fadeWhenOverflowing}
+          >
+            {name}
+          </span>
           <PaneSpendMeter spend={spend} />
         </span>
         <ChevronsUpDown

@@ -16,6 +16,7 @@ import { useInboxData } from "./inboxData";
 import { useInboxReturnHere } from "./inboxListState";
 import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 function InFlightRow(props: {
   conversation: Conversation;
@@ -50,7 +51,10 @@ function InFlightRow(props: {
             role="img"
           />
         )}
-        <span className="truncate text-dashboard-text">
+        <span
+          className={cn(fadeOverflowClass, "text-dashboard-text")}
+          ref={fadeWhenOverflowing}
+        >
           {conversation.displayTitle}
         </span>
       </Link>
