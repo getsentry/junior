@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { isBriefsEnabled } from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
@@ -12,6 +13,7 @@ import {
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -163,6 +165,32 @@ export async function recoverPendingDispatchMailboxAppends(args: {
   /* oxlint-enable no-await-in-loop */
 }
 
+/**
+ * Run `work` for each item. Items for one mailbox run one at a time in list
+ * order, so its appends keep that order. Different mailboxes run at once.
+ */
+async function runPerMailbox<T>(
+  items: readonly T[],
+  mailboxOf: (item: T) => string,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  const byMailbox = new Map<string, T[]>();
+  for (const item of items) {
+    const mailbox = mailboxOf(item);
+    byMailbox.set(mailbox, [...(byMailbox.get(mailbox) ?? []), item]);
+  }
+  await pLimit(FAN_OUT_CONCURRENCY).map(
+    [...byMailbox.values()],
+    async (group) => {
+      /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
+      for (const item of group) {
+        await work(item);
+      }
+      /* oxlint-enable no-await-in-loop */
+    },
+  );
+}
+
 /** Repair invocation creation that stopped before its idempotent mailbox append. */
 export async function recoverPendingAgentInvocationMailboxAppends(args: {
   conversationWorkQueue: ConversationWorkQueue;
@@ -171,20 +199,23 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   const invocations = await listPendingAgentInvocationMailboxAppends(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
-  /* oxlint-disable no-await-in-loop -- Append to mailboxes in the order that the invocations started. */
-  for (const invocation of invocations) {
-    try {
-      await enqueueAgentInvocation(invocation, {
-        nowMs: args.nowMs,
-        queue: args.conversationWorkQueue,
-      });
-    } catch (error) {
-      logException(error, "agent.invocation.mailbox.append_recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
-    }
-  }
-  /* oxlint-enable no-await-in-loop */
+  // The list is in creation order, and each append goes to the child.
+  await runPerMailbox(
+    invocations,
+    (invocation) => invocation.childConversationId,
+    async (invocation) => {
+      try {
+        await enqueueAgentInvocation(invocation, {
+          nowMs: args.nowMs,
+          queue: args.conversationWorkQueue,
+        });
+      } catch (error) {
+        logException(error, "agent.invocation.mailbox.append_recovery.failed", {
+          "app.agent.invocation_id": invocation.invocationId,
+        });
+      }
+    },
+  );
 }
 
 /** Repair terminal agent invocation results that never reached their parent. */
@@ -195,21 +226,25 @@ export async function recoverPendingAgentInvocationResults(args: {
   const invocations = await listPendingAgentInvocationResults(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
-  /* oxlint-disable no-await-in-loop -- Append results to mailboxes in the order that the invocations ended. */
-  for (const invocation of invocations) {
-    try {
-      await recordSubagentEnded(invocation);
-      await enqueueAgentInvocationResult(invocation, {
-        nowMs: args.nowMs,
-        queue: args.conversationWorkQueue,
-      });
-    } catch (error) {
-      logException(error, "agent.invocation.result.recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
-    }
-  }
-  /* oxlint-enable no-await-in-loop */
+  // The list is in the order that the invocations ended, and each result
+  // goes to the parent.
+  await runPerMailbox(
+    invocations,
+    (invocation) => invocation.parentConversationId,
+    async (invocation) => {
+      try {
+        await recordSubagentEnded(invocation);
+        await enqueueAgentInvocationResult(invocation, {
+          nowMs: args.nowMs,
+          queue: args.conversationWorkQueue,
+        });
+      } catch (error) {
+        logException(error, "agent.invocation.result.recovery.failed", {
+          "app.agent.invocation_id": invocation.invocationId,
+        });
+      }
+    },
+  );
 }
 
 /** Run the core heartbeat phases. */
