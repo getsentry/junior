@@ -32,9 +32,9 @@ each rule, so new code cannot drift from it.
   Do not invalidate, refetch, reset, or remove a key with two or fewer parts,
   unless you pass `exact: true`. Check: dashboard oxlint `query-invalidation/no-broad-query-invalidation`.
 - In the dashboard, do not poll a query with `refetchInterval`. `/api/versions`
-  tells the client which reads changed. Check: ast-grep
-  `no-dashboard-poll-outside-allowlist`, whose `ignores` name each poll that
-  must stay and its reason.
+  tells the client which reads changed. A read that must poll disables the
+  rule on its line with the reason. Check: dashboard oxlint
+  `query-invalidation/no-refetch-interval`.
 - Keep the SQL work of hot API routes inside a budget. A budget counts the
   statements of one request, and its serial rounds: the longest chain of
   statements where each one waits on the one before. Integration tests measure

@@ -92,6 +92,7 @@
     "px-geometry/px-constant-sizes-element": "error",
     "image-src/no-raw-external-image-src": "error",
     "query-invalidation/no-broad-query-invalidation": "error",
+    "query-invalidation/no-refetch-interval": "error",
     "no-restricted-imports": [
       "error",
       {

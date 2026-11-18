@@ -46,6 +46,7 @@ export function CacheWarmingRefill() {
         signal,
       ),
     // A slice runs about once a minute.
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- A re-fill has no version to watch.
     refetchInterval: (current) =>
       isActive(current.state.data?.refill) ? 10_000 : false,
     retry: false,
