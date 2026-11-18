@@ -69,7 +69,8 @@ export function withSentryConfig(
 // `nitro dev` keeps `node_modules` files external, so Node loads the plugin
 // and fails with ERR_PACKAGE_IMPORT_NOT_DEFINED. Production builds already
 // bundle it. TODO: Remove when `@sentry/nitro` marks its runtime noExternal.
-const SENTRY_NITRO_RUNTIME = /[/\\]@sentry[/\\]nitro[/\\]build[/\\]esm[/\\]runtime[/\\]/;
+const SENTRY_NITRO_RUNTIME =
+  /[/\\]@sentry[/\\]nitro[/\\]build[/\\]esm[/\\]runtime[/\\]/;
 
 function bundleSentryNitroRuntime(
   config: SentryNitroConfig,
