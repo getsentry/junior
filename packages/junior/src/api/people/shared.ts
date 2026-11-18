@@ -9,6 +9,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import type { ConversationMetric } from "@/db/schema/conversation-metrics";
+import { microUsdSql } from "@/db/micro-usd";
 import type {
   ActorActivityDayReport,
   ConversationStatsItem,
@@ -32,7 +33,7 @@ function turnMetricSum(metric: ConversationMetric) {
 
 /** Sum the spend of Turn metric rows read straight from their table. */
 export const turnMetricColumns = {
-  costUsd: sql<number | null>`${turnMetricSum("cost_usd")}::double precision`,
+  costMicroUsd: microUsdSql(turnMetricSum("cost_micro_usd")),
 };
 
 /** Root Conversation of a person's Turn, for status, location, and surface. */
@@ -126,9 +127,7 @@ export function turnAggregateColumns(turns: PersonTurns) {
       WHERE ${lastTurn} AND ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
     )::integer`,
     conversations: sql<number>`${roots}::integer`,
-    costUsd: sql<
-      number | null
-    >`${turnSum(turns, "cost_usd")}::double precision`,
+    costMicroUsd: microUsdSql(turnSum(turns, "cost_micro_usd")),
     durationMs: sql<number>`COALESCE(${turnSum(turns, "duration_ms")}, 0)::double precision`,
     // A stopped Conversation reports `stopped`, not `failed`.
     failed: sql<number>`${roots} FILTER (

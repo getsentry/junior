@@ -13,24 +13,21 @@
  * period (`tool-wait.ts`).
  */
 import { logWarn } from "@/chat/logging";
+import { usdToMicroUsd } from "@/db/micro-usd";
 import { addStats, firstStatDate, replaceStats, type Stat } from "@/stats";
 import { MIN_WARMUP_PREFIX_TOKENS, WARMUP_MARGIN_MS } from "./model";
 
 /** `junior_stats` namespace of the cache warming counters. */
 export const SAVINGS_NAMESPACE = "cache_warming";
-/**
- * Dollar counters store this many units per dollar. A day of one model then
- * fits the integer counter up to about $200,000.
- */
-const UNITS_PER_USD = 10_000;
+// Dollar counters store whole micro-USD.
 const METRICS = {
   hits: "hits",
   idlePeriods: "idle_periods",
-  oracleSavings: "oracle_savings",
-  saved: "saved",
+  oracleSavings: "oracle_savings_micro_usd",
+  saved: "saved_micro_usd",
   unwarmedIdlePeriods: "unwarmed_idle_periods",
-  unwarmedOracleSavings: "unwarmed_oracle_savings",
-  warmupCost: "warmup_cost",
+  unwarmedOracleSavings: "unwarmed_oracle_savings_micro_usd",
+  warmupCost: "warmup_cost_micro_usd",
   historyDays: "history_days",
 } as const;
 // The provider starts its TTL clock a few seconds after the request starts.
@@ -90,8 +87,6 @@ export function idlePeriodSavings(input: {
   };
 }
 
-const units = (usd: number) => Math.round(usd * UNITS_PER_USD);
-
 /** Counter amounts, by metric. */
 export type SavingsCounts = Partial<Record<keyof typeof METRICS, number>>;
 
@@ -109,12 +104,12 @@ function periodCounts(
   savings: IdlePeriodSavings,
   warmed?: boolean,
 ): SavingsCounts {
-  const oracle = units(savings.oracleUsd);
+  const oracle = usdToMicroUsd(savings.oracleUsd);
   return {
     idlePeriods: 1,
     hits: savings.hit ? 1 : 0,
     oracleSavings: oracle,
-    saved: units(savings.savedUsd),
+    saved: usdToMicroUsd(savings.savedUsd),
     ...(warmed === false
       ? { unwarmedIdlePeriods: 1, unwarmedOracleSavings: oracle }
       : undefined),
@@ -156,7 +151,7 @@ export async function recordWarmupCost(
   modelId: string,
   costUsd: number,
 ): Promise<void> {
-  await addSavingsStats(modelId, { warmupCost: units(costUsd) });
+  await addSavingsStats(modelId, { warmupCost: usdToMicroUsd(costUsd) });
 }
 
 /**
@@ -227,17 +222,17 @@ export async function replaceHistorySavings(
   );
 }
 
-/** Savings totals of a set of counters, in dollars. */
+/** Savings totals of a set of counters. Dollar totals are in micro-USD. */
 export interface SavingsTotals {
   /** Days filled from history, whose warmup cost is unknown. */
   historyDays: number;
   hits: number;
   idlePeriods: number;
-  oracleSavingsUsd: number;
-  savedUsd: number;
+  oracleSavingsMicroUsd: number;
+  savedMicroUsd: number;
   unwarmedIdlePeriods: number;
-  unwarmedOracleSavingsUsd: number;
-  warmupCostUsd: number;
+  unwarmedOracleSavingsMicroUsd: number;
+  warmupCostMicroUsd: number;
 }
 
 /** Sum the cache warming counters of these stats over all models. */
@@ -253,11 +248,10 @@ export function savingsTotals(stats: readonly Stat[]): SavingsTotals {
     historyDays: sum(METRICS.historyDays),
     hits: sum(METRICS.hits),
     idlePeriods: sum(METRICS.idlePeriods),
-    oracleSavingsUsd: sum(METRICS.oracleSavings) / UNITS_PER_USD,
-    savedUsd: sum(METRICS.saved) / UNITS_PER_USD,
+    oracleSavingsMicroUsd: sum(METRICS.oracleSavings),
+    savedMicroUsd: sum(METRICS.saved),
     unwarmedIdlePeriods: sum(METRICS.unwarmedIdlePeriods),
-    unwarmedOracleSavingsUsd:
-      sum(METRICS.unwarmedOracleSavings) / UNITS_PER_USD,
-    warmupCostUsd: sum(METRICS.warmupCost) / UNITS_PER_USD,
+    unwarmedOracleSavingsMicroUsd: sum(METRICS.unwarmedOracleSavings),
+    warmupCostMicroUsd: sum(METRICS.warmupCost),
   };
 }

@@ -1,5 +1,4 @@
 {
-  "packages/junior-google/src/tools/read-meeting-transcript.ts": 3,
   "packages/junior/src/chat/agent-dispatch/heartbeat.ts": 9,
   "packages/junior/src/chat/agent-invocations/list.ts": 1,
   "packages/junior/src/chat/agent-invocations/result.ts": 5,

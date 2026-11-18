@@ -20,14 +20,17 @@ Read the reference files at the end when your work touches their area.
 - No mutable runtime globals. No test-only singleton mutation APIs.
 - Query tables with the Drizzle query builder. Use `sql` only for
   expressions inside a builder query, or for statements without a table.
+- Store money in Postgres as whole micro-USD: a `bigint` column or an integer
+  metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`.
+  Check: `pnpm money-units:check`.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
 - This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
   a code comment next to the code that it governs.
 - Change this file or a `README.md` only when intent, an invariant, or a
-  boundary changes. Delete completed plans. Plans in `openspec/changes/`
-  cannot override policy.
+  boundary changes. Do not commit implementation plans. Track planned work
+  in GitHub issues.
 
 ## Enforcement
 
