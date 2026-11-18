@@ -3,7 +3,6 @@ import type { KnownBlock } from "@slack/types";
 import type { User } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
-import pLimit from "p-limit";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { createSlackActor } from "@/chat/actor";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
@@ -39,7 +38,7 @@ import {
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import { deferConversationMove } from "@/chat/task-execution/store";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import type {
   SlackChannelScope,
@@ -202,7 +201,6 @@ export async function unfurlDashboardConversationLinks(args: {
   const unfurls: Record<string, { blocks: KnownBlock[] }> = {};
   let canReceive: Promise<boolean> | undefined;
   const urls = [...new Set(event.links.map((link) => link.url))];
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const unfurlLink = async (url: string): Promise<void> => {
     const conversationId = parseDashboardConversationLink(url);
     const conversation = conversationId
@@ -233,9 +231,7 @@ export async function unfurlDashboardConversationLinks(args: {
       }),
     };
   };
-  await Promise.all(
-    urls.slice(0, MAX_LINKS).map((url) => limit(() => unfurlLink(url))),
-  );
+  await mapBounded(urls.slice(0, MAX_LINKS), unfurlLink);
   if (Object.keys(unfurls).length === 0) return;
   await unfurlSlackLinks({
     channelId,
