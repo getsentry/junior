@@ -55,7 +55,12 @@ export type ExecOptions = {
   onOutput(chunk: OutputChunk): void;
 };
 
-/** One piece of a command's output, decoded as UTF-8. */
+/**
+ * One piece of a command's output as text. Each stream is decoded as UTF-8 on
+ * its own, so a character split across chunks is kept. Vercel Sandbox sends
+ * output only as text, so a command whose output is binary writes it to a
+ * file, and the caller reads the file.
+ */
 export type OutputChunk = {
   stream: "stdout" | "stderr";
   text: string;
