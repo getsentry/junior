@@ -54,12 +54,18 @@ export function readAnswerDraft(itemId: string): AnswerDraft {
 }
 
 /**
- * Save a change to the unsent answers of a Review item. Parts that the
- * change leaves out keep their saved value. An empty draft is removed.
+ * Save a change to the unsent answers of a Review item. The note and the
+ * fields that the change leaves out keep their saved value, so a second
+ * form for the same item cannot write back its older picks. An empty
+ * draft is removed.
  */
 export function saveAnswerDraft(itemId: string, change: Partial<AnswerDraft>) {
   const drafts = readDrafts();
-  const draft = { ...(drafts[itemId] ?? EMPTY_DRAFT), ...change };
+  const saved = drafts[itemId] ?? EMPTY_DRAFT;
+  const draft = {
+    other: change.other ?? saved.other,
+    values: { ...saved.values, ...change.values },
+  };
   // Keep the newest drafts. Object keys keep their insertion order.
   const kept = Object.entries(drafts)
     .filter(([id]) => id !== itemId)

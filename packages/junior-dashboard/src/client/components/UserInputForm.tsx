@@ -273,9 +273,8 @@ export function UserInputForm(props: {
   }, [writeOther]);
 
   function changeValues(fieldId: string, fieldValues: string[]) {
-    const next = { ...values, [fieldId]: fieldValues };
-    setValues(next);
-    saveAnswerDraft(props.requestId, { values: next });
+    setValues((current) => ({ ...current, [fieldId]: fieldValues }));
+    saveAnswerDraft(props.requestId, { values: { [fieldId]: fieldValues } });
   }
   function changeOther(next: string) {
     setOther(next);
