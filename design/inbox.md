@@ -63,8 +63,9 @@ Actions:
 - When a stack shrinks to one row, that row becomes the normal row of its
   Conversation. An open row stays open.
 - In To do, a stack leaves with its last row that waits on the viewer, and
-  the next row of the list opens. Its notices move to the section of their
-  Conversation.
+  the next row of the list opens.
+- Notices do not stack. A notice about the subject of an ask folds into the
+  ask's row. Other notices show in FYI, one row each.
 
 Order and counts:
 
