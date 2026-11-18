@@ -49,7 +49,9 @@ export function inboxCounts(input: {
   automationCards: number | undefined;
   /** More pages of open items follow the loaded ones. */
   hasMore: boolean;
-  /** The loaded open items, in the list's order: what waits first. */
+  /** Every open item that the list knows, also a linked or held one. */
+  known: readonly ReviewItemPayload[];
+  /** The loaded pages of open items, in the list's order: what waits first. */
   loaded: readonly ReviewItemPayload[] | undefined;
   rows: ShownRows;
   server: WaitingCounts | undefined;
@@ -58,7 +60,7 @@ export function inboxCounts(input: {
   if (!loaded) return {};
   const last = loaded.at(-1);
   const complete = !input.hasMore || !last || !itemNeedsViewer(last);
-  const waiting = loaded.filter(itemNeedsViewer);
+  const waiting = input.known.filter(itemNeedsViewer);
   // The waiting items past the loaded pages that a page holds.
   const past = (
     counted: (counts: WaitingCounts) => number,

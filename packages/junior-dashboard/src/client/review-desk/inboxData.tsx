@@ -278,6 +278,7 @@ function useBuildInboxData(input: {
   const pageCounts = inboxCounts({
     automationCards: automationCards(),
     hasMore: itemsQuery.hasNextPage,
+    known: list,
     loaded: itemsQuery.data ? loaded : undefined,
     rows: {
       decisions: viewRows(onPage, "decisions").length,
