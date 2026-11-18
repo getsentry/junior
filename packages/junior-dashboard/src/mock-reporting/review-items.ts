@@ -32,6 +32,11 @@ const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
 const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
 const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
+// The checkout latency Conversations: one found that p95 rose after
+// payments-v42, the other rolled it back.
+const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
@@ -48,6 +53,8 @@ type MockItemSeed = Pick<
     childLabel?: string;
     conversationId: string;
     createdAt: string;
+    /** Linked Conversations other than the one that added the item. */
+    linkedConversationIds?: string[];
     /** The plugin that added the item. Plugin items have no Turn. */
     plugin?: string;
   };
@@ -86,8 +93,23 @@ function seeds(nowMs: number): MockItemSeed[] {
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(26),
       id: "qa-rollout",
+      linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
         question: "Roll out payments-v42 to every region?",
+        // The cited evidence supports the suggested answer. The related
+        // items on the same release disagree with it.
+        evidence: [
+          {
+            label: "Canary error rate",
+            note: "Flat for 30 minutes.",
+            url: "https://sentry.example.com/organizations/acme/insights/backend/?release=payments-v42",
+          },
+          {
+            label: "Canary p95 latency",
+            note: "Did not move in us-east-1.",
+            url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
+          },
+        ],
         fields: [
           {
             id: "go",
@@ -102,6 +124,7 @@ function seeds(nowMs: number): MockItemSeed[] {
         ],
       },
       status: "open",
+      subject: PAYMENTS_V42,
       title: "Approve the payments-v42 rollout",
     },
     {
@@ -360,6 +383,28 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Rerun the failed canary runs",
     },
+    {
+      assignedToEveryone: true,
+      body: "Checkout p95 went from 210 ms to 890 ms after payments-v42 landed.",
+      conversationId: LATENCY_CONVERSATION_ID,
+      createdAt: at(18),
+      id: "qa-p95-rose",
+      kind: "notice",
+      status: "open",
+      subject: PAYMENTS_V42,
+      title: "Checkout p95 rose after payments-v42",
+    },
+    {
+      assignedToEveryone: true,
+      body: "Morgan asked to hold the payments-v42 deploy until the serializer fix lands.",
+      conversationId: ROLLBACK_CONVERSATION_ID,
+      createdAt: at(16),
+      id: "qa-hold-v42",
+      kind: "notice",
+      status: "open",
+      subject: PAYMENTS_V42,
+      title: "Hold the payments-v42 deploy",
+    },
     // Older items, so the inbox has Today, This week, and Earlier.
     {
       assignedToEveryone: true,
@@ -480,11 +525,47 @@ export function resetMockReviewItems(): void {
   changes.clear();
 }
 
-function payload(seed: MockItemSeed): ReviewItemPayload {
-  const { childLabel, conversationId, plugin: _plugin, ...rest } = seed;
+function isOpen(seed: MockItemSeed): boolean {
+  return (changes.get(seed.id)?.status ?? seed.status) === "open";
+}
+
+/**
+ * The related work of an open item, like the API: other open items with
+ * the same subject, or added in one of its linked Conversations.
+ */
+function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
+  if (!isOpen(seed)) return undefined;
+  const links = seed.linkedConversationIds ?? [];
+  const items = all
+    .filter(
+      (other) =>
+        other.id !== seed.id &&
+        isOpen(other) &&
+        ((seed.subject && other.subject?.id === seed.subject.id) ||
+          links.includes(other.conversationId)),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(({ id, title }) => ({ id, title }));
+  return items.length > 0 || links.length > 0
+    ? { conversationIds: links, items }
+    : undefined;
+}
+
+function payload(
+  seed: MockItemSeed,
+  all: readonly MockItemSeed[],
+): ReviewItemPayload {
+  const {
+    childLabel,
+    conversationId,
+    linkedConversationIds = [],
+    plugin: _plugin,
+    ...rest
+  } = seed;
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
+  const relatedWork = related(seed, all);
   return {
     ...item,
     addedByConversationId: conversationId,
@@ -500,10 +581,11 @@ function payload(seed: MockItemSeed): ReviewItemPayload {
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [conversationId],
+    conversationIds: [conversationId, ...linkedConversationIds],
     kind: seed.kind ?? "action",
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
+    ...(relatedWork ? { related: relatedWork } : undefined),
     ...(item.status !== "open"
       ? {
           closedAt: item.closedAt ?? seed.createdAt,
@@ -526,14 +608,15 @@ export function readMockReviewItems(
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
-  const items = seeds(nowMs)
+  const all = seeds(nowMs);
+  const items = all
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
         (!q || seed.title.toLowerCase().includes(q)),
     )
-    .map(payload);
+    .map((seed) => payload(seed, all));
   if (filters.closed)
     return items
       .filter((item) => item.status !== "open")
@@ -546,8 +629,9 @@ export function readMockReviewItem(
   nowMs: number,
   id: string,
 ): ReviewItemPayload | undefined {
-  const seed = seeds(nowMs).find((candidate) => candidate.id === id);
-  return seed ? payload(seed) : undefined;
+  const all = seeds(nowMs);
+  const seed = all.find((candidate) => candidate.id === id);
+  return seed ? payload(seed, all) : undefined;
 }
 
 /** Apply a viewer action to an open mock item, like the API. */

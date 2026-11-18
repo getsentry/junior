@@ -25,12 +25,17 @@ import {
   itemNeedsUser,
   reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
+  type ReviewItemReader,
 } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
   readReviewItemForUser,
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
+import {
+  readRelatedReviewWork,
+  type RelatedReviewWork,
+} from "@/chat/review-items/related";
 import {
   countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
@@ -156,6 +161,7 @@ function reviewItemPayload(
   item: ReviewItem,
   viewer: User,
   children: ReadonlyMap<string, NonNullable<ReviewItemPayload["addedByChild"]>>,
+  related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
   const addedByChild = children.get(item.addedByConversationId);
   return {
@@ -181,18 +187,32 @@ function reviewItemPayload(
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(related &&
+    (related.items.length > 0 || related.conversationIds.length > 0)
+      ? { related }
+      : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
 }
 
-/** Build the payloads of some items, with the child that added each one. */
+/**
+ * Build the payloads of a page of items, with the child that added each one
+ * and the related work of the open ones. Each read covers the page.
+ */
 async function reviewItemPayloads(
   items: readonly ReviewItem[],
   viewer: User,
+  reader: ReviewItemReader,
 ): Promise<ReviewItemPayload[]> {
-  const children = await readAddedByChildren(getDb(), items, viewer);
-  return items.map((item) => reviewItemPayload(item, viewer, children));
+  const db = getDb();
+  const [children, related] = await Promise.all([
+    readAddedByChildren(db, items, viewer),
+    readRelatedReviewWork(db, reader, viewer, items),
+  ]);
+  return items.map((item) =>
+    reviewItemPayload(item, viewer, children, related.get(item.id)),
+  );
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -259,7 +279,7 @@ export function createReviewItemRoutes(services: {
         const page = closed.slice(0, query.limit);
         const last = page.at(-1);
         return jsonResponse(reviewItemListSchema, {
-          items: await reviewItemPayloads(page, viewer),
+          items: await reviewItemPayloads(page, viewer, reader),
           ...(closed.length > query.limit && last
             ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
@@ -301,6 +321,7 @@ export function createReviewItemRoutes(services: {
         items: await reviewItemPayloads(
           [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
           viewer,
+          reader,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -377,10 +398,12 @@ export function createReviewItemRoutes(services: {
           viewer,
           context.req.valid("param").id,
         );
-        return jsonResponse(
-          reviewItemSchema,
-          (await reviewItemPayloads([item], viewer))[0]!,
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
         );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }
@@ -405,10 +428,12 @@ export function createReviewItemRoutes(services: {
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
         });
-        return jsonResponse(
-          reviewItemSchema,
-          (await reviewItemPayloads([item], viewer))[0]!,
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
         );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }
