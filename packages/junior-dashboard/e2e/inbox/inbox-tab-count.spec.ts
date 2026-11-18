@@ -2,7 +2,19 @@ import type { Page } from "@playwright/test";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { attentionCount, automationReport } from "./automation-fixture";
-import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import {
+  conversationId,
+  expandRow,
+  grab,
+  license,
+  migration,
+  mockReviewItems,
+  mockViewerCodeChanges,
+  prMerge,
+  prReview,
+  rollout,
+  rowHead,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -42,6 +54,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     return page.evaluate(
       () => (window as Window & { __titles?: string[] }).__titles ?? [],
     );
+  }
+
+  function navEntry(page: Page, label: string) {
+    return page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: new RegExp(`^${label}`) });
+  }
+
+  /** Answer an open question with its first field's choice, then Send. */
+  async function answer(page: Page, title: string, choice: string) {
+    const ask = page.getByRole("region", { name: title, exact: true });
+    await ask.getByRole("radio", { name: choice }).click();
+    await ask.getByRole("button", { name: "Send" }).click();
   }
 
   async function closeCheckoutAsks(page: Page) {
@@ -197,5 +222,87 @@ test.describe("new UI", { tag: "@new" }, () => {
         title.startsWith(`(${total}) `),
       ),
     ).toEqual([]);
+  });
+  test("To do counts its cards, not their items, before and after an answer", async ({
+    dashboard,
+    page,
+  }) => {
+    // Two asks in one Conversation make one card, and one ask makes another.
+    await mockReviewItems(page, {
+      automations: () => 0,
+      open: [rollout, migration, license],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const cards = todo.locator("[data-inbox-row]");
+    await expect(cards).toHaveCount(2);
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 2 waiting");
+    await expect(page).toHaveTitle("(2) Inbox - Junior");
+    await expect(todo.getByText("2", { exact: true })).toBeVisible();
+
+    await expandRow(rowHead(todo, license.title));
+    await answer(page, license.title, "Approve");
+    await expect(cards).toHaveCount(1);
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
+  });
+
+  test("Decisions counts every question that it lists, before and after an answer", async ({
+    dashboard,
+    page,
+  }) => {
+    // A question for Everyone is a Decisions row too.
+    await mockReviewItems(page, {
+      automations: () => 0,
+      open: [license, grab],
+    });
+    await page.goto(`${dashboard.baseURL}/?view=decisions`);
+    const rows = page
+      .getByRole("region", { name: "Decisions" })
+      .locator("[data-inbox-row]");
+    await expect(rows).toHaveCount(2);
+    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*2$/);
+
+    await rowHead(page, license.title).click();
+    await answer(page, license.title, "Approve");
+    await expect(rows).toHaveCount(1);
+    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*1$/);
+  });
+
+  test("Pull requests counts the changes under Waiting on you, before and after a dismiss", async ({
+    dashboard,
+    page,
+  }) => {
+    // A second ask on #42 shares its change, and #42 is a draft.
+    const squash = {
+      ...license,
+      addedByConversationId: conversationId,
+      id: "item-pr-squash",
+      subject: prMerge.subject,
+      title: "Squash #42 before the merge?",
+    };
+    await mockReviewItems(page, {
+      automations: () => 0,
+      open: [prMerge, squash, prReview],
+    });
+    await mockViewerCodeChanges(page, [
+      { draft: true, idleDays: 0, number: 42, title: "Retry checkout writes" },
+      { idleDays: 1, number: 91, title: "Pin the release train" },
+    ]);
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    const waiting = page
+      .getByRole("region", { name: "Waiting on you" })
+      .locator('[data-dock-key^="change:"]');
+    await expect(waiting).toHaveCount(2);
+    await expect(navEntry(page, "Pull requests")).toHaveText(
+      /^Pull requests\s*2$/,
+    );
+
+    await rowHead(page, prReview.title).click();
+    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+    await expect(waiting).toHaveCount(1);
+    await expect(navEntry(page, "Pull requests")).toHaveText(
+      /^Pull requests\s*1$/,
+    );
   });
 });
