@@ -42,8 +42,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // The answered ask leaves the Inbox, which lists no Conversations.
+    // The answered ask leaves the Inbox, which lists no Conversations. Wait
+    // for the server's answer: a navigation would stop the request.
+    const answered = page.waitForResponse(
+      (response) =>
+        /\/api\/review-items\/[^/]+\/actions$/.test(response.url()) &&
+        response.request().method() === "POST",
+    );
     release();
+    expect((await answered).ok()).toBe(true);
     await expect(page.getByText(ask)).toHaveCount(0);
 
     // Conversations says the answer in place of the ask, after a reload too.
