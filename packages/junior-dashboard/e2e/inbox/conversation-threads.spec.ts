@@ -228,8 +228,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openMenu.click();
     await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
     await expect(openMenus).toHaveCount(0);
-    // The reload starts a new visit, so Back goes to the Inbox.
-    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    // The direct link has no origin, so Back goes to Conversations.
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     await openConversations(page);
     await expect(threadRow).toBeVisible();
     await expect(nestedRow).toBeVisible();

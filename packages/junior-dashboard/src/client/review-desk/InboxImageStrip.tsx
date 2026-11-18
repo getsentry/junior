@@ -80,9 +80,13 @@ function LazyImage(props: {
   );
 }
 
+/** What an ask icon on a PR card expands: the row's asks, as a pill does. */
+type AskToggle = { controls: string; expanded: boolean; onToggle(): void };
+
 // A PR card: its image, then its line. An ask on it shows as its kind icon.
 function WorkTile(props: {
   ask: AskPill | undefined;
+  askToggle: AskToggle;
   main: string | undefined;
   root: RefObject<HTMLElement | null>;
   work: ImageWork;
@@ -104,15 +108,19 @@ function WorkTile(props: {
       )}
       <span className="flex min-w-0 items-center gap-1.5">
         {ask ? (
-          <span
+          // The card takes the ask's pill, so it takes the pill's job too.
+          <button
+            aria-controls={props.askToggle.controls}
+            aria-expanded={props.askToggle.expanded}
             aria-label={ask.name}
-            className="flex shrink-0"
+            className="flex shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
             data-ask-pill={ask.kind}
-            role="img"
+            onClick={props.askToggle.onToggle}
             title={ask.name}
+            type="button"
           >
             <AskKindIcon kind={ask.kind} />
-          </span>
+          </button>
         ) : null}
         <WorkLine href={work.url} main={props.main} work={work} />
       </span>
@@ -217,6 +225,8 @@ function ScrollButton(props: {
  */
 export function InboxImageStrip(props: {
   asks: ReadonlyMap<string, AskPill>;
+  /** Lets each ask icon expand the row, as the pill it replaces does. */
+  askToggle: AskToggle;
   conversationId: string;
   main: string | undefined;
   media: ConversationMedia[];
@@ -295,6 +305,7 @@ export function InboxImageStrip(props: {
         {props.work.map((work) => (
           <WorkTile
             ask={props.asks.get(work.url)}
+            askToggle={props.askToggle}
             key={work.key}
             main={props.main}
             root={scroller}

@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 import { withRequestedMailbox } from "../harness";
 import { openRow } from "./inbox-fixture";
@@ -11,14 +11,6 @@ import { desktop, mobile, screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  /** Open the Conversations bundle from the Inbox entries. */
-  async function openConversations(page: Page) {
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { exact: true, name: "Conversations" })
-      .click();
-  }
-
   /** Scroll to the end of the transcript until `row` renders. */
   async function scrollDownTo(transcript: Locator, row: Locator) {
     await expect(async () => {
@@ -195,10 +187,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       // cached copy first. The fetch then brings the read position's cursor,
       // although the cached copy has none. The cached copy stays until the page
       // after the read position loads, and the transcript opens there.
-      // A phone returns to the Inbox entries. The Conversations bundle lists
-      // the row.
-      await page.getByRole("link", { name: /^Back to / }).click();
-      await openConversations(page);
+      // A direct link has no origin, so Back returns to Conversations, which
+      // lists the row.
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
       mock.eventCount = 120;
       mock.pagedDetail = true;
       let releaseDetail = () => {};
@@ -359,8 +350,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // The earlier page stays cached. It is not the latest page, so the
     // transcript still needs the newer pages after the read position.
-    await page.getByRole("link", { name: /^Back to / }).click();
-    await openConversations(page);
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     mock.eventCount = 200;
     mock.newerGateAfter = 80;
     let releaseNewer = () => {};

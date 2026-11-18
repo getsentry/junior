@@ -41,11 +41,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       title.getByRole("button", { name: /^Ready to merge #2201/ }),
     ).toBeVisible();
     // #91 has one: its image card carries the ask's icon, so it has no pill.
+    // The icon is a button that does the pill's job.
     await expect(
       title.getByRole("button", { name: /^Review requested #91/ }),
     ).toHaveCount(0);
     await expect(
-      row.locator('[data-image-tile="work"]').getByRole("img", {
+      row.locator('[data-image-tile="work"]').getByRole("button", {
         name: "Review requested #91: Pin the release train to payments 4.2",
       }),
     ).toBeVisible();
@@ -197,6 +198,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
     await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
+  });
+
+  test("an ask shown on an image card expands its row, as its pill would", async ({
+    dashboard,
+    page,
+  }) => {
+    await comfortable(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = page
+      .getByRole("region", { name: "To do" })
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: "Package release and self-update" })
+      .first();
+    await row.locator('[data-image-tile="work"] button[data-ask-pill]').click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
