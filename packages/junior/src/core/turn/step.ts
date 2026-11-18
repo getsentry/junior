@@ -15,12 +15,6 @@ import {
 import type { ToolDefinition, ToolResult } from "@/core/tool";
 import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
-/** Makes one model request. A failed request returns a message with `stopReason: "error"`. */
-export type CompleteModel = (
-  context: Context,
-  signal: AbortSignal,
-) => Promise<AssistantMessage>;
-
 export type StepInput = {
   systemPrompt: string;
   /**
@@ -29,7 +23,11 @@ export type StepInput = {
    */
   messages: Message[];
   tools: ToolDefinition[];
-  complete: CompleteModel;
+  /** Makes one model request. A failed request returns a message with `stopReason: "error"`. */
+  complete: (
+    context: Context,
+    signal: AbortSignal,
+  ) => Promise<AssistantMessage>;
   /**
    * True when an earlier attempt at this step did not commit, so its tool
    * calls may have run.
