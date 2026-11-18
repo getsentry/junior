@@ -37,6 +37,7 @@ import {
 import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
+import { juniorTurnInbox, juniorTurnOutbox, juniorTurns } from "./schema/turns";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -76,6 +77,9 @@ export {
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -116,6 +120,9 @@ export const juniorSqlSchema = {
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
