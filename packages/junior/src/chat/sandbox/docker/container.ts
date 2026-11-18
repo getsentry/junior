@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import pLimit from "p-limit";
-import { dockerJson } from "@/chat/sandbox/docker/api";
 import {
   DockerApiError,
+  dockerJson,
   dockerRequest,
-} from "@/core/tool-execution-environment/docker/api";
+} from "@/chat/sandbox/docker/api";
 import { runRawExec, SANDBOX_USER } from "@/chat/sandbox/docker/exec";
 import {
   DOCKER_SANDBOX_LABEL,
   dockerSandboxExtraCaFile,
 } from "@/chat/sandbox/docker/settings";
-import { packTar } from "@/core/tool-execution-environment/docker/tar";
+import { packTar } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { sleep } from "@/chat/sleep";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";

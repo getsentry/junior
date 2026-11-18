@@ -1,8 +1,5 @@
 import pLimit from "p-limit";
-import {
-  DockerApiError,
-  dockerRequest,
-} from "@/core/tool-execution-environment/docker/api";
+import { DockerApiError, dockerRequest } from "@/chat/sandbox/docker/api";
 import {
   createContainer,
   getContainer,

@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import { Sandbox } from "@vercel/sandbox";
 import { afterAll, describe, it } from "vitest";
 import {
@@ -7,7 +9,6 @@ import {
   type ToolExecutionEnvironment,
   type ToolExecutionEnvironmentManager,
 } from "@/core/tool-execution-environment/types";
-import { dockerRequest } from "@/core/tool-execution-environment/docker/api";
 import { createDockerToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/docker";
 import { instrumentToolExecutionEnvironmentManager } from "@/core/tool-execution-environment/instrument";
 import {
@@ -327,17 +328,16 @@ describeManagerContract("Docker", true, () => ({
     }),
   ),
   async stop(id) {
-    await dockerRequest({
-      method: "POST",
-      path: `/containers/${id}/stop`,
-      query: { t: 0 },
-    });
+    await runDocker(["stop", "--time", "0", id]);
   },
   async remove(id) {
-    await dockerRequest({
-      method: "DELETE",
-      path: `/containers/${id}`,
-      query: { force: true },
-    });
+    await runDocker(["rm", "--force", id]);
   },
 }));
+
+const execFileAsync = promisify(execFile);
+
+// The manager keeps its Docker client private, so the test uses the CLI.
+async function runDocker(args: string[]): Promise<void> {
+  await execFileAsync("docker", args);
+}
