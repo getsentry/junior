@@ -506,7 +506,7 @@ test("hands web and external messages from queue to history without gaps", async
         mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
-        status: active ? "active" : "idle",
+        status: active ? "working" : "done",
         events: [
           ...detail.events,
           ...committed.map((message, index) => ({

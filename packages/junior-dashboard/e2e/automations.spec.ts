@@ -62,7 +62,7 @@ test("opens scheduled and event automations in the native Automations view", asy
         lastProgressAt: NOW,
         lastSeenAt: NOW,
         startedAt: NOW,
-        status: "idle",
+        status: "done",
         surface: "internal",
       }),
     });
@@ -170,7 +170,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
   );
   const recentDetails = page.getByRole("dialog");
-  await expect(recentDetails.getByText("idle", { exact: true })).toBeVisible();
+  await expect(recentDetails.getByText("done", { exact: true })).toBeVisible();
   // Details show the run's Conversation, not only its numbers.
   await expect(
     recentDetails.getByText("Scheduled operation completed successfully."),

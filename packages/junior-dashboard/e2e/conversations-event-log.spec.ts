@@ -687,7 +687,7 @@ for (const width of [1440, 390]) {
     const scrollHeight = () =>
       scroll.evaluate((element) => element.scrollHeight);
     const heightBeforeIdle = await scrollHeight();
-    report.status = "idle";
+    report.status = "done";
     report.events.push({
       seq: 41,
       createdAt: report.lastSeenAt,
@@ -704,7 +704,7 @@ for (const width of [1440, 390]) {
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
-    report.status = "active";
+    report.status = "working";
     report.events.push({
       seq: 42,
       createdAt: report.lastSeenAt,
