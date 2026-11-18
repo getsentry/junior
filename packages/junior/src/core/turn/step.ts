@@ -40,12 +40,13 @@ export type StepInput = {
 
 /**
  * What the step adds to the history, and what the Turn does next. `continue`:
- * run another step. `completed` and `failed` end the Turn. A failed step adds
- * nothing.
+ * run another step. `completed` ends the Turn. `failed`: the model request
+ * failed and the step adds nothing. `reply` is the failed reply, so the caller
+ * can retry the step or end the Turn.
  */
 export type StepResult =
   | { outcome: "continue" | "completed"; messages: Message[] }
-  | { outcome: "failed"; error: string };
+  | { outcome: "failed"; error: string; reply: AssistantMessage };
 
 /** Runs one step of a Turn: the pending tool calls if there are any, else one model request. */
 export async function runStep(input: StepInput): Promise<StepResult> {
@@ -76,6 +77,7 @@ async function requestModel(input: StepInput): Promise<StepResult> {
       outcome: "failed",
       error:
         reply.errorMessage ?? `Model request ended with ${reply.stopReason}`,
+      reply,
     };
   }
   if (reply.content.some((block) => block.type === "toolCall")) {
@@ -87,6 +89,7 @@ async function requestModel(input: StepInput): Promise<StepResult> {
   return {
     outcome: "failed",
     error: `Unsupported stop reason: ${reply.stopReason}`,
+    reply,
   };
 }
 
