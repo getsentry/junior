@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import { useConversationDensity } from "../conversations/conversationDensity";
+import { prefetchConversationDetail } from "../conversations/conversationPrefetch";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { cn } from "../styles";
@@ -57,6 +59,8 @@ export function InboxStack(props: {
   const [density] = useConversationDensity();
   const more = props.keys.length - STACK_FOLD;
   const folded = more > 0 && !unfolded && openIndex < STACK_FOLD;
+  const { conversation } = props;
+  const queryClient = useQueryClient();
   const path = conversationPath(props.conversationId);
   const headerClick = openOnClick(useOpenPath(path));
   const stack = {
@@ -130,35 +134,32 @@ export function InboxStack(props: {
       ) : null}
     </>
   );
-  return props.conversation ? (
-    <StackMenu conversation={props.conversation} stack={stack}>
-      {body}
-    </StackMenu>
-  ) : (
-    <li {...stack}>{body}</li>
+  // The stack keeps one element type, so it does not remount when its
+  // root loads and the menu turns on.
+  return (
+    <ContextMenu
+      disabled={!conversation}
+      onOpenChange={(open) => {
+        if (open && conversation)
+          void prefetchConversationDetail(queryClient, conversation.id);
+      }}
+    >
+      <ContextMenuTrigger
+        {...stack}
+        // The cards keep their text selectable.
+        className={cn(stack.className, "select-text")}
+        render={<li />}
+      >
+        {body}
+      </ContextMenuTrigger>
+      {conversation ? <StackMenu conversation={conversation} /> : null}
+    </ContextMenu>
   );
 }
 
-/** The stack, with its root's Conversation menu on a right-click. */
-function StackMenu(props: {
-  children: ReactNode;
-  conversation: Conversation;
-  stack: { className: string };
-}) {
-  const actions = useInboxRowActions(props.conversation, { selected: false });
-  return (
-    <ContextMenu onOpenChange={actions.onMenuOpenChange}>
-      <ContextMenuTrigger
-        {...props.stack}
-        // The cards keep their text selectable.
-        className={cn(props.stack.className, "select-text")}
-        render={<li />}
-      >
-        {props.children}
-      </ContextMenuTrigger>
-      {actions.menu}
-    </ContextMenu>
-  );
+/** The root's Conversation menu and its dialogs. */
+function StackMenu(props: { conversation: Conversation }) {
+  return useInboxRowActions(props.conversation, { selected: false }).menu;
 }
 
 /**
