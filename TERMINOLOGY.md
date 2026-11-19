@@ -177,9 +177,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation archive.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
-  status is open, done, or dropped. It has one Assignee: the Conversation's
-  own agent, one of its child agents, or a User. Each change gets a new
-  version. In code: `todo`.
+  status is open, in progress, done, or dropped. It has one Assignee: the
+  Conversation's own agent, one of its child agents, or a User. Each change
+  gets a new version. In code: `todo`.
 
 ## Naming
 

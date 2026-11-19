@@ -25,14 +25,14 @@ export function resetMockTodos(): void {
 }
 
 // The dashboard QA Conversation has one To-do of each shape: its own agent, a
-// child agent, a person, a private To-do, a done one, and a dropped one. The
-// viewer takes part in the active one, so its rows show the status menu.
+// child agent, a person, a private To-do, and each status. The viewer takes
+// part in the active one, so its rows show the status menu.
 const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
   [ACTIVE_CONVERSATION_ID]: () => [
     {
       id: 11,
       title: "Find the slow checkout span",
-      status: "open",
+      status: "in_progress",
       assignee: { kind: "self" },
       updatedAt: iso(-3 * MINUTE_MS),
     },
@@ -40,7 +40,7 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
       id: 12,
       title: "Compare p95 with last week",
       notes: "Use the same region filter as the alert.",
-      status: "open",
+      status: "in_progress",
       assignee: {
         kind: "agent",
         conversationId: "junior:local:checkout-latency:latency-sleuth",
@@ -67,7 +67,7 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
     {
       id: 41,
       title: "Fix the failing dashboard checks",
-      status: "open",
+      status: "in_progress",
       assignee: { kind: "self" },
       updatedAt: iso(-12 * MINUTE_MS),
     },
@@ -75,7 +75,7 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
       id: 42,
       title: "Review the dashboard plan before editing",
       notes: "Check the empty states and the dark theme too.",
-      status: "open",
+      status: "in_progress",
       assignee: {
         kind: "agent",
         conversationId: DASHBOARD_QA_PLAN_ID,

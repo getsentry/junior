@@ -53,6 +53,7 @@ import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
+import { OPEN_TODO_STATUSES } from "@/chat/todos/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -141,7 +142,7 @@ function treeNeedsNoOne() {
       and(
         eq(juniorTodos.conversationId, juniorConversations.conversationId),
         isNotNull(juniorTodos.assigneeUserId),
-        eq(juniorTodos.status, "open"),
+        inArray(juniorTodos.status, OPEN_TODO_STATUSES),
       ),
     );
   const needing = getDb()

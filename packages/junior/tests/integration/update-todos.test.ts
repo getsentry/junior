@@ -69,21 +69,22 @@ describe("updateTodos", () => {
     try {
       const reviewer = await signedInViewer("reviewer@example.com");
       const added = await harness.updateTodos({
+        // One assignee can have more than one To-do in progress.
         add: [
-          { title: "Write the brief" },
+          { title: "Write the brief", status: "in_progress" },
           {
             title: "Review the draft",
             notes: "Check the error states.",
             assignee: "Echo",
           },
           { title: "Approve the release", assignee: "reviewer@example.com" },
-          { title: "Added by mistake" },
+          { title: "Added by mistake", status: "in_progress" },
           { title: "Port the old theme", status: "dropped" },
         ],
       });
       const [brief, review, approval, mistake] = added.todos;
       expect(added.todos).toMatchObject([
-        { title: "Write the brief", status: "open", assignee: "self" },
+        { title: "Write the brief", status: "in_progress", assignee: "self" },
         {
           title: "Review the draft",
           notes: "Check the error states.",
@@ -95,7 +96,11 @@ describe("updateTodos", () => {
           status: "open",
           assignee: "reviewer@example.com",
         },
-        { title: "Added by mistake", status: "open", assignee: "self" },
+        {
+          title: "Added by mistake",
+          status: "in_progress",
+          assignee: "self",
+        },
         { title: "Port the old theme", status: "dropped", assignee: "self" },
       ]);
 
@@ -108,6 +113,7 @@ describe("updateTodos", () => {
               id: review!.id,
               assignee: harness.childConversationId,
               notes: null,
+              status: "in_progress",
             },
           ],
           remove: [mistake!.id],
@@ -118,7 +124,7 @@ describe("updateTodos", () => {
           {
             id: review!.id,
             title: "Review the draft",
-            status: "open",
+            status: "in_progress",
             assignee: "Echo",
           },
         ],
@@ -131,7 +137,7 @@ describe("updateTodos", () => {
           {
             id: review!.id,
             title: "Review the draft",
-            status: "open",
+            status: "in_progress",
             assignee: "Echo",
           },
           approval,
@@ -145,7 +151,7 @@ describe("updateTodos", () => {
         {
           conversation_id: parentConversationId,
           todos: [
-            { id: review!.id, status: "open", assignee: "self" },
+            { id: review!.id, status: "in_progress", assignee: "self" },
             { ...approval },
           ],
         },
@@ -205,12 +211,12 @@ describe("updateTodos", () => {
           remove: [todos[0]!.id],
         }),
       ).rejects.toThrow(/once per call/);
-      // Only open, done, and dropped are statuses.
+      // The old Plan statuses are gone.
       await expect(
         harness.updateTodos({
-          update: [{ id: todos[1]!.id, status: "in_progress" }],
+          update: [{ id: todos[1]!.id, status: "blocked" }],
         }),
-      ).rejects.toThrow(/open.*done.*dropped/s);
+      ).rejects.toThrow(/open.*in_progress.*done.*dropped/s);
       await expect(harness.updateTodos({})).resolves.toEqual({ todos });
     } finally {
       await harness.close();

@@ -3,6 +3,7 @@ import { getDashboardAgentName } from "../agentName";
 import {
   Circle,
   CircleCheck,
+  CircleDashed,
   CircleX,
   Ellipsis,
   LockKeyhole,
@@ -48,12 +49,14 @@ export function useConversationTodos(conversationId: string) {
 
 const statusIcons: Record<ConversationTodo["status"], LucideIcon> = {
   open: Circle,
+  in_progress: CircleDashed,
   done: CircleCheck,
   dropped: CircleX,
 };
 
 const statusLabels: Record<ConversationTodo["status"], string> = {
   open: "Open",
+  in_progress: "In progress",
   done: "Done",
   dropped: "Dropped",
 };
@@ -67,8 +70,8 @@ function assigneeLabel(todo: ConversationTodo): string {
 
 /**
  * Show the To-dos of one Conversation: open ones, then recently closed ones,
- * each with its status and assignee. Participants can close or reopen a
- * To-do. The agent sees that change on its next Turn.
+ * each with its status and assignee. Participants can start, close, or
+ * reopen a To-do. The agent sees that change on its next Turn.
  */
 export function ConversationTodos(props: {
   canEdit: boolean;
@@ -76,7 +79,9 @@ export function ConversationTodos(props: {
 }) {
   const todos = useConversationTodos(props.conversationId).data?.todos ?? [];
   if (todos.length === 0) return null;
-  const open = todos.filter((todo) => todo.status === "open").length;
+  const open = todos.filter(
+    (todo) => todo.status === "open" || todo.status === "in_progress",
+  ).length;
   return (
     <DetailsCard count={open} title="To-dos">
       <DetailsList
@@ -101,13 +106,18 @@ function TodoRow(props: {
 }) {
   const { todo } = props;
   const Icon = todo.redacted ? LockKeyhole : statusIcons[todo.status];
-  const closed = todo.status !== "open";
+  const closed = todo.status === "done" || todo.status === "dropped";
   const row = (
     <DetailsRow
       icon={
         <Icon
           aria-label={statusLabels[todo.status]}
-          className={cn("size-3.5", closed && "text-dashboard-text-faint")}
+          className={cn(
+            "size-3.5",
+            // Same tone as the running Thread and Task status icons.
+            todo.status === "in_progress" && "text-dashboard-accent",
+            closed && "text-dashboard-text-faint",
+          )}
           role="img"
         />
       }
@@ -132,30 +142,32 @@ function TodoRow(props: {
   return (
     <div className="flex min-w-0 items-start gap-0.5">
       <div className="min-w-0 flex-1">{row}</div>
-      <TodoMenu
-        closed={closed}
-        conversationId={props.conversationId}
-        todo={todo}
-      />
+      <TodoMenu conversationId={props.conversationId} todo={todo} />
     </div>
   );
 }
 
-function TodoMenu(props: {
-  closed: boolean;
-  conversationId: string;
-  todo: ConversationTodo;
-}) {
+const todoActions: Record<
+  ConversationTodo["status"],
+  Array<{ label: string; status: TodoStatusBody["status"] }>
+> = {
+  open: [
+    { label: "Start", status: "in_progress" },
+    { label: "Mark done", status: "done" },
+    { label: "Drop", status: "dropped" },
+  ],
+  in_progress: [
+    { label: "Mark done", status: "done" },
+    { label: "Stop", status: "open" },
+    { label: "Drop", status: "dropped" },
+  ],
+  done: [{ label: "Reopen", status: "open" }],
+  dropped: [{ label: "Reopen", status: "open" }],
+};
+
+function TodoMenu(props: { conversationId: string; todo: ConversationTodo }) {
   const setStatus = useSetTodoStatus(props.conversationId, props.todo.id);
-  const actions: Array<{
-    label: string;
-    status: TodoStatusBody["status"];
-  }> = props.closed
-    ? [{ label: "Reopen", status: "open" }]
-    : [
-        { label: "Mark done", status: "done" },
-        { label: "Drop", status: "dropped" },
-      ];
+  const actions = todoActions[props.todo.status];
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger

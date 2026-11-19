@@ -1,5 +1,5 @@
 {
-  "id": "eb6b1c55-7471-467c-af59-b199cc6c619c",
+  "id": "6674dee4-92f0-4f1a-8f2b-4717c56f2e7b",
   "prevId": "de0b7922-760f-4aea-b229-3baf89a3f410",
   "version": "7",
   "dialect": "postgresql",
@@ -5301,7 +5301,7 @@
       "checkConstraints": {
         "junior_todos_status_check": {
           "name": "junior_todos_status_check",
-          "value": "\"junior_todos\".\"status\" in ('open', 'done', 'dropped')"
+          "value": "\"junior_todos\".\"status\" in ('open', 'in_progress', 'done', 'dropped')"
         },
         "junior_todos_assignee_check": {
           "name": "junior_todos_assignee_check",

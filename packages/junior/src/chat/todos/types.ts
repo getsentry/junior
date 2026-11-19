@@ -1,12 +1,23 @@
 /** Statuses of a To-do. `done` and `dropped` close it. */
-export const TODO_STATUSES = ["open", "done", "dropped"] as const;
+export const TODO_STATUSES = [
+  "open",
+  "in_progress",
+  "done",
+  "dropped",
+] as const;
 
 /** One To-do status. */
 export type TodoStatus = (typeof TODO_STATUSES)[number];
 
+/** Statuses of a To-do that is still work to do. */
+export const OPEN_TODO_STATUSES = [
+  "open",
+  "in_progress",
+] as const satisfies readonly TodoStatus[];
+
 /** Whether a To-do with this status is still work to do. */
 export function isOpenTodoStatus(status: TodoStatus): boolean {
-  return status === "open";
+  return status === "open" || status === "in_progress";
 }
 
 /** Assignee text for the list's own agent, in tool results and blocks. */

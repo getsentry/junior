@@ -640,7 +640,7 @@ describe("conversation auto-archive API", () => {
     const addTodo = async (
       conversationId: string,
       assignee: { conversationId: string } | { userId: string },
-      status: "open" | "done",
+      status: "open" | "in_progress" | "done",
     ) =>
       await changeTodos(getSqlExecutor(), {
         change: {
@@ -653,7 +653,7 @@ describe("conversation auto-archive API", () => {
       });
     await addTodo(todoId, { userId: viewer.id }, "open");
     await addTodo(todoDoneId, { userId: viewer.id }, "done");
-    await addTodo(`${childTodoId}:child`, { userId: viewer.id }, "open");
+    await addTodo(`${childTodoId}:child`, { userId: viewer.id }, "in_progress");
     await addTodo(
       `${childAgentTodoId}:child`,
       { conversationId: `${childAgentTodoId}:child` },

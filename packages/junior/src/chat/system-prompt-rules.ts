@@ -258,7 +258,7 @@ const SKILL_POLICY_RULES = [
 const TODO_POLICY_RULES = [
   "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
   "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Mark a To-do done or dropped when its work ends, such as when a child agent's result arrives. After a compaction, `<todos>` lists the open To-dos. `<todo-delta>` shows To-dos that people changed since you last saw them.",
+  "- Set a To-do to in_progress when its work starts, and to done or dropped when it ends, such as when a child agent's result arrives. After a compaction, `<todos>` lists the open To-dos. `<todo-delta>` shows To-dos that people changed since you last saw them.",
   "- Do not repeat your To-dos in chat, and do not end a Turn with a plan when you can do the work now.",
 ];
 

@@ -160,7 +160,7 @@ describe("active-turn context compaction", () => {
         add: [
           {
             title: "Apply requested edit",
-            status: "open",
+            status: "in_progress",
             assignee: self,
           },
           { title: "Run focused test", status: "open", assignee: self },
@@ -258,7 +258,7 @@ describe("active-turn context compaction", () => {
     expect(summary.split("<todos>").length - 1).toBe(1);
     expect(summary).toContain(
       [
-        `- #${edit!.id} (open, assignee self): Apply requested edit`,
+        `- #${edit!.id} (in_progress, assignee self): Apply requested edit`,
         `- #${test!.id} (open, assignee self): Run focused test`,
         "</todos>",
       ].join("\n"),

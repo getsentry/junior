@@ -64,7 +64,7 @@ describe("conversation To-dos API", () => {
     await closeDb();
   });
 
-  it("shows To-dos to participants and lets them close and reopen them", async () => {
+  it("shows To-dos to participants and lets them start, close, and reopen them", async () => {
     const conversationId = "local:test:todos";
     await getConversationStore().recordActivity({
       conversationId,
@@ -128,7 +128,7 @@ describe("conversation To-dos API", () => {
       (await setStatus(outsider.app, conversationId, approve!.id, "done"))
         .status,
     ).toBe(404);
-    // Only open, done, and dropped are statuses.
+    // The old Plan statuses are gone.
     expect(
       (await setStatus(owner.app, conversationId, approve!.id, "pending"))
         .status,
@@ -163,13 +163,17 @@ describe("conversation To-dos API", () => {
     expect(
       (await setStatus(owner.app, conversationId, draft!.id, "open")).status,
     ).toBe(200);
+    expect(
+      (await setStatus(owner.app, conversationId, draft!.id, "in_progress"))
+        .status,
+    ).toBe(200);
 
-    // Open To-dos come first, then recently closed ones.
+    // Open To-dos, started or not, come first, then recently closed ones.
     expect(await readTodos(owner.app, conversationId)).toEqual([
       expect.objectContaining({
         title: "Draft the brief",
         notes: "Use the release notes.",
-        status: "open",
+        status: "in_progress",
       }),
       expect.objectContaining({
         title: "Approve the brief",

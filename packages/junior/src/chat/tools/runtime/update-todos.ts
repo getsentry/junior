@@ -28,7 +28,9 @@ const MAX_TODOS_PER_CALL = 50;
 
 const statusSchema = z
   .enum(TODO_STATUSES)
-  .describe("done and dropped close the To-do.");
+  .describe(
+    "in_progress marks work that has started. done and dropped close the To-do.",
+  );
 
 const assigneeSchema = z
   .string()

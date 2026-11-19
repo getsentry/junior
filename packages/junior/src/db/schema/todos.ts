@@ -58,7 +58,7 @@ export const juniorTodos = pgTable(
     }).onDelete("cascade"),
     check(
       "junior_todos_status_check",
-      sql`${table.status} in ('open', 'done', 'dropped')`,
+      sql`${table.status} in ('open', 'in_progress', 'done', 'dropped')`,
     ),
     check(
       "junior_todos_assignee_check",
