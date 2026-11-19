@@ -3,16 +3,11 @@ import { readCacheWarmingSavings } from "@/api/cache-warming/savings";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { readPeopleListFromSql } from "@/api/people/list.query";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
-import {
-  appendConversationBrief,
-  readConversationBriefForTurn,
-} from "@/chat/briefs/store";
 import { recordWarmupCost } from "@/chat/cache-warming/savings";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { StoredSlackActor } from "@/chat/actor";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
-import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import { turnActorIdentityId } from "./people/fixture";
 
 const NOW_MS = Date.parse("2026-06-15T12:00:00.000Z");
@@ -113,26 +108,6 @@ describe("money totals in micro-USD", () => {
 
       const savings = await readCacheWarmingSavings(7, NOW_MS);
       expect(savings.totals.warmupCostUsd).toBe(expected);
-
-      const brief = {
-        content: conversationBriefFixture({ status: "done" }),
-        conversationId: "slack:C1:0",
-        modelId: "test-model",
-        searchText: "test",
-        throughSeq: 1,
-        turnId: "turn-0",
-        costUsd: costs[1]!,
-      };
-      await appendConversationBrief(fixture.sql.db(), brief);
-      expect(
-        (
-          await readConversationBriefForTurn(
-            fixture.sql.db(),
-            brief.conversationId,
-            brief.turnId,
-          )
-        )?.costUsd,
-      ).toBe(microUsdTotal([brief.costUsd]));
     } finally {
       await fixture.close();
     }

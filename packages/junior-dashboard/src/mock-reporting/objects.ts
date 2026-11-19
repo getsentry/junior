@@ -534,7 +534,7 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   // Match the API: a private Conversation resolves only for a participant.
   if (detail && (detail.visibility !== "private" || detail.isParticipant)) {
     const object = conversationObjectCard({
-      brief: detail.brief?.content.summary,
+      description: detail.summary,
       participants: detail.participants ?? [],
       summary: detail,
       url: href,

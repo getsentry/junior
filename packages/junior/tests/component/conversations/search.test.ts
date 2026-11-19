@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { storeConversationEmbedding } from "@/chat/conversations/embedding";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { juniorConversations } from "@/db/schema";
-import { conversationBriefFixture } from "../../fixtures/conversation-brief";
+import { readConversationMetadata } from "@/chat/conversations/metadata/store";
+import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
 import { createJuniorSqlFixture } from "../../fixtures/sql";
 
 describe("Conversation search", () => {
-  it("searches the latest Brief of public roots of every surface", async () => {
+  it("searches the summary of public roots of every surface", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -83,79 +83,51 @@ describe("Conversation search", () => {
         destination: { platform: "local", conversationId: publicLocalId },
         nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
         source: "local",
-        title: "Public web Brief",
+        title: "Public web summary",
         visibility: "public",
       });
 
+      let throughSeq = 0;
       const append = async (args: {
         conversationId: string;
-        searchText: string;
-        status?: "blocked" | "done";
         summary: string;
-        turnId: string;
       }) =>
-        await appendConversationBrief(db, {
+        await storeConversationMetadataFixture(db, {
           conversationId: args.conversationId,
-          turnId: args.turnId,
-          throughSeq: 1,
-          content: conversationBriefFixture({
-            links: Array.from({ length: 6 }, (_, index) => ({
-              kind: "url" as const,
-              label: `Link ${index + 1}`,
-              url: `https://example.com/${index + 1}`,
-            })),
-            status: args.status,
-            summary: args.summary,
-          }),
-          searchText: args.searchText,
-          modelId: "test-model",
+          summary: args.summary,
+          throughSeq: (throughSeq += 1),
         });
 
       await append({
         conversationId: currentConversationId,
-        searchText: "current deployment decision",
         summary: "The current deployment decision stays excluded.",
-        turnId: "current-turn",
       });
       await append({
         conversationId: targetConversationId,
-        searchText: "obsolete migration choice",
         summary: "The obsolete migration choice was replaced.",
-        turnId: "target-turn-1",
       });
       await append({
         conversationId: targetConversationId,
-        searchText: "deployment decision uses the blue rollout",
-        status: "done",
         summary: "The deployment decision uses the blue rollout.",
-        turnId: "target-turn-2",
       });
       await append({
         conversationId: otherTenantId,
-        searchText: "deployment decision from another workspace",
         summary: "Another workspace has a deployment decision.",
-        turnId: "other-turn",
       });
       await append({
         conversationId: privateId,
-        searchText: "private deployment decision",
         summary: "The private deployment decision stays private.",
-        turnId: "private-turn",
       });
       await append({
         conversationId: childId,
-        searchText: "child deployment decision",
         summary: "The child deployment decision is a child agent.",
-        turnId: "child-turn",
       });
       await append({
         conversationId: publicLocalId,
-        searchText: "browser launch decision",
         summary: "The browser launch decision is public.",
-        turnId: "local-turn",
       });
       const updatedAt = new Date("2026-07-02T12:00:00.000Z");
-      // A purged transcript keeps its Brief searchable.
+      // A purged public transcript keeps its summary searchable.
       await db
         .update(juniorConversations)
         .set({
@@ -251,10 +223,12 @@ describe("Conversation search", () => {
         expect.objectContaining({
           channelName: "carchive-name",
           conversationId: targetConversationId,
-          links: expect.arrayContaining([
-            expect.objectContaining({ url: "https://example.com/1" }),
-          ]),
-          outcomeStatus: "done",
+          links: [
+            {
+              label: "acme/widget#12",
+              url: "https://example.com/acme/widget/12",
+            },
+          ],
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",
           title: "Title for CARCHIVE",
@@ -262,7 +236,6 @@ describe("Conversation search", () => {
           updatedAtMs: updatedAt.getTime(),
         }),
       ]);
-      expect(matches[0]?.links).toHaveLength(5);
       expect(matches[0]?.excerpt).toContain("**blue**");
 
       await expect(
@@ -288,7 +261,6 @@ describe("Conversation search", () => {
             annotation: "ACME/WIDGET",
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
-            outcomeStatus: "done",
           },
         }),
       ).resolves.toEqual([
@@ -313,7 +285,7 @@ describe("Conversation search", () => {
     }
   }, 15_000);
 
-  it("finds Briefs by meaning above the similarity floor, with the same access rules", async () => {
+  it("finds summaries by meaning above the similarity floor, with the same access rules", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -327,7 +299,7 @@ describe("Conversation search", () => {
       const rollout = "Roll the release out to production in stages";
       const query = "ship a new build to prod gradually";
       // Fake model: one axis per topic. The query is close to the rollout
-      // Briefs and far from the invoice Brief.
+      // summaries and far from the invoice summary.
       const vectors: Record<string, number[]> = {
         [rollout]: [1, 0, 0],
         [query]: [0.9, 0.2, 0],
@@ -335,6 +307,7 @@ describe("Conversation search", () => {
         "Stale rollout notes": [1, 0, 0],
         "Notes about lunch": [0, 0, 1],
       };
+      // A document is the title, then the summary on its last line.
       const embedder: PluginEmbedder = {
         model: "test-embedding",
         provider: "test",
@@ -344,7 +317,7 @@ describe("Conversation search", () => {
             model: "test-embedding",
             provider: "test",
             vectors: texts.map((text) => {
-              const vector = vectors[text];
+              const vector = vectors[text.split("\n").at(-1)!];
               if (!vector) throw new Error(`No test vector for ${text}`);
               return vector;
             }),
@@ -354,7 +327,7 @@ describe("Conversation search", () => {
       const seed = async (args: {
         channelId: string;
         conversationId: string;
-        searchTexts: string[];
+        summaries: string[];
         visibility: "private" | "public";
       }) => {
         await conversations.recordActivity({
@@ -369,50 +342,53 @@ describe("Conversation search", () => {
           title: `Title for ${args.channelId}`,
           visibility: args.visibility,
         });
-        for (const [index, searchText] of args.searchTexts.entries()) {
-          const stored = await appendConversationBrief(db, {
+        for (const [index, summary] of args.summaries.entries()) {
+          await storeConversationMetadataFixture(db, {
             conversationId: args.conversationId,
-            turnId: `turn-${index}`,
+            summary,
             throughSeq: index + 1,
-            content: conversationBriefFixture({ summary: searchText }),
-            searchText,
-            modelId: "test-model",
           });
-          // Only the first Brief is embedded, so a later Brief makes the
+          // Only the first summary is embedded, so a later one makes the
           // vector stale.
           if (index === 0) {
-            await storeConversationEmbedding(db, embedder, stored.value);
+            await storeConversationEmbedding(db, embedder, {
+              conversationId: args.conversationId,
+              metadata: (await readConversationMetadata(
+                db,
+                args.conversationId,
+              ))!,
+            });
           }
         }
       };
       await seed({
         channelId: "CREQUEST",
         conversationId: requesterId,
-        searchTexts: [rollout],
+        summaries: [rollout],
         visibility: "public",
       });
       await seed({
         channelId: "CROLLOUT",
         conversationId: paraphraseId,
-        searchTexts: [rollout],
+        summaries: [rollout],
         visibility: "public",
       });
       await seed({
         channelId: "CBILLING",
         conversationId: unrelatedId,
-        searchTexts: ["Quarterly invoice totals"],
+        summaries: ["Quarterly invoice totals"],
         visibility: "public",
       });
       await seed({
         channelId: "CPRIVATE",
         conversationId: privateId,
-        searchTexts: [rollout],
+        summaries: [rollout],
         visibility: "private",
       });
       await seed({
         channelId: "CSTALE",
         conversationId: staleId,
-        searchTexts: ["Stale rollout notes", "Notes about lunch"],
+        summaries: ["Stale rollout notes", "Notes about lunch"],
         visibility: "public",
       });
       const search = {
@@ -422,8 +398,8 @@ describe("Conversation search", () => {
         rootsOnly: true,
       };
 
-      // The query shares no word with any Brief, so only the vector of the
-      // public rollout Brief matches. The invoice Brief is under the floor,
+      // The query shares no word with any summary, so only the vector of the
+      // public rollout summary matches. The invoice summary is under the floor,
       // and private, own-tree, and stale vectors never count.
       await expect(
         searchConversations(db, {

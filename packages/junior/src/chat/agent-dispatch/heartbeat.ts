@@ -1,11 +1,9 @@
-import {
-  isBriefsEnabled,
-  isEventEmbeddingsEnabled,
-} from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
+import { isConversationMetadataEnabled } from "@/chat/conversations/metadata/task";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import {
@@ -318,12 +316,12 @@ export async function runHeartbeat(args: {
   } catch (error) {
     logException(error, "cache_warming.savings_refill.failed");
   }
-  // The Brief task writes these vectors, so the backfill runs only with it.
-  if (isBriefsEnabled()) {
+  // The metadata task writes these vectors, so the backfill runs only with it.
+  if (isConversationMetadataEnabled()) {
     try {
       await runConversationEmbeddingBackfill(
         createConversationEmbedder({
-          // One batch embeds the Briefs of many Conversations, so no one
+          // One batch embeds the metadata of many Conversations, so no one
           // Conversation pays. The cost stays on the span.
           cost: { owner: "none" },
           operation: "conversation_embedding",

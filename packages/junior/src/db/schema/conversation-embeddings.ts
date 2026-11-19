@@ -1,19 +1,22 @@
 import { sql } from "drizzle-orm";
 import { check, foreignKey, integer, pgTable, text } from "drizzle-orm/pg-core";
-import { juniorConversationBriefs } from "./conversation-briefs";
+import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 import { embeddingVector } from "@sentry/junior-plugin-api/embeddings";
 
 /**
- * One embedding per Conversation, for semantic search. Its text is the latest
- * Brief. A derived index: the next Brief replaces the row, and deleting that
- * Brief row deletes it.
+ * One embedding per Conversation, for semantic search. Its text is the
+ * Conversation metadata. A derived index: the next metadata update replaces
+ * the row.
  */
 export const juniorConversationEmbeddings = pgTable(
   "junior_conversation_embeddings",
   {
     conversationId: text("conversation_id").primaryKey(),
-    briefVersion: integer("brief_version").notNull(),
+    // TODO(dcramer): Drop brief_version after no deployed worker writes it.
+    legacyBriefVersion: integer("brief_version"),
+    /** The `metadata_through_seq` of the embedded Conversation metadata. */
+    throughSeq: integer("through_seq"),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     dimensions: integer("dimensions").notNull(),
@@ -22,12 +25,9 @@ export const juniorConversationEmbeddings = pgTable(
   },
   (table) => [
     foreignKey({
-      name: "junior_conversation_embeddings_brief_fk",
-      columns: [table.conversationId, table.briefVersion],
-      foreignColumns: [
-        juniorConversationBriefs.conversationId,
-        juniorConversationBriefs.version,
-      ],
+      name: "junior_conversation_embeddings_conversation_fk",
+      columns: [table.conversationId],
+      foreignColumns: [juniorConversations.conversationId],
     }).onDelete("cascade"),
     check(
       "junior_conversation_embeddings_dimensions_check",

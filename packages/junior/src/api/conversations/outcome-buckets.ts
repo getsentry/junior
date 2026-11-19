@@ -1,30 +1,13 @@
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  lte,
-  or,
-  sql,
-  type SQLWrapper,
-} from "drizzle-orm";
+import { and, eq, gte, lte, or, sql, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorCodeChanges,
-  juniorConversationBriefs,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorCodeChanges, juniorConversations } from "@/db/schema";
 import { conversationUsageCostExpr } from "./aggregate";
 
 export interface OutcomeBucket {
   date: string;
   mergedCodeChangeCostUsd: number;
   mergedCodeChanges: number;
-  outcomeCostUsd: number;
-  outcomes: number;
 }
 
 const changes = juniorCodeChanges;
@@ -37,28 +20,18 @@ const linksChange = sql`${linked.conversationId} = any(${changes.conversationIds
 const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.conversationId})`;
 
 /**
- * Count outcomes per UTC hour, with the conversation cost that produced
- * them. An outcome is one of:
- *
- * - a merged code change, at its merge time. Each root Conversation splits its
- *   tree cost evenly across all of its merged code changes, so a long
- *   Conversation that merges three changes makes each one cheaper.
- * - a root Conversation with no linked code change whose latest Brief is
- *   `done` or `answered`, at its last activity. Its whole tree cost counts.
- *
- * Roots with only open or closed code changes count nothing until a change
- * merges, so one Conversation is never both kinds of outcome. A merged change
- * with no linked Conversation has an unknown cost, not a zero cost, so it is
- * left out instead of making the mean look cheaper.
+ * Count merged code changes per UTC hour, at their merge time, with the
+ * conversation cost that produced them. Each root Conversation splits its
+ * tree cost evenly across all of its merged code changes, so a long
+ * Conversation that merges three changes makes each one cheaper. A merged
+ * change with no linked Conversation has an unknown cost, not a zero cost, so
+ * it is left out instead of making the mean look cheaper.
  */
 export async function readOutcomeBuckets(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ): Promise<OutcomeBucket[]> {
-  const [merges, briefRoots] = await Promise.all([
-    readWindowMerges(db, options),
-    readBriefOutcomeRoots(db, options),
-  ]);
+  const merges = await readWindowMerges(db, options);
 
   const buckets = new Map<string, OutcomeBucket>();
   const bucketAt = (instant: Date) => {
@@ -69,16 +42,13 @@ export async function readOutcomeBuckets(
         date,
         mergedCodeChangeCostUsd: 0,
         mergedCodeChanges: 0,
-        outcomeCostUsd: 0,
-        outcomes: 0,
       };
       buckets.set(date, bucket);
     }
     return bucket;
   };
 
-  // A change linked to several roots is one outcome that takes a share of
-  // each root's cost.
+  // A change linked to several roots takes a share of each root's cost.
   const changeCosts = new Map<string, { costUsd: number; mergedAt: Date }>();
   for (const merge of merges) {
     const share = merge.treeCostUsd / merge.rootMerges;
@@ -94,13 +64,6 @@ export async function readOutcomeBuckets(
     const bucket = bucketAt(change.mergedAt);
     bucket.mergedCodeChanges += 1;
     bucket.mergedCodeChangeCostUsd += change.costUsd;
-    bucket.outcomes += 1;
-    bucket.outcomeCostUsd += change.costUsd;
-  }
-  for (const root of briefRoots) {
-    const bucket = bucketAt(root.lastActivityAt);
-    bucket.outcomes += 1;
-    bucket.outcomeCostUsd += root.treeCostUsd;
   }
   return [...buckets.values()];
 }
@@ -168,47 +131,4 @@ async function readWindowMerges(
   return rows.flatMap(({ mergedAt, rootId, ...merge }) =>
     mergedAt && rootId ? [{ ...merge, mergedAt, rootId }] : [],
   );
-}
-
-async function readBriefOutcomeRoots(
-  db: JuniorDatabase,
-  options: { start: Date; end: Date },
-) {
-  const roots = juniorConversations;
-  const briefs = juniorConversationBriefs;
-  const latestBrief = db
-    .select({
-      status: sql<string | null>`${briefs.content}->'outcome'->>'status'`.as(
-        "status",
-      ),
-    })
-    .from(briefs)
-    .where(eq(briefs.conversationId, roots.conversationId))
-    .orderBy(desc(briefs.version))
-    .limit(1)
-    .as("latest_brief");
-  // Every root with a linked code change, read once for the anti-join.
-  const changeRoots = db
-    .selectDistinct({ rootId: linkedRoot.as("root_id") })
-    .from(changes)
-    .innerJoin(linked, linksChange)
-    .as("change_roots");
-  return await db
-    .select({
-      lastActivityAt: roots.lastActivityAt,
-      rootId: roots.conversationId,
-      treeCostUsd: treeCostUsd(db, roots.conversationId),
-    })
-    .from(roots)
-    .innerJoinLateral(latestBrief, sql`true`)
-    .leftJoin(changeRoots, eq(changeRoots.rootId, roots.conversationId))
-    .where(
-      and(
-        isNull(roots.parentConversationId),
-        gte(roots.lastActivityAt, options.start),
-        lte(roots.lastActivityAt, options.end),
-        inArray(latestBrief.status, ["done", "answered"]),
-        isNull(changeRoots.rootId),
-      ),
-    );
 }

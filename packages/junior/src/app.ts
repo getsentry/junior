@@ -28,10 +28,8 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import {
-  setBriefsConfig,
-  setEventEmbeddingsConfig,
-} from "@/chat/briefs/registration";
+import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
+import { setConversationMetadataEnabled } from "@/chat/conversations/metadata/task";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -198,10 +196,11 @@ export interface JuniorAppOptions extends BotModelConfig {
    */
   botName?: string;
   /**
-   * Generate a durable Brief after each completed Turn. This costs one
-   * default-model call per completed Turn. Disabled by default.
+   * Update the summary, outcome status, and Conversation embedding after
+   * each completed Turn. This costs one fast-model call and one embedding
+   * per completed Turn. Disabled by default.
    */
-  briefs?: { enabled?: boolean };
+  conversationMetadata?: { enabled?: boolean };
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
@@ -544,7 +543,9 @@ export async function createApp(
   const previousConfigDefaults = getConfigDefaults();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousConversationMetadataEnabled = setConversationMetadataEnabled(
+    options?.conversationMetadata?.enabled === true,
+  );
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
   );
@@ -559,7 +560,7 @@ export async function createApp(
     restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
+    setConversationMetadataEnabled(previousConversationMetadataEnabled);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };

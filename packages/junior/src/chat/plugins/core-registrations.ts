@@ -4,12 +4,8 @@
  * app plugin cannot use their names.
  */
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
-import {
-  isBriefsEnabled,
-  isEventEmbeddingsEnabled,
-} from "@/chat/briefs/registration";
-import { briefsTaskRegistration } from "@/chat/briefs/task";
 import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
 
@@ -18,20 +14,17 @@ export function isCoreRegistrationName(name: string): boolean {
   // Read the names at call time: these modules import the plugin hooks, so
   // their registrations are not ready while this module loads.
   return [
-    briefsTaskRegistration,
     eventSearchTaskRegistration({ embedEvents: false }),
     notificationsTaskRegistration,
   ].some((registration) => registration.manifest.name === name);
 }
 
 /**
- * Return enabled core registrations: Briefs, event search, and reply
- * notifications. Event search always stores lexemes, which cost no provider
+ * Return enabled core registrations: event search and reply notifications. Event search always stores lexemes, which cost no provider
  * call. It embeds events only when event embeddings are enabled.
  */
 export function coreRegistrations(): PluginRegistration[] {
   return [
-    ...(isBriefsEnabled() ? [briefsTaskRegistration] : []),
     eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];

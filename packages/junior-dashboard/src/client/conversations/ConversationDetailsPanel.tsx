@@ -49,7 +49,6 @@ export function ConversationDetailsPanel(props: {
           />
         )
       }
-      brief={detail?.brief}
       canEditPlan={detail?.isParticipant === true}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
@@ -61,6 +60,8 @@ export function ConversationDetailsPanel(props: {
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}
+      summary={detail?.summary}
+      summaryMentions={detail?.summaryMentions}
       links={props.links}
       memoryList={props.memoryList}
       overview={

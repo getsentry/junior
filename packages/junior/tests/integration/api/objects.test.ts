@@ -8,7 +8,6 @@ import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
@@ -22,7 +21,7 @@ import {
 } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
-import { conversationBriefFixture } from "../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
 import {
   conversationsInfoOk,
   conversationsMembersPage,
@@ -38,7 +37,7 @@ import { mswServer } from "../../msw/server";
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const CONVERSATION_URL = `${DASHBOARD}/conversations/${encodeURIComponent(CONVERSATION_ID)}`;
-const PRIVATE_BRIEF = "The private launch waits on legal review.";
+const PRIVATE_SUMMARY = "The private launch waits on legal review.";
 
 async function viewerApi(email: string) {
   const viewer = await signedInViewer(email);
@@ -83,13 +82,9 @@ async function recordPrivateConversation() {
     title: "Plan the private launch",
     visibility: "private",
   });
-  await appendConversationBrief(getDb(), {
+  await storeConversationMetadataFixture(getDb(), {
     conversationId: CONVERSATION_ID,
-    turnId: "brief-turn",
-    throughSeq: 0,
-    content: conversationBriefFixture({ summary: PRIVATE_BRIEF }),
-    searchText: PRIVATE_BRIEF,
-    modelId: "test-model",
+    summary: PRIVATE_SUMMARY,
   });
 }
 
@@ -115,7 +110,7 @@ describe("object links API", () => {
       await viewerApi("alice@example.com")
     )(CONVERSATION_URL, `${CONVERSATION_URL}/`);
     expect(participant.objects.get(CONVERSATION_URL)).toMatchObject({
-      description: PRIVATE_BRIEF,
+      description: PRIVATE_SUMMARY,
       facts: {
         lastActivityAt: "2026-01-02T03:04:05.000Z",
         participants: ["Alice Example"],
@@ -135,7 +130,7 @@ describe("object links API", () => {
     });
 
     // Not a participant: no card, so the response does not show that the
-    // Conversation exists, and the private Brief stays hidden.
+    // Conversation exists, and the private summary stays hidden.
     const outsider = await (
       await viewerApi("bob@example.com")
     )(CONVERSATION_URL);

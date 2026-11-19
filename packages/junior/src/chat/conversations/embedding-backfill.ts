@@ -1,17 +1,18 @@
 /**
  * Heartbeat backfill of Conversation embeddings. A new embedding model
  * leaves every Conversation without a vector that search can compare, until
- * its next Brief. This run embeds the latest Brief of each such Conversation.
+ * its next summary. This run embeds the metadata of each such Conversation.
  *
  * A completed run marks the model done for an hour, so later heartbeats make
- * one state request instead of a scan of every Brief. A run that hits its
+ * one state request instead of a scan of every Conversation. A run that hits its
  * budget leaves only its claim, which expires before a later heartbeat
  * continues. The backfill skips stored vectors, so runs can overlap safely.
  *
  * Attributes on the `conversation_embeddings.backfill` span:
- * - `app.conversation_embeddings.backfill.embedded.count`: Briefs embedded.
+ * - `app.conversation_embeddings.backfill.embedded.count`: Conversations
+ *   embedded.
  * - `app.conversation_embeddings.backfill.outcome`: `completed` when no
- *   Brief was left, else `budget_exceeded`.
+ *   Conversation was left, else `budget_exceeded`.
  * Policy: policies/observability.md.
  */
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
@@ -24,7 +25,7 @@ const BACKFILL_BUDGET_MS = 10_000;
 const BACKFILL_CLAIM_TTL_MS = 60_000;
 const BACKFILL_DONE_TTL_MS = 60 * 60 * 1_000;
 
-/** Embed the latest Briefs that have no vector of the embedder's model. */
+/** Embed the Conversation metadata that has no vector of the embedder's model. */
 export async function runConversationEmbeddingBackfill(
   embedder: PluginEmbedder,
 ): Promise<void> {

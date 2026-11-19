@@ -55,7 +55,7 @@ Then ask for one Conversation:
 Use junior to summarize my latest conversation.
 ```
 
-Claude Code calls `getConversation`. It returns the Brief and the last assistant reply, not the full transcript.
+Claude Code calls `getConversation`. It returns the summary and the last assistant reply, not the full transcript.
 
 You can also check discovery without a client:
 
@@ -78,7 +78,7 @@ A client gets only the tools of the scopes that you allow. A client that does no
 | `review_items:read`    | `searchReviewItems`, `getReviewItem`                                                                                                                                                                  | Read the Review items that you can see on the Review desk.                                                                                    |
 | `automations:read`     | `searchAutomations`, `getAutomation`                                                                                                                                                                  | Read the Automations that you can see, and their runs.                                                                                        |
 
-`getConversation` returns metadata, the Brief, the last assistant reply, and the messages that no Turn has read yet. When a Turn waits for you to connect an account, it also returns the authorization link. Pass a `cursor` as `after` to get the messages after that point instead of the last reply. Each result has a new `cursor`. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
+`getConversation` returns metadata, including the summary, the last assistant reply, and the messages that no Turn has read yet. When a Turn waits for you to connect an account, it also returns the authorization link. Pass a `cursor` as `after` to get the messages after that point instead of the last reply. Each result has a new `cursor`. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
 
 Archive applies to everyone in the Conversation. Pin, subscription, the auto-archive choice, and read position are yours. `setConversationSubscription` with `subscribed: false` removes a Conversation from only your feed. Your next mention of Junior in it subscribes you again. When the last subscriber unsubscribes, the Conversation is archived for everyone. But when any person pins a Conversation or turns its auto-archive off, auto-archive does not archive it. `archiveDoneConversations` archives your done Conversations once, the same as **Archive done now** in Settings. `markConversationRead` marks every message read when you omit `lastReadSeq`.
 

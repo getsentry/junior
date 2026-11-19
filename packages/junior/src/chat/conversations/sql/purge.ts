@@ -7,6 +7,7 @@ import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
   juniorConversationBriefs,
+  juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -144,6 +145,15 @@ export async function selectExpiredRoots(
             where briefs.conversation_id = tree.conversation_id
           )
           or exists (
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and metadata.summary is not null
+          )
+          or exists (
+            select 1 from junior_conversation_embeddings embeddings
+            where embeddings.conversation_id = tree.conversation_id
+          )
+          or exists (
             select 1 from junior_review_items review_items
             where review_items.added_by_conversation_id = tree.conversation_id
               and review_items.visibility = 'private'
@@ -199,8 +209,9 @@ export async function selectExpiredRoots(
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. Plan items go with the transcript.
- * Non-public content also loses its Briefs and the Review items that it
- * added. The metadata rows themselves survive.
+ * Non-public content also loses its summary, Conversation embedding, legacy
+ * Briefs, and the Review items that it added. The metadata rows themselves
+ * survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -340,11 +351,35 @@ export async function purgeConversationTree(
           const scrubMetadata = args.retention
             ? !isPublic
             : resolvedScrubMetadata;
+          // Clear the metadata before the embedding delete. The update locks
+          // each Conversation row, so an embedding write that holds a share
+          // lock commits first and is deleted below, and a later one finds
+          // no metadata. See `writeConversationEmbeddings`.
+          await executor
+            .db()
+            .update(juniorConversations)
+            .set({
+              transcriptPurgedAt: new Date(args.nowMs),
+              ...(scrubMetadata
+                ? {
+                    title: null,
+                    channelName: null,
+                    actor: null,
+                    summary: null,
+                    metadataThroughSeq: null,
+                  }
+                : undefined),
+            })
+            .where(inArray(juniorConversations.conversationId, ids));
           if (scrubMetadata) {
             await executor
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
+            await executor
+              .db()
+              .delete(juniorConversationEmbeddings)
+              .where(inArray(juniorConversationEmbeddings.conversationId, ids));
             // A private Review item holds content from its Conversation. A
             // public item stays, even when its destination later turned
             // private, because other Conversations can still link to it. An
@@ -364,16 +399,6 @@ export async function purgeConversationTree(
                 ),
               );
           }
-          await executor
-            .db()
-            .update(juniorConversations)
-            .set({
-              transcriptPurgedAt: new Date(args.nowMs),
-              ...(scrubMetadata
-                ? { title: null, channelName: null, actor: null }
-                : undefined),
-            })
-            .where(inArray(juniorConversations.conversationId, ids));
           await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },

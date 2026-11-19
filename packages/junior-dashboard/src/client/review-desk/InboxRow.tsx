@@ -24,7 +24,6 @@ import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import {
   ConversationStateIcon,
@@ -90,22 +89,13 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly ReviewItemPayload[] = [];
 
-/** The second line: the Brief, or the newest message when there is none. */
+/** The second line: the summary, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
-  const brief = conversation?.brief;
-  if (brief)
-    return {
-      mentions: undefined,
-      status: brief.status,
-      text: brief.summary || brief.intent,
-    };
+  if (conversation?.summary)
+    return { mentions: undefined, text: conversation.summary };
   const preview = conversation?.activityPreview;
   if (!preview) return undefined;
-  return {
-    mentions: preview.mentions,
-    status: undefined,
-    text: preview.text,
-  };
+  return { mentions: preview.mentions, text: preview.text };
 }
 
 /**
@@ -455,7 +445,7 @@ function InboxRowBody(
   const found = props.itemTitle ? undefined : rowSummary(conversation);
   // The viewer's answer replaces the line that asked for it.
   const summary = props.answered
-    ? { mentions: undefined, status: found?.status, text: props.answered }
+    ? { mentions: undefined, text: props.answered }
     : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
@@ -562,12 +552,7 @@ function InboxRowBody(
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
             data-inbox-slot="title"
           >
-            {/* The Brief's outcome marks the title, as the dot does. It
-                sits outside the link, so the link's name stays the title. */}
             <span className="flex min-w-0 items-center gap-1.5">
-              {summary?.status ? (
-                <BriefOutcomeMarker status={summary.status} />
-              ) : null}
               <Link
                 {...props.linkProps}
                 aria-controls={opens ? undefined : controls}

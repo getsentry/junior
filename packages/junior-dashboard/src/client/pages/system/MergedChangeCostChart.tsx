@@ -19,11 +19,6 @@ import { formatCompactNumber, formatCostSummary } from "../../format";
 
 const SERIES = [
   {
-    color: "var(--color-amber-400)",
-    key: "outcome",
-    label: "Per outcome",
-  },
-  {
     color: "var(--color-violet-400)",
     key: "merged",
     label: "Per merged change",
@@ -34,8 +29,6 @@ type Point = {
   date: string;
   merged: number | null;
   mergedCodeChanges: number;
-  outcome: number | null;
-  outcomes: number;
 };
 
 // Each scale smooths over a window that fits its range: 6 hours for 24h,
@@ -49,9 +42,8 @@ const ROLLING_WINDOW: Record<
   hour: { buckets: 6, label: "6-hour" },
 };
 
-type CostTotals = Pick<Point, "mergedCodeChanges" | "outcomes"> & {
+type CostTotals = Pick<Point, "mergedCodeChanges"> & {
   mergedCodeChangeCostUsd: number;
-  outcomeCostUsd: number;
 };
 
 function sumCosts(buckets: readonly ConversationMetricDay[]): CostTotals {
@@ -61,30 +53,22 @@ function sumCosts(buckets: readonly ConversationMetricDay[]): CostTotals {
         total.mergedCodeChangeCostUsd + (bucket.mergedCodeChangeCostUsd ?? 0),
       mergedCodeChanges:
         total.mergedCodeChanges + (bucket.mergedCodeChanges ?? 0),
-      outcomeCostUsd: total.outcomeCostUsd + (bucket.outcomeCostUsd ?? 0),
-      outcomes: total.outcomes + (bucket.outcomes ?? 0),
     }),
-    {
-      mergedCodeChangeCostUsd: 0,
-      mergedCodeChanges: 0,
-      outcomeCostUsd: 0,
-      outcomes: 0,
-    },
+    { mergedCodeChangeCostUsd: 0, mergedCodeChanges: 0 },
   );
 }
 
-function unitCosts(totals: CostTotals): Pick<Point, "merged" | "outcome"> {
+function unitCosts(totals: CostTotals): Pick<Point, "merged"> {
   return {
     merged: totals.mergedCodeChanges
       ? totals.mergedCodeChangeCostUsd / totals.mergedCodeChanges
       : null,
-    outcome: totals.outcomes ? totals.outcomeCostUsd / totals.outcomes : null,
   };
 }
 
 /**
  * Mean cost over the window that ends on each of the last `points` buckets.
- * One bucket often has no outcome, or one costly merge, so a ratio per bucket
+ * One bucket often has no merge, or one costly merge, so a ratio per bucket
  * is mostly noise. A bucket without a full window of history has no value, so
  * a line never starts on a partial window.
  */
@@ -115,11 +99,11 @@ function formatAxisCost(value: number): string {
 }
 
 /**
- * Plot the rolling cost per outcome and per merged code change at the bucket
- * size of the selected range. `history` holds the same buckets as `days`, and
+ * Plot the rolling cost per merged code change at the bucket size of the
+ * selected range. `history` holds the same buckets as `days`, and
  * may start earlier so the first points get a full window.
  */
-export function OutcomeCostChart(props: {
+export function MergedChangeCostChart(props: {
   bucketUnit: TimeRangeBucketUnit;
   days: ConversationMetricDay[];
   history: readonly ConversationMetricDay[];
@@ -130,16 +114,16 @@ export function OutcomeCostChart(props: {
   const periodCosts = unitCosts(period);
   const maximum = Math.max(
     Number.EPSILON,
-    ...data.flatMap((point) => [point.outcome ?? 0, point.merged ?? 0]),
+    ...data.map((point) => point.merged ?? 0),
   );
   return (
     <Card>
       <ChartHeader
-        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes and ${formatCompactNumber(period.outcomes - period.mergedCodeChanges)} answered or done conversations. Lines are ${window.label} rolling means; the legend shows the period mean.`}
-        title="Cost per outcome"
+        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes. The line is a ${window.label} rolling mean; the legend shows the period mean.`}
+        title="Cost per merged change"
         trailing={
           <ChartLegend
-            ariaLabel="Cost per outcome series"
+            ariaLabel="Cost per merged change series"
             inline
             items={SERIES.map((series) => ({
               ...series,
@@ -156,7 +140,7 @@ export function OutcomeCostChart(props: {
           )}
         >
           <ComposedChart
-            aria-label={`${window.label} rolling cost per outcome per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
+            aria-label={`${window.label} rolling cost per merged change per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
             data={data}
             margin={activityChartMargin}
             role="img"
@@ -168,10 +152,6 @@ export function OutcomeCostChart(props: {
               content={
                 <ActivityChartTooltipContent
                   rows={(point: Point) => [
-                    [
-                      `Per outcome (${formatCompactNumber(point.outcomes)})`,
-                      formatUnitCost(point.outcome),
-                    ],
                     [
                       `Per merged change (${formatCompactNumber(point.mergedCodeChanges)})`,
                       formatUnitCost(point.merged),
