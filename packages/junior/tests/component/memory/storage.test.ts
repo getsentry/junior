@@ -36,8 +36,10 @@ import {
 import { createMemoryCliCommand } from "@/chat/memory/cli";
 import { createMemoryRegistration } from "@/chat/memory/registration";
 import { processMemorySession } from "@/chat/memory/process-session";
+import { reembedMemories } from "@/chat/memory/reembed";
 import {
   memoryArchiveTool,
+  memoryRestoreTool,
   memoryCreateTool,
   memoryListTool,
   memorySearchTool,
@@ -717,6 +719,7 @@ describe("memory plugin storage", () => {
       archiveMemory: disabled,
       createMemory: disabled,
       listMemories: "enabled",
+      restoreMemory: disabled,
       searchMemories: "enabled",
     };
     expect(toolStates({ kind: "agent_invocation" })).toEqual(readOnly);
@@ -744,6 +747,7 @@ describe("memory plugin storage", () => {
       archiveMemory: "enabled",
       createMemory: "enabled",
       listMemories: "enabled",
+      restoreMemory: "enabled",
       searchMemories: "enabled",
     });
   });
@@ -2753,6 +2757,87 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(hiddenDeleteResponse.status).toBe(404);
+
+      // Archived public memory is listed apart, and deleting its archive
+      // restores it.
+      const archivedResponse = await api.fetch(
+        new Request("http://localhost/memories?archived=true"),
+        requestContext,
+      );
+      const archived = memoryListResponseSchema.parse(
+        await archivedResponse.json(),
+      ).memories;
+      expect(archived.map((memory) => memory.id).sort()).toEqual(
+        [publicMemory.memory.id, second.memory.id].sort(),
+      );
+      expect(archived).toContainEqual(
+        expect.objectContaining({
+          archiveReason: "user_removed",
+          archivedAt: new Date(TEST_NOW_MS).toISOString(),
+          id: publicMemory.memory.id,
+        }),
+      );
+      const archivedDetailResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories/${publicMemory.memory.id}?archived=true`,
+        ),
+        requestContext,
+      );
+      expect(
+        memoryApiSchema.parse(await archivedDetailResponse.json()),
+      ).toMatchObject({ archiveReason: "user_removed" });
+      const restorePatch = (id: string, body: unknown) =>
+        api.fetch(
+          new Request(`http://localhost/memories/${id}`, {
+            body: JSON.stringify(body),
+            headers: { "content-type": "application/json" },
+            method: "PATCH",
+          }),
+          requestContext,
+        );
+      const invalidPatch = await restorePatch(publicMemory.memory.id, {
+        archived: "no",
+      });
+      expect(invalidPatch.status).toBe(400);
+      const restoreResponse = await restorePatch(publicMemory.memory.id, {
+        archived: false,
+      });
+      expect(restoreResponse.status).toBe(200);
+      expect(memoryApiSchema.parse(await restoreResponse.json())).toEqual(
+        expect.not.objectContaining({ archivedAt: expect.anything() }),
+      );
+      // The heartbeat writes the vectors that archive deleted.
+      await reembedMemories({
+        batchSize: 10,
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+      });
+      await expect(
+        memoryDb(fixture)
+          .select({ memoryId: memorySqlSchema.juniorMemoryEmbeddings.memoryId })
+          .from(memorySqlSchema.juniorMemoryEmbeddings)
+          .where(
+            eq(
+              memorySqlSchema.juniorMemoryEmbeddings.memoryId,
+              publicMemory.memory.id,
+            ),
+          ),
+      ).resolves.toHaveLength(1);
+      for (const id of [publicMemory.memory.id, hiddenId]) {
+        const missingRestore = await restorePatch(id, { archived: false });
+        expect(missingRestore.status).toBe(404);
+      }
+
+      // A new memory that reused the archived one's write key keeps it.
+      await firstStore.createConversationMemory({
+        content: "Deploy runbooks live in Confluence.",
+        idempotencyKey: "session:api:second",
+        kind: "knowledge",
+      });
+      const conflictResponse = await restorePatch(second.memory.id, {
+        archived: false,
+      });
+      expect(conflictResponse.status).toBe(409);
     } finally {
       now.mockRestore();
       await fixture.close();
@@ -3830,6 +3915,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       const tools = {
         createMemory: bindPluginTool(memoryCreateTool, context),
         archiveMemory: bindPluginTool(memoryArchiveTool, context),
+        restoreMemory: bindPluginTool(memoryRestoreTool, context),
         listMemories: bindPluginTool(memoryListTool, context),
         searchMemories: bindPluginTool(memorySearchTool, context),
       };
@@ -3961,6 +4047,21 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       await expect(
         tools.searchMemories.execute({ query: "terse status" }, {}),
       ).resolves.toMatchObject({ memories: [] });
+      await expect(
+        tools.listMemories.execute({ archived: true }, {}),
+      ).resolves.toMatchObject({ memories: [{ id: personal!.id }] });
+      await expect(
+        tools.restoreMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+      ).resolves.toMatchObject({
+        memory: { content: "Prefers terse status updates.", id: personal!.id },
+      });
+      await expect(
+        tools.restoreMemory.execute({ id: personal!.id }, {}),
+      ).rejects.toBeInstanceOf(PluginToolInputError);
+      await expect(
+        tools.searchMemories.execute({ query: "terse status" }, {}),
+      ).resolves.toMatchObject({ memories: [{ id: personal!.id }] });
+      await tools.archiveMemory.execute({ id: personal!.id }, {});
 
       await expect(
         bindPluginTool(memoryCreateTool, {

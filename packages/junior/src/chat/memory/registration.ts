@@ -9,6 +9,7 @@ import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
   memoryArchiveTool,
+  memoryRestoreTool,
   memoryCreateTool,
   memoryListTool,
   memorySearchTool,
@@ -151,6 +152,7 @@ export function createMemoryRegistration(
           {
             createMemory: memoryCreateTool,
             archiveMemory: memoryArchiveTool,
+            restoreMemory: memoryRestoreTool,
             listMemories: memoryListTool,
             searchMemories: memorySearchTool,
           },
@@ -166,7 +168,11 @@ export function createMemoryRegistration(
         }
         const reason =
           "Only a person's message in a public Conversation can write memory.";
-        return { createMemory: reason, archiveMemory: reason };
+        return {
+          createMemory: reason,
+          archiveMemory: reason,
+          restoreMemory: reason,
+        };
       },
       ...(!options.disableRecall
         ? {

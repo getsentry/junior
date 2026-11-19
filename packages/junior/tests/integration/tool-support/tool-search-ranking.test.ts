@@ -56,6 +56,7 @@ const RANKING_CASES = [
   ["get deployment status", "github", "github_getDeployment"],
   ["remember something", "memory", "memory_createMemory"],
   ["forget a memory", "memory", "memory_archiveMemory"],
+  ["restore a forgotten memory", "memory", "memory_restoreMemory"],
   ["list my memories", "memory", "memory_listMemories"],
   [
     "find messages in conversation history",

@@ -34,6 +34,7 @@ const MEMORY_TOOL_NAMES = new Set([
   "archiveMemory",
   "createMemory",
   "listMemories",
+  "restoreMemory",
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;

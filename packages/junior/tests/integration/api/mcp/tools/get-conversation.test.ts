@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
 import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../../../fixtures/conversation-brief";
@@ -115,6 +116,73 @@ describe("getConversation MCP tool", () => {
     });
     expect(running.structuredContent).toMatchObject({
       conversation: { status: "needs_input", turnActive: true },
+    });
+  });
+
+  it("returns the viewer state apart from the status", async () => {
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    const other = await resolveViewerUser(MCP_TEST_OTHER_VIEWER);
+    const ask = {
+      addedByConversationId: CONVERSATION_ID,
+      body: "Pick one.",
+      conversationIds: [CONVERSATION_ID],
+      kind: "action" as const,
+      nowMs: Date.now(),
+      request: {
+        question: "Ship now?",
+        fields: [
+          {
+            id: "decision",
+            kind: "choice" as const,
+            label: "Decision",
+            options: [{ label: "Ship" }, { label: "Wait" }],
+          },
+        ],
+      },
+      title: "Ship the release?",
+      visibility: "public" as const,
+    };
+    await insertReviewItem(getDb(), {
+      ...ask,
+      assignedToEveryone: false,
+      assigneeUserIds: [other!.id],
+      dedupeKey: "other-ask",
+    });
+    const call = await connectMcpTools();
+
+    // It waits on another person, so it does not need the viewer.
+    const forOther = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+    await insertReviewItem(getDb(), {
+      ...ask,
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      dedupeKey: "everyone-ask",
+    });
+    const forEveryone = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+    const list = await call("searchConversations");
+
+    expect(forOther.structuredContent).toMatchObject({
+      conversation: {
+        status: "needs_input",
+        treeState: "done",
+        watching: false,
+      },
+    });
+    expect(forEveryone.structuredContent).toMatchObject({
+      conversation: { status: "needs_input", treeState: "needs_you" },
+    });
+    expect(list.structuredContent).toMatchObject({
+      conversations: [
+        { conversationId: CONVERSATION_ID, treeState: "needs_you" },
+      ],
     });
   });
 

@@ -149,16 +149,21 @@ result marks the matched words. Each record tells whether Junior
 learned it automatically or saved it because someone asked. Forgetting
 archives the memory for everyone, so Junior no longer recalls it.
 
+The **Archived** tab lists archived memories, with the date and the reason.
+**Restore** makes one active again, so Junior recalls it again. In a public
+Conversation, a person can also ask Junior to restore a memory.
+
 Junior also exposes authenticated REST resources:
 
-| Method   | Path                       | Purpose                                       |
-| -------- | -------------------------- | --------------------------------------------- |
-| `GET`    | `/api/memory/dashboard`    | Read memory totals and timeline               |
-| `GET`    | `/api/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
-| `GET`    | `/api/memory/memories/:id` | Read one memory                               |
-| `DELETE` | `/api/memory/memories/:id` | Forget one memory                             |
+| Method   | Path                                       | Purpose                                                                     |
+| -------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| `GET`    | `/api/memory/dashboard`            | Read memory totals and timeline                                             |
+| `GET`    | `/api/memory/memories`             | List memories with `q`, `cursor`, `limit`, and `archived=true` for archived |
+| `GET`    | `/api/memory/memories/:id`         | Read one memory, or one archived memory with `archived=true`                |
+| `DELETE` | `/api/memory/memories/:id`         | Forget one memory                                                           |
+| `PATCH`  | `/api/memory/memories/:id`         | Set `archived`: `false` restores an archived memory, `true` forgets it     |
 
-Personal API tokens can use the read endpoints. Deletion requires an
+Personal API tokens can use the read endpoints. Forget and restore require an
 authenticated dashboard browser session.
 
 ## Migrations
