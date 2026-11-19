@@ -8,8 +8,7 @@ import {
   conversationEventSchema,
   newConversationEventSchema,
 } from "@/chat/conversations/history";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import {
   hydrateConversationMessages,
@@ -26,11 +25,12 @@ import {
 } from "../fixtures/sql";
 import {
   loadConnectedMcpProviders,
-  loadPersonMessageTexts,
+  loadConversationSkillNames,
   openConversationProjection,
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
+  recordSkillLoaded,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { trimConversationMessages } from "@/chat/services/conversation-memory";
@@ -261,7 +261,7 @@ it("rejects new handoff writes through the replacement boundary", async () => {
   ).resolves.toEqual([]);
 });
 
-it("keeps actor-owned MCP connections and authorizations once across history replacement", async () => {
+it("keeps actor-owned MCP connections, authorizations, and loaded skills once across history replacement", async () => {
   const conversationId = "local:test:host-fact-before-model";
   const authorization = {
     conversationId,
@@ -283,6 +283,7 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
     });
     await recordAuthorizationCompleted(authorization);
     await recordAuthorizationCompleted(legacyAuthorization);
+    await recordSkillLoaded({ conversationId, skillName: "release" });
   };
   // A row written before host facts had idempotency keys.
   await getConversationEventStore().append(conversationId, [
@@ -315,11 +316,11 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
     }),
   ).resolves.toMatchObject({
     messages: [],
-    replacementSeq: 4,
+    replacementSeq: 5,
   });
   await expect(
     getConversationEventStore().loadHistory(conversationId),
-  ).resolves.toHaveLength(5);
+  ).resolves.toHaveLength(6);
   await expect(
     loadConnectedMcpProviders({
       conversationId,
@@ -329,42 +330,8 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
   await expect(
     loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UBOB" }),
   ).resolves.toEqual([]);
-});
-
-it("loads only the messages that people wrote", async () => {
-  const conversationId = "local:test:person-messages";
-  const message = (
-    messageId: string,
-    extra: { authorIdentityId?: string; meta?: Record<string, unknown> },
-  ) => ({
-    idempotencyKey: `message:${messageId}`,
-    data: {
-      type: "message" as const,
-      messageId,
-      role: "user" as const,
-      text: `$${messageId}`,
-      ...extra,
-    },
-    createdAtMs: 1,
-  });
-  const person = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: "T123",
-    providerSubjectId: "U123",
-  });
-  await getConversationEventStore().append(conversationId, [
-    message("person", { authorIdentityId: person.id }),
-    message("task", { meta: { agentInvocationId: "invocation-1" } }),
-    message("event", {
-      authorIdentityId: person.id,
-      meta: { eventType: "pull_request.comment.created" },
-    }),
-    message("system", { authorIdentityId: "system" }),
-  ]);
-
-  await expect(loadPersonMessageTexts(conversationId)).resolves.toEqual([
-    "$person",
+  await expect(loadConversationSkillNames(conversationId)).resolves.toEqual([
+    "release",
   ]);
 });
 

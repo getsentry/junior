@@ -93,7 +93,10 @@ import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
-import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import {
+  recordGuardianActionReviewed,
+  recordSkillLoaded,
+} from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -206,6 +209,8 @@ interface ToolWiringArgs {
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
   invokedSkills: readonly SkillMetadata[];
+  /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
+  conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
@@ -538,10 +543,10 @@ export async function wireAgentTools(
       modelId: botConfig.guardianModelId,
     }),
   });
-  const skills = loadableSkills(
-    args.availableSkills,
-    args.invokedSkills.map((skill) => skill.name),
-  );
+  const skills = loadableSkills(args.availableSkills, [
+    ...args.invokedSkills.map((skill) => skill.name),
+    ...args.conversationSkillNames,
+  ]);
   const tools = createTools(
     skills,
     {
@@ -555,7 +560,14 @@ export async function wireAgentTools(
         const resolvedSkill = await args.skillSandbox.loadSkill(
           loadedSkill.name,
         );
-        await tryRecordSkillLoadStat(resolvedSkill ?? loadedSkill);
+        const effective = resolvedSkill ?? loadedSkill;
+        if (effective.disableModelInvocation) {
+          await recordSkillLoaded({
+            conversationId: args.run.conversationId,
+            skillName: effective.name,
+          });
+        }
+        await tryRecordSkillLoadStat(effective);
       },
     },
     toolRuntimeContext,
