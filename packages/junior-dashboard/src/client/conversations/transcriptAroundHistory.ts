@@ -101,9 +101,7 @@ export function useHistoryAround(input: {
   // A prefetched page opens the transcript at once, with no pending render.
   const startPage =
     input.startPage ??
-    (start
-      ? queryClient.getQueryData(startPageQuery(conversationId, start).queryKey)
-      : undefined);
+    (start ? cachedStartPage(queryClient, conversationId, start) : undefined);
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -268,8 +266,38 @@ export function prefetchHistoryAround(
   queryClient: QueryClient,
   conversationId: string,
   start: HistoryStart,
-): void {
-  void queryClient.prefetchQuery(startPageQuery(conversationId, start));
+): Promise<void> {
+  return queryClient.prefetchQuery(startPageQuery(conversationId, start));
+}
+
+/**
+ * The read page around a start. For an event, a page read around another
+ * start also serves when it holds the event, so a jump to a message near a
+ * prefetched one needs no request either.
+ */
+export function cachedStartPage(
+  queryClient: QueryClient,
+  conversationId: string,
+  start: HistoryStart,
+): ConversationEventPage | undefined {
+  const exact = queryClient.getQueryData(
+    startPageQuery(conversationId, start).queryKey,
+  );
+  if (exact || !("event" in start)) return exact;
+  const seq = Number(start.event);
+  const pages = queryClient.getQueriesData<ConversationEventPage>({
+    predicate: (query) => query.queryKey[4] === "start",
+    queryKey: ["conversation", conversationId, "around"],
+  });
+  return pages
+    .map(([, page]) => page)
+    .find((page) => {
+      const first = page?.events[0]?.seq;
+      const last = page?.events.at(-1)?.seq;
+      return (
+        first !== undefined && last !== undefined && first <= seq && seq <= last
+      );
+    });
 }
 
 /**
