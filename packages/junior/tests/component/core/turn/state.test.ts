@@ -30,8 +30,6 @@ describe("Turn state", () => {
 
   beforeEach(async () => {
     fixture = await createJuniorSqlFixture();
-    const conversation = buildJuniorSqlConversation();
-    await fixture.sql.db().insert(juniorConversations).values(conversation);
     await fixture.sql.db().insert(juniorIdentities).values({
       createdAt: new Date(),
       id: "identity:actor",
@@ -41,26 +39,34 @@ describe("Turn state", () => {
       providerTenantId: "T123",
       updatedAt: new Date(),
     });
-    // This module does not create Turns, so the test writes a queued one.
-    turnId = randomUUID();
-    await fixture.sql.db().insert(juniorTurns).values({
-      id: turnId,
-      conversationId: conversation.conversationId,
-      actorIdentityId: "identity:actor",
-      state: "queued",
-    });
+    turnId = await insertQueuedTurn("slack:C123:1718123456.000000");
   });
 
   afterEach(async () => {
     await fixture.close();
   });
 
-  async function readTurn() {
+  // This module does not create Turns, so the test writes queued ones. A
+  // Conversation has at most one active Turn, so each gets its own.
+  async function insertQueuedTurn(conversationId: string) {
+    const conversation = buildJuniorSqlConversation({ conversationId });
+    await fixture.sql.db().insert(juniorConversations).values(conversation);
+    const id = randomUUID();
+    await fixture.sql.db().insert(juniorTurns).values({
+      id,
+      conversationId,
+      actorIdentityId: "identity:actor",
+      state: "queued",
+    });
+    return id;
+  }
+
+  async function readTurn(id = turnId) {
     const [turn] = await fixture.sql
       .db()
       .select()
       .from(juniorTurns)
-      .where(eq(juniorTurns.id, turnId));
+      .where(eq(juniorTurns.id, id));
     return turn!;
   }
 
@@ -135,6 +141,31 @@ describe("Turn state", () => {
     });
   });
 
+  it("queues only running Turns whose lease expired", async () => {
+    await claim("worker-a", EXPIRED_LEASE_MS);
+    const live = await insertQueuedTurn("slack:C123:live");
+    await claimTurn(fixture.sql, {
+      turnId: live,
+      owner: "worker-b",
+      leaseMs: LEASE_MS,
+    });
+    const queued = await insertQueuedTurn("slack:C123:queued");
+    const ended = await insertQueuedTurn("slack:C123:ended");
+    const endedLease = (await claimTurn(fixture.sql, {
+      turnId: ended,
+      owner: "worker-c",
+      leaseMs: EXPIRED_LEASE_MS,
+    }))!;
+    await completeTurn(fixture.sql, endedLease);
+    const others = [live, queued, ended];
+    const before = await Promise.all(others.map((id) => readTurn(id)));
+
+    await expect(reclaimExpired(fixture.sql)).resolves.toEqual([turnId]);
+    await expect(
+      Promise.all(others.map((id) => readTurn(id))),
+    ).resolves.toEqual(before);
+  });
+
   it("completes a running Turn, and a terminal Turn takes no other change", async () => {
     const claimed = (await claim())!;
 
@@ -189,6 +220,21 @@ describe("Turn state", () => {
     });
     expect(cancelled.endedAt).toBeInstanceOf(Date);
     await expect(completeTurn(fixture.sql, claimed)).resolves.toBe(false);
+    await expect(readTurn()).resolves.toEqual(cancelled);
+  });
+
+  it("cancels a queued Turn so no worker can claim it", async () => {
+    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(true);
+    const cancelled = await readTurn();
+    expect(cancelled).toMatchObject({
+      state: "cancelled",
+      leaseEpoch: 1,
+      attempts: 0,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    });
+    expect(cancelled.endedAt).toBeInstanceOf(Date);
+    await expect(claim()).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(cancelled);
   });
 });
