@@ -1,6 +1,7 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GoogleOperation } from "../credentials";
+import type { EditableFile } from "./editable-file";
 import {
   googleApiError,
   googleApiRequest,
@@ -120,6 +121,7 @@ export async function googleFileRequest(
   file: FileReference,
   input: {
     body?: unknown;
+    editable?: EditableFile;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -144,33 +146,43 @@ export async function googleFileRequest(
 
 const driveFileSchema = z.object({
   capabilities: z.object({ canEdit: z.boolean().optional() }).optional(),
+  driveId: z.string().optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
   name: z.string(),
+  owners: z.array(z.object({ emailAddress: z.string().optional() })).optional(),
   webViewLink: z.string().optional(),
 });
 
 /**
- * Read the Drive metadata of one file, and require one of the given types.
- *
- * `drive.readonly` can read any Drive file, so each tool checks the type
- * before it reads content or comments.
+ * Read the Drive metadata of one file. Use `readRequesterFile` or
+ * `requireEditableFile`, which check the requester first.
  */
 export async function readGoogleFileMetadata(
   ctx: GoogleToolContext,
   file: FileReference,
-  types: readonly GoogleFileType[],
 ) {
   const response = await googleFileRequest(ctx, file, {
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "capabilities(canEdit),id,mimeType,modifiedTime,name,webViewLink",
+      fields:
+        "capabilities(canEdit),driveId,id,mimeType,modifiedTime,name,owners(emailAddress),webViewLink",
       supportsAllDrives: "true",
     },
   });
-  const metadata = driveFileSchema.parse(response.body);
+  return driveFileSchema.parse(response.body);
+}
+
+/**
+ * Require one of the given file types. Call it only after the requester
+ * check: the error names the file.
+ */
+export function requireFileType<T extends { mimeType: string; name: string }>(
+  metadata: T,
+  types: readonly GoogleFileType[],
+): T & { type: GoogleFileType } {
   const type = googleFileType(metadata.mimeType);
   if (!type || !types.includes(type)) {
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");

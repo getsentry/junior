@@ -38,6 +38,8 @@ Do not list behaviors. The verification map in
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
+- [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
+  through Junior's own Google account.
 - [Guardian](./guardian.md): review of each tool action before it runs.
 - [Inbox](./inbox.md): the dashboard view of the Review desk, one stack of
   cards for each root Conversation.
