@@ -3517,6 +3517,139 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("writes the size that a pull request payload counts", async () => {
+    const fixture = await createGitHubFixture();
+    const codeChanges: CodeChangeInput[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        codeChanges,
+      );
+      const opened = pullRequestPayload();
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1204,
+              changed_files: 12,
+              deletions: 340,
+            },
+          }),
+        ),
+      );
+      // A push sends the new counts.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "synchronize",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1310,
+              changed_files: 13,
+              deletions: 342,
+              updated_at: "2026-07-01T18:00:00.000Z",
+            },
+          }),
+        ),
+      );
+      // A payload without counts leaves the stored size alone.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "closed",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              closed_at: "2026-07-02T12:00:00.000Z",
+              updated_at: "2026-07-02T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
+      // A push after the close keeps the pull request closed.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "synchronize",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1400,
+              closed_at: "2026-07-02T12:00:00.000Z",
+              updated_at: "2026-07-03T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
+
+      expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
+        ["open", { additions: 1204, changedFiles: 12, deletions: 340 }],
+        ["open", { additions: 1310, changedFiles: 13, deletions: 342 }],
+        ["closed", undefined],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps the size of a push that arrives before opened", async () => {
+    const fixture = await createGitHubFixture();
+    const codeChanges: CodeChangeInput[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        codeChanges,
+      );
+      const opened = pullRequestPayload();
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "synchronize",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1310,
+              changed_files: 13,
+              deletions: 342,
+              updated_at: "2026-07-01T18:00:00.000Z",
+            },
+          }),
+        ),
+      );
+      // The late `opened` has older counts, so it does not replace them.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1204,
+              changed_files: 12,
+              deletions: 340,
+            },
+          }),
+        ),
+      );
+
+      expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
+        ["open", { additions: 1310, changedFiles: 13, deletions: 342 }],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("updates each chip when one stored chip has facts for another object type", async () => {
     const fixture = await createGitHubFixture();
     const key = "getsentry/junior#946";
