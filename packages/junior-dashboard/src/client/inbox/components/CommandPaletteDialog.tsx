@@ -11,6 +11,7 @@ import {
   MessageSquare,
   SquarePen,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -25,6 +26,7 @@ import {
   useAutomationsData,
   useCodeRepositoryConversationsData,
   useConversationsData,
+  useDashboardCoreData,
 } from "../../api";
 import {
   FOCUS_REPLY_STATE,
@@ -33,6 +35,7 @@ import {
 } from "../../conversations/conversationRoutes";
 import { useDebouncedValue } from "../../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../../format";
+import { paletteNavPages, type PalettePage } from "../../navPages";
 import {
   AUTOMATION_LIST_SEARCH,
   automationSelectPath,
@@ -63,6 +66,17 @@ import {
 import { Kbd } from "../../components/ui/kbd";
 import { formatCompactAge } from "../../time";
 import { fadeTextClass } from "../../textFade";
+
+/** A page row before it is matched: a nav item or another page. */
+type PageRow = {
+  icon: LucideIcon;
+  key: string;
+  label: string;
+  /** The page's area, such as Settings for API Tokens. */
+  meta?: string | undefined;
+  state?: typeof FOCUS_REPLY_STATE;
+  to: string;
+};
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -118,6 +132,16 @@ function CommandPaletteBody(props: {
     Boolean(search),
     new URLSearchParams({ pageSize: "20", q: search }).toString(),
   );
+  const viewer = useDashboardCoreData().data?.me.user;
+  const navPages = useMemo(
+    () =>
+      paletteNavPages({
+        email: viewer?.email,
+        isAdmin: viewer?.isAdmin === true,
+        navItems: props.navItems,
+      }),
+    [props.navItems, viewer?.email, viewer?.isAdmin],
+  );
   const navigate = useNavigate();
   const { pathname } = useLocation();
   // On a repository page, its matching Conversations lead their group.
@@ -168,6 +192,7 @@ function CommandPaletteBody(props: {
         inbox: inbox.items,
         inboxSearched: inboxSearchedCurrent ? inboxSearched.items : [],
         navItems: props.navItems,
+        navPages,
         query: query.trim(),
         repositorySearched: repositorySearchedCurrent
           ? buildConversations(repositorySearched.data?.conversations ?? [])
@@ -185,6 +210,7 @@ function CommandPaletteBody(props: {
       inboxSearched.items,
       inboxSearchedCurrent,
       directories.items,
+      navPages,
       activeGroup,
       props.actions,
       props.currentConversationId,
@@ -288,6 +314,8 @@ function paletteItems(input: {
   /** Server matches on title and body. */
   inboxSearched: ReviewItemPayload[];
   navItems: DashboardHeaderNavItem[];
+  /** Pages outside the nav items, which list once the viewer types. */
+  navPages: PalettePage[];
   query: string;
   /** Server matches linked to the open repository page. */
   repositorySearched: Conversation[];
@@ -297,7 +325,7 @@ function paletteItems(input: {
     conversations.filter(
       (conversation) => conversation.id !== input.currentConversationId,
     );
-  const pages = [
+  const pages: PageRow[] = [
     {
       icon: SquarePen,
       key: "new-conversation",
@@ -311,14 +339,25 @@ function paletteItems(input: {
       label: item.label,
       to: item.to,
     })),
+    // Every other page waits for typed text, so the empty palette stays short.
+    ...(input.query
+      ? input.navPages.map((page) => ({
+          icon: navItemIcon(page.area?.key ?? page.key),
+          key: page.key,
+          label: page.label,
+          meta: page.area?.label,
+          to: page.to,
+        }))
+      : []),
   ];
-  const pageItem = (page: (typeof pages)[number]): PaletteItem => ({
+  const pageItem = (page: PageRow): PaletteItem => ({
     group: "Go to",
     icon: page.icon,
     id: `page-${page.key}`,
     label: page.label,
+    meta: page.meta,
     score: 0,
-    state: "state" in page ? page.state : undefined,
+    state: page.state,
     to: page.to,
   });
   const actionItem = (action: PaletteAction): PaletteItem => ({

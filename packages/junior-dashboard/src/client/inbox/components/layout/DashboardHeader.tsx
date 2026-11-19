@@ -18,6 +18,7 @@ import { PaneDestinations } from "../../../review-desk/PaneDestinations";
 import { cn, dashboardInteractiveTextClass } from "../../../styles";
 import { MOBILE_LAYOUT_QUERY } from "../../../layoutMedia";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
+import { NAV_PAGES } from "../../../navPages";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
@@ -149,7 +150,7 @@ export function DashboardHeader(props: {
             "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
-          to="/"
+          to={NAV_PAGES.inbox.to}
         >
           <span
             className={cn(fadeOverflowClass, "font-sans text-sm font-semibold")}
@@ -170,7 +171,7 @@ export function DashboardHeader(props: {
             <Link
               aria-label={`${getDashboardAgentName()} home`}
               className="flex min-w-0 font-sans text-sm font-semibold text-inherit no-underline"
-              to="/"
+              to={NAV_PAGES.inbox.to}
             >
               <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                 {getDashboardAgentName()}
