@@ -61,7 +61,12 @@ import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import { conversationAnswerLine, type InboxBundle } from "./reviewItemFormat";
+import {
+  conversationAnswerLine,
+  itemNeedsViewer,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -195,6 +200,24 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
+  const { includedId, includeItem } = data;
+  // In the Inbox, an ask that waits on someone else gets no row, so its
+  // link does not replace the item that an earlier link kept. It still
+  // joins a To do stack that another item keeps there; the kept item does
+  // not count, since the link replaces it.
+  const linkedGetsRow =
+    !linked.data ||
+    view !== "inbox" ||
+    linked.data.kind === "notice" ||
+    itemUpForGrabs(linked.data) ||
+    itemNeedsViewer(linked.data) ||
+    data.todoRows.some(
+      (row) =>
+        row.conversationId === linked.data?.rootConversationId &&
+        row.items.some(
+          (item) => item.id !== includedId && itemNeedsViewer(item),
+        ),
+    );
   // Stream rows show a page at a time, so a linked row can be past them.
   const linkedStreamIndex =
     linkedOpen && linkedRowKey?.startsWith("conversation:")
@@ -203,7 +226,6 @@ export function InboxList(props: {
         )
       : -1;
   const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
-  const { includedId, includeItem } = data;
   useEffect(() => {
     if (!linkedId) return;
     // The router moves the URL as soon as the reader leaves, before this
@@ -260,7 +282,7 @@ export function InboxList(props: {
     if (linked.data.status === "open") {
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
-      if (includedId !== linkedId) includeItem(linkedId);
+      if (linkedGetsRow && includedId !== linkedId) includeItem(linkedId);
       else void navigate(listPath, { replace: true });
     } else if (view === "done") {
       const closedId = linked.data.id;
@@ -277,6 +299,7 @@ export function InboxList(props: {
     includedId,
     linked.data,
     linked.error,
+    linkedGetsRow,
     linkedId,
     linkedLoaded,
     linkedRowKey,
