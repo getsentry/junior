@@ -14,6 +14,7 @@ import {
   completeTurn,
   failTurn,
   heartbeat,
+  holdsLease,
   reclaimExpired,
 } from "@/core/turn/state";
 import {
@@ -137,6 +138,8 @@ describe("Turn state", () => {
     });
     expect(running.leaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
 
+    await expect(holdsLease(fixture.sql, taken!)).resolves.toBe(true);
+    await expect(holdsLease(fixture.sql, stale)).resolves.toBe(false);
     await expect(heartbeat(fixture.sql, stale, LEASE_MS)).resolves.toBe(false);
     await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
       false,
@@ -294,6 +297,7 @@ describe("Turn state", () => {
       leaseExpiresAt: null,
     });
     expect(cancelled.endedAt).toBeInstanceOf(Date);
+    await expect(holdsLease(fixture.sql, claimed)).resolves.toBe(false);
     await expect(completeTurn(fixture.sql, claimed)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(cancelled);
   });
