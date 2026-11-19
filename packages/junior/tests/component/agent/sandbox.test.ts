@@ -237,4 +237,44 @@ describe("createAgentSandbox", () => {
     expect(executeSandboxToolMock).toHaveBeenCalledWith(call);
     expect(writeGeneratedFilesMock).toHaveBeenCalledWith(workspace, []);
   });
+
+  it("restores artifacts after preparation and adds the save note to results", async () => {
+    const calls: string[] = [];
+    const artifacts = {
+      restore: vi.fn(async () => {
+        calls.push("restore");
+      }),
+      afterToolCall: vi.fn(async () => "not saved"),
+    };
+    executeSandboxToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "{}" }],
+      details: { exit_code: 0 },
+    });
+    const sandbox = createAgentSandbox(
+      options({
+        artifacts,
+        prepareSandbox: async () => {
+          calls.push("prepare");
+        },
+      }),
+    );
+
+    await capturedOptions.prepare?.(workspace);
+    const result = await sandbox.tools.execute({
+      toolName: "bash",
+      input: { command: "touch artifacts/a" },
+    });
+
+    expect(calls).toEqual(["prepare", "restore"]);
+    expect(artifacts.afterToolCall).toHaveBeenCalledWith("bash", workspace);
+    expect(result).toEqual({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ artifacts_note: "not saved", exit_code: 0 }),
+        },
+      ],
+      details: { artifacts_note: "not saved", exit_code: 0 },
+    });
+  });
 });

@@ -60,8 +60,8 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
 ### Context inputs
 
 - `prompt-markers.md` owns tags, untrusted text, and escaping.
-- Context message, each in its own content part: `<runtime-turn-context>`, a
-  loaded `<skill>`, `AGENTS.md` at Turn start, and `<thread-context>`.
+- Context message, each in its own content part: `<runtime-turn-context>`,
+  `AGENTS.md` at Turn start, and `<thread-context>`. Skills come from `loadSkill`.
 - A Turn adds `AGENTS.md` only when it differs from the latest copy in
   history. Otherwise the copy in history applies.
 - `AGENTS.md` that the Turn finds or changes later: a new user-role message at

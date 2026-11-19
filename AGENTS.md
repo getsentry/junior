@@ -4,8 +4,8 @@ Read the reference files at the end when your work touches their area.
 
 ## Rules
 
-- Don't state the obvious. In UI copy, agent replies, Slack messages, docs,
-  and PR text, cut what the context already shows.
+- Don't state the obvious. Minimize visual noise in UI. In UI copy, agent
+  replies, Slack messages, docs, and PR text, cut what the context already shows.
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
 - Build the smallest design that solves the proven problem. No speculative
   abstractions, configuration, or wrappers.

@@ -8,6 +8,7 @@
 import type { FileUpload } from "chat";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { withArtifactNote, type ArtifactSync } from "@/chat/artifacts/sync";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
@@ -40,6 +41,8 @@ export interface AgentSandboxOptions {
   credentialEgress?: CredentialContext | undefined;
   credentialAuditSource?: CredentialAuditSource;
   actor?: Actor | undefined;
+  /** Saves and restores the Conversation's artifacts. Unset without attachment storage. */
+  artifacts?: ArtifactSync | undefined;
   locationConfiguration?: LocationConfigurationService | undefined;
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
@@ -171,7 +174,10 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     conversationId: options.conversationId,
     credentialEgress: options.credentialEgress,
     credentialAuditSource: options.credentialAuditSource,
-    prepare: options.prepareSandbox,
+    prepare: async (workspace) => {
+      await options.prepareSandbox(workspace);
+      await options.artifacts?.restore(workspace);
+    },
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
       options.onSandboxRefChanged(sandboxRef);
@@ -209,7 +215,15 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
             return formatSandboxCommandResult(result.result);
           }
         }
-        return await sandbox.tools.execute(params);
+        const result = await sandbox.tools.execute(params);
+        // Save even after an abort: the tool finished, and a later restore
+        // would put the old saved copy back over its changes.
+        if (!options.artifacts) return result;
+        const note = await options.artifacts.afterToolCall(
+          params.toolName,
+          sandbox.workspace,
+        );
+        return note ? withArtifactNote(result, note) : result;
       },
     },
     async writeGeneratedFiles(files) {

@@ -30,6 +30,8 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
  *   read comments. The Drive comments API accepts no narrower read scope. The
  *   Sheets and Slides APIs also accept this scope.
+ * - `presentations`: edit Slides that Junior's account can already edit,
+ *   through the Slides API. Like `documents`, it cannot change sharing.
  */
 export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",
@@ -38,6 +40,7 @@ export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/presentations",
 ] as const;
 
 /** Identity scopes used only to verify which account signed in. */
