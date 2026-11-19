@@ -1,9 +1,21 @@
 import * as z from "zod";
 
+/** The most Conversations that one versions read gives tokens for. */
+export const VERSIONS_CONVERSATION_LIMIT = 50;
+
 export const versionsQuerySchema = z
   .object({
-    /** The open Conversation, whose token comes back as `conversation`. */
-    conversationId: z.string().min(1).optional(),
+    /**
+     * The Conversations on screen, comma separated. Their tokens come back
+     * in `conversationDetails`.
+     */
+    conversationIds: z
+      .string()
+      .default("")
+      .transform((value) => [...new Set(value.split(",").filter(Boolean))])
+      .pipe(
+        z.array(z.string().min(1).max(200)).max(VERSIONS_CONVERSATION_LIMIT),
+      ),
   })
   .strict();
 
@@ -15,11 +27,11 @@ export const versionsQuerySchema = z
 export const versionsSchema = z
   .object({
     /**
-     * Tree token of the requested Conversation, the same value as the
-     * detail report's `CONVERSATION_VERSION_HEADER`. Missing when it does
-     * not exist.
+     * Tree token of each requested Conversation by id, the same value as
+     * its detail report's `CONVERSATION_VERSION_HEADER`. A Conversation
+     * that does not exist has no entry.
      */
-    conversation: z.string().min(1).optional(),
+    conversationDetails: z.record(z.string(), z.string().min(1)),
     /**
      * The viewer's Conversation feed. It lists a short token for each
      * feed-row input as `name:token`, separated by spaces, so the dashboard

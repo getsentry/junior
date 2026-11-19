@@ -142,6 +142,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       const open: unknown[] = [rollout];
       await mockReviewItems(page, { automations: () => 0, open });
       const versions = {
+        conversationDetails: {},
         conversations: "mock",
         reviewItems: "review-1",
         spend: "mock",

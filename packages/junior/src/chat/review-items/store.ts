@@ -865,11 +865,39 @@ export type WaitingConversation = {
   waitingSince: string;
 };
 
+// The root of a linked Conversation. An item that a child agent adds links
+// the child, and the feed lists only roots.
+const waitingRootId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`;
+
+/**
+ * Return a query for the ids of the root Conversations that wait on a User,
+ * as `listWaitingConversations` lists them, to filter another query by.
+ */
+export function waitingConversationIdsQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  return db
+    .select({ conversationId: waitingRootId })
+    .from(juniorReviewItemConversations)
+    .innerJoin(
+      juniorReviewItems,
+      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
+    )
+    .where(reviewItemNeedsUser(userId));
+}
+
 /**
  * List the root Conversations that wait on a User: each root or one of its
  * child conversations is linked to an open item that needs the User
- * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
- * and the feed lists only roots.
+ * (`reviewItemNeedsUser`).
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -877,7 +905,7 @@ export async function listWaitingConversations(
 ): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
+      conversationId: waitingRootId,
       itemId: juniorReviewItems.id,
       dedupeKey: juniorReviewItems.dedupeKey,
       title: juniorReviewItems.title,
