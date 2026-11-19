@@ -9,7 +9,6 @@
  */
 import type { StateAdapter } from "chat";
 import * as z from "zod";
-import { isRecord } from "@/chat/coerce";
 import { logWarn } from "@/chat/logging";
 import type { Api, Model, StreamOptions } from "@/chat/pi/sdk";
 import { createCache } from "@/chat/state/cache";
@@ -27,6 +26,13 @@ const PROVIDER_SLUGS: Readonly<Record<string, string>> = {
 };
 
 const enabledProvidersSchema = z.array(z.string());
+// Pi passes the Messages request body as `unknown`. Keep every field, and
+// read only the provider options that this module extends.
+const messagesBodySchema = z.looseObject({
+  providerOptions: z
+    .looseObject({ gateway: z.looseObject({}).optional() })
+    .optional(),
+});
 const modelEndpointsSchema = z.object({
   data: z.object({
     endpoints: z.array(z.object({ provider_name: z.string() })),
@@ -110,19 +116,14 @@ async function gatewayOnlyForModel(
   return gatewayOnlyProviders(enabled, served);
 }
 
-function withGatewayOnly(payload: unknown, only: string[]): unknown {
-  if (!isRecord(payload)) {
-    throw new Error("Messages request body is not an object");
-  }
-  const providerOptions = isRecord(payload["providerOptions"])
-    ? payload["providerOptions"]
-    : {};
-  const gateway = isRecord(providerOptions["gateway"])
-    ? providerOptions["gateway"]
-    : {};
+function withGatewayOnly(payload: unknown, only: string[]) {
+  const body = messagesBodySchema.parse(payload);
   return {
-    ...payload,
-    providerOptions: { ...providerOptions, gateway: { ...gateway, only } },
+    ...body,
+    providerOptions: {
+      ...body.providerOptions,
+      gateway: { ...body.providerOptions?.gateway, only },
+    },
   };
 }
 
