@@ -48,6 +48,7 @@ export function registerSearchAutomationsTool(
     async ({ page, q, scope, skill, state }) => {
       const list = await readViewerAutomations(
         user,
+        // oxlint-disable-next-line junior/no-response-schema-parse -- Request input: MCP tool arguments, and the schema sets defaults.
         automationListQuerySchema.parse({ page, q, scope, skill, state }),
       );
       return mcpToolResult({

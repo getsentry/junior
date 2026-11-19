@@ -49,6 +49,7 @@ export async function readConversationFeedBriefs(
   return new Map(
     rows.map(({ conversationId, ...brief }) => [
       conversationId,
+      // oxlint-disable-next-line junior/no-response-schema-parse -- Stored read: the Brief comes from stored JSON.
       conversationFeedBriefSchema.parse(brief),
     ]),
   );

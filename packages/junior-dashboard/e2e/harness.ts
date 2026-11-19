@@ -33,10 +33,19 @@ export function withRequestedMailbox<T extends { conversationId: string }>(
     : report;
 }
 
+/** The Conversation ids that a versions poll asks tokens for. */
+export function requestedConversationIds(route: Route): string[] {
+  const ids = new URL(route.request().url()).searchParams.get(
+    "conversationIds",
+  );
+  return ids ? ids.split(",") : [];
+}
+
 /**
- * Answer the versions poll with a tree token for the open Conversation, so
- * a mocked detail that sends the same token refreshes when it moves, as on
- * the server. The other tokens stay fixed.
+ * Answer the versions poll with one tree token for each requested
+ * Conversation, so a mocked detail that sends the same token refreshes when
+ * it moves, as on the server. Mock details send no token, so the others do
+ * not refresh. The other tokens stay fixed.
  */
 export async function routeConversationVersion(
   page: Page,
@@ -45,7 +54,12 @@ export async function routeConversationVersion(
   await page.route("**/api/versions*", (route) =>
     route.fulfill({
       json: {
-        conversation: conversationVersion(),
+        conversationDetails: Object.fromEntries(
+          requestedConversationIds(route).map((id) => [
+            id,
+            conversationVersion(),
+          ]),
+        ),
         conversations: "mock",
         reviewItems: "mock",
         spend: "mock",

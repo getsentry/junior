@@ -5,6 +5,7 @@ import {
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { conversationFeedSchema } from "@/api/schema";
+import { ACTIVITY_PREVIEW_MAX_LENGTH } from "@/api/schema/activity-preview-text";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
@@ -18,11 +19,12 @@ import {
   recordSlackRoot,
 } from "../../../fixtures/conversation-status";
 import { expectResponseBudget } from "../../../fixtures/response-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
 
 // The longest message that the web composer accepts. An assistant message
-// has no cap, and the feed row previews all of it.
+// has no cap, and the feed row previews only its start.
 const LATEST_MESSAGE_CHARS = 32_000;
 
 function text(length: number, fill = "x"): string {
@@ -165,12 +167,16 @@ describe("conversation list API response budget", () => {
     }
 
     const response = await expectResponseBudget(
-      () => fixture.request("/api/conversations?include=links,media"),
+      () =>
+        expectSqlBudget(
+          () => fixture.request("/api/conversations?include=links,media"),
+          { statements: 21, serialRounds: 3 },
+        ),
       // Pins and waiting rows are not paged, so the body has no budget.
       {
         // A row's own fields, plus its activity preview, which holds the
-        // whole latest message.
-        conversations: 1_959 + 32_069,
+        // start of the latest message.
+        conversations: 1_959 + 469,
         // A row lists every one of these, with no cap on the count. Each
         // item has its own budget, and the row leaves them out.
         "conversations.annotations": 16_654,
@@ -186,7 +192,7 @@ describe("conversation list API response budget", () => {
     );
     expect(feed.nextCursor).toBeDefined();
     expect(feed.conversations[0]?.activityPreview?.text).toHaveLength(
-      LATEST_MESSAGE_CHARS,
+      ACTIVITY_PREVIEW_MAX_LENGTH,
     );
   });
 });

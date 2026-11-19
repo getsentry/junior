@@ -4,7 +4,6 @@ import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
 import { isOpenTodoStatus, type Todo } from "@/chat/todos/types";
 import { throwApiError } from "../http";
 import {
-  conversationTodosReportSchema,
   type ConversationTodo,
   type ConversationTodosReport,
   type TodoStatusBody,
@@ -67,13 +66,13 @@ export async function requireConversationTodos(
     .filter((todo) => !isOpenTodoStatus(todo.status))
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     .slice(0, RECENT_CLOSED_TODOS);
-  return conversationTodosReportSchema.parse({
+  return {
     conversationId,
     todos: [
       ...todos.filter((todo) => isOpenTodoStatus(todo.status)),
       ...closed,
     ].map((todo) => reportTodo(todo, canViewPrivateContent)),
-  });
+  };
 }
 
 /**
