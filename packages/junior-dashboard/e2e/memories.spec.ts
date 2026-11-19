@@ -311,3 +311,90 @@ test("searches, paginates, and forgets plugin page records", async ({
   await memoryNavigation.getByRole("link", { name: "Overview" }).click();
   await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 });
+
+test("lists archived memories and restores one", async ({
+  page,
+  dashboard,
+}) => {
+  let restoreMethod: string | undefined;
+  await page.route("**/api/user-pages/memory/memories*", async (route) => {
+    const archived =
+      new URL(route.request().url()).searchParams.get("filter") === "archived";
+    const records = !archived
+      ? [{ id: "memory-1", title: "First page memory." }]
+      : restoreMethod
+        ? []
+        : [
+            {
+              actions: [
+                {
+                  href: "/api/plugins/memory/memories/memory-archived/archive",
+                  label: "Restore",
+                  method: "DELETE",
+                  tone: "neutral",
+                },
+              ],
+              id: "memory-archived",
+              metadata: [
+                { label: "Type", value: "Knowledge" },
+                { label: "Learned", value: "Automatic" },
+                { label: "Source", value: "Slack" },
+                { label: "Remembered", value: "Jul 1, 2026, 12:00 PM" },
+                { label: "Archived", value: "Jul 30, 2026, 12:00 PM" },
+                { label: "Reason", value: "Contradicted" },
+              ],
+              title: "Junior's updatePlan tool does not persist plan steps.",
+            },
+          ];
+    await route.fulfill({
+      json: {
+        type: "list",
+        emptyText: archived ? "No archived memories." : "No memories yet.",
+        records,
+        searchPlaceholder: "Search memories",
+      },
+    });
+  });
+  await page.route(
+    "**/api/plugins/memory/memories/memory-archived**",
+    async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith("/archive")) {
+        restoreMethod = route.request().method();
+        await route.fulfill({ status: 204 });
+        return;
+      }
+      // Only active memories have a detail read.
+      await route.fulfill({
+        json: { error: "Memory was not found for this user." },
+        status: 404,
+      });
+    },
+  );
+
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto(`${dashboard.baseURL}/memories/library`);
+  await page
+    .getByRole("tablist", { name: "Memory state" })
+    .getByRole("tab", { name: "Archived" })
+    .click();
+  await expect(page).toHaveURL(/filter=archived/);
+  await expect(
+    page.getByRole("heading", { name: "Archived memories" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: /^View memory details: Junior's updatePlan tool/,
+    })
+    .click();
+  const details = page.getByRole("complementary", { name: "Memory details" });
+  await expect(details.getByText("Contradicted")).toBeVisible();
+  await expect(
+    details.getByRole("button", { name: "Forget this memory" }),
+  ).toHaveCount(0);
+  await screenshot(page, "memories-archived-details");
+
+  await details.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("No archived memories.")).toBeVisible();
+  expect(restoreMethod).toBe("DELETE");
+  await screenshot(page, "memories-archived-empty");
+});

@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
@@ -30,9 +30,9 @@ const SUMMARIZED_METADATA = new Set(["Learned", "Memory ID", "Source", "Type"]);
 
 /** Show one memory beside the library, or in a bottom sheet on small screens. */
 export function MemoryDetails(props: {
-  forgetPending: boolean;
+  actionPending: boolean;
+  onAction(action: PluginUserPageRecordAction): void;
   onClose(): void;
-  onForget(action: PluginUserPageRecordAction): void;
   record: PluginUserPageRecord | undefined;
 }) {
   const { record } = props;
@@ -40,6 +40,10 @@ export function MemoryDetails(props: {
   const heading = record ? memoryHeading(record) : "Memory details";
   const forgetAction = record?.actions?.find(
     (recordAction) => recordAction.tone === "danger",
+  );
+  // An archived memory offers Restore instead of Forget.
+  const restoreAction = record?.actions?.find(
+    (recordAction) => recordAction.tone === "neutral",
   );
 
   return (
@@ -76,7 +80,22 @@ export function MemoryDetails(props: {
             <PageContentSkeleton label="Loading memory" variant="panel" />
           )}
         </div>
-        {record && forgetAction ? (
+        {record && restoreAction ? (
+          <footer
+            aria-label="Memory actions"
+            className="flex items-center gap-2 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            <Button
+              className="min-h-11"
+              disabled={props.actionPending}
+              onClick={() => props.onAction(restoreAction)}
+              variant="outline"
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+              {restoreAction.label}
+            </Button>
+          </footer>
+        ) : record && forgetAction ? (
           // Keep the destructive action away from the title and close control.
           <footer
             aria-label="Memory actions"
@@ -88,10 +107,10 @@ export function MemoryDetails(props: {
                   <Button
                     aria-label="Forget this memory"
                     className="min-h-11 min-w-11"
-                    disabled={props.forgetPending}
+                    disabled={props.actionPending}
                     onClick={() => {
                       if (forgetAction.confirmation) setConfirmOpen(true);
-                      else props.onForget(forgetAction);
+                      else props.onAction(forgetAction);
                     }}
                     size="icon"
                     variant="destructive"
@@ -115,7 +134,7 @@ export function MemoryDetails(props: {
               <AlertDialogAction
                 onClick={() => {
                   setConfirmOpen(false);
-                  props.onForget(forgetAction);
+                  props.onAction(forgetAction);
                 }}
                 variant="destructive"
               >
