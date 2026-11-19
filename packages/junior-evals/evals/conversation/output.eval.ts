@@ -233,7 +233,7 @@ describe("Reply Length", () => {
             { author: alice },
           ),
           reply(
-            "The canary pods crash on startup, so the health check on :8080 never passes. The log shows `Error: missing required env var STRIPE_WEBHOOK_SECRET` right before each exit. The last good deploy was build 7731; this one is 7742.",
+            "The canary pods crash on startup, so the health check on :8080 never passes. The log shows `Error: missing required env var STRIPE_WEBHOOK_SECRET` right before each exit.",
             {
               toolHistory: [
                 {
