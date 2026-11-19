@@ -9,7 +9,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type {
   AgentInstruction,
-  AgentInstructionInput,
+  RuntimeInstructionInput,
 } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
 import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
@@ -24,11 +24,6 @@ import type { ReviewItemChangeRecord } from "./change-record";
 import { getReviewItem, type ReviewItem } from "./store";
 
 const QUESTION_MAX_LENGTH = 512;
-
-type ReviewItemAnswerInput = Extract<
-  AgentInstructionInput,
-  { kind: "runtime" }
->;
 
 // The words that the person typed: text fields and the free-text answer.
 // Choice labels and the question are the agent's words.
@@ -49,7 +44,7 @@ function typedAnswerText(
 // item with a request takes an answer.
 function renderReviewItemAnswer(
   item: ReviewItem,
-): ReviewItemAnswerInput | undefined {
+): RuntimeInstructionInput | undefined {
   if (!item.request || !item.answer) return undefined;
   const question = item.request.question.trim();
   const requestText = typedAnswerText(item.request, item.answer);
@@ -80,7 +75,7 @@ function renderReviewItemAnswer(
  */
 export async function loadReviewItemInput(
   record: ReviewItemChangeRecord | undefined,
-): Promise<ReviewItemAnswerInput | undefined> {
+): Promise<RuntimeInstructionInput | undefined> {
   if (record?.kind !== "submitted") return undefined;
   const item = await getReviewItem(getDb(), record.reviewItemId);
   return item ? renderReviewItemAnswer(item) : undefined;
@@ -114,16 +109,16 @@ export async function savedInputInstruction(args: {
  */
 export async function eventReviewItemInputs(
   messages: readonly InboundMessage[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, RuntimeInstructionInput>> {
   const rendered = await mapBounded(
     messages,
     async (message) =>
       [
         message.inboundMessageId,
-        (await loadReviewItemInput(message.input.reviewItemChange))?.text,
+        await loadReviewItemInput(message.input.reviewItemChange),
       ] as const,
   );
   return new Map(
-    rendered.flatMap(([id, text]) => (text ? [[id, text] as const] : [])),
+    rendered.flatMap(([id, input]) => (input ? [[id, input] as const] : [])),
   );
 }

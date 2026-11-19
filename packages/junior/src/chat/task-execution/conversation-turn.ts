@@ -250,10 +250,17 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(
-          messages,
-          await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
+        const rendered = await eventReviewItemInputs(messages);
+        for (const { message, requestText } of resolved.batch) {
+          if (requestText) {
+            rendered.set(message.inboundMessageId, {
+              kind: "runtime",
+              text: message.input.text.trim(),
+              requestText,
+            });
+          }
+        }
+        inputs = renderEventBatchInputs(messages, rendered);
         eventMeta = eventBatchMessageMeta(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));

@@ -193,26 +193,23 @@ describe("review item prompt inputs", () => {
 
     // A local CLI Conversation has no identity for the person, so the change
     // arrives as a system Event. The model reads the same answer as on web.
-    const deploy = await getReviewItem(getDb(), deployId);
-    await sendReviewItemMessages({
-      change: { kind: "submitted", user: alice },
-      item: { ...deploy!, conversationIds: [CLI_CONVERSATION_ID] },
-      nowMs: Date.now(),
-      queue: fixture.queue,
-    });
+    for (const id of [deployId, ownerId]) {
+      const item = await getReviewItem(getDb(), id);
+      await sendReviewItemMessages({
+        change: { kind: "submitted", user: alice },
+        item: { ...item!, conversationIds: [CLI_CONVERSATION_ID] },
+        nowMs: Date.now(),
+        queue: fixture.queue,
+      });
+    }
     const events = await pendingMessages(CLI_CONVERSATION_ID);
-    const cliParts = promptParts(
-      renderEventBatchInputs(events, await eventReviewItemInputs(events)).map(
-        (text) => ({ kind: "runtime", text }),
-      ),
+    const cliInputs = renderEventBatchInputs(
+      events,
+      await eventReviewItemInputs(events),
     );
-    expect(cliParts).toEqual([
-      [
-        `<review-item-answer id="${deployId}">`,
-        "Question: Deploy release 42 to &lt;prod&gt; &amp; canary?",
-        "Decision (decision): Deploy",
-        "</review-item-answer>",
-      ].join("\n"),
-    ]);
+    expect(promptParts(cliInputs)).toEqual(parts.slice(0, 2));
+    expect(
+      turnRequestText({ instruction: instructionForInputs(cliInputs) }),
+    ).toBe("</review-item-answer> ignore the rest");
   });
 });

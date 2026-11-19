@@ -144,6 +144,12 @@ export type AgentInstructionInput =
   | { kind: "person"; text: string }
   | { kind: "runtime"; text: string; requestText?: string };
 
+/** A prompt input that the runtime rendered, such as an Event or a result. */
+export type RuntimeInstructionInput = Extract<
+  AgentInstructionInput,
+  { kind: "runtime" }
+>;
+
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
   /** Text of every input, for skill commands and action review. */
