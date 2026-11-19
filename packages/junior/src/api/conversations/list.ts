@@ -497,6 +497,8 @@ export async function readConversationFeedFromSql(
     /** Extra row content that costs a query. */
     include?: readonly ConversationFeedInclude[];
     limit?: number;
+    /** Receives how many waiting rows from outside the page were added. */
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
@@ -557,7 +559,9 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
+    const waitingRows = await waitingRowsOutsidePage(db, filter, rows, include);
+    options.onWaitingRows?.(waitingRows.length);
+    rows.push(...waitingRows);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -787,6 +791,7 @@ export async function readConversationFeed(
     codeRepositoryId?: string;
     cursor?: string;
     include?: readonly ConversationFeedInclude[];
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
