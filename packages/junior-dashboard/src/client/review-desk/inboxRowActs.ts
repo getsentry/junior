@@ -198,9 +198,9 @@ export function inboxCardActions(input: {
 }
 
 /**
- * A stack's own actions: Snooze all, and Dismiss all, which closes every
+ * A stack's own actions: Snooze, for every row, and Dismiss, which closes every
  * open ask of the stack that the viewer can act on. A snoozed stack has
- * neither. Dismiss all puts the whole stack away (`useLeaveRow`), so the
+ * neither. Dismiss puts the whole stack away (`useLeaveRow`), so the
  * next row after it opens.
  */
 export function inboxStackActions(input: {
@@ -213,7 +213,11 @@ export function inboxStackActions(input: {
   snoozed?: boolean;
   stackKey: string;
   title: string;
-}): { onDismiss?(): void; onSnooze?(untilMs: number): void } {
+}): {
+  dismissCount?: number;
+  onDismiss?(): void;
+  onSnooze?(untilMs: number): void;
+} {
   if (input.snoozed) return {};
   const open = input.items.filter(
     (item) => item.status === "open" && item.canAct,
@@ -227,6 +231,7 @@ export function inboxStackActions(input: {
     title: input.title,
   };
   return {
+    dismissCount: open.length,
     onDismiss:
       open.length > 0
         ? () => void input.act(row, open, { action: "dismiss" }).catch(() => {})

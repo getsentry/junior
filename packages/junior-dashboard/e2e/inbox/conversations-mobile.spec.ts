@@ -762,7 +762,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
-      status: "completed",
+      status: "done",
+      turnActive: false,
       surface: "internal",
     };
     const events = (from: number, to: number) =>

@@ -20,6 +20,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         pinnedAt: "2026-08-07T10:00:00.000Z",
         pinPosition: index,
         status,
+        turnActive: status === "working",
       });
       return route.fulfill({
         response,
@@ -28,9 +29,9 @@ test.describe("new UI", { tag: "@new" }, () => {
           // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
           // shows it first.
           conversations: [
-            pin(0, "Alpha pin", "completed"),
-            pin(1, "Bravo pin", "completed"),
-            pin(2, "Charlie pin", "active"),
+            pin(0, "Alpha pin", "done"),
+            pin(1, "Bravo pin", "done"),
+            pin(2, "Charlie pin", "working"),
           ],
           nextCursor: undefined,
         },
@@ -82,7 +83,8 @@ test.describe("new UI", { tag: "@new" }, () => {
           : "2026-08-07T10:00:00.000Z",
         pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: "completed",
+        status: "done",
+        turnActive: false,
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       return route.fulfill({
@@ -133,7 +135,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         isParticipant: true,
         pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: pinned ? "completed" : "active",
+        status: pinned ? "done" : "working",
+        turnActive: !pinned,
       });
       return route.fulfill({
         response,

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { getDashboardPersonLink } from "@/chat/dashboard-link";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
@@ -95,6 +96,7 @@ async function readPersonActivity(
       ),
       parentConversationId: juniorConversations.parentConversationId,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,

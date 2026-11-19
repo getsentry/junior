@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "../../conversations/turnActivity";
 import { Bot } from "lucide-react";
 import {
   useCallback,
@@ -11,7 +12,6 @@ import {
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
-  ConversationDetailReport,
   ConversationFeed,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
@@ -82,14 +82,12 @@ import {
 } from "../../conversations/TranscriptTurnContextView";
 import { DashboardApiError } from "../../http";
 import { ConversationForkLinks } from "../../conversations/ConversationForkLinks";
+import { ChildConversationStatusPill } from "../../conversations/ChildConversationStatus";
 import {
-  ChildConversationStatusPill,
-  childConversationStatus,
-} from "../../conversations/ChildConversationStatus";
-import {
-  useReviewItemData,
-  useWaitingConversations,
-} from "../../review-desk/queries";
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../../conversations/ConversationStateIcon";
+import { useReviewItemData } from "../../review-desk/queries";
 import { reviewItemIdFromToolCall } from "../../review-desk/reviewItemFormat";
 import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
@@ -103,7 +101,6 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  visualStatusForConversation,
 } from "../../format";
 import { useDocumentTitle } from "../../documentTitle";
 import { Card } from "../../components/layout/Card";
@@ -269,7 +266,6 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -404,6 +400,9 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  const displayState = conversation
+    ? conversationDisplayState(conversation)
+    : undefined;
   const links = conversationLinks(conversationDetail);
   const title =
     conversationDetailTitle(detail.data) ??
@@ -446,11 +445,8 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "expired"
       ? undefined
       : transcript?.events.find((event) => event.seq === selectedEventSeq);
-  const visualStatus = conversation
-    ? visualStatusForConversation(conversation)
-    : undefined;
   // History and mailbox use the same deferred server snapshot.
-  const live = conversationIsLive(visualStatus, detail.data);
+  const live = conversationTurnIsActive(detail.data, conversation);
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
@@ -795,11 +791,14 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
+              state={
+                displayState ? (
+                  <ConversationStateIcon state={displayState} />
+                ) : null
+              }
               status={
                 isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill
-                    status={childConversationStatus(conversation, waiting)}
-                  />
+                  <ChildConversationStatusPill status={conversation.status} />
                 ) : null
               }
               title={title}
@@ -958,12 +957,4 @@ export function ConversationPage(props: {
       ) : null}
     </div>
   );
-}
-
-function conversationIsLive(
-  visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
-  detail: ConversationDetailReport | undefined,
-): boolean {
-  if (detail) return detail.status === "active";
-  return visualStatus === "active";
 }

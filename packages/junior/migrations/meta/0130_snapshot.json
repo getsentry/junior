@@ -1,5 +1,5 @@
 {
-  "id": "2567c5ba-fdf5-4064-a29b-a51f570d9506",
+  "id": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "prevId": "496d0c67-2a83-4e91-b5bd-e848b6fc81d1",
   "version": "7",
   "dialect": "postgresql",
@@ -4016,22 +4016,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "junior_identities_slack_person_search_idx": {
-          "name": "junior_identities_slack_person_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4884,6 +4868,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_review_items_open_action_added_by_idx": {
+          "name": "junior_review_items_open_action_added_by_idx",
+          "columns": [
+            {
+              "expression": "added_by_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}

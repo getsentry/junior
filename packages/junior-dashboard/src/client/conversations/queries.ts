@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as z from "zod";
 import {
@@ -131,7 +132,7 @@ export function conversationDetailIsLive(
   snapshot: ConversationSnapshot | undefined,
 ): boolean {
   return (
-    snapshot?.status === "active" ||
+    conversationTurnIsActive(snapshot) ||
     Boolean(snapshot?.mailbox?.messages.length) ||
     Boolean(snapshot?.mailbox?.authorization)
   );

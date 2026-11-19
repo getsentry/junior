@@ -1,10 +1,12 @@
-import { Pin } from "lucide-react";
 import { useCallback, useId } from "react";
 import { Link } from "react-router";
 
-import { Spinner } from "../components/ui/spinner";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../conversations/ConversationStateIcon";
 import {
   PinnedConversationOrder,
   usePinnedRowDrag,
@@ -38,18 +40,10 @@ function InFlightRow(props: {
         draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       >
-        {conversation.status === "active" ? (
-          <Spinner
-            aria-label="Running"
-            className="size-3 justify-self-center text-emerald-500 dark:text-emerald-300"
-          />
-        ) : (
-          <Pin
-            aria-label="Pinned"
-            className="size-3.5 justify-self-center text-dashboard-text-muted"
-            role="img"
-          />
-        )}
+        <ConversationStateIcon
+          className="justify-self-center"
+          state={conversationDisplayState(conversation)}
+        />
         <span
           className={cn(fadeOverflowClass, "text-dashboard-text")}
           ref={fadeWhenOverflowing}

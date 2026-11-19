@@ -21,6 +21,7 @@ import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
 import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
@@ -85,6 +86,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
+      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],

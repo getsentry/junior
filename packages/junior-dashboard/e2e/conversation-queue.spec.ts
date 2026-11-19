@@ -79,7 +79,8 @@ test("stops the active Turn and returns queued text to the composer", async ({
         {
           ...detail,
           isParticipant: true,
-          status: active ? "active" : "completed",
+          status: active ? "working" : "done",
+          turnActive: active,
         },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),
@@ -201,7 +202,7 @@ test("edits a queued message back into the composer", async ({
       response,
       json: withRequestedMailbox(
         route,
-        { ...detail, isParticipant: true, status: "active" },
+        { ...detail, isParticipant: true, status: "working", turnActive: true },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),
     });
