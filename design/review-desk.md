@@ -14,10 +14,8 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   and blocks the work. Progress, offers, and scope choices are not items.
   Whether Junior starts new work for the requester, such as a Thread that
   implements an issue it filed, is the requester's decision, not an offer.
-- A notice tells a person about something that they must fix, such as a
-  failed or blocked Automation, and says what to do. It never asks. Status
-  and work that Junior owns are never items
-  ([Notifications](./notifications.md)).
+- A notice tells a person something that they must know or fix, such as a
+  failed or blocked Automation. It never asks.
 - Only an assignee answers, and the answer carries their authority. Junior,
   an Event, or a trigger never answers or approves for a person.
 - "Needs you" means one thing on every surface: an open action assigned to
