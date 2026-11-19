@@ -2,26 +2,31 @@
 //
 //            claimTurn            completeTurn, commitStep (completed)
 //   queued ─────────────▶ running ─────────────────────────────────▶ completed
-//     │   ◀─────────────    │  ↺ heartbeat, commitStep (continue)
-//     │   reclaimExpired    │                failTurn
-//     │   (lease expired)   ├──────────────────────────▶ failed
-//     │                     │
+//     │   ◀─────────────    │  ↺ heartbeat
+//     │   commitStep        │  ↺ claimTurn (lease expired)
+//     │   (continue),       │                failTurn
+//     │   reclaimExpired    ├──────────────────────────▶ failed
+//     │   (lease expired)   │
 //     │     cancelTurn      │   cancelTurn
 //     └─────────────────────┴──────────────────────────▶ cancelled
 //
 // A Turn starts as queued. completed, failed and cancelled are final: no
-// function changes them.
+// function changes them. A lease covers one step: commitStep (continue) queues
+// the Turn again, and the next step needs a new claim.
 //
 // | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
 // | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
-// | claimTurn              | queued                | +1          | +1       |          | set      |
+// | claimTurn              | queued, or expired    | +1          | +1       |          | set      |
 // | heartbeat              | running, fenced       |             |          |          | extended |
-// | commitStep (continue)  | running, fenced, step |             | 0        | +1       | kept     |
+// | commitStep (continue)  | running, fenced, step |             | 0        | +1       | cleared  |
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
 // | completeTurn           | running, fenced       |             |          |          | cleared  |
 // | failTurn               | running, fenced       |             |          |          | cleared  |
 // | cancelTurn             | queued or running     | +1          |          |          | cleared  |
 // | reclaimExpired         | running, expired      |             |          |          | cleared  |
+//
+// Expired: running, but `lease_expires_at` has passed. claimTurn takes over
+// such a Turn, so the queue's redelivery after a crash resumes it.
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
@@ -31,7 +36,7 @@
 //
 // commitStep takes the Conversation lock before it touches the Turn row. A
 // writer that needs both takes them in this order, so writers cannot deadlock.
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -64,8 +69,9 @@ function holdsLease(lease: TurnLease) {
 }
 
 /**
- * Claims a queued Turn to run its next step. Returns undefined when the Turn
- * is not queued, so of two concurrent claims only one gets the Turn.
+ * Claims a Turn to run its next step: a queued Turn, or a running Turn whose
+ * lease expired. Returns undefined for any other Turn, so of two concurrent
+ * claims only one gets the Turn.
  */
 export async function claimTurn(
   executor: JuniorSqlDatabase,
@@ -83,7 +89,16 @@ export async function claimTurn(
       updatedAt: sql`now()`,
     })
     .where(
-      and(eq(juniorTurns.id, args.turnId), eq(juniorTurns.state, "queued")),
+      and(
+        eq(juniorTurns.id, args.turnId),
+        or(
+          eq(juniorTurns.state, "queued"),
+          and(
+            eq(juniorTurns.state, "running"),
+            lte(juniorTurns.leaseExpiresAt, sql`now()`),
+          ),
+        ),
+      ),
     )
     .returning({
       turnId: juniorTurns.id,
@@ -112,9 +127,10 @@ export async function heartbeat(
 
 /**
  * Commits a step in one transaction: it appends the step's messages to the
- * Conversation history and moves the Turn to its next step, or ends it when
- * the step completed the Turn. False when the lease is lost or the step is
- * already committed, and then nothing is written.
+ * Conversation history and releases the lease. A Turn that continues goes
+ * back to queued for its next step, which needs a new claim. A Turn that the
+ * step completed ends. False when the lease is lost or the step is already
+ * committed, and then nothing is written.
  */
 export async function commitStep(
   executor: JuniorSqlDatabase,
@@ -124,6 +140,8 @@ export async function commitStep(
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
     attempts: 0,
+    leaseOwner: null,
+    leaseExpiresAt: null,
     updatedAt: sql`now()`,
   };
   return executor.transaction(() =>
@@ -133,14 +151,8 @@ export async function commitStep(
         .update(juniorTurns)
         .set(
           step.outcome === "completed"
-            ? {
-                ...nextStep,
-                state: "completed",
-                leaseOwner: null,
-                leaseExpiresAt: null,
-                endedAt: sql`now()`,
-              }
-            : nextStep,
+            ? { ...nextStep, state: "completed", endedAt: sql`now()` }
+            : { ...nextStep, state: "queued" },
         )
         .where(
           and(

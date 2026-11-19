@@ -25,6 +25,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
 | `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `app.turn.id` / `app.turn.step_seq` | core Turn / one of its steps | `queue.*` spans             |
 
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
@@ -97,6 +98,8 @@ attributes. Nested logs and spans inherit them.
   before membership checks, never message text, names, or emails.
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   `queue.process` starts a new trace.
+- Each step of a core Turn has its own trace. Its `queue.process` links to the
+  `queue.publish` that sent it. Find all steps by `app.turn.id`.
 - `chat.turn` continues the trace of its oldest input and links to the
   others and to `queue.process`. An Event Turn is a child of `queue.process`.
 - A Slack Turn queues its plugin tasks, so each `plugin.task` is in its own

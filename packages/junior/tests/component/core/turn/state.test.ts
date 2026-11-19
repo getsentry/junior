@@ -117,6 +117,56 @@ describe("Turn state", () => {
     expect(turn.leaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("takes over a running Turn whose lease expired, and fences out the old holder", async () => {
+    const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
+
+    const taken = await claim("worker-b");
+    expect(taken).toEqual({
+      turnId,
+      conversationId: CONVERSATION_ID,
+      stepSeq: 0,
+      leaseEpoch: 2,
+      attempts: 2,
+    });
+    const running = await readTurn();
+    expect(running).toMatchObject({
+      state: "running",
+      leaseOwner: "worker-b",
+      leaseEpoch: 2,
+      attempts: 2,
+    });
+    expect(running.leaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+
+    await expect(heartbeat(fixture.sql, stale, LEASE_MS)).resolves.toBe(false);
+    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
+      false,
+    );
+    await expect(completeTurn(fixture.sql, stale)).resolves.toBe(false);
+    await expect(readTurn()).resolves.toEqual(running);
+    await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
+  });
+
+  it("does not take over a running Turn whose lease is live", async () => {
+    await claim("worker-a");
+    const running = await readTurn();
+
+    await expect(claim("worker-b")).resolves.toBeUndefined();
+    await expect(readTurn()).resolves.toEqual(running);
+  });
+
+  it("gives an expired Turn to exactly one of two concurrent workers", async () => {
+    await claim("worker-a", EXPIRED_LEASE_MS);
+
+    const claims = await Promise.all([claim("worker-b"), claim("worker-c")]);
+
+    const winners = claims.filter((claimed) => claimed !== undefined);
+    expect(winners).toMatchObject([{ leaseEpoch: 2, attempts: 2 }]);
+    const turn = await readTurn();
+    // The losing takeover wrote nothing, so each counter went up once.
+    expect(turn).toMatchObject({ leaseEpoch: 2, attempts: 2 });
+    expect(["worker-b", "worker-c"]).toContain(turn.leaseOwner);
+  });
+
   it("extends the lease, and rejects a heartbeat with a stale lease_epoch", async () => {
     const claimed = (await claim("worker-a", EXPIRED_LEASE_MS))!;
 
@@ -276,17 +326,42 @@ describe("Turn state", () => {
     ).resolves.toBe(true);
 
     await expect(readTurn()).resolves.toMatchObject({
-      state: "running",
+      state: "queued",
       stepSeq: 1,
       leaseEpoch: 2,
       attempts: 0,
-      leaseOwner: "worker-b",
+      leaseOwner: null,
+      leaseExpiresAt: null,
       endedAt: null,
     });
     await expect(loadHistory()).resolves.toEqual({
       types: ["assistant_message", "tool_result"],
       messages,
     });
+  });
+
+  it("lets a new claim take the next step at once, and fences out the old lease", async () => {
+    const first = (await claim("worker-a"))!;
+    await commitStep(fixture.sql, first, {
+      outcome: "continue",
+      messages: [toolCallReply(), toolResult()],
+    });
+
+    await expect(claim("worker-b")).resolves.toEqual({
+      turnId,
+      conversationId: CONVERSATION_ID,
+      stepSeq: 1,
+      leaseEpoch: 2,
+      attempts: 1,
+    });
+    const running = await readTurn();
+    expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
+
+    await expect(heartbeat(fixture.sql, first, LEASE_MS)).resolves.toBe(false);
+    await expect(commitStep(fixture.sql, first, finishedStep())).resolves.toBe(
+      false,
+    );
+    await expect(readTurn()).resolves.toEqual(running);
   });
 
   it("ends the Turn when the committed step completed it", async () => {
