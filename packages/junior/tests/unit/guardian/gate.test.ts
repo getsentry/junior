@@ -280,7 +280,7 @@ describe("tool action review", () => {
       "plugin-call",
       "github_getIssue",
       pluginTool,
-      { number: 1, repo: "getsentry/junior" },
+      { issue: 1, repo: "getsentry/junior" },
       reviewContext({ review }),
     );
     await reviewToolAction(
