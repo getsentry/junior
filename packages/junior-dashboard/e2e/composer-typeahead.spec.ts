@@ -37,7 +37,7 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   const people = page.getByRole("listbox", { name: "People" });
   await expect(people.getByRole("option")).toHaveText([
     /Casey Nguyen/,
-    /Riley Chen/,
+    /Avery Chen/,
   ]);
   await expect(
     people.getByRole("option", { name: /Casey Nguyen/ }),
@@ -46,7 +46,7 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   // Arrows move the choice and wrap. Escape closes the menu.
   await composer.press("ArrowDown");
   await expect(
-    people.getByRole("option", { name: /Riley Chen/ }),
+    people.getByRole("option", { name: /Avery Chen/ }),
   ).toHaveAttribute("aria-selected", "true");
   await composer.press("ArrowDown");
   await expect(
@@ -61,11 +61,11 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   await composer.press("Backspace");
   await composer.press("Backspace");
   await composer.press("Backspace");
-  await composer.pressSequentially("@ri");
-  await expect(people.getByRole("option")).toHaveText([/Riley Chen/]);
+  await composer.pressSequentially("@av");
+  await expect(people.getByRole("option")).toHaveText([/Avery Chen/]);
   await composer.press("Enter");
   await expect(people).toBeHidden();
-  await expect(composer).toHaveText("Hi @Riley Chen ");
+  await expect(composer).toHaveText("Hi @Avery Chen ");
   await expect(composer.locator("[data-mention='U789']")).toBeVisible();
 
   await composer.pressSequentially("can you look?");

@@ -31,12 +31,13 @@ const MOCK_MENTIONABLE_PEOPLE: MentionablePerson[] = [
     slackUserId: "U123",
     slackUserName: "morgan",
   },
+  // The same person as the mock People directory, so the card is full.
   {
-    avatarUrl: "/api/people/avatars/mock-riley",
-    email: "riley@example.com",
-    fullName: "Riley Chen",
+    avatarUrl: "/api/people/avatars/mock-avery",
+    email: "avery@sentry.io",
+    fullName: "Avery Chen",
     slackUserId: "U789",
-    slackUserName: "riley",
+    slackUserName: "avery",
   },
   {
     email: "sam@example.com",
