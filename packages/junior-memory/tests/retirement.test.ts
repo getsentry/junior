@@ -100,10 +100,10 @@ function memoryModel(
     async completeObject(input) {
       if (String(input.prompt).includes("<memory-adjudication-input>")) {
         adjudicationCalls.push(input);
-        return { object: adjudication };
+        return { object: input.schema.parse(adjudication) };
       }
       extractionCalls.push(input);
-      return { object: extraction };
+      return { object: input.schema.parse(extraction) };
     },
   };
   return { adjudicationCalls, extractionCalls, model };
