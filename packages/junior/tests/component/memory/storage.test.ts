@@ -4479,7 +4479,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       });
 
       const emitted: PluginConversationEventValue[] = [];
-      const result = await memoryPlugin().hooks?.userPrompt?.({
+      const result = await createMemoryRegistration().hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
         users: memoryUsers(context.userId),
