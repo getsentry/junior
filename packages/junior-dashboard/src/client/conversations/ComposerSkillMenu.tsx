@@ -62,14 +62,15 @@ export function useComposerSkillMenu(
   // The text and caret of the last sync. `onSelect` also fires after an
   // edit and after an insert, and that must not turn the menu into a card.
   const synced = useRef<{ text: string; caret: number }>(undefined);
-  const rows = token && skills ? skillRows(skills, token.query) : [];
-  const open = rows.length > 0;
   // A send clears the text without an edit event, so check that the
   // reference is still there.
   const cardSkill =
     card && textareaRef.current?.value.startsWith(`$${card.name}`, card.start)
       ? skills?.find((skill) => skill.name === card.name)
       : undefined;
+  const rows =
+    token && skills && !cardSkill ? skillRows(skills, token.query) : [];
+  const open = rows.length > 0;
   const shown = open || Boolean(cardSkill);
   const active = Math.min(activeIndex, rows.length - 1);
   const cellId = (index: number) => `${gridId}-${index}`;
@@ -156,6 +157,8 @@ export function useComposerSkillMenu(
     const textarea = textareaRef.current;
     if (!textarea || textarea.selectionStart !== textarea.selectionEnd) {
       close();
+      // A collapse back to the same caret reopens it.
+      synced.current = undefined;
       return;
     }
     const text = textarea.value;
@@ -182,7 +185,9 @@ export function useComposerSkillMenu(
       setCard({ name, start: next.start });
       return;
     }
-    setCard(undefined);
+    // Before the skill list loads, a caret move can still be into an
+    // installed skill. Keep both, and the card wins if the name resolves.
+    setCard(!edited && !skills ? { name, start: next.start } : undefined);
     if (next.query !== token?.query || next.start !== token.start) {
       setActiveIndex(0);
     }
@@ -252,7 +257,8 @@ export function useComposerSkillMenu(
     if (!card || !cardSkill) return false;
     if (event.key === "Escape") {
       setDismissedStart(card.start);
-      setCard(undefined);
+      // Also drop a token kept while the skill list loaded.
+      close();
     } else if (isPlatformShortcut(event.nativeEvent, "i")) {
       setViewing(cardSkill.name);
     } else {
