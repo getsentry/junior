@@ -65,21 +65,14 @@ export function AutomationActions({
     },
     onSuccess: async (updated) => {
       await refreshChangedAutomation(queryClient, updated);
-      toast.add({
-        title:
-          updated.status === "blocked"
-            ? "Automation is still blocked"
-            : action === "pause"
-              ? "Automation paused"
-              : "Automation resumed",
-        description:
-          updated.status === "blocked"
-            ? "Fix the reported requirement before resuming again."
-            : action === "pause"
-              ? "Work already queued or running may finish."
-              : "Future triggers are enabled.",
-        type: updated.status === "blocked" ? "warning" : "success",
-      });
+      // The new state shows on the page. Only a resume that did not take
+      // needs saying.
+      if (updated.status === "blocked")
+        toast.add({
+          title: "Automation is still blocked",
+          description: "Fix the reported requirement before resuming again.",
+          type: "warning",
+        });
     },
   });
   return (
