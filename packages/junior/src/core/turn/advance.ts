@@ -60,11 +60,12 @@ export async function advanceTurn(
   if (!claim) {
     return;
   }
-  if (claim.attempts > options.maxAttempts) {
-    await failTurn(executor, claim, "attempts_exhausted");
-    return;
-  }
   try {
+    // Inside the try, so a failed write here also releases the lease.
+    if (claim.attempts > options.maxAttempts) {
+      await failTurn(executor, claim, "attempts_exhausted");
+      return;
+    }
     await runClaimedStep(executor, claim, options.prepare);
   } catch (error) {
     // The queue retries the message. With a live lease, the retry would claim
