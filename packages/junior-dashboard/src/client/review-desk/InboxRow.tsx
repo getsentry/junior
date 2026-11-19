@@ -604,10 +604,13 @@ function InboxRowBody(
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className={lineClass} ref={fadeWhenOverflowing}>
-                    {props.itemTitle ?? props.title}
+                  {/* The size wraps under the title where both do not fit. */}
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className={lineClass} ref={fadeWhenOverflowing}>
+                      {props.itemTitle ?? props.title}
+                    </span>
+                    <ChangeSize size={props.itemSize} />
                   </span>
-                  <ChangeSize size={props.itemSize} />
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
                   <span
