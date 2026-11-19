@@ -155,6 +155,31 @@ describe("agent resume", () => {
     expect(sliceThree.resume.turnLimitWrappedUp).toBe(true);
   });
 
+  it("saves the prompt flag only with a checkpoint that holds the prompt", async () => {
+    const conversationId = "local:test:prompt-saved";
+    const turnId = "turn-prompt-saved";
+    const earlier = message("earlier");
+    const prompt = message("prompt");
+    const first = await resumeState(conversationId, turnId);
+    // The input checkpoint failed, so the pause saves the earlier boundary.
+    first.resume.adoptCommittedBoundary([earlier]);
+    first.resume.markPromptAdded(2);
+    await first.resume.parkForAuth(
+      new AuthorizationPauseError("mcp", "example", "Example", "link_sent"),
+    );
+    const paused = await getTurnRecord(conversationId, turnId);
+
+    const second = await resumeState(conversationId, turnId);
+    second.resume.markPromptAdded(2);
+    await second.resume.persistSafeBoundary([earlier, prompt]);
+    const running = await getTurnRecord(conversationId, turnId);
+
+    expect([paused?.promptSaved, running?.promptSaved]).toEqual([
+      undefined,
+      true,
+    ]);
+  });
+
   it("fails a durable turn when committed history rejects its input checkpoint", async () => {
     const conversationId = "local:test:input-commit-lost";
     const turnId = "turn-input-commit-lost";

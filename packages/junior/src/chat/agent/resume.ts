@@ -105,6 +105,9 @@ export function createResumeState(args: ResumeStateArgs) {
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
+  // Length of the slice's messages once it added its prompt. A checkpoint
+  // that saves at least that many messages saves the prompt.
+  let promptMessageCount: number | undefined;
   let promptSaved = false;
   let turnContexts: PluginTurnContext[] = [];
   // Event seq of each committed agent message, by position. A slice only
@@ -132,14 +135,17 @@ export function createResumeState(args: ResumeStateArgs) {
   const currentSliceId = args.checkpoint.sliceId;
   const durationMs = () => Date.now() - args.startedAtMs;
 
-  const writeBase = () => ({
+  const holdsPrompt = (messages: readonly PiMessage[]) =>
+    promptSaved ||
+    (promptMessageCount !== undefined && messages.length >= promptMessageCount);
+  const writeBase = (messages: readonly PiMessage[]) => ({
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
-    ...(promptSaved ? { promptSaved } : undefined),
+    ...(holdsPrompt(messages) ? { promptSaved: true } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -183,9 +189,9 @@ export function createResumeState(args: ResumeStateArgs) {
         this.isTurnMessageAt(messages, index),
       );
     },
-    /** Save the prompt as part of the Turn from the next checkpoint on. */
-    markPromptAdded(): void {
-      promptSaved = true;
+    /** Record that the slice's messages hold its prompt at `messageCount`. */
+    markPromptAdded(messageCount: number): void {
+      promptMessageCount = messageCount;
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
@@ -213,6 +219,8 @@ export function createResumeState(args: ResumeStateArgs) {
     /** Use the seqs of a history replacement that is already committed. */
     adoptReplacementSeqs(seqs: readonly number[]): void {
       committedSeqs = seqs;
+      // The committed replacement covers the prompt, also when it is shorter.
+      promptSaved ||= promptMessageCount !== undefined;
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
@@ -251,7 +259,7 @@ export function createResumeState(args: ResumeStateArgs) {
     ): Promise<boolean> {
       const saved = await saveTurnCheckpoint({
         mode: "running",
-        ...writeBase(),
+        ...writeBase(messages),
         sliceId: currentSliceId,
         messages,
         trailingMessageProvenance,
@@ -260,6 +268,7 @@ export function createResumeState(args: ResumeStateArgs) {
       if (!saved) {
         return false;
       }
+      promptSaved = holdsPrompt(messages);
       committedSeqs = saved.piMessageSeqs;
       latestSafeBoundaryMessages = [...messages];
       // Writing the same boundary does not count as progress.
@@ -316,7 +325,7 @@ export function createResumeState(args: ResumeStateArgs) {
         const record = await saveTurnCheckpoint({
           mode: "paused",
           reason: "auth",
-          ...writeBase(),
+          ...writeBase(resumeMessages),
           sliceId: currentSliceId,
           durationMs: durationMs(),
           usage,
@@ -397,7 +406,7 @@ export function createResumeState(args: ResumeStateArgs) {
         });
         await saveTurnCheckpoint({
           mode: "failed",
-          ...writeBase(),
+          ...writeBase(parkMessages),
           sliceId: currentSliceId,
           durationMs: durationMs(),
           messages: parkMessages,
@@ -416,7 +425,7 @@ export function createResumeState(args: ResumeStateArgs) {
       const record = await saveTurnCheckpoint({
         mode: "paused",
         reason,
-        ...writeBase(),
+        ...writeBase(parkMessages),
         sliceId: currentSliceId,
         durationMs: durationMs(),
         usage,

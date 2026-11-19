@@ -1390,16 +1390,16 @@ async function executeAgentRunInPrivacyContext(
             timestamp: promptTimestamp,
           };
           if (shouldPromptAgent) {
-            runResume.markPromptAdded();
+            const promptMessages = [
+              ...currentAgentMessages(),
+              ...(contextMessage ? [contextMessage] : []),
+              freshPromptMessage,
+            ];
+            runResume.markPromptAdded(promptMessages.length);
             const promptPersisted =
-              await runResume.requireDurableInputCheckpoint(
-                [
-                  ...currentAgentMessages(),
-                  ...(contextMessage ? [contextMessage] : []),
-                  freshPromptMessage,
-                ],
-                [turnStartProvenance],
-              );
+              await runResume.requireDurableInputCheckpoint(promptMessages, [
+                turnStartProvenance,
+              ]);
             if (promptPersisted) {
               await runResume.commitInput();
             }
