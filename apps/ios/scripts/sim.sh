@@ -14,6 +14,9 @@
 # JUNIOR_IOS_REUSE_UDID=<udid> uses a simulator that is already booted
 # instead of booting a second one. The run installs the app there and
 # uninstalls it at the end; it never shuts that simulator down.
+#
+# JUNIOR_IOS_SERVER=http://127.0.0.1:<port> points the app and the UI tests
+# at a mock server that you started with PORT=<port>.
 set -euo pipefail
 
 ios_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -177,8 +180,13 @@ cmd_ui_test() {
   boot_device
   local args=()
   for test in "${only[@]}"; do args+=("-only-testing:JuniorUITests/${test#JuniorUITests/}"); done
+  # On a newly booted simulator, the first accessibility snapshot can take
+  # 30 seconds and miss a test's wait. Run a failed test one more time.
+  # xcodebuild passes TEST_RUNNER_<name> to the tests as <name>.
+  TEST_RUNNER_JUNIOR_IOS_SERVER="$server" \
   "$ios_dir/scripts/xcbuild.sh" test-without-building -scheme JuniorUITests \
-    -destination "platform=iOS Simulator,id=$udid" "${args[@]}"
+    -destination "platform=iOS Simulator,id=$udid" \
+    -retry-tests-on-failure -test-iterations 2 "${args[@]}"
 }
 
 case "${1:-}" in
