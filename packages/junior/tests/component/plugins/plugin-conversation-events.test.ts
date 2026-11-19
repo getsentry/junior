@@ -219,6 +219,7 @@ describe("plugin conversation events", () => {
         ],
       },
       { startedAtMs: 2_000, contexts: [] },
+      { startedAtMs: 2_000, contexts: [] },
     ]);
     const events = await eventStore.loadHistory(conversationId);
     expect(
