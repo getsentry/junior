@@ -27,7 +27,7 @@ const CLAIM_NOTE =
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Issue number."),
+    issue: z.number().int().positive().describe("Issue number."),
   })
   .strict();
 const issueSchema = z.object({
@@ -102,7 +102,7 @@ export const gitHubGetIssueTool = definePluginTool({
       githubApi(ctx.egress, {
         followRedirects: true,
         operation: "github.issue.get",
-        path: `${repoPath(repo)}/issues/${input.number}`,
+        path: `${repoPath(repo)}/issues/${input.issue}`,
       }),
       resolveGitHubRequester(ctx),
     ]);
