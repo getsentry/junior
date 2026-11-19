@@ -3573,6 +3573,20 @@ describe("GitHub-owned pull request outcomes", () => {
           }),
         ),
       );
+      // A push after the close keeps the pull request closed.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "synchronize",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1400,
+              closed_at: "2026-07-02T12:00:00.000Z",
+              updated_at: "2026-07-03T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
 
       expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
         ["open", { additions: 1204, changedFiles: 12, deletions: 340 }],

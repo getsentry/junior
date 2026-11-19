@@ -193,6 +193,13 @@ export function normalizeGitHubPullRequestOutcome(args: {
   }
   const parsed = pullRequestOutcomeSchema.parse(args.body);
   const pullRequest = parsed.pull_request;
+  // A push to the branch of a closed pull request does not reopen it.
+  if (
+    parsed.action === "synchronize" &&
+    (pullRequest.merged || pullRequest.closed_at)
+  ) {
+    return undefined;
+  }
   const openedAt = timestamp(pullRequest.created_at);
   const updatedAt = timestamp(pullRequest.updated_at);
   if (!openedAt || !updatedAt) {
