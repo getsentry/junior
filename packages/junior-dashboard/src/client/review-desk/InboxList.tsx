@@ -62,6 +62,7 @@ import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
+  conversationAnswerLine,
   itemNeedsViewer,
   itemUpForGrabs,
   type InboxBundle,
@@ -485,7 +486,7 @@ export function InboxList(props: {
   const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
     const key = `conversation:${row.conversationId}`;
     const answered = row.conversation
-      ? data.answerOf(row.conversation)
+      ? conversationAnswerLine(row.conversation)
       : undefined;
     if (row.bundle)
       return bundleRow(row.bundle, {

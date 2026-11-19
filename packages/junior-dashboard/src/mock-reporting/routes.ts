@@ -99,6 +99,7 @@ import {
   readMockReviewItemCounts,
   readMockReviewItems,
   readMockWaitingConversations,
+  withMockViewerAnswers,
 } from "./review-items";
 import {
   markMockConversationRead,
@@ -350,9 +351,10 @@ export function createMockReportingApi(): Hono<{
     const repositoryId = query.data.codeRepositoryId;
     const readFeed = (status: "active" | "archived") => {
       const feed = readMockConversationFeed(query.data.actorEmail, status);
-      return repositoryId
-        ? filterMockConversationsByRepository(feed, repositoryId)
-        : feed;
+      // Like the API, only the viewer's own feed says what they answered.
+      if (repositoryId)
+        return filterMockConversationsByRepository(feed, repositoryId);
+      return query.data.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
     };
     const report = readFeed(query.data.status);
     const respond = (feed: ConversationFeed) => {
