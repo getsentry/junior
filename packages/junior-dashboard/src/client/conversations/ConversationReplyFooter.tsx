@@ -25,6 +25,7 @@ import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
+  restoreStoredDraftText,
   takeStoredDraftText,
   touchKeyboardMatches,
   type ConversationComposerHandle,
@@ -32,6 +33,7 @@ import {
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
+import { queuedTextInDraft, setQueuedTextInDraft } from "./queuedEditText";
 import {
   useAppendConversationMessage,
   useCancelConversationPendingMessages,
@@ -290,9 +292,6 @@ function ReplyFooter(props: {
     questionsPending,
   ]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  // Queued messages whose text is in the composer while they are still in
-  // the queue, after an edit that failed. A retry does not add it again.
-  const restoredTextIdsRef = useRef(new Set<string>());
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
@@ -300,25 +299,27 @@ function ReplyFooter(props: {
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
+      const conversationId = props.conversationId;
       const inboundMessageId = message.inboundMessageId;
+      const text = message.text ?? "";
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
-      // The text moves at once, before the file read and the cancel. It also
-      // goes into the saved draft, so it stays when the reader leaves. When
-      // the edit fails, the text stays with the error and the reader decides.
-      const restoredTextIds = restoredTextIdsRef.current;
-      if (!restoredTextIds.has(inboundMessageId)) {
-        restoredTextIds.add(inboundMessageId);
-        composerRef.current?.restoreMessage({ text: message.text ?? "" });
+      // Text alone moves at once, before the cancel, and into the saved
+      // draft. When the edit fails, it stays with the error and the reader
+      // decides. Text with files moves with its files after the cancel, so
+      // the reader cannot send the text without them.
+      const textFirst = !message.attachments?.length;
+      if (textFirst && !queuedTextInDraft(conversationId, inboundMessageId)) {
+        setQueuedTextInDraft(conversationId, inboundMessageId, true);
+        composerRef.current?.restoreMessage({ text });
       }
       try {
         // Read files first. A failed read must leave the message queued.
         const files = await readStoredComposerFiles(
-          props.conversationId,
+          conversationId,
           message.attachments,
         );
-        // The reader left during the read. Keep the message in the queue, as
-        // its files have nowhere to go.
+        // The reader left during the read. Keep the message in the queue.
         if (!composerRef.current) return;
         // Check before the cancel. After it, files that do not fit are lost.
         if (!composerRef.current.canRestoreFiles(files)) {
@@ -329,15 +330,22 @@ function ReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
-        restoredTextIds.delete(inboundMessageId);
+        if (textFirst) {
+          setQueuedTextInDraft(conversationId, inboundMessageId, false);
+        }
         // Junior can read the message before the cancel lands, or someone
         // else can remove it. Then there is nothing to edit.
         if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
           setQueueActionError("That message was already read or removed.");
           return;
         }
-        if (files.length) {
-          composerRef.current?.restoreMessage({ files, text: "" });
+        if (textFirst) return;
+        if (composerRef.current) {
+          composerRef.current.restoreMessage({ files, text });
+        } else {
+          // The reader left during the cancel. Keep the text in the saved
+          // draft so it is there when they come back.
+          restoreStoredDraftText(conversationId, text);
         }
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");

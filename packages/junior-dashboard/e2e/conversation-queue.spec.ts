@@ -231,9 +231,7 @@ test("edits a queued message back into the composer", async ({
   // Close the delivery tooltip that opened under the pointer.
   await page.mouse.move(0, 0);
 
-  // A draft with no room for the queued image keeps the message queued. Its
-  // text already moved ahead of the draft, and a retry does not add it again.
-  await composer.fill("Draft in progress");
+  // A draft with no room for the queued image keeps the message queued.
   const draftFiles = Array.from(
     { length: MAX_INPUT_ATTACHMENTS },
     (_, index) => `draft-${index + 1}.png`,
@@ -271,14 +269,13 @@ test("edits a queued message back into the composer", async ({
     page.getByText("Remove some draft files to edit that message."),
   ).toBeVisible();
   await expect(pending.getByText(queuedMessage.text)).toBeVisible();
-  await expect(composer).toHaveValue(
-    `${queuedMessage.text}\nDraft in progress`,
-  );
+  await expect(composer).toHaveValue("");
   for (const name of draftFiles) {
     await page.getByRole("button", { name: `Remove ${name}` }).click();
   }
 
-  // The image comes back with the text.
+  // Text with files moves with its files, after the cancel lands.
+  await composer.fill("Draft in progress");
   await pending
     .getByRole("button", { name: "Edit queued message" })
     .first()
@@ -291,8 +288,8 @@ test("edits a queued message back into the composer", async ({
   );
   await expect(pending.getByText(queuedMessage.text)).toBeHidden();
 
-  // The text moved before the cancel found nothing. It stays, and the error
-  // tells the reader that Junior has it already.
+  // Text alone moved before the cancel found nothing. It stays, and the
+  // error tells the reader that Junior has it already.
   await pending.getByRole("button", { name: "Edit queued message" }).click();
   await expect(
     page.getByText("That message was already read or removed."),
@@ -378,7 +375,11 @@ test("moves queued text to the composer before the cancel lands", async ({
   await expect(pending.getByText(queuedMessage.text)).toBeVisible();
   await expect(composer).toHaveValue(`${queuedMessage.text} now`);
 
-  // The retry does not add the text a second time.
+  // The retry does not add the text a second time, also after leaving the
+  // view remounts the reply box.
+  await chooseTranscriptView(page, "Event log");
+  await chooseTranscriptView(page, "Conversation");
+  await expect(composer).toHaveValue(`${queuedMessage.text} now`);
   await edit.click();
   await expect.poll(() => cancels.length).toBe(2);
   cancels[1]?.(true);
