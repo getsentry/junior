@@ -1,0 +1,6 @@
+id: no-google-egress-outside-api-request
+valid:
+  - "await googleApiRequest(ctx, { operation, path });"
+  - "await fetch(url);"
+invalid:
+  - "await ctx.egress.fetch({ operation, provider: 'google', request });"

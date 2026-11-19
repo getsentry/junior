@@ -22,6 +22,7 @@ import {
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+import { turnRequestText } from "@/chat/agent/prompt";
 import { commitMessages } from "@/chat/conversations/projection";
 import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -495,9 +496,11 @@ describe("agent invocation worker", () => {
         parentToolCallId: "call-fork",
       });
       const histories: (readonly PiMessage[])[] = [];
+      const requests: string[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
           histories.push(run.history?.messages ?? []);
+          requests.push(turnRequestText(run));
           return {
             status: "completed" as const,
             result: {
@@ -541,6 +544,9 @@ describe("agent invocation worker", () => {
         readRound.map((item) => expect.objectContaining(item)),
       ]);
       expect(agentInvocationInputText(created)).toContain(FORK_INSTRUCTIONS);
+      // Context such as memory recall follows the parent's task, without
+      // the tag and the fork instructions around it.
+      expect(requests).toEqual(["Check the other path."]);
     } finally {
       await fixture.close();
     }

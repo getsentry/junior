@@ -102,7 +102,7 @@ describe("updateIssue", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           title: "Updated title",
           body: "Updated body",
           state: "open",
@@ -158,7 +158,7 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).resolves.toMatchObject({ assignees: ["lcian", "dcramer"], number: 691 });
@@ -183,7 +183,7 @@ describe("updateIssue", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           state: "closed",
           assign_requester: true,
         },
@@ -198,16 +198,16 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).rejects.toThrow("GitHub did not assign @dcramer");
   });
 
   it.each([
-    { repo: "getsentry/junior", number: 691 },
-    { repo: "getsentry/junior", number: 691, title: "   " },
-    { repo: "getsentry/junior", number: 691, assign_requester: false },
+    { repo: "getsentry/junior", issue: 691 },
+    { repo: "getsentry/junior", issue: 691, title: "   " },
+    { repo: "getsentry/junior", issue: 691, assign_requester: false },
   ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 

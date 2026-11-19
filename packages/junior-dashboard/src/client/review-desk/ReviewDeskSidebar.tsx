@@ -15,6 +15,7 @@ import { pathWithSearch } from "../searchParams";
 import { cn } from "../styles";
 import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** A sidebar group key. The page owns which groups are collapsed. */
 export type InboxGroupKey = "blocked" | "fyi" | "needs-you";
@@ -177,7 +178,7 @@ export function ReviewDeskSidebar(props: {
               ? "always"
               : "wide"
         }
-        title={item.title}
+        title={reviewItemTitleText(item)}
         to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
       />
     );

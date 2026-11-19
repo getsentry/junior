@@ -42,6 +42,24 @@ Canonical words for Junior code and docs. One concept, one word.
   Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
+- **Conversation status**: what one Conversation's own work needs, shared
+  by everyone and derived from runtime state only. `needs_input`: it waits on
+  a person: an open action Review item it added, a sign-in, or its starter
+  while no Turn is queued or running (a failed latest Turn, a `partial` or
+  `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
+  anything else, also a stop. The first that applies wins, in that order.
+  `completed` is a Turn, Agent invocation, or run outcome, never a
+  Conversation status.
+- **Starter**: the User of a root's actor, the person whose message started
+  it or the creator of an Automation run. Its child Conversations share it.
+- **Archived**: a flag on a Conversation, shared by everyone. It is not a
+  status, and an archived Conversation keeps its status.
+- **Viewer state**: what a Conversation and its child Conversations need from
+  one viewer. Code and the API call it `treeState`. `needs_you`: the tree's
+  `needs_input` includes the viewer or Everyone. `working`: a Turn is queued
+  or running in the tree. `done`: anything else. The first that applies wins.
+  A separate `watching` flag says that a Conversation in the tree has an
+  active Watch or a pending Timer. It is not a status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.
@@ -152,6 +170,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Dismiss**: close a Review item without an answer. The one UI word for
+  removing an item, on a row, a card, or many FYIs at once. Not Clear or
+  Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Review items. Not
   Conversation archive.
 - **Plan**: the durable list of work that outlives a Turn in one

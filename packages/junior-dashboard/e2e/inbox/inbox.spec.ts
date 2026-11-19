@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -20,6 +22,10 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
+// The open row. Every row has its own quick Snooze, so scope to this one.
+const openRowOf = (page: Page) =>
+  page.locator("li[data-inbox-row][data-expanded]");
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
@@ -31,13 +37,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // One row per Conversation.
+    // One row, or one stack of rows, per Conversation.
     await expect(
       todo.getByRole("link", { name: new RegExp(checkout) }),
     ).toBeVisible();
     // A Conversation with no title is named after its newest item.
     await expect(
-      todo.getByRole("link", { name: new RegExp(audit.title) }),
+      todo
+        .locator("li[data-inbox-stack]")
+        .getByRole("link", { name: new RegExp(audit.title) })
+        .first(),
     ).toBeVisible();
     // The badge and To do count the same cards.
     const tab = page
@@ -49,12 +58,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The Inbox has no heading of its own, and closed items show only in Done.
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
-    // A To do Conversation does not show again under the time sections.
-    await expect(
-      page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: new RegExp(checkout) }),
-    ).toHaveCount(0);
     await screenshot(page, "inbox", { lightTheme: true });
 
     // A collapsed To do stays collapsed after a reload.
@@ -67,7 +70,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todo.getByRole("list")).toHaveCount(0);
     await screenshot(page, "inbox-todo-collapsed", { view: "desktop" });
     await page.getByRole("button", { name: /^To do/ }).click();
-    await expect(todo.getByRole("list")).toBeVisible();
+    await expect(todo.getByRole("list").first()).toBeVisible();
   });
 
   test("each entry lists its own rows under its name", async ({
@@ -138,25 +141,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-automations", { lightTheme: true });
   });
 
-  test("a row answers its asks in place", async ({ dashboard, page }) => {
-    const actions = await mockReviewItems(page);
+  test("a row answers its ask in place", async ({ dashboard, page }) => {
+    const actions = await mockReviewItems(page, {
+      open: [rollout, license, audit],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // A pill expands the row. The list stays where it is.
-    await todo.getByRole("button", { name: "2 Questions" }).first().click();
+    // Each ask has its own row, in its stack or alone.
+    const row = (item: { id: string }) =>
+      todo.locator(`li[data-inbox-row="todo:${item.id}"]`);
+    // A row click expands the row. The list stays where it is.
+    await row(audit).locator("[data-inbox-head]").first().click();
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks).toHaveCount(1);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 
-    // Each item gets its own answer form, so a choice does not carry over.
-    // The row is named after its newest open item, which changes as they close.
-    const bundle = page.getByRole("region", { name: /: asks$/ });
-    const licenseItem = bundle.getByRole("region", { name: license.title });
-    const auditItem = bundle.getByRole("region", { name: audit.title });
-    await licenseItem.getByRole("radio", { name: "Approve" }).click();
-    await expect(
-      auditItem.getByRole("radio", { name: "Approve" }),
-    ).not.toBeChecked();
+    const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
     await screenshot(page, "inbox-row-answer", {
@@ -172,21 +172,33 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
       id: audit.id,
     });
-    // The row stays open while it has items.
-    await expect(licenseItem).toBeVisible();
 
-    // The row's Dismiss closes every ask of the row. Its notice is FYI.
-    await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
+    // The license ask has its own form, so the audit's choice does not
+    // carry over, and its Dismiss closes only its own item.
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${audit.id}"]`),
+    ).toHaveCount(0);
+    const licenseRow = row(license);
+    const licenseItem = licenseRow.locator("[data-inbox-card]");
+    // Next opens it: alone in its Conversation now, still in its own row.
+    await expect(licenseRow).toHaveAttribute("data-expanded", "true");
+    await expect(licenseItem).toBeVisible();
+    await expect(
+      licenseItem.getByRole("radio", { name: "Reject" }),
+    ).not.toBeChecked();
+    await licenseItem
+      .getByRole("button", { name: "Dismiss", exact: true })
+      .click();
     await expect
-      .poll(() => actions.map((action) => action.id).sort())
-      .toEqual([audit.id, license.id].sort());
+      .poll(() => actions.map((action) => action.id))
+      .toEqual([audit.id, license.id]);
   });
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(page, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
@@ -205,7 +217,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
-  test("a sweep clears only FYI items, with an Undo", async ({
+  test("a sweep dismisses only FYI items, with an Undo", async ({
     dashboard,
     page,
   }) => {
@@ -216,6 +228,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const teamAsk = {
       ...audit,
       addedByConversationId: "slack:C789:1770021600.000900",
+      rootConversationId: "slack:C789:1770021600.000900",
       assignedToEveryone: true,
       assignees: [],
       // Recent, so it shows in Today above the older Conversations.
@@ -227,9 +240,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    // FYI clears its notices; the questions stay.
-    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
-    await expect(page.getByText("Cleared 2 items")).toBeVisible();
+    // FYI dismisses its notices and says so; the questions stay.
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
+    await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Pick the on-call rotation/ }),
     ).toBeVisible();
@@ -240,26 +253,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(
-      page.getByRole("button", { name: "Clear 2 in FYI" }),
+      page.getByRole("button", { name: "Dismiss 2 in FYI" }),
     ).toBeVisible();
-    // Only section headers clear. No label says "need you".
-    await expect(page.getByRole("button", { name: /^Clear/ })).toHaveText(
-      Array(await page.getByRole("button", { name: /^Clear/ }).count()).fill(
-        /^Clear \d+$/,
-      ),
+    // Only section headers sweep. No label says "need you".
+    const sweeps = page.getByRole("button", { name: /^Dismiss \d+ in / });
+    await expect(sweeps).toHaveText(
+      Array(await sweeps.count()).fill(/^Dismiss \d+$/),
     );
     await expect(page.getByText(/\bneeds? you\b/i)).toHaveCount(0);
     expect(actions).toEqual([]);
 
     // The sweep closes the items when the Undo window ends.
-    await page.getByRole("button", { name: "Clear 2 in FYI" }).click();
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
     await expect
       .poll(() => actions.map((action) => action.id), { timeout: 10_000 })
       .toContain(digest.id);
     expect(actions.map((action) => action.id)).not.toContain(teamAsk.id);
   });
 
-  test("Undo after a Clear works from an open Conversation and other tabs", async ({
+  test("Undo after a sweep works from an open Conversation and other tabs", async ({
     dashboard,
     page,
   }) => {
@@ -268,19 +280,19 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const clearFyi = page.getByRole("button", { name: /^Clear \d+ in FYI$/ });
+    const clearFyi = page.getByRole("button", {
+      name: /^Dismiss \d+ in FYI$/,
+    });
     await clearFyi.click();
-    await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
+    await expect(page.getByText(/^Dismissed \d+ FYIs?$/)).toBeVisible();
     await expect(clearFyi).toHaveCount(0);
 
     // The toast stays while a Conversation opens and while the Inbox leaves
     // the page, and its Undo still works.
-    const row = page
-      .locator("[data-inbox-row]")
-      .filter({ hasText: checkout })
-      .first();
-    await row.hover();
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link", { name: new RegExp(checkout) })
+      .click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -309,9 +321,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
-    await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
+    await expect(page.getByText(/^Could not dismiss \d+ FYIs?$/)).toBeVisible({
       timeout: 10_000,
     });
     await expect(digestFyi).toBeVisible();
@@ -371,7 +383,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const details = page.getByRole("region", {
       name: "Weekly project summary: attention",
     });
-    await expect(details).toContainText("Blocked: GitHub access expired.");
+    // The header says why it is blocked, so the card does not say it again.
+    await expect(
+      todo.getByRole("button", { name: /Weekly project summary/ }),
+    ).toContainText("Blocked · GitHub access expired.");
+    await expect(details).not.toContainText("GitHub access expired.");
+    await expect(details.getByText("Why", { exact: true })).toHaveCount(0);
     const waiting = Number(
       (await badge.getAttribute("aria-label"))!.replace(/\D/g, ""),
     );
@@ -513,8 +530,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("Could not load your Automations."),
     ).toBeVisible();
-    // With nothing to do, To do hides, and closed items stay in Done.
+    // With nothing to do, To do hides, and closed items stay in Done. To do
+    // may still hold Automations, so the Inbox does not say it is empty.
     await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
+    await expect(page.getByText("Nothing left here")).toHaveCount(0);
     await expect(page.getByText(answered.title)).toHaveCount(0);
   });
 
@@ -530,7 +549,9 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
     const asks = todo.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${rollout.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is on screen.
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
@@ -572,7 +593,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(105);
   });
 
-  test("an open row's notice and questions leave Dismiss and its title to the row", async ({
+  test("each card of an open row keeps its own Dismiss, and an item row's head names it", async ({
     dashboard,
     page,
   }) => {
@@ -580,14 +601,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
-    await expect(card).toContainText("FYI");
-    // The row's Dismiss closes it, and the item row's head names it.
-    await expect(asks.getByRole("button", { name: "Dismiss" })).toBeVisible();
-    await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    // The card's Dismiss closes it. The item row's head names it and its
+    // kind, so the card says neither again.
+    await expect(card).not.toContainText("FYI");
+    await expect(
+      card.getByRole("button", { exact: true, name: "Dismiss" }),
+    ).toBeVisible();
     await expect(card.getByRole("heading")).toHaveCount(0);
 
     // A Conversation row's head names the Conversation, so the ask keeps its
-    // title.
+    // title. In the Inbox, these asks stack as rows; Conversations keeps the
+    // Conversation row.
     await page.goto(
       `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
     );
@@ -597,18 +621,19 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("heading", { name: prReady.title }),
     ).toBeVisible();
 
-    // Its questions leave Dismiss to the row's bar too, beside their Send.
+    // Each question keeps its own Dismiss beside its Send, and the row's
+    // bar has none.
     const row = page.getByRole("region", { name: /: asks$/ });
     for (const question of [license, audit]) {
       const card = row.getByRole("region", { name: question.title });
       await expect(card.getByRole("button", { name: "Send" })).toBeVisible();
-      await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(
-        0,
-      );
+      await expect(
+        card.getByRole("button", { exact: true, name: "Dismiss" }),
+      ).toHaveCount(1);
     }
     await expect(
       row.getByRole("button", { name: "Dismiss", exact: true }),
-    ).toHaveCount(1);
+    ).toHaveCount(3);
   });
 
   test("a snoozed row wakes at its time without a reload", async ({
@@ -620,7 +645,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "3 hours" }).click();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
     await page.clock.fastForward("03:00:01");
@@ -654,6 +679,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: [
         "GitHub asks you to review this pull request.",
         "https://github.com/getsentry/payments/pull/91",
@@ -698,6 +724,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: "GitHub asks you to review this pull request.\n\nhttps://github.com/getsentry/payments/pull/91",
       id: "item-pr-card",
       kind: "notice" as const,
@@ -835,12 +862,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(message.getByText("Roll out when ready.")).toBeInViewport();
     expect(reads).toBe(1);
     // A pin updates every cached feed. The Turn's message is not one of them,
-    // so the page keeps working.
-    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    // so the page keeps working. An item row has no Pin: the Conversations
+    // view pins its Conversation.
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Conversations/ })
+      .click();
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${rollout.rootConversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     await expect(
-      page.getByRole("button", { name: "Unpin", exact: true }),
+      conversationRow.getByRole("button", { name: /^Unpin / }),
     ).toBeVisible();
-    await expect(message).toBeVisible();
+    // Back, the row is still open, and its message reads from the cache.
+    await page.goBack();
+    await expect(message).toContainText("The canary error rate is flat");
+    expect(reads).toBe(1);
   });
 
   test("cards grow near the pointer in both densities, except for reduced motion", async ({

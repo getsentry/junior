@@ -8,6 +8,7 @@ import {
 import * as z from "zod";
 import { emailDomain } from "../config";
 import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
+import { isEditableFile, type EditableFile } from "./editable-file";
 
 /** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
@@ -15,8 +16,8 @@ export interface GoogleToolContext {
   accountEmail: string;
   allowedDomains: string[];
   egress: PluginEgress;
-  /** Holds full meeting records that are too long to return inline. */
-  sandbox: Pick<PluginSandbox, "root" | "run" | "writeFile">;
+  /** Holds full meeting records and slide thumbnails. */
+  sandbox: Pick<PluginSandbox, "readFile" | "root" | "run" | "writeFile">;
   users: {
     resolveActor(): Promise<{ user?: User } | undefined>;
     resolveTimezone(): Promise<string>;
@@ -107,6 +108,8 @@ export async function googleApiRequest(
   ctx: Pick<GoogleToolContext, "egress">,
   input: {
     body?: unknown;
+    /** Required by operations that change an existing file. */
+    editable?: EditableFile;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -116,6 +119,22 @@ export async function googleApiRequest(
 ): Promise<{ body: unknown; status: number }> {
   const rule = GOOGLE_OPERATIONS[input.operation];
   const url = new URL(`https://${rule.host}${input.path}`);
+  // Junior's account can edit files that the requester cannot. Every change
+  // to an existing file must pass the file that `requireEditableFile`
+  // checked, and change only that file, so no tool can skip the requester
+  // check. The rule's path captures the changed file id.
+  if (
+    "writeCheck" in rule &&
+    rule.writeCheck === "file-editor" &&
+    (!isEditableFile(input.editable) ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      rule.path.exec(url.pathname)?.[1] !== input.editable.ref.fileId)
+  ) {
+    throw new Error(
+      `${input.operation} changes a file, so it needs the file that requireEditableFile checked.`,
+    );
+  }
   for (const [key, value] of Object.entries(input.query ?? {})) {
     for (const item of [value].flat()) {
       url.searchParams.append(key, item);

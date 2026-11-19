@@ -7,6 +7,8 @@ import { useInboxUi } from "../uiShell";
  * Render a conversation section label that collapses its rows. The chevron
  * takes the same glyph column and gap as sidebar rows, so the label starts on
  * the row title edge. The new UI's rows use a wider column (`sidebarGrid`).
+ * A `heading` is a step larger than the card titles under it, for a list
+ * of cards such as the Inbox's.
  */
 export function ConversationSectionHeading(props: {
   className?: string;
@@ -15,12 +17,16 @@ export function ConversationSectionHeading(props: {
   id?: string;
   label: string;
   onToggle(): void;
+  size?: "heading" | "label";
 }) {
   const inbox = useInboxUi();
   return (
     <h3
       className={cn(
-        "m-0 font-sans text-xs font-medium text-dashboard-text-muted",
+        "m-0",
+        props.size === "heading"
+          ? "font-display text-lg font-semibold text-dashboard-text"
+          : "font-sans text-xs font-medium text-dashboard-text-muted",
         props.className,
       )}
       id={props.id}

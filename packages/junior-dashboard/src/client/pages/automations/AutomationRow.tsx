@@ -12,6 +12,8 @@ import {
 import { AutomationRunStrip } from "./AutomationRunStrip";
 import { automationProblemSummary } from "./AutomationStatus";
 import { formatRelativeTime } from "../../time";
+import { PersonReference } from "../../components/PersonReference";
+import { automationCreator } from "../../person";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;
@@ -86,7 +88,11 @@ export function AutomationRow(props: {
             size="list"
           />
           <span className="truncate">
-            {automation.ownedByViewer ? "You" : automation.createdBy}
+            <PersonReference
+              avatar={false}
+              label={automation.ownedByViewer ? "You" : undefined}
+              person={automationCreator(automation)}
+            />
           </span>
         </span>
         <div className="hidden md:block">

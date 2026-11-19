@@ -13,28 +13,28 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Link, useHref, useNavigate } from "react-router";
+import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
   ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { Spinner } from "../components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
-import { visualStatusForConversation } from "../format";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../conversations/ConversationStateIcon";
 import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
+import { codeChangeSize } from "../codeChangeSize";
+import { ChangeSize } from "../components/ChangeSize";
 import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
@@ -47,21 +47,20 @@ import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
-import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
+import { DisplayText } from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
-import { FoldedNotice } from "./FoldedNotice";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
+import { openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
-import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
-import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import { InboxRowCard } from "./InboxRowCard";
 import { askPills, Pill, type AskPill } from "./inboxAsks";
 import { InboxFiles } from "./InboxFiles";
 import { InboxImageStrip, type ImageWork } from "./InboxImageStrip";
@@ -77,13 +76,14 @@ import {
   rankLinkedWork,
 } from "./InboxLinkedWork";
 import { isImageMedia } from "./useConversationImages";
-import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import {
-  itemNeedsViewer,
-  reviewItemText,
-  type InboxBundle,
-} from "./reviewItemFormat";
+  RowActionButton,
+  RowOpenLink,
+  RowQuickActions,
+  type InboxCardActions,
+} from "./RowHoverActions";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import type { InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
@@ -108,152 +108,30 @@ function rowSummary(conversation: Conversation | undefined) {
   };
 }
 
-function RowItem(props: {
-  conversationId: string;
-  /** The row's own Done shows. */
-  done: boolean;
-  /** The row's head shows the item's title. */
-  headTitled: boolean;
-  item: ReviewItemPayload;
-  /** Notices about the item's subject (`foldNotices`). */
-  notices: readonly ReviewItemPayload[];
-  onAction?: InboxRowProps["onItemAction"];
-  take?: string;
-}) {
-  const { item, onAction } = props;
-  const showBody = item.kind === "notice" || !item.request;
-  const kind = inboxItemKind(item);
-  return (
-    <section
-      aria-label={item.title}
-      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 font-sans text-sm"
-      data-inbox-item
-    >
-      <div className="flex min-w-0 items-baseline gap-2">
-        <Pill
-          pill={{
-            count: 1,
-            key: kind,
-            kind,
-            name: kind,
-            label: kind,
-            strong: itemNeedsViewer(item),
-          }}
-        />
-        {/* An item row's head already names the ask. A Conversation row's
-            head names the Conversation, so each ask keeps its title. */}
-        {props.headTitled ? null : (
-          <h4
-            className={cn(
-              fadeOverflowClass,
-              "m-0 text-sm font-semibold text-dashboard-text",
-            )}
-            ref={fadeWhenOverflowing}
-          >
-            {item.title}
-          </h4>
-        )}
-      </div>
-      {/* What Junior said comes first, then its question and the form. */}
-      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
-      <ReviewItemObjects conversationId={item.addedByConversationId}>
-        {showBody ? (
-          <ClampedDisplayText
-            className="max-w-[80ch] leading-6"
-            label={item.title}
-            lines={4}
-            text={reviewItemText(item)}
-          />
-        ) : null}
-        {item.subject ? (
-          <ReviewItemSubjectPreview
-            conversationId={props.conversationId}
-            subject={item.subject}
-          />
-        ) : null}
-      </ReviewItemObjects>
-      {props.notices.map((notice) => (
-        <FoldedNotice
-          key={notice.id}
-          notice={notice}
-          onAction={onAction ? (body) => onAction(notice, body) : undefined}
-        />
-      ))}
-      {/* The row's bar holds Dismiss. A card on its own, as in a
-          Conversation, keeps its own. */}
-      <ReviewItemActions
-        dismiss={!props.done}
-        item={item}
-        onAction={onAction ? (body) => onAction(item, body) : undefined}
-        take={props.take ?? false}
-      />
-    </section>
-  );
-}
-
-const ROW_ACTION_BUTTON_CLASS =
-  "grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-raised text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
-
-function RowActionButton(props: {
-  disabled: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            aria-label={props.label}
-            aria-pressed={props.pressed}
-            className={ROW_ACTION_BUTTON_CLASS}
-            disabled={props.disabled}
-            onClick={props.onClick}
-            type="button"
-          >
-            {props.icon}
-          </button>
-        }
-      />
-      <TooltipContent size="compact">{props.tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/** The hover action that opens the row's Conversation in the main area. */
-function RowOpenLink(props: { to: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          // The row names the Conversation; a search for its title finds
-          // the row's head only.
-          <Link
-            aria-label="Open conversation"
-            className={ROW_ACTION_BUTTON_CLASS}
-            to={props.to}
-          >
-            <ArrowUpRight aria-hidden="true" size={14} />
-          </Link>
-        }
-      />
-      <TooltipContent size="compact">Open conversation</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/** Where the row opens: at the record of its newest ask, when it has one. */
+/**
+ * Where the row opens. A row for one item, as in a stack, opens the
+ * Conversation that added it, also a child's, at the ask's record. A row for
+ * a Conversation opens it, at its newest ask when that Conversation added it.
+ */
 function rowConversationPath(props: InboxRowProps): string {
-  return conversationPath(props.conversationId, {
-    askItemId: props.bundle?.newest.id,
+  const newest = props.bundle?.newest;
+  const id =
+    newest && props.itemTitle !== undefined
+      ? newest.addedByConversationId
+      : props.conversationId;
+  return conversationPath(id, {
+    askItemId: newest?.addedByConversationId === id ? newest.id : undefined,
   });
 }
 
 type InboxRowProps = {
+  /** What the viewer answered, such as "You answered Hold": the summary. */
+  answered?: string;
   bundle?: InboxBundle;
+  /** Each card's own actions, in a stack whose cards act by themselves. */
+  cardActions?(item: ReviewItemPayload): InboxCardActions;
+  /** A row with one ask shows its Snooze and Dismiss on hover. */
+  itemActions?: boolean;
   conversation?: Conversation;
   conversationId: string;
   /** Set on a pinned row of a list that drags pins into a new order. */
@@ -265,7 +143,8 @@ type InboxRowProps = {
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
-  onDone?(): void;
+  /** The size of the code change that a row for one item is about. */
+  itemSize?: CodeChangeSize | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
     item: ReviewItemPayload,
@@ -304,20 +183,30 @@ export function InboxRow(props: InboxRowProps) {
   // The rows below move with the row as it opens and closes.
   const cardRef = useRef<HTMLLIElement>(null);
   useAnimatedHeight(cardRef, String(props.expanded));
+  const open = props.bundle?.items.filter((item) => item.status === "open");
+  const quickActions =
+    props.itemActions && open?.length === 1 && props.cardActions ? (
+      <RowQuickActions
+        actions={props.cardActions(open[0]!)}
+        expanded={props.expanded}
+        to={rowConversationPath(props)}
+      />
+    ) : undefined;
   return props.conversation ? (
     <ConversationInboxRow
       {...props}
       cardRef={cardRef}
       conversation={props.conversation}
+      quickActions={quickActions}
     />
   ) : (
     <li
-      className={inboxCardClass(props.expanded)}
+      className={cn(inboxCardClass(props.expanded), "group")}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
       ref={cardRef}
     >
-      <InboxRowBody {...props} />
+      <InboxRowBody {...props} hoverActions={quickActions} />
     </li>
   );
 }
@@ -331,6 +220,8 @@ function ConversationInboxRow(
   props: InboxRowProps & {
     cardRef: RefObject<HTMLLIElement | null>;
     conversation: Conversation;
+    /** A row with one ask acts on it instead of pinning or archiving. */
+    quickActions?: ReactNode;
   },
 ) {
   const { conversation, drag } = props;
@@ -353,7 +244,7 @@ function ConversationInboxRow(
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   // The row's own actions take the meta's place on hover or focus, in the
   // meta's cell, so they never cover the title or summary.
-  const hoverActions = (
+  const hoverActions = props.quickActions ?? (
     <>
       <RowOpenLink to={rowConversationPath(props)} />
       {participant && !actions.archived ? (
@@ -435,7 +326,6 @@ function ConversationInboxRow(
               onArchived={showArchived}
               onRowAction={props.onRowAction}
               selected={props.selected}
-              waiting={false}
             />
           ))}
           {toggle || actionsBelow ? (
@@ -515,19 +405,11 @@ function InboxRowBody(
   },
 ) {
   const { bundle, conversation } = props;
-  const navigate = useNavigate();
   // A row that names its Conversation opens it. A row for one item names
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
   const path = rowConversationPath(props);
-  const href = useHref(path);
-  // As a click on the head link does: a Ctrl/⌘ or Shift click, or a middle
-  // click, opens a new tab.
-  const openConversation = (event: MouseEvent) => {
-    if (event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey)
-      window.open(href, "_blank", "noopener");
-    else void navigate(path);
-  };
+  const openConversation = useOpenPath(path);
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
@@ -562,7 +444,11 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const summary = props.itemTitle ? undefined : rowSummary(conversation);
+  const found = props.itemTitle ? undefined : rowSummary(conversation);
+  // The viewer's answer replaces the line that asked for it.
+  const summary = props.answered
+    ? { mentions: undefined, status: found?.status, text: props.answered }
+    : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
@@ -573,8 +459,12 @@ function InboxRowBody(
     Math.max(0, limit - work.length),
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
-  const canDone = rowCanDone(props);
   const regionId = rowRegionId(props.rowKey);
+  // A closed row fits its title and subtitle to one line each. An open one
+  // shows them in full, so its detail never needs to say them again.
+  const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
+  // An item row's one card carries the row's actions on its own line.
+  const inlineActions = Boolean(props.itemTitle) && openItems.length === 1;
   const asksShown =
     props.expanded && (openItems.length > 0 || !props.actionsBelow);
   // The head controls what it opens. `regionId` always wraps the row bar:
@@ -582,8 +472,9 @@ function InboxRowBody(
   const controls = props.actionsBelow
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
-  const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversation?.status === "active";
+  const state = conversation
+    ? conversationDisplayState(conversation)
+    : undefined;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
@@ -598,6 +489,12 @@ function InboxRowBody(
         conversation={conversation}
       />
     ) : null;
+  // A click on the row does what the head link does, except on the pills,
+  // summary chips and images in it.
+  const rowClick = openOnClick(
+    openConversation,
+    opens ? undefined : props.onToggle,
+  );
   return (
     <>
       <div
@@ -614,28 +511,10 @@ function InboxRowBody(
             className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-dashboard-accent"
           />
         ) : null}
-        {/* The head link is the row's keyboard target. A click anywhere else
-            on the head does what the link does, except on the links and
-            buttons in it, such as pills and summary chips, or at the end of
-            a text selection. */}
+        {/* The head link is the row's keyboard target. */}
         <div
           className={cn(inboxHeadGridClass(), "cursor-pointer", "pb-3")}
-          onAuxClick={(event) => {
-            if (event.button !== 1 || !opens || onControl(event)) return;
-            openConversation(event.nativeEvent);
-          }}
-          // A middle press would start the browser's autoscroll, not the
-          // new tab that its click opens.
-          onMouseDown={(event) => {
-            if (event.button === 1 && opens && !onControl(event))
-              event.preventDefault();
-          }}
-          onClick={(event) => {
-            if (event.button !== 0 || onControl(event)) return;
-            if (!opens) return props.onToggle();
-            if (window.getSelection()?.isCollapsed === false) return;
-            openConversation(event.nativeEvent);
-          }}
+          {...rowClick}
         >
           <span
             aria-label={
@@ -702,14 +581,18 @@ function InboxRowBody(
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-                    {props.itemTitle ?? props.title}
+                  {/* The size wraps under the title where both do not fit. */}
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className={lineClass} ref={fadeWhenOverflowing}>
+                      {props.itemTitle ?? props.title}
+                    </span>
+                    <ChangeSize size={props.itemSize} />
                   </span>
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
                   <span
                     className={cn(
-                      fadeOverflowClass,
+                      lineClass,
                       "text-xs text-dashboard-text-muted",
                     )}
                     ref={fadeWhenOverflowing}
@@ -785,8 +668,14 @@ function InboxRowBody(
               <span
                 className={cn(
                   "-my-1 flex gap-0.5 transition",
+                  // A touch screen has no hover. In the Inbox, a row there
+                  // shows its actions once it is open, so each row does not
+                  // repeat them. Elsewhere they always show there.
                   !props.expanded &&
-                    "sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100",
+                    props.itemActions &&
+                    "max-sm:hidden pointer-coarse:hidden",
+                  !props.expanded &&
+                    "sm:pointer-fine:pointer-events-none sm:pointer-fine:opacity-0 sm:pointer-fine:group-focus-within:pointer-events-auto sm:pointer-fine:group-focus-within:opacity-100 sm:pointer-fine:group-hover:pointer-events-auto sm:pointer-fine:group-hover:opacity-100",
                 )}
               >
                 {props.hoverActions}
@@ -796,28 +685,21 @@ function InboxRowBody(
               {conversation ? (
                 <ConversationStatusText
                   isPrivate={conversation.visibility === "private"}
-                  status={visualStatusForConversation(conversation)}
+                  status={conversation.status}
                 />
               ) : null}
-              {pinned ? (
-                <Pin
-                  aria-label="Pinned"
-                  className="size-3 text-dashboard-text-muted"
-                  role="img"
-                />
-              ) : null}
-              {running ? (
-                <Spinner aria-label="Running" className="size-3.5" />
-              ) : (
-                formatCompactAge(props.time)
-              )}
+              <ConversationStateIcon state={state} />
+              {state === "working" ? null : formatCompactAge(props.time)}
             </span>
           </span>
         </div>
         {cards ? (
           // Under the title, on its left edge: the images first, at preview
           // size, then the linked work, links and files, one line each.
-          <div className="grid min-w-0 gap-3 pr-4 pb-3 pl-8">
+          <div
+            className="grid min-w-0 cursor-pointer gap-3 pr-4 pb-3 pl-8"
+            {...rowClick}
+          >
             {images ? (
               <InboxImageStrip
                 askToggle={{
@@ -847,56 +729,48 @@ function InboxRowBody(
       {asksShown ? (
         <div
           aria-label={`${props.title}: asks`}
-          className="grid min-w-0 gap-3 border-t border-dashboard-border px-3 pt-3 pb-3"
+          className={cn(
+            "grid min-w-0 gap-3",
+            // An item row's detail starts on its title's left edge, with no
+            // rule: the head and the detail are one card.
+            inlineActions
+              ? "pr-4 pb-4 pl-8"
+              : "border-t border-dashboard-border px-3 pt-3 pb-3",
+          )}
           id={props.actionsBelow ? `${regionId}-asks` : regionId}
           role="region"
         >
           {openItems.map((item) => (
-            <RowItem
+            <InboxRowCard
               conversationId={props.conversationId}
-              done={canDone && Boolean(props.onDone)}
+              actions={props.cardActions?.(item)}
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               onAction={props.onItemAction}
+              rowActions={inlineActions ? rowActions(props, true) : undefined}
+              sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
             />
           ))}
-          {props.actionsBelow ? null : rowActions(props)}
+          {props.actionsBelow || inlineActions ? null : rowActions(props)}
         </div>
       ) : null}
     </>
   );
 }
 
-/**
- * Whether a click on the row head belongs to something else: a control in
- * the head, or a popover that React bubbles through the head from a portal.
- */
-function onControl(event: { currentTarget: Element; target: EventTarget }) {
-  const { target } = event;
-  return (
-    !(target instanceof Element) ||
-    !event.currentTarget.contains(target) ||
-    Boolean(target.closest("a, button"))
-  );
-}
-
-function rowCanDone(props: InboxRowProps): boolean {
-  return (
-    props.bundle?.items.some((item) => item.status === "open" && item.canAct) ??
-    false
-  );
-}
-
-function rowActions(props: InboxRowProps) {
+/** The open row's actions. `inline` gives them bare, for a card's line. */
+function rowActions(props: InboxRowProps, inline = false) {
   return (
     <ExpandedActions
-      canDone={rowCanDone(props)}
       conversation={props.conversation}
-      onDone={props.onDone}
-      onSnooze={props.onSnooze}
+      inline={inline}
+      // A stack of one card snoozes on the card.
+      onSnooze={
+        (props.bundle?.items.length ?? 0) > 1 ? props.onSnooze : undefined
+      }
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
       openPath={rowConversationPath(props)}
@@ -906,17 +780,16 @@ function rowActions(props: InboxRowProps) {
 }
 
 function ExpandedActions(props: {
-  canDone: boolean;
   conversation?: Conversation;
+  inline: boolean;
   openPath: string;
-  onDone?(): void;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
 }) {
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-1">
+  const actions = (
+    <>
       <Link
         className={buttonVariants({ variant: "ghost" })}
         to={props.openPath}
@@ -935,15 +808,18 @@ function ExpandedActions(props: {
       ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
+          label="Snooze all"
           onOpenChange={props.onSnoozeMenu}
           onSnooze={props.onSnooze}
           open={props.snoozeMenuOpen}
         />
       ) : null}
-      {/* The main action is the right-most one. */}
-      {props.canDone && props.onDone ? (
-        <RowDismissButton onClick={props.onDone} />
-      ) : null}
+    </>
+  );
+  if (props.inline) return actions;
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {actions}
     </div>
   );
 }

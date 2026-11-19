@@ -327,8 +327,8 @@ describe("people profile API", () => {
         report.recentConversations.map((item) => item.conversationId),
       ).toEqual(["slack:C4:456", "slack:C1:123"]);
       expect(report.recentConversations.map((item) => item.status)).toEqual([
-        "failed",
-        "active",
+        "needs_input",
+        "working",
       ]);
       expect(report.recentConversations[0]).toMatchObject({
         channelName: "Private Conversation",

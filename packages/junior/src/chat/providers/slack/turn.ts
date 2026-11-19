@@ -484,7 +484,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               actor: inboundMessageActor(queued),
               ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
               provenance: inboundMessageProvenance(queued, teamId),
-              text: reviewItemInput ?? queued.userText,
+              text: reviewItemInput?.text ?? queued.userText,
               timestampMs: queued.message.metadata.dateSent.getTime(),
               omittedImageAttachmentCount:
                 !canReadImages() && hasPotentialImageAttachment(attachments)

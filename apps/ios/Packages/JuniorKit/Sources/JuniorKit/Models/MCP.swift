@@ -8,6 +8,9 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var conversationId: String
   public var title: String
   public var status: ConversationStatus
+  /// A Turn runs or waits to start. `status` can read `needs_input` meanwhile,
+  /// so live views poll and show work on this, not on `status`.
+  public var turnActive: Bool
   /// `slack`, `api` (the dashboard or MCP), `scheduler`, or `internal`.
   public var surface: String
   public var channelName: String?

@@ -6,6 +6,7 @@ import {
   defineJuniorPlugin,
   definePluginTool,
   pluginToolOutputSchema,
+  type Destination,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { defineJuniorPlugins } from "@/app";
@@ -120,6 +121,8 @@ export async function loadMessageEvents(conversationId: string) {
 
 type ChildAgentArgs = {
   conversationStore: ConversationStore;
+  /** Where the child reports, when the parent has no work record yet. */
+  destination?: Destination;
   idempotencyKey: string;
   parentConversationId: string;
   queue: ConversationWorkQueueTestAdapter;
@@ -130,12 +133,14 @@ type ChildAgentArgs = {
 export async function spawnChildAgent(
   args: ChildAgentArgs,
 ): Promise<AgentInvocation> {
-  const destination = (
-    await getConversationWorkState({
-      conversationId: args.parentConversationId,
-      state: args.state,
-    })
-  )?.destination;
+  const destination =
+    args.destination ??
+    (
+      await getConversationWorkState({
+        conversationId: args.parentConversationId,
+        state: args.state,
+      })
+    )?.destination;
   if (!destination) {
     throw new Error("Expected a parent Conversation with a destination");
   }

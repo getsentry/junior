@@ -18,7 +18,7 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
@@ -48,6 +48,9 @@ import {
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import type { ActorIdentity } from "@/api/schema/conversation";
+import { readItemRoots } from "./item-roots";
+import { readReviewItemMentions } from "./mentions";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -159,10 +162,14 @@ function subjectPayload(
 function reviewItemPayload(
   item: ReviewItem,
   viewer: User,
+  roots: Awaited<ReturnType<typeof readItemRoots>>,
+  mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
+  const root = roots.get(item.addedByConversationId);
   return {
     addedByConversationId: item.addedByConversationId,
+    ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
     body: item.body,
@@ -173,6 +180,7 @@ function reviewItemPayload(
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
+    rootConversationId: root?.rootConversationId ?? item.addedByConversationId,
     status: item.status,
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
@@ -183,6 +191,7 @@ function reviewItemPayload(
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(mentions.length > 0 ? { mentions: [...mentions] } : undefined),
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
@@ -193,17 +202,29 @@ function reviewItemPayload(
 }
 
 /**
- * Build the payloads of a page of items, with the related work of the open
- * ones. One read covers the page.
+ * Build the payloads of a page of items, with the root of each one, the
+ * people they mention, and the related work of the open ones. Each read
+ * covers the page, and the reads run at once.
  */
 async function reviewItemPayloads(
   items: readonly ReviewItem[],
   viewer: User,
   reader: ReviewItemReader,
 ): Promise<ReviewItemPayload[]> {
-  const related = await readRelatedReviewWork(getDb(), reader, viewer, items);
-  return items.map((item) =>
-    reviewItemPayload(item, viewer, related.get(item.id)),
+  const db = getDb();
+  const [roots, mentions, related] = await Promise.all([
+    readItemRoots(db, items, viewer),
+    readReviewItemMentions(getSqlExecutor(), items),
+    readRelatedReviewWork(db, reader, viewer, items),
+  ]);
+  return items.map((item, index) =>
+    reviewItemPayload(
+      item,
+      viewer,
+      roots,
+      mentions[index]!,
+      related.get(item.id),
+    ),
   );
 }
 

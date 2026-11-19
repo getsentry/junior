@@ -3,14 +3,18 @@ import {
   messageObjectCard,
   personObjectCard,
   webPageObjectCard,
+  PERSON_CARD_RECENT_LIMIT,
   type AttachObjectLinkResponse,
   type ObjectLinksReport,
+  type PersonCardReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
   readMockConversationDetail,
+  readMockPeopleCode,
   readMockPeopleDirectory,
+  readMockPeopleProfile,
 } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
@@ -422,9 +426,47 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
   },
 };
 
+// The Sentaur review ask's pull request, with a long body, so the Inbox
+// shows how a description sits under the ask's own text.
+const SENTAUR_PULL_REQUEST: OwnedObjectAnnotation = {
+  kind: "object",
+  objectType: "code_change",
+  key: "getsentry/sentaur#418",
+  label: "getsentry/sentaur#418",
+  title: "Retry a canary stage once on a lost agent",
+  displayType: "Pull request",
+  facts: {
+    type: "code_change",
+    additions: 1204,
+    author: "junior",
+    changedFiles: 12,
+    deletions: 340,
+    sourceBranch: "fix/canary-lost-agent-retry",
+    targetBranch: "main",
+  },
+  plugin: "github",
+  status: "open",
+  url: "https://github.com/getsentry/sentaur/pull/418",
+  description: [
+    "A canary stage fails when its GoCD agent loses its lease, even though the deploy itself is fine. Three of the last ten runs failed this way.",
+    "",
+    "## Changes",
+    "",
+    "- Retry a canary stage once when its agent loses the lease.",
+    "- Do not retry a stage that failed its health checks.",
+    "- Log the agent and the lease age on each retry.",
+    "",
+    "## Rollout",
+    "",
+    "Merge after the current train. To roll back, revert this PR.",
+  ].join("\n"),
+};
+
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
+  if (url.href === SENTAUR_PULL_REQUEST.url)
+    return [{ object: SENTAUR_PULL_REQUEST, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);
@@ -519,6 +561,43 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url: href,
   });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
+}
+
+/**
+ * Build a person card like the person card API: the person link card, the
+ * merged code changes of their People profile, and their recent activity.
+ */
+export function readMockPersonCard(
+  origin: string,
+  email: string,
+): PersonCardReport {
+  const card = mockObject(`${origin}/people/${encodeURIComponent(email)}`)[0]
+    ?.object;
+  const recent = [
+    ...(readMockPeopleProfile(email)?.recentConversations ?? []),
+  ].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  const merged = (readMockPeopleCode(email)?.changes ?? [])
+    .filter((change) => change.state === "merged" && change.mergedAt)
+    .sort(
+      (a, b) => Date.parse(b.mergedAt ?? "") - Date.parse(a.mergedAt ?? ""),
+    );
+  return {
+    // Last active covers every Conversation, like the API. Mocks have one
+    // viewer, who may read a private Conversation only as a participant.
+    activity: {
+      ...(recent[0] ? { lastActiveAt: recent[0].lastSeenAt } : undefined),
+      recentConversations: recent
+        .filter((item) => item.visibility !== "private" || item.isParticipant)
+        .slice(0, PERSON_CARD_RECENT_LIMIT)
+        .map((item) => ({
+          conversationId: item.conversationId,
+          lastTurnAt: item.lastSeenAt,
+          title: item.displayTitle,
+        })),
+    },
+    ...(card ? { card } : undefined),
+    mergedChanges: merged.slice(0, PERSON_CARD_RECENT_LIMIT),
+  };
 }
 
 /** Resolve mock links to the cards that the API would show. */

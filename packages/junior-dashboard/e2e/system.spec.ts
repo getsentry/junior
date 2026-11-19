@@ -1,5 +1,6 @@
 import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "./request-budget";
 import { screenshot } from "./screenshot";
 
 /** Vary outcomes so the running cost lines move. */
@@ -135,6 +136,23 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
   await screenshot(page, "system-plugin-github", { view: "desktop" });
+});
+
+test("loads the System overview within its request budget", async ({
+  page,
+  dashboard,
+}) => {
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/system`);
+      await expect(page.getByText("Conversation activity")).toBeVisible();
+      await expect(
+        page.getByText("Net savings", { exact: true }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 2 },
+  );
 });
 
 test("lists Workspaces with the baseline snapshot", async ({
@@ -390,4 +408,41 @@ test("lets an admin re-fill cache warming savings from history", async ({
     target: panel,
   });
   expect(starts).toEqual(["POST"]);
+});
+
+test.describe("keeps the people directory across window focus", () => {
+  test.use({ controlTimers: true });
+
+  test("loads System People within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    let directoryReads = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/people") {
+        directoryReads += 1;
+      }
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/system/people`);
+        await expect(
+          page.getByText("Highest spend", { exact: true }),
+        ).toBeVisible();
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+    expect(directoryReads).toBe(1);
+
+    // React Query refetches stale queries on `visibilitychange`. Go past the
+    // default stale time so a focus refetch would read the directory again.
+    await page.clock.fastForward(60_000);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForLoadState("networkidle");
+    expect(directoryReads).toBe(1);
+  });
 });

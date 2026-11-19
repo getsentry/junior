@@ -1,6 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
   juniorConversationReadPositions,
@@ -89,26 +92,42 @@ export async function markConversationRead(
     .groupBy(juniorConversations.conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
 
-  await db
-    .insert(juniorConversationReadPositions)
-    .values({
-      conversationId,
-      lastReadSeq: Math.min(body.lastReadSeq, conversation.lastSeq ?? 0),
-      updatedAt: new Date(),
-      userId: viewer.id,
-    })
-    .onConflictDoUpdate({
-      target: [
-        juniorConversationReadPositions.userId,
-        juniorConversationReadPositions.conversationId,
-      ],
-      set: {
-        lastReadSeq: sql`greatest(${juniorConversationReadPositions.lastReadSeq}, excluded.last_read_seq)`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    });
+  await db.transaction(async (tx) => {
+    const before = await readStatus(tx, conversationId);
+    await tx
+      .insert(juniorConversationReadPositions)
+      .values({
+        conversationId,
+        lastReadSeq: Math.min(body.lastReadSeq, conversation.lastSeq ?? 0),
+        updatedAt: new Date(),
+        userId: viewer.id,
+      })
+      .onConflictDoUpdate({
+        target: [
+          juniorConversationReadPositions.userId,
+          juniorConversationReadPositions.conversationId,
+        ],
+        set: {
+          lastReadSeq: sql`greatest(${juniorConversationReadPositions.lastReadSeq}, excluded.last_read_seq)`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      });
+    // The detail version does not cover read positions, but a starter's
+    // read can end a `needs_input` wait. Then polls must reload the status.
+    if ((await readStatus(tx, conversationId)) !== before) {
+      await touchConversationDetail(tx, [conversationId]);
+    }
+  });
   // Return what detail reads, so the cached detail opens at the same place.
   return (await readConversationReadPosition(viewer, conversationId))!;
+}
+
+function readStatus(db: JuniorDatabase, conversationId: string) {
+  return db
+    .select({ status: conversationStatusSql(juniorConversations) })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .then(([row]) => row?.status);
 }
 
 /**

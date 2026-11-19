@@ -13,6 +13,7 @@ export {
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
+  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -95,6 +96,7 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
@@ -116,12 +118,14 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -267,6 +271,8 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  PERSON_CARD_RECENT_LIMIT,
+  personCardReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -294,6 +300,7 @@ export type {
   ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
+  PersonCardReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";
@@ -326,6 +333,12 @@ export type {
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
+export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

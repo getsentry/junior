@@ -611,6 +611,7 @@ async function runPausedTurnInContext(
                 runtime:
                   Boolean(dispatchId) ||
                   isEventConversationMessage(userMessage),
+                requestText: userMessage.meta?.requestText,
                 reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
                 text: userMessage.text,
               })),

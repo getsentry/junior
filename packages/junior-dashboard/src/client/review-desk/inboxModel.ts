@@ -2,9 +2,14 @@ import type {
   AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+
+import type { Conversation } from "../types";
 
 import {
+  inboxBundles,
   itemNeedsViewer,
+  itemUpForGrabs,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -82,9 +87,10 @@ export function itemsInView(
   return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
-function singleRow(item: ReviewItemPayload): InboxBundle {
+/** A row for one item, as a stack or an item view shows it. */
+export function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
-    conversationId: item.addedByConversationId,
+    conversationId: item.rootConversationId,
     items: [item],
     key: item.id,
     needsYou: itemNeedsViewer(item),
@@ -148,18 +154,18 @@ export function foldNotices(items: readonly ReviewItemPayload[]): {
 }
 
 /**
- * The FYI list: one row per open notice, newest first. Notices wait on no
- * one, so they are not in To do.
+ * The FYI list: the open notices, stacked by root Conversation, and the
+ * stack with the newest notice first. Notices wait on no one, so they are
+ * not in To do.
  */
 export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
-  return items
-    .filter((item) => item.status === "open" && item.kind === "notice")
-    .map(singleRow)
-    .sort(
-      (a, b) =>
-        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
-        a.key.localeCompare(b.key),
-    );
+  return inboxBundles(
+    items.filter((item) => item.status === "open" && item.kind === "notice"),
+  ).sort(
+    (a, b) =>
+      Date.parse(b.newest.createdAt) - Date.parse(a.newest.createdAt) ||
+      a.key.localeCompare(b.key),
+  );
 }
 
 /**
@@ -189,39 +195,6 @@ export function timeSectionAt(iso: string, nowMs: number): string {
   if (at >= startOfToday.getTime()) return "today";
   if (at >= startOfToday.getTime() - 6 * 86_400_000) return "week";
   return "earlier";
-}
-
-/**
- * How many rows Earlier shows in the Inbox. A fixed number, not a time
- * window: Earlier starts where This week ends, and a window such as 30 days
- * still grows without end for a busy viewer. Older work is in Done.
- */
-const EARLIER_LIMIT = 10;
-
-/**
- * Keep the Inbox stream's rows up to the first `EARLIER_LIMIT` rows of
- * Earlier, so the Inbox ends. `full` says Earlier has all the rows that it
- * shows, so older pages need not load. `cut` says rows were left out.
- */
-export function capEarlier<Row>(
-  rows: readonly Row[],
-  timeOf: (row: Row) => string,
-  nowMs: number,
-): { cut: boolean; full: boolean; rows: Row[] } {
-  const kept: Row[] = [];
-  let earlier = 0;
-  for (const row of rows) {
-    if (timeSectionAt(timeOf(row), nowMs) === "earlier") {
-      earlier += 1;
-      if (earlier > EARLIER_LIMIT) continue;
-    }
-    kept.push(row);
-  }
-  return {
-    cut: earlier > EARLIER_LIMIT,
-    full: earlier >= EARLIER_LIMIT,
-    rows: kept,
-  };
 }
 
 /** Split rows into Today, This week, and Earlier, keeping their order. */
@@ -262,10 +235,43 @@ export function doneSections(
  */
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
-function pullRequestState(item: ReviewItemPayload): string {
+function pullRequestState(
+  item: ReviewItemPayload,
+): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
+}
+
+// The GitHub plugin's text for each state names the pull request by its
+// number only (`junior-github` `showAction`). Under a head that shows the
+// state and the number, it says nothing new. Text that says more, such as
+// "#91 has new commits since you requested changes.", stays.
+const PULL_REQUEST_STATE_TEXT: Record<
+  (typeof PULL_REQUEST_STATES)[number],
+  (number: string) => string
+> = {
+  "Ready to merge": (number) =>
+    `${number} is approved, and GitHub says that it can merge.`,
+  "Review requested": (number) => `GitHub asks you to review ${number}.`,
+};
+
+/**
+ * Whether an item's text only says what its row's head shows: the pull
+ * request state and number of its title, as in "GitHub asks you to review
+ * #91." under "Review requested · #91". `text` leaves out the subject URL.
+ */
+export function textRepeatsHead(
+  item: ReviewItemPayload,
+  text: string,
+): boolean {
+  const state = pullRequestState(item);
+  if (state === "Other") return false;
+  const number = item.title.slice(item.title.indexOf(" · ") + 3);
+  return (
+    /^#\d+$/.test(number) &&
+    text.trim() === PULL_REQUEST_STATE_TEXT[state](number)
+  );
 }
 
 /**
@@ -346,7 +352,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -363,17 +369,120 @@ export function sweepOf(
     );
 }
 
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
+}
+
 /**
  * The second line of a row for one item: what it is about, then its
  * Conversation. A part that repeats the item title drops out, and with no
- * part left the row has no second line.
+ * part left the row has no second line. A subject that ends with what the
+ * title says, as "Fix it (#12)" under "Review requested · #12", drops that
+ * end.
  */
 export function itemRowSubtitle(
   item: Pick<ReviewItemPayload, "subject" | "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
-  const parts = [...new Set([item.subject?.title, conversationTitle])].filter(
+  const subject = item.subject?.title;
+  const tail = subject ? / \(([^()]+)\)$/.exec(subject) : null;
+  const about =
+    subject && tail && item.title.includes(tail[1]!)
+      ? subject.slice(0, tail.index)
+      : subject;
+  const parts = [...new Set([about, conversationTitle])].filter(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The size of the code change that an item is about, as its Conversation's
+ * linked work saved it. Undefined when that work has no size.
+ */
+export function subjectSize(
+  item: Pick<ReviewItemPayload, "subject">,
+  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
+): CodeChangeSize | undefined {
+  const url = item.subject?.url;
+  if (!url) return undefined;
+  return conversation?.sidebarAnnotations?.find(
+    (annotation) => annotation.url === url,
+  )?.size;
+}
+
+/**
+ * Where an item sits, for a row on its own: its root's title, then the
+ * sub-thread that added it, as "Triage deploys › Read the agent logs".
+ */
+export function childOf(
+  rootTitle: string | undefined,
+  item: Pick<ReviewItemPayload, "addedByLabel">,
+): string | undefined {
+  const child = item.addedByLabel;
+  if (!child || !rootTitle || child === rootTitle) return child ?? rootTitle;
+  return `${rootTitle} › ${child}`;
+}
+
+/**
+ * The key of the Inbox row that shows a linked open item: its own row, in
+ * Up for grabs or To do. The Inbox lists no Conversations, so an item in
+ * neither has no row here.
+ */
+function linkedInboxRowKey(
+  item: ReviewItemPayload,
+  rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
+): string | undefined {
+  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
+    bundles.some((bundle) => bundle.conversationId === item.rootConversationId)
+      ? `${prefix}:${item.id}`
+      : undefined;
+  const grab = rowIn("grabs", rows.grabs);
+  return (
+    (itemUpForGrabs(item) ? grab : undefined) ??
+    rowIn("todo", rows.todo) ??
+    grab
+  );
+}
+
+/**
+ * The row that a link to one item opens in a list, and the open item that
+ * the row shows. A snoozed item opens its row in Snoozed. A notice folded
+ * into an ask opens the ask's row.
+ */
+export function linkedRowOf(
+  view: InboxView,
+  linkedId: string | undefined,
+  rows: {
+    awake: readonly ReviewItemPayload[];
+    done: readonly ReviewItemPayload[];
+    foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+    grabs: readonly InboxBundle[];
+    snoozed: readonly InboxBundle[];
+    todo: readonly InboxBundle[];
+  },
+): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {
+  if (!linkedId) return {};
+  const snoozedRow = rows.snoozed.find((row) =>
+    row.items.some((item) => item.id === linkedId),
+  );
+  const snoozedKey = snoozedRow ? linkedId : undefined;
+  const hostId = [...rows.foldedNotices].find(([, notices]) =>
+    notices.some((notice) => notice.id === linkedId),
+  )?.[0];
+  const open = rows.awake.find((item) => item.id === (hostId ?? linkedId));
+  const key = (() => {
+    if (view === "snoozed") return snoozedKey;
+    if (view === "done")
+      return rows.done.some((item) => item.id === linkedId)
+        ? linkedId
+        : undefined;
+    if (!open) return undefined;
+    if (view === "prs" || view === "decisions") return open.id;
+    if (view !== "inbox") return `conversation:${open.rootConversationId}`;
+    if (open.kind === "notice") return `fyi:${open.id}`;
+    return linkedInboxRowKey(open, rows);
+  })();
+  return { key, open, snoozedKey };
 }

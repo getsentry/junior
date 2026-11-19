@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { reviewItemRequestSchema } from "@/chat/review-items/evidence";
+import { actorIdentitySchema } from "./conversation";
 
 const answerSchema = z
   .object({
@@ -12,6 +13,8 @@ const answerSchema = z
 
 const personSchema = z
   .object({
+    /** Junior API path of the profile photo. */
+    avatarUrl: z.string().min(1).optional(),
     displayName: z.string().min(1).optional(),
     email: z.string().min(1),
     userId: z.string().min(1),
@@ -22,6 +25,11 @@ const personSchema = z
 export const reviewItemSchema = z
   .object({
     addedByConversationId: z.string().min(1),
+    /**
+     * Names the Conversation that added the item when it is not
+     * `rootConversationId`, such as a child agent's Thread title.
+     */
+    addedByLabel: z.string().min(1).optional(),
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
@@ -41,6 +49,8 @@ export const reviewItemSchema = z
     createdAt: z.string().datetime(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
+    /** People that the title, body, and question mention. */
+    mentions: z.array(actorIdentitySchema).optional(),
     /**
      * Other open work that the viewer can see on the same subject or linked
      * work. Only an open item has it.
@@ -62,6 +72,12 @@ export const reviewItemSchema = z
       .strict()
       .optional(),
     request: reviewItemRequestSchema.optional(),
+    /**
+     * The top of the item's Conversation tree that the viewer can see, at
+     * any depth: the Conversation that added the item when it is a root, or
+     * when the viewer cannot see its root. The Inbox stacks items by it.
+     */
+    rootConversationId: z.string().min(1),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
       .object({

@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as z from "zod";
 import {
@@ -131,7 +132,7 @@ export function conversationDetailIsLive(
   snapshot: ConversationSnapshot | undefined,
 ): boolean {
   return (
-    snapshot?.status === "active" ||
+    conversationTurnIsActive(snapshot) ||
     Boolean(snapshot?.mailbox?.messages.length) ||
     Boolean(snapshot?.mailbox?.authorization)
   );
@@ -414,14 +415,14 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         );
       }
     },
-    onSettled: async () => {
-      await Promise.all([
-        invalidateConversationFeeds(queryClient),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
+    // Do not await the refreshes. An edit waits for this mutation before its
+    // files join the composer.
+    onSettled: () => {
+      void invalidateConversationFeeds(queryClient);
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }

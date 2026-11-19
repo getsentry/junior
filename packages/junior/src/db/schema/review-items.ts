@@ -106,10 +106,19 @@ export const juniorReviewItems = pgTable(
       table.id,
     ),
     index("junior_review_items_subject_idx").on(table.subjectId, table.status),
+    // The Conversation status reads the open action items that each
+    // Conversation added.
+    index("junior_review_items_open_action_added_by_idx")
+      .on(table.addedByConversationId)
+      .where(sql`${table.status} = 'open' and ${table.kind} = 'action'`),
     index("junior_review_items_automation_idx").on(
       table.automationId,
       table.status,
     ),
+    // A feed row reads the viewer's newest answer in its Conversation.
+    index("junior_review_items_answered_idx")
+      .on(table.addedByConversationId, table.closedByUserId, table.closedAt)
+      .where(sql`${table.answer} is not null`),
   ],
 );
 

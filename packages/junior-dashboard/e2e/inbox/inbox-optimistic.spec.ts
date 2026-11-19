@@ -22,11 +22,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     {
       ...license,
       addedByConversationId: "slack:CLICENSE:1770003600.000400",
+      rootConversationId: "slack:CLICENSE:1770003600.000400",
       createdAt: "2026-08-07T08:10:00.000Z",
     },
     {
       ...audit,
       addedByConversationId: "slack:CAUDIT:1770003600.000500",
+      rootConversationId: "slack:CAUDIT:1770003600.000500",
       createdAt: "2026-08-07T08:20:00.000Z",
     },
     { ...prReview, createdAt: "2026-08-07T08:30:00.000Z" },
@@ -34,10 +36,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   const [buttons, form, other, plain] = asks;
 
   const row = (page: Page, ask: (typeof asks)[number]) =>
-    page.locator(`li[data-inbox-row="todo:${ask.addedByConversationId}"]`);
+    page.locator(`li[data-inbox-row="todo:${ask.id}"]`);
   const open = async (page: Page, ask: (typeof asks)[number]) => {
     await row(page, ask)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await expect(row(page, ask)).toHaveAttribute("data-expanded", "true");
@@ -46,7 +48,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
-  // A row's Done: the Dismiss in its action bar, which closes every item.
+  // A row's Dismiss: its card's own, which closes the row's one ask.
   const rowDone = (page: Page, ask: (typeof asks)[number]) =>
     row(page, ask).getByRole("button", { exact: true, name: "Dismiss" }).last();
 
@@ -87,7 +89,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row(page, other!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, form!)).toHaveCount(0);
 
-    // Dismiss on the row bar.
+    // The card's own Dismiss.
     await rowDone(page, other!).click();
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, other!)).toHaveCount(0);
@@ -128,7 +130,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row is last again, and it opens again: the viewer did not move on.
     await expect(rows.last()).toHaveAttribute(
       "data-inbox-row",
-      `todo:${plain!.addedByConversationId}`,
+      `todo:${plain!.id}`,
     );
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
@@ -238,9 +240,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link", { name: /^Snoozed/ })
       .click();
     const snoozed = (ask: (typeof asks)[number]) =>
-      page.locator(`li[data-inbox-row="${ask.addedByConversationId}"]`);
+      page.locator(`li[data-inbox-row="${ask.id}"]`);
     await snoozed(buttons!)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
@@ -265,27 +267,31 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ json: { error: "Failed" }, status: 500 })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
-    await open(page, buttons!);
-    const pin = row(page, buttons!).getByRole("button", {
-      exact: true,
-      name: "Pin",
-    });
-    await pin.click();
+    // Item rows have no Pin: the Conversations view pins a Conversation.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${conversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     const toast = page
       .locator('[data-slot="toast"]')
       .filter({ hasText: "Could not pin" });
     await expect(toast).toBeVisible();
-    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    await conversationRow.hover();
+    await expect(
+      conversationRow.getByRole("button", { name: /^Pin / }),
+    ).toBeVisible();
 
     fails = false;
     await toast.getByRole("button", { name: "Retry" }).click();
+    await conversationRow.hover();
     await expect(
-      row(page, buttons!).getByRole("button", { exact: true, name: "Unpin" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      conversationRow.getByRole("button", { name: /^Unpin / }),
+    ).toBeVisible();
   });
 
-  test("Clear marks notices done at once, and Retry clears the ones that failed", async ({
+  test("Dismissing FYIs closes them at once, and Retry dismisses the ones that failed", async ({
     dashboard,
     page,
   }) => {
@@ -307,12 +313,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     const toast = page
       .locator('[data-slot="toast"]')
-      .filter({ hasText: "Could not clear 1 item" });
-    // The Clear goes out when its Undo toast closes.
+      .filter({ hasText: "Could not dismiss 1 FYI" });
+    // The sweep goes out when its Undo toast closes.
     await expect(toast).toBeVisible({ timeout: 10_000 });
     await expect(digestFyi).toBeVisible();
     expect(sent).toHaveLength(1);

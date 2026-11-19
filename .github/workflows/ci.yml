@@ -36,6 +36,7 @@ jobs:
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -48,6 +49,8 @@ jobs:
             ci:
               - .github/workflows/**
               - .github/actions/**
+              - "!.github/workflows/ios.yml"
+              - "!.github/workflows/ios-beta.yml"
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
@@ -69,6 +72,10 @@ jobs:
               - packages/junior/**
               - packages/junior-plugin-api/**
               - packages/junior-search/**
+            ios:
+              - apps/ios/**
+              - .github/workflows/ios.yml
+              - .github/workflows/ios-beta.yml
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -118,6 +125,9 @@ jobs:
               - scripts/publish-github-release*.mjs
               - packages/*/package.json
               - packages/docs/**
+            workflows:
+              - .github/workflows/**
+              - .github/actions/**
 
   release-check:
     name: check / release config
@@ -403,6 +413,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # dashboard-bundle-size:check reads the baseline at the merge base
+          # with origin/main.
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter "@sentry/junior-dashboard..." run build
@@ -423,16 +436,17 @@ jobs:
           informational-patch: true
 
   dashboard-e2e:
-    name: test / dashboard e2e (${{ matrix.project }})
+    name: test / dashboard e2e (${{ matrix.project }} ${{ matrix.shard }}/2)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     permissions:
       contents: read
-    # One job per Playwright project, so each stays under the cap.
+    # Two shards per Playwright project, so each job stays under the cap.
     strategy:
       fail-fast: false
       matrix:
         project: [classic, inbox]
+        shard: [1, 2]
     # Keep a hard cap so install/test hangs fail fast.
     timeout-minutes: 15
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
@@ -470,11 +484,12 @@ jobs:
       - name: Run dashboard e2e
         env:
           PLAYWRIGHT_PROJECT: ${{ matrix.project }}
-        run: pnpm test:e2e:dashboard --project="$PLAYWRIGHT_PROJECT"
+          PLAYWRIGHT_SHARD: ${{ matrix.shard }}
+        run: pnpm test:e2e:dashboard --project="$PLAYWRIGHT_PROJECT" --shard="$PLAYWRIGHT_SHARD/2"
       - name: Upload dashboard screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dashboard-screenshots-${{ matrix.project }}
+          name: dashboard-screenshots-${{ matrix.project }}-${{ matrix.shard }}
           path: .playwright/junior-dashboard/screenshots
           if-no-files-found: error
           retention-days: 7
@@ -483,12 +498,12 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dashboard-e2e-traces-${{ matrix.project }}
+          name: dashboard-e2e-traces-${{ matrix.project }}-${{ matrix.shard }}
           path: .playwright/junior-dashboard/*/trace.zip
           retention-days: 7
 
   # Frameshift saves or compares one screenshot set per run, so it runs once,
-  # on the screenshots of both e2e jobs.
+  # on the screenshots of every e2e job.
   dashboard-screenshots:
     name: test / dashboard screenshots
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -513,12 +528,14 @@ jobs:
       - name: Download inbox screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dashboard-screenshots-inbox
+          pattern: dashboard-screenshots-inbox-*
+          merge-multiple: true
           path: .playwright/junior-dashboard/screenshots
       - name: Download classic screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dashboard-screenshots-classic
+          pattern: dashboard-screenshots-classic-*
+          merge-multiple: true
           path: .playwright/junior-dashboard/screenshots
       - name: Find Frameshift baseline
         if: github.event_name == 'pull_request'
@@ -638,7 +655,7 @@ jobs:
     name: lint / workflows
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       contents: read
     steps:
