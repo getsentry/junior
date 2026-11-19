@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "../styles";
 
@@ -20,46 +20,14 @@ import { cn } from "../styles";
 export const composerDockClass =
   "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] bg-dashboard-bg px-2 pt-1.5 pb-[var(--dashboard-composer-dock-padding,0.375rem)]";
 
-// `ToastViewport` reads it.
-const composerDockHeightProperty = "--dashboard-composer-dock-height";
-
-/**
- * Publish a docked composer's height, so toasts on a phone sit above the
- * composer and its Send button. Pass the returned ref to the dock: it
- * follows the dock as it mounts and unmounts. One dock shows at a time.
- */
-export function useComposerDockHeight(docked = true) {
-  return useCallback(
-    (element: HTMLElement | null) => {
-      if (!element || !docked) return;
-      const root = document.documentElement;
-      const publish = () =>
-        root.style.setProperty(
-          composerDockHeightProperty,
-          `${element.offsetHeight}px`,
-        );
-      const observer = new ResizeObserver(publish);
-      observer.observe(element);
-      publish();
-      return () => {
-        observer.disconnect();
-        root.style.removeProperty(composerDockHeightProperty);
-      };
-    },
-    [docked],
-  );
-}
-
 export function ComposerDock(props: {
   children: ReactNode;
   className?: string;
   /** Queue / authorization chrome above the composer. */
   above?: ReactNode;
 }) {
-  const dock = useComposerDockHeight();
   return (
     <div
-      ref={dock}
       className={cn(
         "flex w-full min-h-0 shrink-0 flex-col overflow-hidden",
         composerDockClass,

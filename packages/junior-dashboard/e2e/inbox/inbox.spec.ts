@@ -307,52 +307,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(actions).toEqual([]);
   });
 
-  test("on a phone, a sweep's Undo works over a Conversation's composer", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.clock.setFixedTime(NOW_MS);
-    const actions = await mockReviewItems(page, {
-      open: [license, prReady, digest],
-    });
-    await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/`);
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Inbox/ })
-      .click();
-    const clearFyi = page.getByRole("button", {
-      name: /^Dismiss \d+ in FYI$/,
-    });
-    await clearFyi.click();
-    const undo = page
-      .getByRole("region", { name: "Notifications" })
-      .getByRole("dialog", { name: /^Dismissed \d+ FYIs?$/ })
-      .getByRole("button", { name: "Undo" });
-    await expect(undo).toBeVisible();
-
-    // The toast sits above the composer: its box and Send still take a tap.
-    await page.goBack();
-    await page
-      .getByRole("list", { name: "In flight" })
-      .getByRole("link", { name: new RegExp(checkout) })
-      .click();
-    await expect(page).toHaveURL(/\/conversations\//);
-    await page
-      .getByRole("textbox", { name: "Continue this conversation" })
-      .fill("Status?");
-    await page.getByRole("button", { name: "Send" }).click({ trial: true });
-    await undo.click();
-    await expect(undo).toHaveCount(0);
-    await page.goBack();
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Inbox/ })
-      .click();
-    await expect(clearFyi).toBeVisible();
-    expect(actions).toEqual([]);
-  });
-
   test("a sweep that fails to close an item brings it back", async ({
     dashboard,
     page,

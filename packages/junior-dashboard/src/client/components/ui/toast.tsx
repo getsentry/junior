@@ -2,6 +2,8 @@ import * as React from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { cn } from "@dashboard/lib/utils";
 
+import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
+
 import { Button } from "./button";
 import {
   XIcon,
@@ -20,14 +22,37 @@ function ToastPortal({ ...props }: ToastPrimitive.Portal.Props) {
   return <ToastPrimitive.Portal data-slot="toast-portal" {...props} />;
 }
 
-function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
+// A phone puts toasts at the top, away from the composer, the keyboard,
+// and the "+" button, so a tap meant for them cannot land on a toast.
+type ToastEdge = "top" | "bottom";
+
+function subscribeToLayout(onChange: () => void) {
+  const media = window.matchMedia(DESKTOP_LAYOUT_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function useToastEdge(): ToastEdge {
+  return React.useSyncExternalStore(
+    subscribeToLayout,
+    () => (window.matchMedia(DESKTOP_LAYOUT_QUERY).matches ? "bottom" : "top"),
+    () => "bottom",
+  );
+}
+
+function ToastViewport({
+  className,
+  edge,
+  ...props
+}: ToastPrimitive.Viewport.Props & { edge: ToastEdge }) {
   return (
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        // On a phone, toasts clear the "+" button and sit above a docked
-        // composer, which publishes its height (`useComposerDockHeight`).
-        "pointer-events-none fixed inset-x-3 bottom-[max(5.25rem,env(safe-area-inset-bottom),calc(var(--dashboard-composer-dock-height,0px)_+_0.5rem))] z-[60] mx-auto w-auto max-w-sm outline-none md:right-4 md:bottom-[max(5.25rem,env(safe-area-inset-bottom))] md:left-auto md:mx-0 md:w-full",
+        "pointer-events-none fixed z-[60] outline-none",
+        edge === "top"
+          ? "inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] mx-auto max-w-sm"
+          : "right-4 bottom-[max(5.25rem,env(safe-area-inset-bottom))] w-full max-w-sm",
         className,
       )}
       {...props}
@@ -35,18 +60,44 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
   );
 }
 
-function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
+// Each edge stacks its toasts away from the screen edge, and a toast comes
+// in and goes out across that edge.
+const TOAST_EDGE_CLASS: Record<ToastEdge, string> = {
+  bottom: cn(
+    "bottom-0 origin-bottom",
+    "[--offset-y:calc(var(--toast-offset-y)*-1+calc(var(--toast-index)*var(--gap)*-1)+var(--toast-swipe-movement-y))]",
+    "[transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)-(var(--toast-index)*var(--peek))-(var(--shrink)*var(--height))))_scale(var(--scale))]",
+    "after:top-full",
+    "data-starting-style:[transform:translateY(150%)]",
+    "[&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(150%)]",
+  ),
+  top: cn(
+    "top-0 origin-top",
+    "[--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))]",
+    "[transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--peek))+(var(--shrink)*var(--height))))_scale(var(--scale))]",
+    "after:bottom-full",
+    "data-starting-style:[transform:translateY(-150%)]",
+    "[&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(-150%)]",
+  ),
+};
+
+function Toast({
+  className,
+  edge,
+  ...props
+}: ToastPrimitive.Root.Props & { edge: ToastEdge }) {
   return (
     <ToastPrimitive.Root
       data-slot="toast"
+      swipeDirection={edge === "top" ? ["up", "right"] : ["down", "right"]}
       className={cn(
-        "group/toast pointer-events-auto absolute right-0 bottom-0 z-[calc(1000-var(--toast-index))] w-full origin-bottom rounded-lg border border-input bg-secondary text-foreground shadow-lg will-change-transform outline-none select-none focus-visible:outline-2 focus-visible:outline-ring",
-        "[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)*-1+calc(var(--toast-index)*var(--gap)*-1)+var(--toast-swipe-movement-y))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))]",
-        "h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)-(var(--toast-index)*var(--peek))-(var(--shrink)*var(--height))))_scale(var(--scale))] [transition:transform_180ms_ease-out,opacity_180ms,height_180ms] motion-reduce:transition-none",
-        "after:absolute after:top-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
+        "group/toast pointer-events-auto absolute right-0 z-[calc(1000-var(--toast-index))] w-full rounded-lg border border-input bg-secondary text-foreground shadow-lg will-change-transform outline-none select-none focus-visible:outline-2 focus-visible:outline-ring",
+        "[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))]",
+        "h-(--height) [transition:transform_180ms_ease-out,opacity_180ms,height_180ms] motion-reduce:transition-none",
+        "after:absolute after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
+        TOAST_EDGE_CLASS[edge],
         "data-expanded:h-(--toast-height) data-expanded:[transform:translateX(var(--toast-swipe-movement-x))_translateY(var(--offset-y))]",
-        "data-limited:opacity-0 data-starting-style:[transform:translateY(150%)]",
-        "[&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(150%)]",
+        "data-limited:opacity-0",
         "data-ending-style:data-[swipe-direction=down]:[transform:translateY(calc(var(--toast-swipe-movement-y)+150%))]",
         "data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))_translateY(var(--offset-y))]",
         "data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))_translateY(var(--offset-y))]",
@@ -180,11 +231,11 @@ function ToastIcon({ type }: { type: string | undefined }) {
   );
 }
 
-function ToastList() {
+function ToastList(props: { edge: ToastEdge }) {
   const { toasts } = ToastPrimitive.useToastManager();
 
   return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
+    <Toast edge={props.edge} key={toastItem.id} toast={toastItem}>
       <ToastContent>
         {/* Top-align the icon with the title, like Alert; buttons stay centered.
             A phone shows one line: the title and its buttons. */}
@@ -214,12 +265,13 @@ const CONFIRMATION_TIMEOUT_MS = 2_500;
 
 /** Own notification state for one mounted dashboard and render its toast stack. */
 function Toaster({ children, ...props }: ToastPrimitive.Provider.Props) {
+  const edge = useToastEdge();
   return (
     <ToastProvider limit={3} timeout={4000} {...props}>
       {children}
       <ToastPortal>
-        <ToastViewport>
-          <ToastList />
+        <ToastViewport edge={edge}>
+          <ToastList edge={edge} />
         </ToastViewport>
       </ToastPortal>
     </ToastProvider>
