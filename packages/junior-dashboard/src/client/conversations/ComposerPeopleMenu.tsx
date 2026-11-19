@@ -44,7 +44,7 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
       label="People"
       onSelect={(row) => props.typeahead.insert({ person: row.person })}
       // Only the API knows which names an earlier row matched.
-      pending={search.isPlaceholderData}
+      pending={search.isPlaceholderData || search.isLoading}
       rowKey={(row) => row.person.slackUserId}
       rows={rows}
       typeahead={props.typeahead}

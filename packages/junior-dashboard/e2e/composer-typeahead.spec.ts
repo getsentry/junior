@@ -138,6 +138,34 @@ test("an earlier row cannot be inserted while the next search loads", async ({
   await expect(composer).toHaveText("@ave");
 });
 
+test("Enter and Tab wait while the first people search loads", async ({
+  page,
+  dashboard,
+}) => {
+  const sent: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      sent.push(route.request().postDataJSON().message);
+    }
+    await route.fallback();
+  });
+  // The first search does not answer yet, so there are no rows.
+  await page.route("**/api/people/search?*", () => {});
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  const searched = page.waitForRequest("**/api/people/search?*");
+  await composer.pressSequentially("@ca");
+  await searched;
+  await composer.press("Tab");
+  await composer.press("Enter");
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveText("@ca");
+  expect(sent).toEqual([]);
+});
+
 test("a person without a People page still has a card with Invite", async ({
   page,
   dashboard,
