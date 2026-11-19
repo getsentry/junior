@@ -8,10 +8,7 @@ import type { BreakerState } from "@/chat/cache-warming/request";
 import { savingsTotals } from "@/chat/cache-warming/savings";
 import { microUsdToUsd } from "@/db/micro-usd";
 import { readHourlyStats, type HourlyStat } from "@/stats";
-import {
-  cacheWarmingHourlyReportSchema,
-  type CacheWarmingHourlyReport,
-} from "../schema/cache-warming";
+import type { CacheWarmingHourlyReport } from "../schema/cache-warming";
 import { netSavingsUsd, savingsUsd } from "./savings";
 
 const HOUR_MS = 60 * 60 * 1_000;
@@ -74,7 +71,7 @@ export async function readCacheWarmingHourly(
         .map((stat) => stat.name),
     ),
   ].sort();
-  return cacheWarmingHourlyReportSchema.parse({
+  return {
     start: new Date(window.startMs).toISOString(),
     end: new Date(window.endMs).toISOString(),
     hours: hours.map((hour) => {
@@ -107,5 +104,5 @@ export async function readCacheWarmingHourly(
       modelCache: modelCacheTotals(stats.filter(inWindow(lastWeek))),
     },
     breakers,
-  });
+  };
 }
