@@ -1,13 +1,11 @@
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  type AssistantMessage,
-  type Context,
-  type Message,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, Message } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import type { ToolDefinition } from "@/core/tool";
 import { runStep, type StepInput } from "@/core/turn/step";
+import {
+  createAssistantMessage,
+  createModelComplete,
+} from "../../../fixtures/model-stream";
 
 const user: Message = { role: "user", content: "hi", timestamp: 0 };
 
@@ -29,7 +27,7 @@ function stepInput(
   return {
     systemPrompt: "You are Junior.",
     tools: [],
-    complete: () => Promise.reject(new Error("no model request expected")),
+    complete: createModelComplete([]),
     replay: false,
     signal: new AbortController().signal,
     ...overrides,
@@ -37,16 +35,16 @@ function stepInput(
 }
 
 function replyWithCalls(...names: string[]): AssistantMessage {
-  return fauxAssistantMessage(
-    names.map((name) => fauxToolCall(name, {}, { id: `call-${name}` })),
-    { stopReason: "toolUse" },
-  );
+  return createAssistantMessage({
+    type: "toolCalls",
+    calls: names.map((name) => ({ name, arguments: {}, id: `call-${name}` })),
+  });
 }
 
 describe("runStep", () => {
   it("completes the Turn with a text reply and sends only tool declarations", async () => {
     const requests: Context[] = [];
-    const reply = fauxAssistantMessage("hello");
+    const reply = createAssistantMessage({ type: "text", text: "hello" });
     const lookup = tool("lookup", {
       replay: "safe",
       execute: () => Promise.resolve({ content: [] }),
@@ -56,10 +54,15 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         tools: [lookup],
-        complete: (context) => {
-          requests.push(context);
-          return Promise.resolve(reply);
-        },
+        complete: createModelComplete([
+          {
+            type: "message",
+            message: reply,
+            onRequest: (context) => {
+              requests.push(context);
+            },
+          },
+        ]),
       }),
     );
 
@@ -88,7 +91,7 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         tools: [lookup],
-        complete: () => Promise.resolve(reply),
+        complete: createModelComplete([{ type: "message", message: reply }]),
       }),
     );
     const toolStep = await runStep(
@@ -259,11 +262,14 @@ describe("runStep", () => {
         return Promise.resolve({ content: [] });
       },
     });
-    const cutOffCalls = fauxAssistantMessage(
-      [fauxToolCall("send", {}, { id: "call-send" })],
-      { stopReason: "length" },
-    );
-    const cutOffText = fauxAssistantMessage("Here is the first half", {
+    const cutOffCalls = createAssistantMessage({
+      type: "toolCalls",
+      calls: [{ name: "send", arguments: {}, id: "call-send" }],
+      stopReason: "length",
+    });
+    const cutOffText = createAssistantMessage({
+      type: "text",
+      text: "Here is the first half",
       stopReason: "length",
     });
 
@@ -273,7 +279,9 @@ describe("runStep", () => {
     const modelStep = await runStep(
       stepInput({
         messages: [user],
-        complete: () => Promise.resolve(cutOffText),
+        complete: createModelComplete([
+          { type: "message", message: cutOffText },
+        ]),
       }),
     );
 
@@ -286,14 +294,14 @@ describe("runStep", () => {
   });
 
   it("fails the step with the failed reply when the model request fails", async () => {
-    const failure = fauxAssistantMessage([], {
-      stopReason: "error",
+    const failure = createAssistantMessage({
+      type: "error",
       errorMessage: "overloaded",
     });
     const result = await runStep(
       stepInput({
         messages: [user],
-        complete: () => Promise.resolve(failure),
+        complete: createModelComplete([{ type: "message", message: failure }]),
       }),
     );
 
@@ -320,12 +328,14 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         signal: duringModel.signal,
-        complete: () => {
-          duringModel.abort(stopped);
-          return Promise.resolve(
-            fauxAssistantMessage([], { stopReason: "aborted" }),
-          );
-        },
+        complete: createModelComplete([
+          {
+            type: "error",
+            errorMessage: "Request was aborted",
+            stopReason: "aborted",
+            onRequest: () => duringModel.abort(stopped),
+          },
+        ]),
       }),
     );
     const toolStep = runStep(

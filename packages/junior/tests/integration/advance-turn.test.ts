@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  type AssistantMessage,
-  type Context,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import { eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +20,10 @@ import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import {
+  createAssistantMessage,
+  createModelComplete,
+} from "../fixtures/model-stream";
 
 // Chat config reads the queue provider when it loads, so set it first. CI
 // runs Redis at REDIS_URL. Locally, compose.yaml runs it on port 6382.
@@ -144,21 +143,14 @@ async function loadHistory() {
 function prepareWith(
   replies: AssistantMessage[],
   tools: ToolDefinition[] = [],
-): { prepare: () => Promise<PreparedStep>; requests: Context[] } {
-  const requests: Context[] = [];
-  const prepare = () =>
-    Promise.resolve({
-      systemPrompt: "You are Junior.",
-      tools,
-      complete: (context: Context) => {
-        requests.push(context);
-        const next = replies.shift();
-        return next
-          ? Promise.resolve(next)
-          : Promise.reject(new Error("no model request expected"));
-      },
-    });
-  return { prepare, requests };
+): { prepare: () => Promise<PreparedStep> } {
+  const complete = createModelComplete(
+    replies.map((message) => ({ type: "message", message })),
+  );
+  return {
+    prepare: () =>
+      Promise.resolve({ systemPrompt: "You are Junior.", tools, complete }),
+  };
 }
 
 function advance(prepare: () => Promise<PreparedStep>, leaseMs = LEASE_MS) {
@@ -183,8 +175,9 @@ function sendTool(executed: string[]): ToolDefinition {
 }
 
 function sendCallReply(): AssistantMessage {
-  return fauxAssistantMessage([fauxToolCall("send", {}, { id: "call-1" })], {
-    stopReason: "toolUse",
+  return createAssistantMessage({
+    type: "toolCalls",
+    calls: [{ name: "send", arguments: {}, id: "call-1" }],
   });
 }
 
@@ -207,7 +200,7 @@ describe("advanceTurn", () => {
   });
 
   it("ends the Turn when the step completes it, and sends nothing", async () => {
-    const reply = fauxAssistantMessage("All done.");
+    const reply = createAssistantMessage({ type: "text", text: "All done." });
     const { prepare } = prepareWith([reply]);
 
     await advance(prepare);
@@ -225,10 +218,7 @@ describe("advanceTurn", () => {
 
   it("fails the Turn with the model error and writes no history", async () => {
     const { prepare } = prepareWith([
-      fauxAssistantMessage("", {
-        stopReason: "error",
-        errorMessage: "overloaded",
-      }),
+      createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
     ]);
 
     await advance(prepare);
@@ -256,7 +246,10 @@ describe("advanceTurn", () => {
           .where(eq(juniorTurns.id, turnId));
       }
       const before = await readTurn();
-      const prepare = vi.fn(prepareWith([fauxAssistantMessage("hi")]).prepare);
+      const prepare = vi.fn(
+        prepareWith([createAssistantMessage({ type: "text", text: "hi" })])
+          .prepare,
+      );
 
       await advance(prepare);
 
