@@ -565,7 +565,9 @@ export function usePinnedTranscriptBottom(input: {
         ? Math.max(0, rect.bottom - bounds.bottom)
         : rect.top -
           bounds.top -
-          Math.max(TALL_ROW_TOP_GAP_PX, (viewportHeight - rect.height) / 2);
+          (rect.height > viewportHeight
+            ? TALL_ROW_TOP_GAP_PX
+            : (viewportHeight - rect.height) / 2);
       if (Math.abs(offset) < 1) return true;
       // The reader goes to the row, so the latest must not pull them back.
       if (offset < 0) leaveBottom();
