@@ -29,8 +29,6 @@ const SNOOZE_RETENTION_MS = 30 * DAY_MS;
 // Bound one retention pass. The rest waits for the next one.
 const SNOOZE_RETENTION_LIMIT = 1000;
 
-/** The Event of a new Review item in a row. Its identifier is the row's root. */
-const NEW_ITEM_EVENT_TYPE = "review_item.created";
 /** The Event of a snooze timer. Its identifier is the timer id. */
 export const SNOOZE_TIMER_EVENT_TYPE = "timer.fired";
 
@@ -75,18 +73,16 @@ export function inboxSnoozesVersion(userId: string): SQL<string> {
 }
 
 /**
- * Snooze Review items for one User. Each item gets its own snooze with two
- * wake triggers: the timer, and a new item in the row. The User's earlier
- * snooze on an item is cancelled. `rootConversationId` is the row's root,
- * and the caller must check that the User can see each item. Returns the
- * new snoozes.
+ * Snooze Review items for one User. Each item gets its own snooze with a
+ * timer wake trigger. A new item in the row is not snoozed, so it shows by
+ * itself. The User's earlier snooze on an item is cancelled. The caller
+ * must check that the User can see each item. Returns the new snoozes.
  */
 export async function snoozeInboxItems(
   db: JuniorDatabase,
   input: {
     nowMs: number;
     reviewItemIds: readonly string[];
-    rootConversationId: string;
     timerId: string;
     userId: string;
   },
@@ -120,13 +116,6 @@ export async function snoozeInboxItems(
         {
           eventType: SNOOZE_TIMER_EVENT_TYPE,
           identifier: input.timerId,
-          namespace: CORE_EVENT_NAMESPACE,
-          outcome: "wake" as const,
-          snoozeId: snooze.id,
-        },
-        {
-          eventType: NEW_ITEM_EVENT_TYPE,
-          identifier: input.rootConversationId,
           namespace: CORE_EVENT_NAMESPACE,
           outcome: "wake" as const,
           snoozeId: snooze.id,
@@ -228,37 +217,6 @@ export async function settleInboxSnoozes(
     )
     .returning({ reviewItemId: juniorInboxSnoozes.reviewItemId });
   return rows.map((row) => row.reviewItemId);
-}
-
-/**
- * Wake every snooze in the Inbox rows of a new Review item: any new item in
- * a row wakes it, whoever the item is for. Run it in the transaction that
- * adds the item.
- */
-export async function wakeInboxSnoozesForNewItem(
-  db: JuniorDatabase,
-  itemId: string,
-): Promise<void> {
-  const triggered = queries
-    .select({ id: juniorInboxSnoozeTriggers.snoozeId })
-    .from(juniorInboxSnoozeTriggers)
-    .where(
-      and(
-        eq(juniorInboxSnoozeTriggers.namespace, CORE_EVENT_NAMESPACE),
-        inArray(juniorInboxSnoozeTriggers.identifier, rowRootsOfItem(itemId)),
-        eq(juniorInboxSnoozeTriggers.eventType, NEW_ITEM_EVENT_TYPE),
-        eq(juniorInboxSnoozeTriggers.outcome, "wake"),
-      ),
-    );
-  await db
-    .update(juniorInboxSnoozes)
-    .set({ state: "woken" })
-    .where(
-      and(
-        inArray(juniorInboxSnoozes.id, triggered),
-        eq(juniorInboxSnoozes.state, "snoozed"),
-      ),
-    );
 }
 
 /**

@@ -158,7 +158,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Done** (Inbox): the view of done and dismissed Review items. Not
   Conversation archive.
 - **Snooze**: one User hides one Review item in their Inbox until a
-  trigger, such as a timer or a new item in its row, wakes or resolves it.
+  trigger, such as a timer or an Event, wakes or resolves it. A later item
+  in the row is not snoozed.
   Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
   items.
 - **Plan**: the durable list of work that outlives a Turn in one

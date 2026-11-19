@@ -10,7 +10,7 @@ export const inboxSnoozeSubjectSchema = z
 
 /**
  * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
- * until `wakeAt`, or until a new item in the row.
+ * until `wakeAt`. A later item in the row shows by itself.
  */
 export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
   .extend({ wakeAt: z.string().datetime() })

@@ -20,7 +20,6 @@ import type { ProviderTenant } from "@/api/conversations/access";
 import {
   inboxSnoozesVersion,
   reviewItemSnoozedBy,
-  wakeInboxSnoozesForNewItem,
 } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -361,7 +360,6 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
-    await wakeInboxSnoozesForNewItem(tx, inserted[0].id);
     return inserted[0].id;
   });
   if (!id) return undefined;
