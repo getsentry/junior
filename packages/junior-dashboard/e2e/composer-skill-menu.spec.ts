@@ -121,6 +121,11 @@ test("describes the skill reference at the caret @classic", async ({
     .click();
   await expect(composer).toBeFocused();
   await expect(card).toBeVisible();
+  // A selection closes it, and a collapse back to the same caret reopens it.
+  await composer.press("Shift+ArrowLeft");
+  await expect(card).toHaveCount(0);
+  await composer.press("ArrowRight");
+  await expect(card).toBeVisible();
   await composer.press("Escape");
   await expect(card).toHaveCount(0);
   await expect(composer).toHaveValue("Run $release-check now");
@@ -132,6 +137,31 @@ test("describes the skill reference at the caret @classic", async ({
   await composer.press("Backspace");
   await expect(skills).toBeVisible();
   await expect(card).toHaveCount(0);
+});
+
+test("a caret move before the skill list loads shows the card @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  let release = () => {};
+  const loaded = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/skills", async (route) => {
+    await loaded;
+    await route.fallback();
+  });
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Start a conversation");
+  await composer.fill("Run $release-check now");
+  for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
+  release();
+  await expect(
+    page.getByRole("group", { name: "$release-check" }),
+  ).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Skills" })).toHaveCount(0);
 });
 
 test.describe("on a touch screen", () => {
