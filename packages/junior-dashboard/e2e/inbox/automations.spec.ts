@@ -72,7 +72,8 @@ test.describe("new UI", { tag: "@new" }, () => {
             lastProgressAt: NOW,
             lastSeenAt: NOW,
             startedAt: NOW,
-            status: "completed",
+            status: "done",
+            turnActive: false,
             surface: "internal",
           }),
         });
@@ -225,7 +226,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     const recentDetails = page.getByRole("dialog");
     await expect(
-      recentDetails.getByText("completed", { exact: true }),
+      recentDetails.getByText("done", { exact: true }),
     ).toBeVisible();
     // Details show the run's Conversation, not only its numbers.
     await expect(

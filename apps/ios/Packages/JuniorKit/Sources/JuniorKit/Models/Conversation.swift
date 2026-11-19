@@ -20,10 +20,9 @@ extension OpenEnum {
 public struct ConversationStatus: OpenEnum {
   public let rawValue: String
   public init(rawValue: String) { self.rawValue = rawValue }
-  public static let active = Self(rawValue: "active")
-  public static let completed = Self(rawValue: "completed")
-  public static let failed = Self(rawValue: "failed")
-  public static let stopped = Self(rawValue: "stopped")
+  public static let needsInput = Self(rawValue: "needs_input")
+  public static let working = Self(rawValue: "working")
+  public static let done = Self(rawValue: "done")
 }
 
 public struct ConversationVisibility: OpenEnum {

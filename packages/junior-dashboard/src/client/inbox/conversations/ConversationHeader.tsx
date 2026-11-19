@@ -74,6 +74,8 @@ export function ConversationHeader(props: {
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
+  /** The tree state or pin icon, before the title. */
+  state?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
   title: string;
@@ -262,10 +264,11 @@ export function ConversationHeader(props: {
           ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
-      {props.contextTags || props.linkedWork ? (
+      {props.state || props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
           {/* One row. Tags keep their width; the slot scrolls. */}
           <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
+            {props.state}
             {props.contextTags}
             {props.linkedWork ? (
               <div aria-label="Linked work">{props.linkedWork}</div>
@@ -294,6 +297,7 @@ export function ConversationHeader(props: {
                   {props.sidebarToggle}
                 </div>
               ) : null}
+              {props.state}
               {props.agentTree ? (
                 <ConversationBreadcrumb
                   current={title}

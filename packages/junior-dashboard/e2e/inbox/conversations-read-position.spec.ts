@@ -463,7 +463,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
       // Active Conversations poll every 2s, so new events reach the page.
-      status: "active",
+      status: "working",
+      turnActive: true,
       surface: "internal",
     };
     let latestSeq = 139;

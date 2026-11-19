@@ -3,7 +3,8 @@
     {
       "conversationId": "slack:CQA123:1770003600.000200",
       "title": "Investigate checkout latency",
-      "status": "active",
+      "status": "working",
+      "turnActive": true,
       "surface": "slack",
       "channelName": "proj-checkout",
       "locationUrl": "https://sentry.slack.com/archives/CQA123/p1770003600000200?thread_ts=1770003600.000200&cid=CQA123",
@@ -14,7 +15,8 @@
     {
       "conversationId": "slack:DQA123:1770007200.000300",
       "title": "Direct Message",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "slack",
       "startedAt": "2026-08-07T11:36:00.000Z",
       "lastSeenAt": "2026-08-07T11:39:00.000Z",
@@ -23,7 +25,8 @@
     {
       "conversationId": "internal:question-qa",
       "title": "Roll out payments-v42",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-07T11:00:00.000Z",
       "lastSeenAt": "2026-08-07T11:34:00.000Z",
@@ -32,7 +35,8 @@
     {
       "conversationId": "slack:CQA777:1770014400.000500",
       "title": "Deployment investigation failed",
-      "status": "failed",
+      "status": "needs_input",
+      "turnActive": false,
       "surface": "slack",
       "channelName": "proj-incidents",
       "startedAt": "2026-08-07T11:24:00.000Z",
@@ -42,7 +46,8 @@
     {
       "conversationId": "internal:questions-qa",
       "title": "Plan the billing migration",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-07T11:15:00.000Z",
       "lastSeenAt": "2026-08-07T11:20:00.000Z",
@@ -51,7 +56,8 @@
     {
       "conversationId": "slack:CQA123:1770000000.000100",
       "title": "Checkout latency triage",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "slack",
       "channelName": "proj-checkout",
       "startedAt": "2026-08-07T11:16:00.000Z",
@@ -61,7 +67,8 @@
     {
       "conversationId": "slack:CQA456:1770021600.000600",
       "title": "Package release and self-update",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "slack",
       "channelName": "proj-release",
       "startedAt": "2026-08-07T10:28:00.000Z",
@@ -71,7 +78,8 @@
     {
       "conversationId": "agent-dispatch:event-1",
       "title": "Closed issue summary",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-07T09:00:00.000Z",
       "lastSeenAt": "2026-08-07T09:00:14.000Z",
@@ -80,7 +88,8 @@
     {
       "conversationId": "internal:dashboard-qa",
       "title": "Dashboard QA edge cases",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-07T07:00:00.000Z",
       "lastSeenAt": "2026-08-07T08:00:00.000Z",
@@ -89,7 +98,8 @@
     {
       "conversationId": "slack:CQA999:1770010800.000400",
       "title": "Sandbox validation",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "slack",
       "startedAt": "2026-08-07T07:00:00.000Z",
       "lastSeenAt": "2026-08-07T08:00:00.000Z",
@@ -98,7 +108,8 @@
     {
       "conversationId": "scheduler:daily-ops-digest",
       "title": "Daily operations digest",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "scheduler",
       "startedAt": "2026-08-07T07:00:00.000Z",
       "lastSeenAt": "2026-08-07T08:00:00.000Z",
@@ -107,7 +118,8 @@
     {
       "conversationId": "slack:CQA456:1770025200.000700",
       "title": "Quarterly reliability review",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "slack",
       "startedAt": "2026-08-06T10:00:00.000Z",
       "lastSeenAt": "2026-08-06T10:00:00.000Z",
@@ -116,7 +128,8 @@
     {
       "conversationId": "internal:history-1",
       "title": "Release notes draft 1",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-05T12:00:00.000Z",
       "lastSeenAt": "2026-08-05T12:00:00.000Z",
@@ -125,7 +138,8 @@
     {
       "conversationId": "internal:history-2",
       "title": "Flaky test triage 2",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-04T07:12:00.000Z",
       "lastSeenAt": "2026-08-04T07:12:00.000Z",
@@ -134,7 +148,8 @@
     {
       "conversationId": "internal:history-3",
       "title": "Quota alert follow-up 3",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-03T02:24:00.000Z",
       "lastSeenAt": "2026-08-03T02:24:00.000Z",
@@ -143,7 +158,8 @@
     {
       "conversationId": "internal:history-4",
       "title": "Onboarding doc review 4",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-08-01T21:36:00.000Z",
       "lastSeenAt": "2026-08-01T21:36:00.000Z",
@@ -152,7 +168,8 @@
     {
       "conversationId": "internal:history-5",
       "title": "Dependency bump 5",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-31T16:48:00.000Z",
       "lastSeenAt": "2026-07-31T16:48:00.000Z",
@@ -161,7 +178,8 @@
     {
       "conversationId": "internal:history-6",
       "title": "Billing export check 6",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-30T12:00:00.000Z",
       "lastSeenAt": "2026-07-30T12:00:00.000Z",
@@ -170,7 +188,8 @@
     {
       "conversationId": "internal:history-7",
       "title": "Incident timeline 7",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-29T07:12:00.000Z",
       "lastSeenAt": "2026-07-29T07:12:00.000Z",
@@ -179,7 +198,8 @@
     {
       "conversationId": "internal:history-8",
       "title": "SDK changelog summary 8",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-28T02:24:00.000Z",
       "lastSeenAt": "2026-07-28T02:24:00.000Z",
@@ -188,7 +208,8 @@
     {
       "conversationId": "internal:history-9",
       "title": "Release notes draft 9",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-26T21:36:00.000Z",
       "lastSeenAt": "2026-07-26T21:36:00.000Z",
@@ -197,7 +218,8 @@
     {
       "conversationId": "internal:history-10",
       "title": "Flaky test triage 10",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-25T16:48:00.000Z",
       "lastSeenAt": "2026-07-25T16:48:00.000Z",
@@ -206,7 +228,8 @@
     {
       "conversationId": "internal:history-11",
       "title": "Quota alert follow-up 11",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-24T12:00:00.000Z",
       "lastSeenAt": "2026-07-24T12:00:00.000Z",
@@ -215,7 +238,8 @@
     {
       "conversationId": "internal:history-12",
       "title": "Onboarding doc review 12",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-23T07:12:00.000Z",
       "lastSeenAt": "2026-07-23T07:12:00.000Z",
@@ -224,7 +248,8 @@
     {
       "conversationId": "internal:history-13",
       "title": "Dependency bump 13",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-22T02:24:00.000Z",
       "lastSeenAt": "2026-07-22T02:24:00.000Z",
@@ -233,7 +258,8 @@
     {
       "conversationId": "internal:history-14",
       "title": "Billing export check 14",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-20T21:36:00.000Z",
       "lastSeenAt": "2026-07-20T21:36:00.000Z",
@@ -242,7 +268,8 @@
     {
       "conversationId": "internal:history-15",
       "title": "Incident timeline 15",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-19T16:48:00.000Z",
       "lastSeenAt": "2026-07-19T16:48:00.000Z",
@@ -251,7 +278,8 @@
     {
       "conversationId": "internal:history-16",
       "title": "SDK changelog summary 16",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-18T12:00:00.000Z",
       "lastSeenAt": "2026-07-18T12:00:00.000Z",
@@ -260,7 +288,8 @@
     {
       "conversationId": "internal:history-17",
       "title": "Release notes draft 17",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-17T07:12:00.000Z",
       "lastSeenAt": "2026-07-17T07:12:00.000Z",
@@ -269,7 +298,8 @@
     {
       "conversationId": "internal:history-18",
       "title": "Flaky test triage 18",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-16T02:24:00.000Z",
       "lastSeenAt": "2026-07-16T02:24:00.000Z",
@@ -278,7 +308,8 @@
     {
       "conversationId": "internal:history-19",
       "title": "Quota alert follow-up 19",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-14T21:36:00.000Z",
       "lastSeenAt": "2026-07-14T21:36:00.000Z",
@@ -287,7 +318,8 @@
     {
       "conversationId": "internal:history-20",
       "title": "Onboarding doc review 20",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-13T16:48:00.000Z",
       "lastSeenAt": "2026-07-13T16:48:00.000Z",
@@ -296,7 +328,8 @@
     {
       "conversationId": "internal:history-21",
       "title": "Dependency bump 21",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-12T12:00:00.000Z",
       "lastSeenAt": "2026-07-12T12:00:00.000Z",
@@ -305,7 +338,8 @@
     {
       "conversationId": "internal:history-22",
       "title": "Billing export check 22",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-11T07:12:00.000Z",
       "lastSeenAt": "2026-07-11T07:12:00.000Z",
@@ -314,7 +348,8 @@
     {
       "conversationId": "internal:history-23",
       "title": "Incident timeline 23",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-10T02:24:00.000Z",
       "lastSeenAt": "2026-07-10T02:24:00.000Z",
@@ -323,7 +358,8 @@
     {
       "conversationId": "internal:history-24",
       "title": "SDK changelog summary 24",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-08T21:36:00.000Z",
       "lastSeenAt": "2026-07-08T21:36:00.000Z",
@@ -332,7 +368,8 @@
     {
       "conversationId": "internal:history-25",
       "title": "Release notes draft 25",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-07T16:48:00.000Z",
       "lastSeenAt": "2026-07-07T16:48:00.000Z",
@@ -341,7 +378,8 @@
     {
       "conversationId": "internal:history-26",
       "title": "Flaky test triage 26",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-06T12:00:00.000Z",
       "lastSeenAt": "2026-07-06T12:00:00.000Z",
@@ -350,7 +388,8 @@
     {
       "conversationId": "internal:history-27",
       "title": "Quota alert follow-up 27",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-05T07:12:00.000Z",
       "lastSeenAt": "2026-07-05T07:12:00.000Z",
@@ -359,7 +398,8 @@
     {
       "conversationId": "internal:history-28",
       "title": "Onboarding doc review 28",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-04T02:24:00.000Z",
       "lastSeenAt": "2026-07-04T02:24:00.000Z",
@@ -368,7 +408,8 @@
     {
       "conversationId": "internal:history-29",
       "title": "Dependency bump 29",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-02T21:36:00.000Z",
       "lastSeenAt": "2026-07-02T21:36:00.000Z",
@@ -377,7 +418,8 @@
     {
       "conversationId": "internal:history-30",
       "title": "Billing export check 30",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-07-01T16:48:00.000Z",
       "lastSeenAt": "2026-07-01T16:48:00.000Z",
@@ -386,7 +428,8 @@
     {
       "conversationId": "internal:history-31",
       "title": "Incident timeline 31",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-30T12:00:00.000Z",
       "lastSeenAt": "2026-06-30T12:00:00.000Z",
@@ -395,7 +438,8 @@
     {
       "conversationId": "internal:history-32",
       "title": "SDK changelog summary 32",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-29T07:12:00.000Z",
       "lastSeenAt": "2026-06-29T07:12:00.000Z",
@@ -404,7 +448,8 @@
     {
       "conversationId": "internal:history-33",
       "title": "Release notes draft 33",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-28T02:24:00.000Z",
       "lastSeenAt": "2026-06-28T02:24:00.000Z",
@@ -413,7 +458,8 @@
     {
       "conversationId": "internal:history-34",
       "title": "Flaky test triage 34",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-26T21:36:00.000Z",
       "lastSeenAt": "2026-06-26T21:36:00.000Z",
@@ -422,7 +468,8 @@
     {
       "conversationId": "internal:history-35",
       "title": "Quota alert follow-up 35",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-25T16:48:00.000Z",
       "lastSeenAt": "2026-06-25T16:48:00.000Z",
@@ -431,7 +478,8 @@
     {
       "conversationId": "internal:history-36",
       "title": "Onboarding doc review 36",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-24T12:00:00.000Z",
       "lastSeenAt": "2026-06-24T12:00:00.000Z",
@@ -440,7 +488,8 @@
     {
       "conversationId": "internal:history-37",
       "title": "Dependency bump 37",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-23T07:12:00.000Z",
       "lastSeenAt": "2026-06-23T07:12:00.000Z",
@@ -449,7 +498,8 @@
     {
       "conversationId": "internal:history-38",
       "title": "Billing export check 38",
-      "status": "completed",
+      "status": "done",
+      "turnActive": false,
       "surface": "internal",
       "startedAt": "2026-06-22T02:24:00.000Z",
       "lastSeenAt": "2026-06-22T02:24:00.000Z",

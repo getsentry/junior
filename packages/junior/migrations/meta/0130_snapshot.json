@@ -1,5 +1,5 @@
 {
-  "id": "1d35804a-7ef5-4a3f-a20d-00ce51af0305",
+  "id": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "prevId": "496d0c67-2a83-4e91-b5bd-e848b6fc81d1",
   "version": "7",
   "dialect": "postgresql",
@@ -4868,6 +4868,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_review_items_open_action_added_by_idx": {
+          "name": "junior_review_items_open_action_added_by_idx",
+          "columns": [
+            {
+              "expression": "added_by_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}

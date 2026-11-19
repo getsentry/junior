@@ -397,7 +397,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         conversationId: `slack:CNEWER:${1770000000 + index}.000100`,
         displayTitle: `Newer conversation ${index + 1}`,
         pinnedAt: null,
-        status: "completed",
+        status: "done",
       }));
       return route.fulfill({
         response,
@@ -455,7 +455,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           lastSeenAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
           pinnedAt: undefined,
           startedAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
-          status: "completed",
+          status: "done",
         });
         return route.fulfill({
           json:
