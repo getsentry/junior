@@ -873,8 +873,43 @@
     {
       "idx": 124,
       "version": "7",
-      "when": 1795039359994,
-      "tag": "0124_inbox_snoozes",
+      "when": 1795061211128,
+      "tag": "0124_artifact_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1795061235342,
+      "tag": "0125_artifact_public_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1795066026189,
+      "tag": "0126_artifact_drop_public",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1795066711486,
+      "tag": "0127_artifact_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1795066724447,
+      "tag": "0128_artifact_path_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1795080271974,
+      "tag": "0129_inbox_snoozes",
       "breakpoints": true
     }
   ]
