@@ -6,7 +6,7 @@
  */
 import type {
   EventPublisher,
-  PluginEventToolContext,
+  PluginConversationWatches,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
@@ -39,7 +39,7 @@ export async function resumeGitHubConflictFixes(args: {
   /** The Watch that Junior makes for its pull requests, if the app has one. */
   subscription: GitHubPullRequestSubscriptionConfig | undefined;
   /** Watches of the item's Conversation. */
-  watches: PluginEventToolContext;
+  watches: PluginConversationWatches;
 }): Promise<void> {
   const t = juniorGitHubPullRequests;
   const resumed = await args.db
@@ -65,22 +65,23 @@ export async function resumeGitHubConflictFixes(args: {
     // the Resume too.
     eventKey: `${event.eventKey}:resume:${args.itemId}`,
   }));
-  // The pull request's Watch can expire while fixes are stopped. Then add it
-  // again first, so the fix event reaches the Conversation. A Watch that is
-  // still active stays as it is: one with other events, such as the Watch of
-  // a draft, would get a second Watch, and each would start a Turn.
+  // The item's Conversation asked for the fix, and its Watch can expire
+  // while fixes are stopped. Then add it again first, so the fix event
+  // reaches that Conversation. A Watch that it still has stays as it is:
+  // one with other events, such as the Watch of a draft, would get a
+  // second Watch, and each would start a Turn.
   const resource = gitHubPullRequestSubscribable({
     canSubscribe: args.watches.canSubscribe,
     number: args.ref.number,
     repo: args.ref.repositoryFullName,
   });
-  const watched = events.filter(
-    (event) => event.identifier === resource?.identifier,
-  );
   if (
     args.subscription &&
     resource &&
-    (await args.events.hasMatch?.(watched)) !== true
+    !(await args.watches.watching({
+      eventType: "pull_request.merge_conflict",
+      identifier: resource.identifier,
+    }))
   ) {
     await args.watches.subscribe({
       ...gitHubPullRequestCreateWatch(args.subscription, {

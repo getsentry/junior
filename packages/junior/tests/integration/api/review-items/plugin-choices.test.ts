@@ -87,6 +87,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
       "choice" | "conversationId" | "dedupeKey" | "itemId"
     >
   > = [];
+  const watching: boolean[] = [];
   await createApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
@@ -107,6 +108,8 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
             answers.push({ choice, conversationId, dedupeKey, itemId });
             // The plugin can watch again for the item's Conversation, such
             // as when the Watch that the work needs has expired.
+            const watch = { eventType: "deploy.stopped", identifier: "api" };
+            watching.push(await ctx.watches.watching(watch));
             await ctx.watches.subscribe({
               events: ["deploy.stopped"],
               intent: "Fix the deploys of api when they stop.",
@@ -118,6 +121,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
                 type: "service",
               },
             });
+            watching.push(await ctx.watches.watching(watch));
           },
         },
       }),
@@ -180,6 +184,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     closedBy: { userId: ana.user.id },
     status: "done",
   });
+  expect(watching).toEqual([false, true]);
   expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([
     expect.objectContaining({
       events: ["deploy.stopped"],

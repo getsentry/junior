@@ -1,9 +1,10 @@
 import {
   normalizeEventIdentifier,
+  type PluginConversationWatches,
   type PluginEventToolContext,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createWatch, turnEvents } from "@/chat/events/store";
+import { createWatch, listWatches, turnEvents } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 /**
@@ -60,6 +61,29 @@ export function createPluginWatches(
         events: turnEvents(subscription),
         id: subscription.id,
       };
+    },
+  };
+}
+
+/**
+ * Let a plugin read and create the Watches of one Conversation outside a
+ * tool call, such as when a person answers one of its review desk items.
+ */
+export function createPluginConversationWatches(
+  plugin: PluginRegistration,
+  conversationId: string,
+): PluginConversationWatches {
+  return {
+    ...createPluginWatches(plugin, conversationId),
+    async watching({ eventType, identifier }) {
+      const normalized = normalizeEventIdentifier(plugin.events, identifier);
+      const watches = await listWatches({ conversationId });
+      return watches.some(
+        (watch) =>
+          watch.namespace === plugin.manifest.name &&
+          watch.identifier === normalized &&
+          turnEvents(watch).includes(eventType),
+      );
     },
   };
 }

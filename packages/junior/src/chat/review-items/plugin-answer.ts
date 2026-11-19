@@ -5,7 +5,7 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
-import { createPluginWatches } from "@/chat/plugins/watches";
+import { createPluginConversationWatches } from "@/chat/plugins/watches";
 import { PLUGIN_REVIEW_ITEM_KEY_PREFIX, reviewItemPlugin } from "./access";
 import type { ReviewItemDelivery } from "./changes";
 import { createPluginReviewItems, PLUGIN_CHOICE_FIELD_ID } from "./plugin";
@@ -50,6 +50,9 @@ export async function answerPluginReviewItem(args: {
         }),
     },
     state: createPluginState(pluginName),
-    watches: createPluginWatches(plugin, item.addedByConversationId),
+    watches: createPluginConversationWatches(
+      plugin,
+      item.addedByConversationId,
+    ),
   });
 }

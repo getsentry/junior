@@ -80,6 +80,16 @@ export interface ReviewItemAnsweredHookContext extends PluginContext {
   /** Review desk items, as from a plugin route. */
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
-  /** Create or renew Watches for the item's Conversation, as a tool can. */
-  watches: PluginEventToolContext;
+  /** Watches of the item's Conversation. */
+  watches: PluginConversationWatches;
+}
+
+/** Watches of one Conversation, for a plugin outside a tool call. */
+export interface PluginConversationWatches extends PluginEventToolContext {
+  /**
+   * Whether an active Watch of this Conversation starts a Turn for this
+   * event type on this plugin resource. Watches of other Conversations and
+   * event automations do not count.
+   */
+  watching(input: { eventType: string; identifier: string }): Promise<boolean>;
 }

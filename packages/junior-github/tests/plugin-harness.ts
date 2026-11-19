@@ -94,8 +94,11 @@ export function createPluginHarness(fixture: GitHubFixture) {
       publishedBefore: number;
     }>,
   };
-  /** Whether the Conversation watches comments and conflicts on 946. */
-  const watches = { comments: true, conflicts: true };
+  /**
+   * Whether any Watch gets comments and conflicts on 946, and whether the
+   * Conversation that asked for 946 has its own conflict Watch.
+   */
+  const watches = { comments: true, conflicts: true, ownConflicts: true };
   /** Review desk calls that fail before one succeeds. */
   const failures = { upsert: 0 };
   const state = memoryState();
@@ -241,6 +244,15 @@ export function createPluginHarness(fixture: GitHubFixture) {
       state,
       watches: {
         canSubscribe: true,
+        // Only the Conversation's own Watch counts, not `hasMatch`.
+        async watching({ eventType, identifier }) {
+          return (
+            input.conversationId === "slack:C1:1.0" &&
+            identifier === "getsentry/junior#946" &&
+            eventType === "pull_request.merge_conflict" &&
+            watches.ownConflicts
+          );
+        },
         async subscribe({ events: watched, resource }) {
           recorded.subscribed.push({
             events: watched,
@@ -249,6 +261,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
           });
           if (watched.includes("pull_request.merge_conflict")) {
             watches.conflicts = true;
+            watches.ownConflicts = true;
           }
           return { events: watched, id: "watch-1" };
         },

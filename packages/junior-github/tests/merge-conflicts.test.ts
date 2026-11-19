@@ -609,9 +609,10 @@ describe("merge conflict check on webhook events", () => {
         itemId: "item-1",
         nowMs: pushedAt + 4 * hour,
       };
-      // The Watch expired while fixes were stopped. Resume renews it before
-      // it starts the fix, so the fix event reaches the Conversation.
-      h.watches.conflicts = false;
+      // The Conversation's Watch expired while fixes were stopped, though
+      // another Conversation still watches. Resume adds the Watch again
+      // before it starts the fix, so the fix reaches the Conversation.
+      h.watches.ownConflicts = false;
       const publishedBefore = h.published.length;
       await h.answer(resume);
       expect(h.subscribed).toEqual([
