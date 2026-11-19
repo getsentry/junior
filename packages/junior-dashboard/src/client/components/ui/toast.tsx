@@ -25,7 +25,9 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed inset-x-4 bottom-[max(5.25rem,env(safe-area-inset-bottom))] z-[60] mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
+        // On a phone, toasts clear the "+" button and sit above a docked
+        // composer, which publishes its height (`useComposerDockHeight`).
+        "pointer-events-none fixed inset-x-3 bottom-[max(5.25rem,env(safe-area-inset-bottom),calc(var(--dashboard-composer-dock-height,0px)_+_0.5rem))] z-[60] mx-auto w-auto max-w-sm outline-none md:right-4 md:bottom-[max(5.25rem,env(safe-area-inset-bottom))] md:left-auto md:mx-0 md:w-full",
         className,
       )}
       {...props}
@@ -65,7 +67,7 @@ function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
     <ToastPrimitive.Content
       data-slot="toast-content"
       className={cn(
-        "flex h-full items-center gap-3 overflow-hidden p-4 transition-opacity duration-180 motion-reduce:transition-none ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
+        "flex h-full items-center gap-3 overflow-hidden p-4 max-md:gap-2 max-md:py-1.5 max-md:pr-1.5 max-md:pl-3 transition-opacity duration-180 motion-reduce:transition-none ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
         className,
       )}
       {...props}
@@ -77,7 +79,10 @@ function ToastTitle({ className, ...props }: ToastPrimitive.Title.Props) {
   return (
     <ToastPrimitive.Title
       data-slot="toast-title"
-      className={cn("break-words text-sm font-medium", className)}
+      className={cn(
+        "break-words text-sm font-medium max-md:truncate",
+        className,
+      )}
       {...props}
     />
   );
@@ -168,7 +173,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   return (
     <span
       data-slot="toast-icon"
-      className="shrink-0 translate-y-0.5 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
+      className="shrink-0 translate-y-0.5 max-md:translate-y-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
     >
       {icon}
     </span>
@@ -181,12 +186,20 @@ function ToastList() {
   return toasts.map((toastItem) => (
     <Toast key={toastItem.id} toast={toastItem}>
       <ToastContent>
-        {/* Top-align the icon with the title, like Alert; buttons stay centered. */}
-        <div className="flex min-w-0 flex-1 items-start gap-3">
+        {/* Top-align the icon with the title, like Alert; buttons stay centered.
+            A phone shows one line: the title and its buttons. */}
+        <div className="flex min-w-0 flex-1 items-start gap-3 max-md:items-center max-md:gap-2">
           <ToastIcon type={toastItem.type} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <ToastTitle />
-            <ToastDescription />
+            {/* A description with links, such as Settings, is an action. */}
+            <ToastDescription
+              className={
+                typeof toastItem.description === "string"
+                  ? "max-md:hidden"
+                  : undefined
+              }
+            />
           </div>
         </div>
         {/* ToastAction reads actionProps from the toast; spreading them too runs onClick twice. */}
@@ -196,6 +209,8 @@ function ToastList() {
     </Toast>
   ));
 }
+
+const CONFIRMATION_TIMEOUT_MS = 2_500;
 
 /** Own notification state for one mounted dashboard and render its toast stack. */
 function Toaster({ children, ...props }: ToastPrimitive.Provider.Props) {
@@ -211,7 +226,24 @@ function Toaster({ children, ...props }: ToastPrimitive.Provider.Props) {
   );
 }
 
-/** Show short notifications through the nearest mounted Toaster. */
-const useToastManager = ToastPrimitive.useToastManager;
+/**
+ * Show short notifications through the nearest mounted Toaster. A success
+ * toast with no action goes away sooner: it only confirms.
+ */
+function useToastManager() {
+  const manager = ToastPrimitive.useToastManager();
+  const { add: addToast } = manager;
+  const add = React.useCallback<typeof addToast>(
+    (options) =>
+      addToast({
+        ...(options.type === "success" && !options.actionProps
+          ? { timeout: CONFIRMATION_TIMEOUT_MS }
+          : undefined),
+        ...options,
+      }),
+    [addToast],
+  );
+  return { ...manager, add };
+}
 
 export { Toaster, useToastManager };

@@ -18,7 +18,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { composerDockClass } from "./ComposerDock";
+import { composerDockClass, useComposerDockHeight } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import {
   ConversationFeedLoadMore,
@@ -148,6 +148,9 @@ export function ConversationWorkspace(props: {
     [conversations, waitingConversations],
   );
   const homeList = useRef<HTMLDivElement>(null);
+  const createDock = useRef<HTMLDivElement>(null);
+  // A pending create hides the home and docks its own composer.
+  useComposerDockHeight(createDock, !sidebarFits && !pendingCreate);
   // A new search starts at the top. Otherwise the shorter list leaves the
   // load-more row in view, and it loads a page before the results arrive.
   useEffect(() => {
@@ -320,6 +323,7 @@ export function ConversationWorkspace(props: {
         </div>
       )}
       <div
+        ref={createDock}
         className={
           sidebarFits
             ? // The tall bottom pad lifts the create view above the middle,
