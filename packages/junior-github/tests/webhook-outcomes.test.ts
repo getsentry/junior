@@ -3545,6 +3545,21 @@ describe("GitHub-owned pull request outcomes", () => {
           }),
         ),
       );
+      // A push sends the new counts.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "synchronize",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1310,
+              changed_files: 13,
+              deletions: 342,
+              updated_at: "2026-07-01T18:00:00.000Z",
+            },
+          }),
+        ),
+      );
       // A payload without counts leaves the stored size alone.
       await route.handler(
         signedRequest(
@@ -3561,6 +3576,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
       expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
         ["open", { additions: 1204, changedFiles: 12, deletions: 340 }],
+        ["open", { additions: 1310, changedFiles: 13, deletions: 342 }],
         ["closed", undefined],
       ]);
     } finally {

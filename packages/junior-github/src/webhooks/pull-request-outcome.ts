@@ -16,12 +16,14 @@ import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 const count = z.number().int().nonnegative();
 
 // `ready_for_review` and `converted_to_draft` change only the draft state.
+// `synchronize` is a push, which changes the size.
 const pullRequestLifecycleActionsSchema = z.enum([
   "opened",
   "closed",
   "reopened",
   "ready_for_review",
   "converted_to_draft",
+  "synchronize",
 ]);
 
 const canonicalPullRequestOutcomeSchema = z
