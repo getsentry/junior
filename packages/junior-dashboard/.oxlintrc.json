@@ -43,6 +43,10 @@
     {
       "name": "toast",
       "specifier": "./oxlint/toast.ts"
+    },
+    {
+      "name": "nav-pages",
+      "specifier": "./oxlint/nav-pages.ts"
     }
   ],
   "ignorePatterns": [
@@ -166,6 +170,28 @@
       "files": ["src/client/inbox/**", "src/client/review-desk/**"],
       "rules": {
         "radius/no-large-radius": "error"
+      }
+    },
+    {
+      "files": ["src/client/**"],
+      "rules": {
+        "nav-pages/listed-page-path": "error"
+      }
+    },
+    {
+      "files": [
+        "src/client/navPages.ts",
+        "src/client/classic/**",
+        "src/client/components/ProfileMenu.tsx",
+        "src/client/components/layout/DashboardHeader.tsx",
+        "src/client/components/layout/NavRail.tsx",
+        "src/client/conversations/HomeSummary.tsx",
+        "src/client/pages/automations/AutomationsPageLayout.tsx",
+        "src/client/pages/code/RepositoryPage.tsx",
+        "src/client/primaryNav.ts"
+      ],
+      "rules": {
+        "nav-pages/listed-page-path": "off"
       }
     },
     {

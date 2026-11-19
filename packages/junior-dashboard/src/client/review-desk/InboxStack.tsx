@@ -1,11 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
+import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { conversationPath } from "../conversations/conversationRoutes";
+import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
+import { openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 
@@ -24,11 +28,15 @@ export const STACK_FOLD = 4;
  * around their rows, one row each, under the root's title. Past
  * `STACK_FOLD` rows, the rest fold under "+N more in this Conversation".
  * Folded rows stay in the list, hidden, so Next walks into them, and the
- * stack unfolds when one of them opens.
+ * stack unfolds when one of them opens. A click on the header's empty space
+ * opens the root, as its title does, and a right-click anywhere on the
+ * stack opens the root's Conversation menu.
  */
 export function InboxStack(props: {
   /** Its rows, one per key. */
   children: ReactNode;
+  /** The root, once loaded. It gives the stack its Conversation menu. */
+  conversation?: Conversation;
   conversationId: string;
   expandedKey: string;
   keys: readonly string[];
@@ -49,19 +57,27 @@ export function InboxStack(props: {
   const [density] = useConversationDensity();
   const more = props.keys.length - STACK_FOLD;
   const folded = more > 0 && !unfolded && openIndex < STACK_FOLD;
-  return (
-    <li
-      aria-label={props.title}
-      className={INBOX_STACK_CLASS}
-      data-dock-key={`stack:${props.stackKey}`}
-      // An open row keeps the dock still, as an open row does.
-      data-expanded={openIndex >= 0 || undefined}
-      data-inbox-stack={props.stackKey}
-    >
-      <div className="flex min-h-7 min-w-0 items-center gap-2 pr-1 pl-2.5">
+  const path = conversationPath(props.conversationId);
+  const headerClick = openOnClick(useOpenPath(path));
+  const stack = {
+    "aria-label": props.title,
+    className: INBOX_STACK_CLASS,
+    "data-dock-key": `stack:${props.stackKey}`,
+    // An open row keeps the dock still, as an open row does.
+    "data-expanded": openIndex >= 0 || undefined,
+    "data-inbox-stack": props.stackKey,
+  };
+  const body = (
+    <>
+      {/* The title link is the header's keyboard target. */}
+      <div
+        className="flex min-h-7 min-w-0 cursor-pointer items-center gap-2 pr-1 pl-2.5"
+        data-inbox-stack-head=""
+        {...headerClick}
+      >
         <Link
           className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-          to={conversationPath(props.conversationId)}
+          to={path}
         >
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {props.title}
@@ -112,7 +128,36 @@ export function InboxStack(props: {
           +{more} more in this Conversation
         </button>
       ) : null}
-    </li>
+    </>
+  );
+  return props.conversation ? (
+    <StackMenu conversation={props.conversation} stack={stack}>
+      {body}
+    </StackMenu>
+  ) : (
+    <li {...stack}>{body}</li>
+  );
+}
+
+/** The stack, with its root's Conversation menu on a right-click. */
+function StackMenu(props: {
+  children: ReactNode;
+  conversation: Conversation;
+  stack: { className: string };
+}) {
+  const actions = useInboxRowActions(props.conversation, { selected: false });
+  return (
+    <ContextMenu onOpenChange={actions.onMenuOpenChange}>
+      <ContextMenuTrigger
+        {...props.stack}
+        // The cards keep their text selectable.
+        className={cn(props.stack.className, "select-text")}
+        render={<li />}
+      >
+        {props.children}
+      </ContextMenuTrigger>
+      {actions.menu}
+    </ContextMenu>
   );
 }
 
