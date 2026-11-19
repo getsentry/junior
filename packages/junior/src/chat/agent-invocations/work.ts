@@ -844,10 +844,17 @@ export function createAgentInvocationWorker(
           parentConversationId: invocation.parentConversationId,
           turnId,
           runId: invocation.invocationId,
-          // A child has no person input: every input is a runtime tag.
+          // A child has no person input: every input is a runtime tag. A
+          // parent agent's task or message is the request in it.
           instruction: {
             ...instructionForInputs([
-              { kind: "runtime", text: agentInvocationInputText(invocation) },
+              {
+                kind: "runtime",
+                text: agentInvocationInputText(invocation),
+                ...(invocation.parentToolCallId
+                  ? { requestText: invocation.input }
+                  : undefined),
+              },
             ]),
             provenance: agentInvocationProvenance(invocation),
           },

@@ -15,6 +15,7 @@ import type {
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { RuntimeInstructionInput } from "@/chat/agent/types";
 import {
   appendAndEnqueueInboundMessage,
   type AppendAndEnqueueInboundMessageResult,
@@ -225,13 +226,13 @@ function readEventTaskFacts(
  * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
- * their own inputs after the task. `rendered` replaces the text of an entry
+ * their own inputs after the task. `rendered` replaces the input of an entry
  * by inbound message id, such as a person change to a Review item.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
-  rendered: ReadonlyMap<string, string> = new Map(),
-): string[] {
+  rendered: ReadonlyMap<string, RuntimeInstructionInput> = new Map(),
+): RuntimeInstructionInput[] {
   const groups = new Map<
     string,
     {
@@ -274,15 +275,26 @@ export function renderEventBatchInputs(
     });
   }
 
-  const ownText = (message: InboundMessage) =>
-    rendered.get(message.inboundMessageId) ?? message.input.text.trim();
+  const ownInputs = (entries: readonly InboundMessage[]) =>
+    entries
+      .map(
+        (message): RuntimeInstructionInput =>
+          rendered.get(message.inboundMessageId) ?? {
+            kind: "runtime",
+            text: message.input.text.trim(),
+          },
+      )
+      .filter((input) => input.text);
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
-    return messages.map(ownText).filter(Boolean);
+    return ownInputs(messages);
   }
   return [
-    renderTaskBatchInput({ groups: [...groups.values()] }),
-    ...others.map(ownText).filter(Boolean),
+    {
+      kind: "runtime",
+      text: renderTaskBatchInput({ groups: [...groups.values()] }),
+    },
+    ...ownInputs(others),
   ];
 }
 
