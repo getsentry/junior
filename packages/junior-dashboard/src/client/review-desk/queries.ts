@@ -109,6 +109,36 @@ export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
 }
 
 /**
+ * Refresh the Review item lists that show an item that one Conversation
+ * added. The item's subject card reads that Conversation's detail, so a
+ * change there, such as a merged pull request, can come with a change to
+ * the item. Only mounted lists refetch.
+ */
+export function invalidateReviewItemListsOfConversation(
+  queryClient: QueryClient,
+  conversationId: string,
+) {
+  const lists = [...REVIEW_ITEMS_QUERY_KEY, "list"];
+  // Each list key ends with the search of its filters.
+  const searches = new Set(
+    queryClient
+      .getQueriesData<ReviewItemListCache>({ queryKey: lists })
+      .filter(([, list]) =>
+        list?.pages?.some((page) =>
+          page.items.some(
+            (item) => item.addedByConversationId === conversationId,
+          ),
+        ),
+      )
+      .map(([queryKey]) => queryKey.at(-1)),
+  );
+  return queryClient.invalidateQueries({
+    predicate: (query) => searches.has(query.queryKey.at(-1)),
+    queryKey: lists,
+  });
+}
+
+/**
  * List the open Review items that the viewer can see, one page at a time.
  * A search also finds archived items, with the first page. `items` holds the
  * items of every loaded page, and `query` loads more. `forViewer` drops the

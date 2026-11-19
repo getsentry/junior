@@ -410,14 +410,14 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         );
       }
     },
-    onSettled: async () => {
-      await Promise.all([
-        invalidateConversationFeeds(queryClient),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
+    // Do not await the refreshes. An edit waits for this mutation before its
+    // files join the composer.
+    onSettled: () => {
+      void invalidateConversationFeeds(queryClient);
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }
