@@ -1,5 +1,5 @@
 {
-  "id": "b8426cb1-9f1d-41c2-93dd-7ca512c251e7",
+  "id": "b191232a-5f1c-4476-ba39-f26b0e01c8bc",
   "prevId": "34948016-a9a1-442a-b126-dbc8ada7eda7",
   "version": "7",
   "dialect": "postgresql",
@@ -1561,6 +1561,18 @@
           "primaryKey": true,
           "notNull": true
         },
+        "additions": {
+          "name": "additions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_files": {
+          "name": "changed_files",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1573,6 +1585,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
+        },
+        "deletions": {
+          "name": "deletions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "draft": {
           "name": "draft",
@@ -4205,6 +4223,165 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.junior_plan_items": {
+      "name": "junior_plan_items",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_conversation_id": {
+          "name": "assignee_conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_user_id": {
+          "name": "assignee_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "changed_by_user_id": {
+          "name": "changed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_plan_items_in_progress_uidx": {
+          "name": "junior_plan_items_in_progress_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"assignee_conversation_id\", \"assignee_user_id\", \"conversation_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_plan_items\".\"status\" = 'in_progress'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_plan_items_assignee_user_id_junior_users_id_fk": {
+          "name": "junior_plan_items_assignee_user_id_junior_users_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "assignee_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "junior_plan_items_changed_by_user_id_junior_users_id_fk": {
+          "name": "junior_plan_items_changed_by_user_id_junior_users_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "changed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "junior_plan_items_conversation_id_fk": {
+          "name": "junior_plan_items_conversation_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_plan_items_pk": {
+          "name": "junior_plan_items_pk",
+          "columns": [
+            "conversation_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_plan_items_status_check": {
+          "name": "junior_plan_items_status_check",
+          "value": "\"junior_plan_items\".\"status\" in ('pending', 'in_progress', 'blocked', 'done', 'cancelled')"
+        },
+        "junior_plan_items_assignee_check": {
+          "name": "junior_plan_items_assignee_check",
+          "value": "\"junior_plan_items\".\"assignee_conversation_id\" is null or \"junior_plan_items\".\"assignee_user_id\" is null"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.junior_push_subscriptions": {
       "name": "junior_push_subscriptions",
       "schema": "",
@@ -5190,142 +5367,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_todos": {
-      "name": "junior_todos",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "assignee_conversation_id": {
-          "name": "assignee_conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "assignee_user_id": {
-          "name": "assignee_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "changed_by_user_id": {
-          "name": "changed_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_todos_assignee_user_id_junior_users_id_fk": {
-          "name": "junior_todos_assignee_user_id_junior_users_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "assignee_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_todos_changed_by_user_id_junior_users_id_fk": {
-          "name": "junior_todos_changed_by_user_id_junior_users_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "changed_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_todos_conversation_id_fk": {
-          "name": "junior_todos_conversation_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_todos_pk": {
-          "name": "junior_todos_pk",
-          "columns": [
-            "conversation_id",
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_todos_status_check": {
-          "name": "junior_todos_status_check",
-          "value": "\"junior_todos\".\"status\" in ('open', 'in_progress', 'done', 'dropped')"
-        },
-        "junior_todos_assignee_check": {
-          "name": "junior_todos_assignee_check",
-          "value": "\"junior_todos\".\"assignee_conversation_id\" is null or \"junior_todos\".\"assignee_user_id\" is null"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.junior_users": {
       "name": "junior_users",
       "schema": "",
@@ -5561,8 +5602,8 @@
   "enums": {},
   "schemas": {},
   "sequences": {
-    "public.junior_todo_version_seq": {
-      "name": "junior_todo_version_seq",
+    "public.junior_plan_item_version_seq": {
+      "name": "junior_plan_item_version_seq",
       "schema": "public",
       "increment": "1",
       "startWith": "1",

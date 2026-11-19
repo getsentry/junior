@@ -31,6 +31,7 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
@@ -4125,6 +4126,17 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
+  // Sizes for some changes. #519 counts no deletions, so that part hides.
+  const sizes: Record<number, CodeChangeSize> = {
+    42: { additions: 86, changedFiles: 4, deletions: 12 },
+    85: { additions: 2, changedFiles: 1, deletions: 2 },
+    519: { additions: 64, changedFiles: 2 },
+    2330: { additions: 412, changedFiles: 9, deletions: 37 },
+    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+    2384: { additions: 18, changedFiles: 2, deletions: 5 },
+    2391: { additions: 148, changedFiles: 5, deletions: 21 },
+    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+  };
   const openChange = (
     number: number,
     repository: string,
@@ -4140,6 +4152,7 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
+    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,

@@ -410,8 +410,19 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const actions = await mockReviewItems(page, { open: [prReview] });
     await mockViewerCodeChanges(page, [
-      { idleDays: 0, number: 7, title: "Tune the retry backoff" },
-      { idleDays: 10, number: 8, title: "Drop the legacy webhook" },
+      {
+        idleDays: 0,
+        number: 7,
+        size: { additions: 1204, changedFiles: 12, deletions: 340 },
+        title: "Tune the retry backoff",
+      },
+      // GitHub counted no deletions here.
+      {
+        idleDays: 10,
+        number: 8,
+        size: { additions: 64, changedFiles: 2 },
+        title: "Drop the legacy webhook",
+      },
       // prReview asks the viewer to review this one.
       { idleDays: 1, number: 91, title: "Pin the release train" },
       { draft: true, idleDays: 0, number: 15, title: "Sketch the replay" },
@@ -443,6 +454,16 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("region", { name: "Waiting on others" })
         .getByRole("listitem"),
     ).toHaveText([/Tune the retry backoff/, /Drop the legacy webhook/]);
+    // Each row gives its size, and leaves out a count it does not know.
+    const others = page.getByRole("region", { name: "Waiting on others" });
+    await expect(
+      others.getByRole("listitem", { name: "Tune the retry backoff" }),
+    ).toContainText("1,204 lines added, 340 removed, 12 files changed");
+    const legacy = others.getByRole("listitem", {
+      name: "Drop the legacy webhook",
+    });
+    await expect(legacy).toContainText("64 lines added, 2 files changed");
+    await expect(legacy).not.toContainText("removed");
     await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
     // A draft waits on its author, so it leaves the other piles. Drafts starts
     // collapsed.

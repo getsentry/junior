@@ -1,5 +1,8 @@
 import * as z from "zod";
-import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
+import {
+  codeChangeSizeSchema,
+  codeChangeStateSchema,
+} from "@sentry/junior-plugin-api";
 
 export const codeChangeSummarySchema = z
   .object({
@@ -64,6 +67,8 @@ export const codeChangeSummaryReportSchema = z
     openedAt: z.string(),
     provider: z.string().min(1),
     repository: z.string().min(1),
+    /** Lines and files changed. Unknown parts are absent. */
+    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().optional(),
     url: z.string().url().optional(),
