@@ -12,7 +12,7 @@ import {
   type TextNode,
 } from "lexical";
 
-import { splitMentions } from "../composerMentionToken";
+import { mentionText, splitMentions } from "../composerMentionToken";
 import {
   $createComposerMentionNode,
   type ComposerMentionPerson,
@@ -60,8 +60,8 @@ export function $insertComposerMarkdown(text: string): void {
 
 /**
  * Turn `<@U…>` in one text node into mentions, for pasted or restored text.
- * Code keeps the token as text. The caret moves after the last part when
- * it was in the node.
+ * Code keeps the token as text. A caret in the node keeps its place in the
+ * text, so one inside or right after a token lands after its mention.
  */
 export function $replaceMentionTokens(
   node: TextNode,
@@ -72,22 +72,46 @@ export function $replaceMentionTokens(
   const parts = splitMentions(text);
   if (parts.every((part) => "text" in part)) return;
   const selection = $getSelection();
-  const hadCaret =
-    $isRangeSelection(selection) && selection.anchor.key === node.getKey();
+  const caret =
+    $isRangeSelection(selection) && selection.anchor.key === node.getKey()
+      ? selection.anchor.offset
+      : undefined;
   const format = node.getFormat();
-  let last: LexicalNode = node;
-  for (const part of parts) {
-    const next =
-      "slackUserId" in part
-        ? $createComposerMentionNode(
+  const pieces: ComposerPiece[] = parts.map((part) =>
+    "slackUserId" in part
+      ? {
+          node: $createComposerMentionNode(
             lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
-          )
-        : $createTextNode(part.text).setFormat(format);
-    last.insertAfter(next);
-    last = next;
+          ),
+          length: mentionText(part.slackUserId).length,
+        }
+      : {
+          node: $createTextNode(part.text).setFormat(format),
+          length: part.text.length,
+        },
+  );
+  let last: LexicalNode = node;
+  for (const piece of pieces) {
+    last.insertAfter(piece.node);
+    last = piece.node;
   }
   node.remove();
-  if (!hadCaret) return;
-  if ($isTextNode(last)) last.select();
-  else last.selectNext(0, 0);
+  if (caret !== undefined) $placeCaret(pieces, caret);
+}
+
+type ComposerPiece = { node: LexicalNode; length: number };
+
+// Put the caret at `caret` characters into the replaced text.
+function $placeCaret(pieces: ComposerPiece[], caret: number): void {
+  let start = 0;
+  for (const { node, length } of pieces) {
+    const end = start + length;
+    if (caret <= end) {
+      if ($isTextNode(node)) node.select(caret - start, caret - start);
+      else if (caret === start) node.selectPrevious();
+      else node.selectNext(0, 0);
+      return;
+    }
+    start = end;
+  }
 }

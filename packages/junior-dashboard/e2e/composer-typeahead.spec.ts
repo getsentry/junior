@@ -192,9 +192,11 @@ test("a pasted Slack mention becomes a mention", async ({
     dashboard.baseURL,
     PUBLIC_CONVERSATION_ID,
   );
+  await composer.pressSequentially("ask first");
+  for (let step = 0; step < 6; step++) await composer.press("ArrowLeft");
   await page.evaluate(() => {
     const data = new DataTransfer();
-    data.setData("text/plain", "ask <@U456> first");
+    data.setData("text/plain", " <@U456>");
     document.activeElement?.dispatchEvent(
       new ClipboardEvent("paste", {
         bubbles: true,
@@ -204,7 +206,9 @@ test("a pasted Slack mention becomes a mention", async ({
     );
   });
   await expect(composer.locator("[data-mention='U456']")).toHaveText("@U456");
-  await expect(composer).toHaveText("ask @U456 first");
+  // The caret stays after the mention, not at the end of the line.
+  await composer.pressSequentially("!");
+  await expect(composer).toHaveText("ask @U456! first");
 });
 
 test("Invite subscribes a mentioned person to a public conversation", async ({
@@ -230,6 +234,13 @@ test("Invite subscribes a mentioned person to a public conversation", async ({
 
   const card = page.getByRole("dialog", { name: "Casey Nguyen" });
   await card.getByRole("button", { name: "Invite" }).click();
+  await expect(card.getByText("Subscribed")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
+
+  // A reopened card still shows the answer.
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await composer.locator("[data-mention='U456']").click();
   await expect(card.getByText("Subscribed")).toBeVisible();
   await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
   expect(invites).toEqual([{ slackUserId: "U456" }]);

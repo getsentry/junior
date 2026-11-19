@@ -1,5 +1,5 @@
 {
-  "id": "df0039b1-fe89-43b4-996a-3182af31673a",
+  "id": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
   "prevId": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "version": "7",
   "dialect": "postgresql",
@@ -2054,6 +2054,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "outcome_status": {
+          "name": "outcome_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "search_text": {
           "name": "search_text",
           "type": "text",
@@ -4015,22 +4021,6 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
-          "with": {}
-        },
-        "junior_identities_slack_person_search_idx": {
-          "name": "junior_identities_slack_person_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
-          "concurrently": false,
-          "method": "gin",
           "with": {}
         }
       },
