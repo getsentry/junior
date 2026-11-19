@@ -88,6 +88,7 @@
   "packages/junior-google/tests/fixture.ts",
   "packages/junior-google/tests/links.test.ts",
   "packages/junior-google/tests/meet.test.ts",
+  "packages/junior-google/tests/slides.test.ts",
   "packages/junior-linear/tests/webhook.test.ts",
   "packages/junior-memory/tests/events.test.ts",
   "packages/junior-memory/tests/fixture.ts",

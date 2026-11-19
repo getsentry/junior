@@ -3,32 +3,10 @@ import {
   buildPromptInput,
   buildUserTurnText,
   instructionActorFor,
-  renderExplicitSkillInstructions,
 } from "@/chat/agent/prompt";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 describe("buildUserTurnText", () => {
-  it("renders an explicitly selected skill as loaded instructions", () => {
-    expect(
-      renderExplicitSkillInstructions({
-        name: "weather-lookup",
-        description: "Weather lookup",
-        skillPath: "/host/skills/weather-lookup/SKILL.md",
-        body: "Use the weather source.",
-      }),
-    ).toBe(
-      [
-        "<skill>",
-        "<name>weather-lookup</name>",
-        "<path>/vercel/sandbox/skills/weather-lookup/SKILL.md</path>",
-        "<working_directory>/vercel/sandbox/skills/weather-lookup</working_directory>",
-        "<path_resolution>Resolve relative paths in this skill against /vercel/sandbox/skills/weather-lookup. For bash commands from this skill, cd to /vercel/sandbox/skills/weather-lookup first or use absolute paths.</path_resolution>",
-        "Use the weather source.",
-        "</skill>",
-      ].join("\n"),
-    );
-  });
-
   it("wraps input in the current instruction boundary without context", () => {
     expect(buildUserTurnText("hello")).toBe(
       ["<current-instruction>", "hello", "</current-instruction>"].join("\n"),

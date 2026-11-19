@@ -895,12 +895,18 @@ export function createMockMcpTools({ app, origin }) {
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/automations/${enc(id)}/executions`);
-        if (result.status === 404) throw new ToolError("Automation not found.");
-        if (!result.ok) throw apiFailure(result);
+        const [automation, list] = await Promise.all([
+          api("GET", `/automations/${enc(id)}`),
+          api("GET", `/automations/${enc(id)}/executions`),
+        ]);
+        for (const result of [automation, list]) {
+          if (result.status === 404)
+            throw new ToolError("Automation not found.");
+          if (!result.ok) throw apiFailure(result);
+        }
         return {
-          automation: mcpAutomation(result.json.automation),
-          runs: result.json.executions
+          automation: mcpAutomation(automation.json),
+          runs: list.json.executions
             .slice(0, RECENT_RUN_LIMIT)
             .map(({ conversationId: runId, error, executedAt, status }) => ({
               executedAt,

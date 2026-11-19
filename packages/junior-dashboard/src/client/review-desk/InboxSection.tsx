@@ -1,5 +1,7 @@
+import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Button } from "../components/ui/button";
 import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { cn } from "../styles";
@@ -63,5 +65,27 @@ export function InboxEmptyState(props: { label: string }) {
     <p className="m-0 py-16 text-center font-display text-base font-medium text-dashboard-text">
       {props.label}
     </p>
+  );
+}
+
+/** Dismiss the FYIs in some rows. Asks stay. */
+export function SweepControl(props: {
+  clear: number;
+  onSweep(): void;
+  scope: string;
+}) {
+  if (props.clear === 0) return null;
+  // Bulk actions read `<verb> <number>`; the section names what it dismisses.
+  const label = `Dismiss ${props.clear}`;
+  return (
+    <Button
+      aria-label={`${label} in ${props.scope}`}
+      className="h-6 gap-1 px-1.5 text-xs"
+      onClick={props.onSweep}
+      variant="ghost"
+    >
+      <X aria-hidden="true" className="size-3.5" />
+      {label}
+    </Button>
   );
 }

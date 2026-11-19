@@ -120,6 +120,15 @@ export function completedToolCalls(
   );
 }
 
+/** Names of the skills that completed `loadSkill` calls loaded. */
+export function loadedSkillNames(
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): unknown[] {
+  return completedToolCalls("loadSkill", ...results).map(
+    (call) => (call.input as { skill_name?: unknown } | undefined)?.skill_name,
+  );
+}
+
 /**
  * Calls of one MCP tool in any state, such as
  * `mcp__eval-tracker__search-tickets`, across the results of several calls.

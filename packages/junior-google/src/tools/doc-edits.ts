@@ -1,22 +1,17 @@
 /**
- * Shared steps for the tools that write Google Docs.
- *
- * Junior's account can edit every Doc shared with it as an editor, but anyone
- * who can talk to Junior could ask it to. So each edit also requires that the
- * requester can edit the Doc themselves.
+ * Shared steps for the tools that write Google Docs. Each edit requires that
+ * the requester can also edit the Doc; see `editable-file.ts`.
  */
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { emailDomain } from "../config";
 import { convertMarkdown, type ConvertedMarkdown } from "./doc-markdown";
+import { requireEditableFile, type EditableFile } from "./editable-file";
 import {
   fileReferenceSchema,
   googleFileRequest,
-  parseFileReference,
-  readGoogleFileMetadata,
   type FileReference,
 } from "./files";
-import { requesterEmail, type GoogleToolContext } from "./shared";
+import type { GoogleToolContext } from "./shared";
 
 /** Longest Markdown that one edit accepts. */
 const MAX_WRITE_CHARS = 100_000;
@@ -77,72 +72,6 @@ export function docUrl(documentId: string): string {
   return `https://docs.google.com/document/d/${documentId}/edit`;
 }
 
-const EDIT_ROLES = new Set(["owner", "organizer", "fileOrganizer", "writer"]);
-// Stop after this many permission pages; a Doc rarely has more.
-const MAX_PERMISSION_PAGES = 10;
-
-const permissionsSchema = z.object({
-  nextPageToken: z.string().optional(),
-  permissions: z
-    .array(
-      z.object({
-        domain: z.string().optional(),
-        emailAddress: z.string().optional(),
-        role: z.string(),
-        type: z.string(),
-      }),
-    )
-    .default([]),
-});
-
-/**
- * Require that the requester can edit the Doc through their own email, their
- * domain, or a link that anyone can edit. Group membership is not visible to
- * Junior's account, so a Doc shared only with a group is refused.
- */
-async function requireRequesterCanEdit(
-  ctx: GoogleToolContext,
-  ref: FileReference,
-): Promise<void> {
-  const requester = await requesterEmail(ctx);
-  if (!requester) {
-    throw new PluginToolInputError(
-      "The requester's email is unknown, so the tool cannot check that they may edit this Doc.",
-    );
-  }
-  const domain = emailDomain(requester);
-  let pageToken: string | undefined;
-  for (let page = 0; page < MAX_PERMISSION_PAGES; page += 1) {
-    // oxlint-disable-next-line no-await-in-loop -- Each page needs the page token from the page before.
-    const response = await googleFileRequest(ctx, ref, {
-      operation: "google.drive.permissions.list",
-      path: `/drive/v3/files/${ref.fileId}/permissions`,
-      query: {
-        fields: "nextPageToken,permissions(domain,emailAddress,role,type)",
-        pageSize: "100",
-        supportsAllDrives: "true",
-        ...(pageToken ? { pageToken } : undefined),
-      },
-    });
-    const body = permissionsSchema.parse(response.body);
-    const canEdit = body.permissions.some(
-      (permission) =>
-        EDIT_ROLES.has(permission.role) &&
-        ((permission.type === "user" &&
-          permission.emailAddress?.toLowerCase() === requester) ||
-          (permission.type === "domain" &&
-            permission.domain?.toLowerCase() === domain) ||
-          permission.type === "anyone"),
-    );
-    if (canEdit) return;
-    pageToken = body.nextPageToken;
-    if (!pageToken) break;
-  }
-  throw new PluginToolInputError(
-    `Only people who can edit this Doc can ask you to change it, and ${requester} is not an editor. Access through a Google group is not checked: the owner must share the Doc with ${requester} as an editor.`,
-  );
-}
-
 // Elements also carry `startIndex`, so an image or a page break comes back as
 // an element without `textRun` instead of being dropped.
 const docParagraphSchema = z.object({
@@ -167,11 +96,7 @@ const docSchema = z.object({
 type DocParagraph = z.infer<typeof docParagraphSchema>;
 
 /** A Doc that the requester and Junior's account may both edit. */
-interface EditableDoc {
-  ref: FileReference;
-  title: string;
-  url: string;
-}
+type EditableDoc = EditableFile & { url: string };
 
 /**
  * Check that Junior's account and the requester can both edit a Doc. Only the
@@ -181,19 +106,8 @@ export async function requireEditableDoc(
   ctx: GoogleToolContext,
   document: string,
 ): Promise<EditableDoc> {
-  const ref = parseFileReference(document);
-  const file = await readGoogleFileMetadata(ctx, ref, ["document"]);
-  if (file.capabilities?.canEdit !== true) {
-    throw new PluginToolInputError(
-      `Your Google account (${ctx.accountEmail}) cannot edit "${file.name}". Ask the owner to share it with that account as an editor.`,
-    );
-  }
-  await requireRequesterCanEdit(ctx, ref);
-  return {
-    ref,
-    title: file.name,
-    url: file.webViewLink ?? docUrl(ref.fileId),
-  };
+  const file = await requireEditableFile(ctx, document, "document");
+  return { ...file, url: file.webViewLink ?? docUrl(file.ref.fileId) };
 }
 
 /** Read the body layout that index-based edits need. */
@@ -349,7 +263,7 @@ const batchUpdateReplySchema = z.object({
     .optional(),
 });
 
-/** Return the revision of a Doc after a batch update, when Google sends it. */
+/** Return the revision after a Docs or Slides batch update, when Google sends it. */
 export function revisionAfterUpdate(body: unknown): string | undefined {
   return batchUpdateReplySchema.safeParse(body).data?.writeControl
     ?.requiredRevisionId;
@@ -362,17 +276,18 @@ export function revisionAfterUpdate(body: unknown): string | undefined {
  */
 export async function batchUpdateDoc(
   ctx: GoogleToolContext,
-  ref: FileReference,
+  doc: EditableFile,
   requests: unknown[],
   revisionId?: string,
 ): Promise<unknown> {
-  const response = await googleFileRequest(ctx, ref, {
+  const response = await googleFileRequest(ctx, doc.ref, {
     body: {
       requests,
       ...(revisionId && { writeControl: { requiredRevisionId: revisionId } }),
     },
+    editable: doc,
     operation: "google.docs.document.batchUpdate",
-    path: `/v1/documents/${ref.fileId}:batchUpdate`,
+    path: `/v1/documents/${doc.ref.fileId}:batchUpdate`,
   });
   return response.body;
 }

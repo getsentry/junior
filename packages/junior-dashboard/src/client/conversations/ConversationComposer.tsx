@@ -580,7 +580,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           onChange={(event) => {
             setMessage(event.target.value);
             syncTextareaHeight();
-            skillMenu.sync();
+            skillMenu.edit();
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}

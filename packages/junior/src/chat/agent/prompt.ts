@@ -15,11 +15,6 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
-  sandboxSkillDir,
-  sandboxSkillFile,
-  sandboxSkillPathResolution,
-} from "@/chat/sandbox/paths";
-import {
   buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
@@ -49,17 +44,14 @@ import {
   toCanonicalInputMessage,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import {
-  escapeClosingTag,
   escapeTagText,
-  escapeTagTextAndQuotes,
-  renderInlineTag,
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
@@ -203,26 +195,6 @@ function renderInputParts(instruction: AgentInstruction): string[] {
       ? buildUserTurnText(input.text, instruction.actor)
       : input.text.trim(),
   );
-}
-
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
-  return renderTag("skill", {}, [
-    renderInlineTag("name", escapeTagTextAndQuotes(skill.name)),
-    renderInlineTag(
-      "path",
-      escapeTagTextAndQuotes(sandboxSkillFile(skill.name)),
-    ),
-    renderInlineTag(
-      "working_directory",
-      escapeTagTextAndQuotes(sandboxSkillDir(skill.name)),
-    ),
-    renderInlineTag(
-      "path_resolution",
-      escapeTagTextAndQuotes(sandboxSkillPathResolution(skill.name)),
-    ),
-    escapeClosingTag(skill.body, "skill"),
-  ]);
 }
 
 /** Redact image data from prompt content parts for observability. */
@@ -639,7 +611,6 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -765,14 +736,6 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.explicitSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
-          },
-        ]
-      : []),
     ...(agentsInstructions
       ? [{ type: "text" as const, text: agentsInstructions }]
       : []),

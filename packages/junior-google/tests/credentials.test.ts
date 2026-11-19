@@ -6,6 +6,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { getGoogleAccount, saveGoogleAccount } from "../src/store";
+import { newEditableFile } from "../src/tools/editable-file";
+import { googleApiRequest } from "../src/tools/shared";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
@@ -21,6 +23,70 @@ function grantFor(request: EgressHookContext["request"]) {
 }
 
 describe("Google egress policy", () => {
+  it("refuses a change to an existing file without the file that the requester check returned", async () => {
+    const fetch = vi.fn(async () => Response.json({}));
+    const path = "/v1/presentations/1DeCkIdAbCdEfGh:batchUpdate";
+    const edit = (editable?: ReturnType<typeof newEditableFile>) =>
+      googleApiRequest(
+        { egress: { fetch } },
+        {
+          body: { requests: [] },
+          ...(editable ? { editable } : undefined),
+          operation: "google.slides.presentation.batchUpdate",
+          path,
+        },
+      );
+
+    await expect(edit()).rejects.toThrow(
+      "google.slides.presentation.batchUpdate changes a file, so it needs the file that requireEditableFile checked.",
+    );
+    await expect(
+      edit(newEditableFile({ fileId: "1OtHeRfIlEiDxyz" }, "Other")),
+    ).rejects.toThrow("needs the file that requireEditableFile checked");
+    expect(fetch).not.toHaveBeenCalled();
+
+    // The checked id must be the changed file id, not part of the path.
+    const checked = newEditableFile({ fileId: "1DeCkIdAbCdEfGh" }, "Roadmap");
+    const other = "1OtHeRfIlEiDxyz";
+    for (const [operation, otherPath] of [
+      [
+        "google.slides.presentation.batchUpdate",
+        `/v1/presentations/1DeCkIdAbCdEfGh/../${other}:batchUpdate`,
+      ],
+      [
+        "google.slides.presentation.batchUpdate",
+        "/v1/presentations/1DeCkIdAbCdEfGhXYZ:batchUpdate",
+      ],
+      [
+        "google.slides.presentation.batchUpdate",
+        `/v1/presentations/${other}:batchUpdate?x=/1DeCkIdAbCdEfGh`,
+      ],
+      [
+        "google.drive.permission.delete",
+        `/drive/v3/files/${other}/permissions/1DeCkIdAbCdEfGh`,
+      ],
+    ] as const) {
+      await expect(
+        googleApiRequest(
+          { egress: { fetch } },
+          { editable: checked, operation, path: otherPath },
+        ),
+      ).rejects.toThrow("needs the file that requireEditableFile checked");
+    }
+    // A hand-made file did not pass the requester check.
+    await expect(
+      edit({
+        ref: { fileId: "1DeCkIdAbCdEfGh" },
+        title: "Roadmap",
+        webViewLink: undefined,
+      }),
+    ).rejects.toThrow("needs the file that requireEditableFile checked");
+    expect(fetch).not.toHaveBeenCalled();
+
+    await edit(checked);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("gives the account only to declared plugin operations", () => {
     // Sandbox commands carry no operation.
     expect(() =>

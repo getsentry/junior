@@ -249,3 +249,14 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
 export function postsRunNotices(dispatch: RunDispatch): boolean {
   return deliversFinalText(dispatch);
 }
+
+/**
+ * Return whether the task instructions of a dispatch run can invoke skills.
+ * Only an Automation creator writes them. Another dispatch, such as a plugin
+ * dispatch, has no person's text.
+ */
+export function dispatchInstructionsInvokeSkills(
+  dispatch: RunDispatch,
+): boolean {
+  return dispatch?.declaresResult === true;
+}
