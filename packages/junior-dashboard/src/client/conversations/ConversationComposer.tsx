@@ -43,12 +43,51 @@ import { getDashboardAgentName } from "../agentName";
 
 const DRAFT_MAX_LENGTH = 32_000;
 
+type ComposerEditorModule = typeof import("./composer-editor/ComposerEditor");
+type ComposerEditorLoad =
+  | { module: ComposerEditorModule }
+  | { failedUrl: string | undefined };
+
+// Chrome and Firefox keep a failed module import, so an import of the same
+// URL fails again at once. Their error names the chunk's URL. A query makes
+// that URL a new module.
+const CHUNK_URL_IN_ERROR = /https?:\/\/\S+?\.js\b/g;
+
+// A retry imports the chunk by URL, which the compiler cannot type.
+function isComposerEditorModule(value: unknown): value is ComposerEditorModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "default" in value &&
+    typeof value.default === "function"
+  );
+}
+
+const loadComposerEditor = (retryUrl?: string): Promise<ComposerEditorLoad> => {
+  const load = retryUrl
+    ? import(/* @vite-ignore */ retryUrl).then((module: unknown) => {
+        if (!isComposerEditorModule(module)) {
+          throw new Error(`${retryUrl} is not the composer editor`);
+        }
+        return module;
+      })
+    : import("./composer-editor/ComposerEditor");
+  return load.then(
+    (module) => ({ module }),
+    (error: unknown) => ({
+      failedUrl:
+        error instanceof Error
+          ? error.message.match(CHUNK_URL_IN_ERROR)?.[0]
+          : undefined,
+    }),
+  );
+};
 // Lexical is large, so the editor is not in the first page load. Start to
 // load it at once, so a reader who goes offline later still has it.
-const loadComposerEditor = () =>
-  import("./composer-editor/ComposerEditor").catch(() => undefined);
 const composerEditorLoad = loadComposerEditor();
 
+// A chunk error while online is often brief, so the load tries again.
+const EDITOR_RETRY_MS = 10_000;
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
@@ -194,7 +233,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
   // A textarea stands in until the editor loads, and when it cannot load.
   const [Editor, setEditor] = useState<typeof ComposerEditor>();
-  const editorLoadFailedRef = useRef(false);
+  // The chunk URL of a failed load, or null when the error names none.
+  const editorFailedUrlRef = useRef<string | null | undefined>(undefined);
+  const [editorLoadAttempt, setEditorLoadAttempt] = useState(0);
   const editorRef = useRef<ComposerEditorHandle>(null);
   const editorElementRef = useRef<HTMLDivElement>(null);
   // Takes text while the editor loads.
@@ -230,22 +271,38 @@ export const ConversationComposer = memo(function ConversationComposer(
     };
   }, [storageKey]);
 
-  // A load that failed offline tries again when the dashboard is online.
+  // A failed load tries again after a pause, and when the dashboard is
+  // online again.
   useEffect(() => {
     if (Editor || !online) return;
     let current = true;
-    const load = editorLoadFailedRef.current
-      ? loadComposerEditor()
-      : composerEditorLoad;
-    void load.then((module) => {
+    let retryTimer: number | undefined;
+    const failedUrl = editorFailedUrlRef.current;
+    const load =
+      failedUrl === undefined
+        ? composerEditorLoad
+        : loadComposerEditor(
+            failedUrl === null
+              ? undefined
+              : `${failedUrl}?retry=${editorLoadAttempt}`,
+          );
+    void load.then((result) => {
       if (!current) return;
-      if (module) setEditor(() => module.default);
-      else editorLoadFailedRef.current = true;
+      if ("module" in result) {
+        setEditor(() => result.module.default);
+        return;
+      }
+      editorFailedUrlRef.current ??= result.failedUrl ?? null;
+      retryTimer = window.setTimeout(
+        () => setEditorLoadAttempt((attempt) => attempt + 1),
+        EDITOR_RETRY_MS,
+      );
     });
     return () => {
       current = false;
+      window.clearTimeout(retryTimer);
     };
-  }, [Editor, online]);
+  }, [Editor, online, editorLoadAttempt]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -505,6 +562,23 @@ export const ConversationComposer = memo(function ConversationComposer(
       maxLength={DRAFT_MAX_LENGTH}
       onChange={(event) => setMessage(event.target.value)}
       onFocus={props.onFocus}
+      onKeyDown={(event) => {
+        if (
+          enterSends &&
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          void submit();
+        }
+      }}
+      onPaste={(event) => {
+        const files = Array.from(event.clipboardData.files);
+        if (props.compact || !files.length) return;
+        event.preventDefault();
+        addFiles(files);
+      }}
       placeholder={placeholder}
       ref={standInRef}
       rows={1}
