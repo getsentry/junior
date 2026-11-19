@@ -79,6 +79,7 @@ import {
   askRowIndex,
   defaultTranscriptRowSize,
   liveActivityIndex,
+  rowIndexBeforeSeq,
   rowIndexForSeq,
   transcriptListRows,
   transcriptRowSizeClass,
@@ -620,6 +621,10 @@ function TranscriptEntryList(
       markerIndex === undefined ? undefined : markerIndex + 1,
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
+      // A memory event has no row. Go to message shows its Turn's row.
+      props.revealSeq === undefined
+        ? undefined
+        : rowIndexBeforeSeq(rows, props.revealSeq),
       matchCount === 0 ? undefined : match,
       askIndex,
     ],

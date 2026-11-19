@@ -83,7 +83,7 @@ export function conversationMemoryEntries(
 /**
  * Show the transcript row of a memory event's Turn. The event has no row, so
  * this is the last row before it: the prompt of a recall, or the reply of a
- * capture.
+ * capture. Matches `rowIndexBeforeSeq`, which keeps that row mounted.
  */
 export function showMemoryRow(root: Element | null, seq: number) {
   // Only the rows of this Conversation's transcript count.
@@ -91,12 +91,17 @@ export function showMemoryRow(root: Element | null, seq: number) {
     '[aria-label="Conversation transcript"]',
   );
   let row: Element | undefined;
-  // Rows are in seq order.
+  let rowSeq: number | undefined;
+  // Rows are in seq order. A question moved after its reply keeps the reply
+  // seq, so the first row with a seq wins.
   for (const candidate of transcript?.querySelectorAll(
     "[data-transcript-seq]",
   ) ?? []) {
-    if (Number(candidate.getAttribute("data-transcript-seq")) > seq) break;
+    const candidateSeq = Number(candidate.getAttribute("data-transcript-seq"));
+    if (candidateSeq >= seq) break;
+    if (candidateSeq === rowSeq) continue;
     row = candidate;
+    rowSeq = candidateSeq;
   }
   if (!row) return;
   row.scrollIntoView({ block: "center" });

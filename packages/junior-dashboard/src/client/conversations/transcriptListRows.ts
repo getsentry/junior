@@ -283,6 +283,27 @@ export function rowIndexForSeq(
   return low;
 }
 
+/**
+ * Find the row that shows the Turn of an event without a row, such as a
+ * memory event: the last row before `seq`. A question moved after its reply
+ * keeps the reply seq, so this returns the first row with that seq.
+ */
+export function rowIndexBeforeSeq(
+  rows: readonly TranscriptListRow[],
+  seq: number,
+): number | undefined {
+  let index: number | undefined;
+  let runSeq: number | undefined;
+  for (let i = rowIndexForSeq(rows, seq) - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.kind === "unread_marker") continue;
+    if (index !== undefined && row.seq !== runSeq) break;
+    index = i;
+    runSeq = row.seq;
+  }
+  return index;
+}
+
 function rowSeqBefore(
   rows: readonly TranscriptListRow[],
   index: number,

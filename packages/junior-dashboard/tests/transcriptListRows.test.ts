@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  rowIndexBeforeSeq,
   rowIndexForSeq,
   liveActivityIndex,
   transcriptListRows,
@@ -42,6 +43,22 @@ describe("rowIndexForSeq", () => {
       entryRow(7),
     ];
     expect(rowIndexForSeq(rows, 5)).toBe(1);
+  });
+});
+
+describe("rowIndexBeforeSeq", () => {
+  it("finds the reply, not the question moved after it", () => {
+    const moved = { ...entryRow(3), key: "ask" };
+    const rows = [
+      entryRow(1),
+      entryRow(3),
+      { key: UNREAD_MARKER_KEY, kind: "unread_marker" } as const,
+      moved,
+      entryRow(9),
+    ];
+    expect(rowIndexBeforeSeq(rows, 5)).toBe(1);
+    expect(rowIndexBeforeSeq(rows, 2)).toBe(0);
+    expect(rowIndexBeforeSeq(rows, 1)).toBeUndefined();
   });
 });
 
