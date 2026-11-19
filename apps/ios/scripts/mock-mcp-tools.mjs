@@ -168,6 +168,8 @@ export function createMockMcpTools({ app, origin }) {
       title: summary.displayTitle,
       status: stopped.has(id) ? "done" : summary.status,
       turnActive: summary.turnActive && !stopped.has(id),
+      treeState: summary.treeState,
+      watching: summary.watching,
       surface: summary.surface,
       channelName: summary.channelNameRedacted
         ? undefined
