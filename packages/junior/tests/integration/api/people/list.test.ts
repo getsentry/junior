@@ -31,7 +31,7 @@ describe("people list API", () => {
     try {
       await migrateSchema(fixture.sql);
       const uncached = await measureSql(readPeople);
-      expect(uncached.sql.statements).toBe(5);
+      expect(uncached.sql.statements).toBe(4);
       const first = uncached.result;
       expect(first.people).toEqual([]);
 
@@ -52,7 +52,7 @@ describe("people list API", () => {
         return reports;
       });
       expect(stale.result).toEqual([first, first]);
-      expect(stale.sql.statements).toBe(5);
+      expect(stale.sql.statements).toBe(4);
 
       const refreshed = await readPeople();
       expect(refreshed.people.length).toBeGreaterThan(0);
@@ -143,7 +143,7 @@ describe("people list API", () => {
       // of a big table uses an index.
       const report = await expectNoFullScan(() =>
         expectSqlBudget(() => readPeopleListFromSql(), {
-          statements: 5,
+          statements: 4,
           serialRounds: 1,
         }),
       );

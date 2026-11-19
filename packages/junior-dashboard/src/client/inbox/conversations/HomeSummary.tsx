@@ -17,6 +17,7 @@ import { IdleText, lastActivity } from "../../conversations/codeChangeIdle";
 import { HomeDayStrip } from "../../conversations/HomeDayStrip";
 import { HomeMergeDelta } from "../../conversations/HomeMergeDelta";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { NAV_PAGES } from "../../navPages";
 
 const WEEK_DAYS = 7;
 /** Open code changes shown before the reader expands the list. */
@@ -111,7 +112,7 @@ export function HomeSummary() {
               <StatusText tone="bg-amber-300">
                 <Link
                   className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                  to="/"
+                  to={NAV_PAGES.inbox.to}
                 >
                   in your Inbox
                 </Link>
