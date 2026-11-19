@@ -388,5 +388,21 @@ new RuleTester().run("no-value-switch", noValueSwitchRule, {
 }`,
       errors: actionSwitch,
     },
+    {
+      code: `function f(k) {
+  switch (k) {
+    case "a":
+      run("a");
+      break;
+    case "b":
+      run("b");
+      break;
+    case "c":
+      run("c");
+    default:
+  }
+}`,
+      errors: actionSwitch,
+    },
   ],
 });

@@ -159,9 +159,12 @@ export const noValueSwitchRule = defineRule({
           return;
         }
         if (cases.length < MIN_ACTION_CASES) return;
-        const actions = node.cases
-          .filter((item) => item.consequent.length > 0)
-          .map((item) => caseActions(item, item === node.cases.at(-1)));
+        // Empty clauses after the last body run nothing, so it can end
+        // without `break`.
+        const bodies = node.cases.filter((item) => item.consequent.length > 0);
+        const actions = bodies.map((item) =>
+          caseActions(item, item === bodies.at(-1)),
+        );
         if (
           actions.every((count) => count !== undefined) &&
           actions.some((count) => count > 0) &&
