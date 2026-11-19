@@ -329,6 +329,58 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText(sibling.title)).toHaveCount(0);
   });
 
+  test("a sibling link joins a kept item's stack once a page loads it", async ({
+    dashboard,
+    page,
+  }) => {
+    // The waiting sort pages audit, then kept, then the sibling. Kept's
+    // page waits until its link has added it, and the sibling's page never
+    // loads, so its link has to add it.
+    const kept = { ...rollout, createdAt: "2026-08-06T09:00:00.000Z" };
+    const sibling = {
+      ...kept,
+      assignees: [],
+      canAct: false,
+      createdAt: "2026-08-05T09:00:00.000Z",
+      id: "item-sibling",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [audit, kept, sibling], pageSize: 1 });
+    let releaseKeptPage = () => {};
+    const keptPageHeld = new Promise<void>((resolve) => {
+      releaseKeptPage = resolve;
+    });
+    await page.route("**/api/review-items?**", async (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      if (cursor === "2") return route.abort();
+      if (cursor === "1") await keptPageHeld;
+      return route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    const keptRow = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
+    await expect(keptRow).toHaveAttribute("data-expanded", "true");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    const keptPage = page.waitForResponse(
+      (response) => new URL(response.url()).searchParams.get("cursor") === "1",
+    );
+    releaseKeptPage();
+    await keptPage;
+    await page.keyboard.press("Escape");
+    await expect(keptRow).not.toHaveAttribute("data-expanded", "true");
+
+    // A loaded page holds the kept item now, so its stack stays when the
+    // sibling link replaces it, and the sibling's row opens there.
+    await page.evaluate((url) => {
+      history.pushState(null, "", url);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, `/?item=${sibling.id}`);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${sibling.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
+  });
+
   test("an item link and the Inbox tab share one place", async ({
     dashboard,
     page,
