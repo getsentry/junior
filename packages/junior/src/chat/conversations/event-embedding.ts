@@ -24,7 +24,7 @@ import {
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
 import { createConversationEmbedder } from "./embedding";
-import { storeConversationEventLexemes } from "./event-lexemes";
+import { seqIn, storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
   SEARCHABLE_EVENT_TYPES,
@@ -60,15 +60,20 @@ export async function embedConversationEvents(
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
-  const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
+  const text = sql<
+    string | null
+  >`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
   const refresh = await refreshEmbeddings<{ seq: number; text: string }>({
     batchSize: EMBEDDING_BATCH_SIZE,
     deadlineMs: limits.deadlineMs,
     embedder,
     maxItems: limits.maxEvents ?? MAX_EVENTS_PER_RUN,
-    listMissing: async ({ after, limit }) =>
-      await db
-        .select({ seq: events.seq, text })
+    listMissing: async ({ after, limit }) => {
+      // Find the seqs first, so Postgres reads the text of only this page.
+      // In one query, it reads the text of every event in the Conversation,
+      // embedded or not, before it applies the limit.
+      const missing = await db
+        .select({ seq: events.seq })
         .from(events)
         .leftJoin(
           embeddings,
@@ -84,13 +89,29 @@ export async function embedConversationEvents(
             eq(events.conversationId, conversationId),
             inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
             isNull(embeddings.seq),
-            // Text of only whitespace, such as newlines, has nothing to embed.
-            sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
             after ? lt(events.seq, after.seq) : undefined,
           ),
         )
         .orderBy(desc(events.seq))
-        .limit(limit),
+        .limit(limit);
+      if (missing.length === 0) return [];
+      const texts = await db
+        .select({ seq: events.seq, text })
+        .from(events)
+        .where(
+          and(
+            eq(events.conversationId, conversationId),
+            seqIn(missing.map((row) => row.seq)),
+          ),
+        );
+      const textBySeq = new Map(texts.map((row) => [row.seq, row.text]));
+      // An event without text stays in the page with empty text, so the
+      // next page starts after it. `refreshEmbeddings` skips it.
+      return missing.map(({ seq }) => ({
+        seq,
+        text: textBySeq.get(seq) ?? "",
+      }));
+    },
     write: async (rows, batch) => {
       await db
         .insert(embeddings)
