@@ -1,3 +1,7 @@
+import {
+  OBJECT_FACTS_MAX_BYTES,
+  objectFactsBytes,
+} from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { conversationFeedSchema } from "@/api/schema";
@@ -66,11 +70,28 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
       version: 1,
       turnId: "brief-turn-1",
       throughSeq: await lastSeq(conversationId),
-      content: conversationBriefFixture({ summary: text(600, "s") }),
+      content: {
+        ...conversationBriefFixture({ summary: text(600, "s") }),
+        intent: text(400, "i"),
+      },
       searchText: "stored brief",
       modelId: "test-model",
     });
   await addItem(conversationId, ACTION_ITEM);
+  const facts = {
+    type: "code_change" as const,
+    summary: text(280, "s"),
+    author: text(160, "a"),
+    sourceBranch: text(160, "b"),
+    targetBranch: text(160, "b"),
+    reviewers: Array.from({ length: 5 }, () => text(160, "r")),
+    previewImageUrls: Array.from({ length: 4 }, () => url(512)),
+  };
+  // One more image URL fills the facts to their limit. It adds its quotes
+  // and a comma.
+  facts.previewImageUrls.push(
+    url(OBJECT_FACTS_MAX_BYTES - objectFactsBytes(facts) - 3),
+  );
   const annotations = createPluginAnnotations({
     conversationId,
     db: getDb(),
@@ -89,15 +110,7 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
     warning: text(1000, "w"),
     displayType: text(80, "p"),
     sourceUpdatedAt: new Date().toISOString(),
-    facts: {
-      type: "code_change",
-      summary: text(280, "s"),
-      author: text(160, "a"),
-      sourceBranch: text(160, "b"),
-      targetBranch: text(160, "b"),
-      reviewers: Array.from({ length: 5 }, () => text(160, "r")),
-      previewImageUrls: Array.from({ length: 3 }, () => url(512)),
-    },
+    facts,
   });
   await annotations.upsert({
     kind: "resource_link",
@@ -157,10 +170,10 @@ describe("conversation list API response budget", () => {
       {
         // A row's own fields, plus its activity preview, which holds the
         // whole latest message.
-        conversations: 1_587 + 32_069,
+        conversations: 1_959 + 32_069,
         // A row lists every one of these, with no cap on the count. Each
         // item has its own budget, and the row leaves them out.
-        "conversations.annotations": 15_796,
+        "conversations.annotations": 16_654,
         "conversations.participants": 52,
         "conversations.sidebarAnnotations": 674,
         "conversations.threads": 637,
