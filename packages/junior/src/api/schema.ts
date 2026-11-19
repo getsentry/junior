@@ -334,6 +334,12 @@ export type {
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
 export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
+export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
   serviceAccountParamsSchema,
