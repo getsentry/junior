@@ -8,6 +8,11 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import {
+  conversationIsActiveSql,
+  conversationStatusSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
 import type { ConversationMetric } from "@/db/schema/conversation-metrics";
 import { microUsdSql } from "@/db/micro-usd";
 import type {
@@ -134,15 +139,10 @@ export function personRootJoin(roots: PersonRoots) {
  */
 export function rootAggregateColumns(roots: PersonRoots) {
   return {
-    active: sql<number>`(count(*) FILTER (
-      WHERE ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
-    ))::integer`,
+    active: sql<number>`(count(*) FILTER (WHERE ${conversationIsActiveSql(turnRoot)}))::integer`,
     conversations: sql<number>`count(*)::integer`,
     durationMs: sql<number>`COALESCE(sum(${roots.durationMs}), 0)::double precision`,
-    // A stopped Conversation reports `stopped`, not `failed`.
-    failed: sql<number>`(count(*) FILTER (
-      WHERE ${turnRoot.executionStatus} = 'failed' AND ${turnRoot.stoppedAt} IS NULL
-    ))::integer`,
+    failed: sql<number>`(count(*) FILTER (WHERE ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL))::integer`,
     tokens: sql<number | null>`sum(${roots.tokens})::double precision`,
   };
 }
@@ -326,7 +326,6 @@ export async function recentActorRows(email: string) {
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
       executionStatus: juniorConversations.executionStatus,
-      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,
@@ -341,6 +340,7 @@ export async function recentActorRows(email: string) {
         string | null
       >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,
