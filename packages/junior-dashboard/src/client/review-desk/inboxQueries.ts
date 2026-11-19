@@ -12,6 +12,7 @@ import pLimit from "p-limit";
 
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { useSnoozedItemIds } from "./inboxSnooze";
 import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
@@ -35,15 +36,13 @@ export function useInboxCountData(enabled: boolean) {
     enabled,
     placeholderData: keepPreviousData,
     queryKey: [...REVIEW_ITEM_COUNT_QUERY_KEY, snoozed],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemCountSchema,
-        `/api/review-items/count?${new URLSearchParams({
-          include: "automations",
-          ...(snoozed ? { snoozed } : undefined),
-        })}`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      reviewItemCountSchema,
+      `/api/review-items/count?${new URLSearchParams({
+        include: "automations",
+        ...(snoozed ? { snoozed } : undefined),
+      })}`,
+    ),
     retry: false,
   });
 }
