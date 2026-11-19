@@ -11,7 +11,7 @@ function rollout(page: Page) {
 async function answerHold(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/`);
   const todo = page.getByRole("region", { name: "To do" });
-  await rollout(page).getByRole("button", { name: "Question" }).click();
+  await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
   await todo
     .getByRole("region", { name: "Approve the payments-v42 rollout" })
     .getByRole("button", { exact: true, name: "Hold" })
@@ -42,8 +42,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText(title);
 
-    // The row says the answer in place of the ask, after a reload too.
+    // The answered item leaves the Inbox. Its Conversation's row says the
+    // answer in place of the ask, after a reload too. The row leaves before
+    // the server answers, so wait for the answer: a navigation would stop it.
+    const answered = page.waitForResponse(
+      (response) =>
+        /\/api\/review-items\/[^/]+\/actions$/.test(response.url()) &&
+        response.request().method() === "POST",
+    );
     release();
+    expect((await answered).ok()).toBe(true);
+    await expect(rollout(page)).toHaveCount(0);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = rollout(page).locator('[data-inbox-slot="summary"]');
     await expect(summary).toHaveText("You answered Hold");
     await expect(page.getByText(ask)).toHaveCount(0);
