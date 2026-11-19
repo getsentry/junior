@@ -18,7 +18,7 @@ describe("reactToIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 3037, content: "eyes" },
+        { repo: "getsentry/junior", issue: 3037, content: "eyes" },
         { toolCallId: "react" },
       ),
     ).resolves.toEqual({
@@ -50,7 +50,7 @@ describe("reactToIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 3037, content: "eyes" },
+        { repo: "getsentry/junior", issue: 3037, content: "eyes" },
         { toolCallId: "missing" },
       ),
     ).rejects.toThrow("GitHub issue reaction failed with HTTP 404: Not Found");

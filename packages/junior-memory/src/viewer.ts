@@ -11,6 +11,7 @@ import {
   gt,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   like,
   lt,
@@ -27,6 +28,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const nonEmptyStringSchema = z.string().min(1);
 const cursorSchema = z
   .object({
+    archived: z.literal(true).optional(),
     createdAtMs: z.number().finite(),
     id: nonEmptyStringSchema,
     kind: z.enum(MEMORY_KINDS).optional(),
@@ -37,6 +39,8 @@ const cursorSchema = z
   .strict();
 const pageInputSchema = z
   .object({
+    /** List archived memories that restore can make active. */
+    archived: z.boolean().optional(),
     cursor: z.string().min(1).max(1_000).optional(),
     kind: z.enum(MEMORY_KINDS).optional(),
     limit: z.number().int().min(1).max(50),
@@ -95,6 +99,23 @@ function activeMemoryPredicate(nowMs: number) {
   );
 }
 
+/**
+ * Archived public memories that restore can make active. Expired memories
+ * stay archived, because the expiry sweep would archive them again.
+ */
+export function archivedMemoryPredicate(nowMs: number) {
+  return and(
+    publicScopePredicate(),
+    isNotNull(juniorMemoryMemories.archivedAtMs),
+    // A superseded preference row is an idempotency alias, not an archive.
+    isNull(juniorMemoryMemories.supersededAtMs),
+    or(
+      isNull(juniorMemoryMemories.expiresAtMs),
+      gt(juniorMemoryMemories.expiresAtMs, nowMs),
+    ),
+  );
+}
+
 function utcDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -143,6 +164,7 @@ function toMemoryView(
 
 function cursorFilters(input: MemoryPageInput) {
   return {
+    archived: input.archived || undefined,
     kind: input.kind,
     origin: input.origin,
     query: input.query?.trim() || undefined,
@@ -159,6 +181,7 @@ function decodeCursor(
       JSON.parse(Buffer.from(value, "base64url").toString("utf8")),
     );
     if (
+      parsed.archived !== filters.archived ||
       parsed.query !== filters.query ||
       parsed.kind !== filters.kind ||
       parsed.origin !== filters.origin
@@ -202,16 +225,21 @@ export async function archiveMemory(db: MemoryDb, id: string) {
   return parseMemoryRow(updated[0]);
 }
 
-/** Read one active memory visible to the authenticated User. */
-export async function getMemory(db: MemoryDb, id: string): Promise<MemoryView> {
+/** Read one active or archived memory visible to the authenticated User. */
+export async function getMemory(
+  db: MemoryDb,
+  id: string,
+  options: { archived?: boolean } = {},
+): Promise<MemoryView> {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
+  const state = options.archived
+    ? archivedMemoryPredicate(nowMs)
+    : activeMemoryPredicate(nowMs);
   const rows = await db
     .select()
     .from(juniorMemoryMemories)
-    .where(
-      and(activeMemoryPredicate(nowMs), eq(juniorMemoryMemories.id, memoryId)),
-    )
+    .where(and(state, eq(juniorMemoryMemories.id, memoryId)))
     .limit(1);
   if (!rows[0]) throw new MemoryNotFoundError();
   return toMemoryView(rows[0]);
@@ -243,7 +271,9 @@ export async function listMemories(
   input = pageInputSchema.parse(input);
   const filters = cursorFilters(input);
   const cursor = decodeCursor(input.cursor, filters);
-  const active = activeMemoryPredicate(Date.now());
+  const state = input.archived
+    ? archivedMemoryPredicate(Date.now())
+    : activeMemoryPredicate(Date.now());
   const createdBefore = cursor
     ? or(
         lt(juniorMemoryMemories.createdAtMs, cursor.createdAtMs),
@@ -266,7 +296,7 @@ export async function listMemories(
   const rows = await db
     .select()
     .from(juniorMemoryMemories)
-    .where(and(active, createdBefore, search, kind, origin))
+    .where(and(state, createdBefore, search, kind, origin))
     .orderBy(
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),

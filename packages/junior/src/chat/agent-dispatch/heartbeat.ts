@@ -10,7 +10,7 @@ import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import {
   createPluginEventPublisher,
-  getPlugins,
+  getRegistrations,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
@@ -81,7 +81,7 @@ async function runPluginHeartbeats(args: {
 }): Promise<void> {
   let count = 0;
   /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
       break;
