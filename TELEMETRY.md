@@ -90,6 +90,7 @@ attributes. Nested logs and spans inherit them.
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
+| Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
