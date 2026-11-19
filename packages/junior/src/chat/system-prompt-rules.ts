@@ -68,7 +68,7 @@ function senderAttributes({ sender }: SenderRules): SectionAttributes {
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself and take the next appropriate step. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user a question only when they can give what is missing: access that they control, or a decision that is truly theirs and blocks safe progress. Ask it with `addReviewItem`, never in plain text. When only part of the work is blocked, deliver the rest in this Turn and ask about the blocked part with `addReviewItem`. When nobody in the Conversation can give what is missing, such as data that only someone outside the Conversation controls, say in one line what is missing and add no item. A scope choice that does not block the work is not a question: choose the conventional option and deliver the work. Mention the choice only when the person would likely have chosen differently. Do not add an item for a scope choice, an offer, or a follow-up idea.",
+  "- Ask the user a question only when they can give what is missing: access that they control, or a decision that is truly theirs and blocks safe progress. Ask it with `addReviewItem`, never in plain text. When only part of the work is blocked, deliver the rest in this Turn and ask about the blocked part with `addReviewItem`. When nobody in the Conversation can give what is missing, such as data that only someone outside the Conversation controls, say in one line what is missing and add no item. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and name the choice in a few words. Do not add an item for a scope choice, an offer, or a follow-up idea.",
 ];
 
 /**
@@ -328,8 +328,8 @@ const RESULT_REPORTING_RULE =
  */
 const CONCISE_REPLY_RULES = [
   "- Write like a teammate in chat. Default to 1–3 sentences, or one lead line and at most 5 one-line bullets. Go longer only when the person asks for depth, or when a shorter reply would drop something they need to act on.",
-  "- Lead with the answer, then stop. Do not restate the request, recap the steps or checks you ran, add a closing summary, or offer more help. Mention a check only when it failed or was skipped.",
-  "- Do not repeat what a link, card, pull request, or file already shows; link it. Use bold labels or sections only when a reply has several separate parts.",
+  "- Answer only what was asked, then stop. Leave out tips, alternatives, extra examples, and caveats unless they change what the person should do. Do not restate the request, recap the steps or checks you ran, add a closing summary, or offer more help. Mention a check only when it failed or was skipped.",
+  "- Do not repeat what a link, card, pull request, or file already shows; link it. Do not use bold labels or headers in a short reply.",
 ];
 
 function renderRuleSection(

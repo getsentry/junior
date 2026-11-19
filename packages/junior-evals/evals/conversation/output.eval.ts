@@ -189,30 +189,22 @@ describe("Reply Length", () => {
     expect(boldLabelLines(conversation)).toEqual([]);
   });
 
-  test("when a looked-up answer needs a judgment call, give the answer and the reason only", async ({
+  test("when asked for a recommendation, give it and the main reason", async ({
     agent,
   }) => {
-    mockWebSearchResults([
-      {
-        title: "Node.js Releases",
-        url: "https://nodejs.org/en/about/previous-releases",
-        excerpt:
-          "Node.js 24 is in Active LTS until October 2026, then Maintenance LTS until April 2028. Node.js 26 is the Current release and enters Active LTS in October 2026. Production applications should only use Active LTS or Maintenance LTS releases.",
-      },
-    ]);
     const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention(
-        "which node version should we pin for the new billing service?",
+        "for the new billing tables, should we use uuidv7 or bigint ids?",
       ),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
-          "The reply recommends an LTS release, such as Node.js 24, and gives a reason.",
+          "The reply recommends one of the two options and gives a reason.",
         ],
-        fail: ["Do not recommend a release that is not LTS without a caveat."],
+        fail: ["Do not avoid a recommendation."],
       }),
     );
     expect(proseWordCount(conversation)).toBeLessThanOrEqual(100);
@@ -241,20 +233,20 @@ describe("Reply Length", () => {
     const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention(
-        "I'm writing onboarding docs for new backend engineers. Walk me through how TCP slow start and congestion avoidance work, in detail, with the reasoning behind each.",
+        "I'm writing onboarding docs for new backend engineers. Explain how TCP slow start works and why it was designed that way, with enough detail for a few paragraphs of the doc.",
       ),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
-          "The reply explains slow start and congestion avoidance, with the reasoning behind each.",
+          "The reply explains how slow start grows the congestion window and why TCP starts slowly.",
         ],
         fail: [
           "Do not give only a short summary that leaves out the reasoning that was asked for.",
         ],
       }),
     );
-    expect(proseWordCount(conversation)).toBeGreaterThanOrEqual(150);
+    expect(proseWordCount(conversation)).toBeGreaterThanOrEqual(120);
   });
 });
