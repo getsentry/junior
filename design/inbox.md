@@ -27,7 +27,10 @@ snoozes each row on its own. `./review-desk.md` owns who sees an item and who ca
 
 - Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
   Conversations view.
-- The stack title, which opens the root Conversation.
+- The stack title, which opens the root Conversation. A click on empty
+  space in the stack's header does the same.
+- A right-click anywhere on a stack, which opens the root Conversation's
+  menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
   names as tooltips. A touch screen has no hover, so there a row shows its
@@ -70,6 +73,10 @@ Actions:
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
   that row comes back, and a toast offers Retry.
+- A toast shows only with an action, such as Undo or Retry, for an error,
+  or for a result that the screen does not show. An answer gets no toast.
+  On a phone, toasts sit at the top, away from the composer and the
+  keyboard, and swipe up to dismiss.
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.
@@ -86,8 +93,9 @@ Actions:
 Order and counts:
 
 - In a stack, actions come first, then notices. Each group is oldest first.
-- Stacks that wait on the viewer come first, the one that waited longest at
-  the top. Other stacks follow, oldest first. The order does not move while
+- In To do, pinned stacks come first. Then stacks that wait on the viewer
+  come, the one that waited longest at the top. Other stacks follow, oldest
+  first. FYI shows the newest notice first. The order does not move while
   the reader works.
 - A stack waits on the viewer when any of its rows does, including a row
   from a child.

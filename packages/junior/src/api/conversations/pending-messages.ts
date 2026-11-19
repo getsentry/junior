@@ -14,7 +14,6 @@ import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";
 import { type ActorIdentity } from "../schema/conversation";
 import {
-  conversationPendingMessagesReportSchema,
   type ConversationPendingMessage,
   type ConversationPendingMessagesReport,
 } from "../schema/conversation-pending-messages";
@@ -268,7 +267,7 @@ export async function readConversationPendingMessages(
     }),
   );
 
-  return conversationPendingMessagesReportSchema.parse({
+  return {
     ...(authorization
       ? {
           authorization: {
@@ -281,7 +280,7 @@ export async function readConversationPendingMessages(
     conversationId,
     generatedAt: new Date().toISOString(),
     messages,
-  });
+  };
 }
 
 /** Load pending mailbox messages or throw a standard API not-found error. */

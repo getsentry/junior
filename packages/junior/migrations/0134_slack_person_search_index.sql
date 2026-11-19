@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_identities_slack_person_search_idx" ON "junior_identities" USING gin (to_tsvector('simple', coalesce("display_name", '') || ' ' || coalesce("handle", ''))) WHERE "junior_identities"."provider" = 'slack' AND "junior_identities"."kind" = 'user';

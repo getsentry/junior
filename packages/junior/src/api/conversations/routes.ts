@@ -27,6 +27,7 @@ import {
   createAttachmentUploadBodySchema,
 } from "../schema/conversation-attachment-upload";
 import {
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "../schema/conversation-feed";
@@ -45,6 +46,8 @@ import {
   conversationDeliveryResponseSchema,
 } from "../schema/conversation-delivery";
 import {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -95,7 +98,10 @@ import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
-import { setConversationSubscription } from "./subscription";
+import {
+  inviteToConversation,
+  setConversationSubscription,
+} from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
@@ -118,6 +124,8 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
+import { conversationFeedPageVersion } from "./feed-page-version";
+import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -148,17 +156,35 @@ export function createConversationRoutes(
       const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
-      return jsonResponse(
-        conversationFeedSchema,
-        await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : undefined),
-          ...(codeRepositoryId ? { codeRepositoryId } : undefined),
-          ...(cursor ? { cursor } : undefined),
-          include,
-          ...(q ? { q } : undefined),
-          status,
-          ...(viewer ? { viewer } : undefined),
-        }),
+      // The feed does not mark waiting rows, so the read reports their count.
+      let waitingRows = 0;
+      const feed = await readConversationFeed({
+        ...(actorEmail ? { actorEmail } : undefined),
+        ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+        ...(cursor ? { cursor } : undefined),
+        include,
+        onWaitingRows: (count) => {
+          waitingRows = count;
+        },
+        ...(q ? { q } : undefined),
+        status,
+        ...(viewer ? { viewer } : undefined),
+      });
+      const pageVersion = conversationFeedPageVersion(feed);
+      const headers = {
+        "cache-control": "private, no-store",
+        [CONVERSATION_FEED_PAGE_VERSION_HEADER]: pageVersion,
+      };
+      // The token hashes the page itself, so it holds everything that the
+      // query and the viewer change on it.
+      if (
+        context.req.header(CONVERSATION_FEED_PAGE_VERSION_HEADER) ===
+        pageVersion
+      ) {
+        return new Response(null, { status: 304, headers });
+      }
+      return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
+        serializeConversationFeed(parsed, waitingRows),
       );
     },
   );
@@ -438,6 +464,30 @@ export function createConversationRoutes(
       jsonResponse(
         conversationSubscriptionResponseSchema,
         await setConversationSubscription(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
+    "/:conversationId/invites",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationInviteBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationInviteResponseSchema,
+        await inviteToConversation(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
