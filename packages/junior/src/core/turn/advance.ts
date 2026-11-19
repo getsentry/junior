@@ -4,6 +4,8 @@
 // stops and the new lease holder owns the Turn. While the step runs, the
 // invocation checks its lease and aborts the step when the lease is lost.
 // When the invocation throws, it queues the Turn again for the queue's retry.
+// The queue retries without a limit, so a claim past `maxAttempts` fails the
+// Turn instead of running the step again.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -34,6 +36,11 @@ type AdvanceTurnOptions = {
   /** Names the invocation that holds the lease. */
   owner: string;
   leaseMs: number;
+  /**
+   * Caps the tries of one step. A commit resets `attempts`, so the cap does
+   * not limit the steps of a Turn.
+   */
+  maxAttempts: number;
 };
 
 /**
@@ -51,6 +58,10 @@ export async function advanceTurn(
     leaseMs: options.leaseMs,
   });
   if (!claim) {
+    return;
+  }
+  if (claim.attempts > options.maxAttempts) {
+    await failTurn(executor, claim, "attempts_exhausted");
     return;
   }
   try {

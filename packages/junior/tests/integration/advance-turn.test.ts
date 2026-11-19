@@ -43,6 +43,7 @@ vi.hoisted(() => {
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const LEASE_MS = 60_000;
+const MAX_ATTEMPTS = 3;
 // A lease that has expired by the next statement.
 const EXPIRED_LEASE_MS = 0;
 
@@ -158,7 +159,7 @@ function advance(prepare: () => Promise<PreparedStep>, leaseMs = LEASE_MS) {
   return advanceTurn(
     fixture.sql,
     { turnId },
-    { prepare, owner: "worker-a", leaseMs },
+    { prepare, owner: "worker-a", leaseMs, maxAttempts: MAX_ATTEMPTS },
   );
 }
 
@@ -445,6 +446,51 @@ describe("advanceTurn", () => {
       state: "queued",
       stepSeq: 2,
     });
+  });
+
+  it("fails the Turn when every try of a step throws, and runs it no more", async () => {
+    const failure = new Error("The system prompt could not be built");
+    const prepare = vi.fn(() => Promise.reject(failure));
+    // Each try queues the Turn again, as the queue's redelivery would find it.
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      await expect(advance(prepare)).rejects.toBe(failure);
+    }
+
+    await advance(prepare);
+
+    expect(prepare).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "failed",
+      endReason: "attempts_exhausted",
+      stepSeq: 0,
+      leaseOwner: null,
+    });
+    await expect(loadHistory()).resolves.toEqual([]);
+    await expect(deliveredStepMessages()).resolves.toBe(0);
+  });
+
+  it("commits a step that succeeds on its last try, and resets the attempts", async () => {
+    const failure = new Error("The system prompt could not be built");
+    for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
+      await expect(advance(() => Promise.reject(failure))).rejects.toBe(
+        failure,
+      );
+    }
+    const reply = sendCallReply();
+    const last = vi.fn(prepareWith([reply]).prepare);
+
+    await advance(last);
+
+    expect(last).toHaveBeenCalledWith(
+      expect.objectContaining({ attempts: MAX_ATTEMPTS }),
+    );
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 1,
+      attempts: 0,
+    });
+    await expect(loadHistory()).resolves.toEqual([reply]);
+    await expect(deliveredStepMessages()).resolves.toBe(1);
   });
 
   it.each([
