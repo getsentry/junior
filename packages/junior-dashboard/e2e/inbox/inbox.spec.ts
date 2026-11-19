@@ -862,12 +862,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(message.getByText("Roll out when ready.")).toBeInViewport();
     expect(reads).toBe(1);
     // A pin updates every cached feed. The Turn's message is not one of them,
-    // so the page keeps working.
-    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    // so the page keeps working. An item row has no Pin: the Conversations
+    // view pins its Conversation.
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Conversations/ })
+      .click();
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${rollout.rootConversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     await expect(
-      page.getByRole("button", { name: "Unpin", exact: true }),
+      conversationRow.getByRole("button", { name: /^Unpin / }),
     ).toBeVisible();
-    await expect(message).toBeVisible();
+    // Back, the row is still open, and its message reads from the cache.
+    await page.goBack();
+    await expect(message).toContainText("The canary error rate is flat");
+    expect(reads).toBe(1);
   });
 
   test("cards grow near the pointer in both densities, except for reduced motion", async ({

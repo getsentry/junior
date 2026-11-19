@@ -9,12 +9,14 @@ import {
   actorProfileReportSchema,
   avatarParamsSchema,
   personParamsSchema,
+  personCardReportSchema,
   personalSpendReportSchema,
 } from "../schema/person";
 import { codePersonReportSchema, personCodeQuerySchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { readPersonCard } from "./card";
 import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
@@ -67,6 +69,28 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
         await readPeoplePluginReports({ email, viewer }),
       );
     },
+  );
+
+  app.get(
+    "/:email/card",
+    requireViewer,
+    validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    async (context) =>
+      jsonResponse(
+        personCardReportSchema,
+        await readPersonCard(
+          context.req.valid("param").email,
+          context.get("viewer"),
+        ),
+        // The card holds what this viewer may read. Only this browser keeps
+        // it, as long as the server cache does.
+        {
+          headers: {
+            "cache-control": "private, max-age=60",
+            vary: "Authorization, Cookie",
+          },
+        },
+      ),
   );
 
   app.get(

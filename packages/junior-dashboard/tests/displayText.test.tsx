@@ -287,11 +287,14 @@ describe("display text object links", () => {
     return annotations.find((annotation) => annotation.url === url)!;
   }
 
+  // A person link opens their People page in the dashboard.
   function render(text: string, viewerEmail?: string) {
     return markup(
-      <KnownObjectsProvider annotations={annotations}>
-        <DisplayText text={text} />
-      </KnownObjectsProvider>,
+      <MemoryRouter>
+        <KnownObjectsProvider annotations={annotations}>
+          <DisplayText text={text} />
+        </KnownObjectsProvider>
+      </MemoryRouter>,
       viewerEmail,
     );
   }
@@ -354,11 +357,11 @@ describe("display text object links", () => {
       `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
     );
     const [person, ...rest] = anchors(html);
-    // The person is a round photo, then `@Name` as plain link text.
-    expect(person).toMatchObject({ href: PERSON, label: "@Morgan Lee" });
-    expect(html).toMatch(
+    // The person is a round photo, then `@Name`, both in one plain link.
+    expect(person).toMatchObject({ href: "/people/dev%40example.com" });
+    expect(person!.label).toMatch(
       new RegExp(
-        `<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/><a `,
+        `^<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/>@Morgan Lee$`,
       ),
     );
     // Each label is only the title text: no icon and no status.
@@ -384,7 +387,7 @@ describe("display text object links", () => {
     );
     expect(html.match(/data-self-mention=""/g)).toHaveLength(1);
     expect(html).toMatch(
-      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+      /data-self-mention=""[^>]*><a [^>]*><img [^>]*>@Morgan Lee</,
     );
 
     const slack = markup(
@@ -404,13 +407,18 @@ describe("display text object links", () => {
       "dev@example.com",
     );
     expect(slack).toMatch(
-      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+      /data-self-mention=""[^>]*><a [^>]*><img [^>]*>@Morgan Lee</,
     );
   });
 
   it("shows only the name for a person with no photo", () => {
     const html = render(`Ask ${NO_PHOTO_PERSON} first.`);
-    expect(anchors(html).map(({ label }) => label)).toEqual(["@Ada Park"]);
+    // The mark is the initial, hidden from screen readers.
+    expect(anchors(html).map(({ label }) => label)).toEqual([
+      expect.stringMatching(
+        /^<span aria-hidden="true".*>A<\/span><\/span>@Ada Park$/,
+      ),
+    ]);
     expect(html).not.toMatch(/<img|<svg/);
   });
 

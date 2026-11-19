@@ -19,7 +19,12 @@ import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { itemNeedsViewer, reviewItemText } from "./reviewItemFormat";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import {
+  itemNeedsViewer,
+  reviewItemText,
+  reviewItemTitleText,
+} from "./reviewItemFormat";
 
 /**
  * The card of one ask in an open row: its message, form, subject, and
@@ -60,7 +65,7 @@ export function InboxRowCard(props: {
     ) : undefined;
   return (
     <section
-      aria-label={item.title}
+      aria-label={reviewItemTitleText(item)}
       className={cn(
         "grid min-w-0 font-sans text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
         // An item row's head names the item, so its one card is the row's
@@ -97,7 +102,7 @@ export function InboxRowCard(props: {
               )}
               ref={fadeWhenOverflowing}
             >
-              {item.title}
+              <ReviewItemTitle item={item} links />
             </h4>
           </div>
           {item.addedByLabel ? (
@@ -125,8 +130,9 @@ export function InboxRowCard(props: {
         {showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
-            label={item.title}
+            label={reviewItemTitleText(item)}
             lines={4}
+            mentions={item.mentions}
             text={reviewItemText(item)}
           />
         ) : null}

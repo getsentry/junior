@@ -1,9 +1,9 @@
 # Inbox
 
 The Inbox shows the open Review items for the viewer, one item row each.
-The rows of one root Conversation sit together in a stack: a lightly tinted
-tray under the root's title. The viewer answers, dismisses, or snoozes each row
-on its own. `./review-desk.md` owns who sees an item and who can act on it.
+The rows of one root Conversation sit together in a stack: a lightly
+tinted tray under the root's title. The viewer answers, dismisses, or
+snoozes each row on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 ## Intent
 
@@ -32,8 +32,11 @@ on its own. `./review-desk.md` owns who sees an item and who can act on it.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
   names as tooltips. A touch screen has no hover, so there a row shows its
   actions only once it is open. Rows do not repeat them.
-- On a stack: Snooze all and Dismiss all, as quiet buttons. Dismiss all is
-  the main action, so it goes right-most.
+- On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
+  count once, right-most. The buttons do not repeat the count. Their names
+  say what they cover, such as "Snooze 3 items in this stack". Snooze
+  covers every row. Dismiss covers the open asks that the viewer can act
+  on. Dismiss is the main action, so it comes last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules
@@ -72,7 +75,7 @@ Actions:
   stack has no other row, the next row of the list opens.
 - When a stack shrinks to one row, the tray goes and the row stays. An
   open row stays open.
-- Snooze all and Dismiss all put the whole stack away with the same leave
+- A stack's Snooze and Dismiss put the whole stack away with the same leave
   motion as a row. When a row of the stack was open, the next row after the
   stack opens.
 - In To do, a stack leaves with its last row that waits on the viewer, and
@@ -94,7 +97,7 @@ Order and counts:
 Snooze:
 
 - Snooze on a row puts away only that item. It wakes at its time.
-- Snooze all on a stack snoozes each of its items until the same time. An
+- Snooze on a stack snoozes each of its items until the same time. An
   item that arrives later is not snoozed: it shows in the Inbox by itself,
   and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row

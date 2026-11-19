@@ -267,24 +267,28 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ json: { error: "Failed" }, status: 500 })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
-    await open(page, buttons!);
-    const pin = row(page, buttons!).getByRole("button", {
-      exact: true,
-      name: "Pin",
-    });
-    await pin.click();
+    // Item rows have no Pin: the Conversations view pins a Conversation.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${conversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     const toast = page
       .locator('[data-slot="toast"]')
       .filter({ hasText: "Could not pin" });
     await expect(toast).toBeVisible();
-    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    await conversationRow.hover();
+    await expect(
+      conversationRow.getByRole("button", { name: /^Pin / }),
+    ).toBeVisible();
 
     fails = false;
     await toast.getByRole("button", { name: "Retry" }).click();
+    await conversationRow.hover();
     await expect(
-      row(page, buttons!).getByRole("button", { exact: true, name: "Unpin" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      conversationRow.getByRole("button", { name: /^Unpin / }),
+    ).toBeVisible();
   });
 
   test("Dismissing FYIs closes them at once, and Retry dismisses the ones that failed", async ({
