@@ -15,10 +15,11 @@ function countThreads(rows: readonly ConversationFeedItem[]): number {
 /**
  * Serialize a parsed feed to JSON, and report how many chars the large row
  * fields take. Top-level rows only: `threads` holds the nested Threads with
- * all their fields.
+ * all their fields. `waitingRows` counts the rows from outside the page.
  */
 export function serializeConversationFeed(
   feed: ConversationFeed,
+  waitingRows: number,
 ): SerializedResponse {
   // Row fields that can fill a response. Each is serialized on its own and
   // spliced into its row, so the response is serialized once and each
@@ -63,6 +64,7 @@ export function serializeConversationFeed(
       "app.api.response.field_chars.threads": chars.threads,
       "app.conversation_feed.rows": feed.conversations.length,
       "app.conversation_feed.threads": countThreads(feed.conversations),
+      "app.conversation_feed.waiting_rows": waitingRows,
     },
     body,
   };

@@ -1,5 +1,4 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { setSpanAttributes } from "@/chat/logging";
 import {
   and,
   asc,
@@ -498,6 +497,8 @@ export async function readConversationFeedFromSql(
     /** Extra row content that costs a query. */
     include?: readonly ConversationFeedInclude[];
     limit?: number;
+    /** Receives how many waiting rows from outside the page were added. */
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
@@ -559,10 +560,7 @@ export async function readConversationFeedFromSql(
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
     const waitingRows = await waitingRowsOutsidePage(db, filter, rows, include);
-    // The final feed does not mark these rows, so the count is set here.
-    setSpanAttributes({
-      "app.conversation_feed.waiting_rows": waitingRows.length,
-    });
+    options.onWaitingRows?.(waitingRows.length);
     rows.push(...waitingRows);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
@@ -793,6 +791,7 @@ export async function readConversationFeed(
     codeRepositoryId?: string;
     cursor?: string;
     include?: readonly ConversationFeedInclude[];
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;

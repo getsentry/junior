@@ -149,6 +149,8 @@ export function createConversationRoutes(
       const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
+      // The feed does not mark waiting rows, so the read reports their count.
+      let waitingRows = 0;
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
@@ -156,12 +158,15 @@ export function createConversationRoutes(
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
           ...(cursor ? { cursor } : undefined),
           include,
+          onWaitingRows: (count) => {
+            waitingRows = count;
+          },
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
         }),
         undefined,
-        serializeConversationFeed,
+        (feed) => serializeConversationFeed(feed, waitingRows),
       );
     },
   );
