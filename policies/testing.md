@@ -102,6 +102,7 @@ Prefer high-fidelity behavior coverage when it is stable.
   product wiring.
 - Low-level contract tests may inspect payloads when the payload shape is the
   external contract.
-- `tests/component/core/turn/step.test.ts` may fake model replies. `runStep`
+- `tests/component/core/turn/step.test.ts` and
+  `tests/integration/advance-turn.test.ts` may fake model replies. `runStep`
   takes the model as an argument, and a real model cannot give its edge cases
   on demand.
