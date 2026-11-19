@@ -437,7 +437,10 @@ const SENTAUR_PULL_REQUEST: OwnedObjectAnnotation = {
   displayType: "Pull request",
   facts: {
     type: "code_change",
+    additions: 1204,
     author: "junior",
+    changedFiles: 12,
+    deletions: 340,
     sourceBranch: "fix/canary-lost-agent-retry",
     targetBranch: "main",
   },
