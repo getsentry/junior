@@ -2,6 +2,9 @@ import type {
   AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+
+import type { Conversation } from "../types";
 
 import {
   inboxBundles,
@@ -232,10 +235,43 @@ export function doneSections(
  */
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
-function pullRequestState(item: ReviewItemPayload): string {
+function pullRequestState(
+  item: ReviewItemPayload,
+): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
+}
+
+// The GitHub plugin's text for each state names the pull request by its
+// number only (`junior-github` `showAction`). Under a head that shows the
+// state and the number, it says nothing new. Text that says more, such as
+// "#91 has new commits since you requested changes.", stays.
+const PULL_REQUEST_STATE_TEXT: Record<
+  (typeof PULL_REQUEST_STATES)[number],
+  (number: string) => string
+> = {
+  "Ready to merge": (number) =>
+    `${number} is approved, and GitHub says that it can merge.`,
+  "Review requested": (number) => `GitHub asks you to review ${number}.`,
+};
+
+/**
+ * Whether an item's text only says what its row's head shows: the pull
+ * request state and number of its title, as in "GitHub asks you to review
+ * #91." under "Review requested · #91". `text` leaves out the subject URL.
+ */
+export function textRepeatsHead(
+  item: ReviewItemPayload,
+  text: string,
+): boolean {
+  const state = pullRequestState(item);
+  if (state === "Other") return false;
+  const number = item.title.slice(item.title.indexOf(" · ") + 3);
+  return (
+    /^#\d+$/.test(number) &&
+    text.trim() === PULL_REQUEST_STATE_TEXT[state](number)
+  );
 }
 
 /**
@@ -341,16 +377,52 @@ export function fyiCount(count: number): string {
 /**
  * The second line of a row for one item: what it is about, then its
  * Conversation. A part that repeats the item title drops out, and with no
- * part left the row has no second line.
+ * part left the row has no second line. A subject that ends with what the
+ * title says, as "Fix it (#12)" under "Review requested · #12", drops that
+ * end.
  */
 export function itemRowSubtitle(
   item: Pick<ReviewItemPayload, "subject" | "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
-  const parts = [...new Set([item.subject?.title, conversationTitle])].filter(
+  const subject = item.subject?.title;
+  const tail = subject ? / \(([^()]+)\)$/.exec(subject) : null;
+  const about =
+    subject && tail && item.title.includes(tail[1]!)
+      ? subject.slice(0, tail.index)
+      : subject;
+  const parts = [...new Set([about, conversationTitle])].filter(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The size of the code change that an item is about, as its Conversation's
+ * linked work saved it. Undefined when that work has no size.
+ */
+export function subjectSize(
+  item: Pick<ReviewItemPayload, "subject">,
+  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
+): CodeChangeSize | undefined {
+  const url = item.subject?.url;
+  if (!url) return undefined;
+  return conversation?.sidebarAnnotations?.find(
+    (annotation) => annotation.url === url,
+  )?.size;
+}
+
+/**
+ * Where an item sits, for a row on its own: its root's title, then the
+ * sub-thread that added it, as "Triage deploys › Read the agent logs".
+ */
+export function childOf(
+  rootTitle: string | undefined,
+  item: Pick<ReviewItemPayload, "addedByLabel">,
+): string | undefined {
+  const child = item.addedByLabel;
+  if (!child || !rootTitle || child === rootTitle) return child ?? rootTitle;
+  return `${rootTitle} › ${child}`;
 }
 
 /**

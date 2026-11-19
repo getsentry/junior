@@ -27,7 +27,7 @@ export async function webTurnInputs(
     messages,
     async (message): Promise<AgentInstructionInput[]> => {
       const reviewItem = await loadReviewItemInput(message.reviewItemChange);
-      if (reviewItem) return [{ kind: "runtime", text: reviewItem }];
+      if (reviewItem) return [reviewItem];
       const text = message.text.trim();
       return text ? [{ kind: "person", text }] : [];
     },

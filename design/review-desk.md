@@ -47,6 +47,9 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   the work, such as Resume on a stopped merge conflict fix. It starts no
   Turn.
 - An item from a public Conversation is visible to the whole workspace.
+- Auto-archive never hides work that waits for a person. It skips a
+  Conversation while it or a child has an open action, an open Plan item
+  for a person, or an answer that its starter has not read.
 
 ## Gaps
 

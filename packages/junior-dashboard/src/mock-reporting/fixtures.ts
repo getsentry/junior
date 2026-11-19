@@ -31,7 +31,10 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import {
+  activityPreviewText,
+  IDLE_CHANGE_DAYS,
+} from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
@@ -497,6 +500,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         title: "Retry checkout writes after lock timeouts",
         url: "https://github.com/getsentry/payments/pull/42",
         imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
+        size: { additions: 86, changedFiles: 4, deletions: 12 },
       },
     ],
     annotations: [
@@ -757,7 +761,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             status: "running",
             input: {
               tool_name: "github_getPullRequest",
-              arguments: { repo: "getsentry/payments", number: 42 },
+              arguments: { repo: "getsentry/payments", pull_request: 42 },
             },
           },
         ],
@@ -1570,6 +1574,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
         imageUrl: `${MOCK_DASHBOARD_ORIGIN}/api/images/payments-91-before`,
+        size: { additions: 48, changedFiles: 3, deletions: 9 },
       },
       {
         icon: "git-merge",
@@ -1601,7 +1606,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         displayType: "Pull request",
         facts: {
           type: "code_change",
+          additions: 48,
           author: "junior",
+          changedFiles: 3,
+          deletions: 9,
           sourceBranch: "release/pin-payments-4.2",
           targetBranch: "main",
         },
@@ -2121,6 +2129,17 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
     // Newest first, like saved Annotations. Not a mock repository, so the
     // Code pages keep their rows.
     sidebarAnnotations: [
+      // The review ask's pull request, with its size for the ask's head.
+      {
+        icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
+        key: "getsentry/sentaur#418",
+        label: "sentaur",
+        title: "Retry a canary stage once on a lost agent",
+        url: "https://github.com/getsentry/sentaur/pull/418",
+        size: { additions: 1204, changedFiles: 12, deletions: 340 },
+      },
       ...SENTAUR_PULL_REQUESTS.map(([repo, number, status, title]) => ({
         icon:
           status === "merged"
@@ -2477,7 +2496,7 @@ function summaryFromConversation(
             ? { mentions: activityEvent.mentions }
             : undefined),
           role: activityEvent.data.role as "assistant" | "user",
-          text: activityEvent.data.text,
+          text: activityPreviewText(activityEvent.data.text),
         }
       : undefined;
   const {
@@ -4047,9 +4066,8 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
         pluginName: "briefs",
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "148" },
-          { label: "conversations with a brief", value: "93" },
-          { label: "briefs · 30d", value: "61" },
+          { label: "briefs · 30d", tone: "good", value: "61" },
+          { label: "conversations with a brief · 30d", value: "38" },
           { label: "cost · 30d · retained", value: "$0.23" },
           {
             label: "average cost per brief · 30d · retained",

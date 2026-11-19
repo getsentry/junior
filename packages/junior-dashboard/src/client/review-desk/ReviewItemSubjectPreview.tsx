@@ -9,9 +9,9 @@ import {
   objectFactFields,
   objectPresentation,
 } from "@sentry/junior-plugin-api";
-import { useEffect } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
-import { ClampedPreview } from "../components/ClampedPreview";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { OutboundLink } from "../components/OutboundLink";
 import { StatusChip } from "../components/StatusChip";
@@ -22,6 +22,7 @@ import {
   objectUrlKey,
   useResolvedObject,
 } from "../display-text/DisplayText";
+import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
 import { reviewItemSubjectHref } from "./reviewItemFormat";
 
@@ -34,11 +35,16 @@ type Subject = NonNullable<ReviewItemPayload["subject"]>;
  * object annotation that a plugin saved on the item's Conversation for the
  * same URL, or the card that the API resolves for the URL when none is
  * saved. The item's text leaves out a bare URL to the subject, so the card
- * shows once (`withoutStandaloneUrl`).
+ * shows once (`withoutStandaloneUrl`). Where the row already names the
+ * subject, `titled={false}` leaves its title out, and the reference links
+ * to it.
  */
 export function ReviewItemSubjectPreview(props: {
   subject: Subject;
   conversationId: string;
+  /** The row's head shows the subject's size. */
+  sizeShown?: boolean | undefined;
+  titled?: boolean;
 }) {
   return (
     <MessageObjectsProvider>
@@ -47,7 +53,12 @@ export function ReviewItemSubjectPreview(props: {
   );
 }
 
-function SubjectCard(props: { subject: Subject; conversationId: string }) {
+function SubjectCard(props: {
+  subject: Subject;
+  conversationId: string;
+  sizeShown?: boolean | undefined;
+  titled?: boolean;
+}) {
   const { subject } = props;
   const href = subject.url ? reviewItemSubjectHref(subject.url) : undefined;
   const detail = useQuery(conversationDetailQueryOptions(props.conversationId));
@@ -65,33 +76,63 @@ function SubjectCard(props: { subject: Subject; conversationId: string }) {
     ? (card.displayType ?? objectPresentation(card).label)
     : undefined;
   const facts = card ? objectFactFields(card.facts) : [];
+  const titled = props.titled ?? true;
+  // Untitled, the reference names the link. A label that repeats the title
+  // says nothing new.
+  const label =
+    card?.label && (!titled || card.label !== card.title)
+      ? card.label
+      : undefined;
+  const linkText = titled ? title : (label ?? title);
   return (
     <section
       aria-label={type ? `${type}: ${title}` : title}
-      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border px-3 py-2.5 font-sans text-sm"
+      className={cn(
+        "grid min-w-0 gap-2 font-sans text-sm",
+        // Untitled, it is one line of facts in the row's detail, so it
+        // needs no box of its own.
+        titled && "rounded-lg border border-dashboard-border px-3 py-2.5",
+      )}
       data-subject-card=""
     >
       <div className="flex min-w-0 items-start gap-2.5">
         {card ? <ObjectIcon {...card} className="mt-0.5" size={16} /> : null}
-        <div className="grid min-w-0 flex-1 gap-0.5">
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            titled
+              ? "grid gap-0.5"
+              : "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dashboard-text-muted",
+          )}
+        >
           {href ? (
             <OutboundLink
-              className="min-w-0 break-words font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+              className={cn(
+                "min-w-0 break-words hover:underline focus-visible:outline-dashboard-focus",
+                titled
+                  ? "font-medium text-dashboard-text"
+                  : "text-dashboard-text",
+              )}
               href={href}
             >
-              {title}
+              {linkText}
             </OutboundLink>
           ) : (
             <strong className="min-w-0 break-words font-medium text-dashboard-text">
-              {title}
+              {linkText}
             </strong>
           )}
           {card ? (
-            <p className="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dashboard-text-muted">
-              {/* A label that repeats the title says nothing new. */}
-              {card.label === card.title ? null : (
-                <span className="min-w-0 break-words">{card.label}</span>
+            <p
+              className={cn(
+                "m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dashboard-text-muted",
+                // Untitled, the facts share the reference's line.
+                !titled && "contents",
               )}
+            >
+              {titled && label ? (
+                <span className="min-w-0 break-words">{label}</span>
+              ) : null}
               {card.status ? (
                 <StatusChip size="compact" tone={objectPresentation(card).tone}>
                   {card.status}
@@ -105,21 +146,71 @@ function SubjectCard(props: { subject: Subject; conversationId: string }) {
                   {field.value}
                 </span>
               ))}
+              {props.sizeShown || card.facts?.type !== "code_change" ? null : (
+                <ChangeSize size={card.facts} />
+              )}
             </p>
           ) : null}
         </div>
       </div>
       {card?.description ? (
-        <ClampedPreview
-          className="leading-6"
+        <SubjectDescription
           label={`description of ${title}`}
-          lines={3}
-        >
-          {/* A description is a Markdown file, such as a pull request body. */}
-          <DisplayText document text={card.description} />
-        </ClampedPreview>
+          text={card.description}
+        />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The subject's description, quoted under a rule so it never reads as the
+ * item's own text. Closed, it runs together as two small muted lines that
+ * end on a word, as a row summary does. "Show more" opens the whole file.
+ */
+function SubjectDescription(props: { label: string; text: string }) {
+  const id = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () =>
+      setMore(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [open]);
+  return (
+    <div className="grid min-w-0 justify-items-start gap-1 border-l-2 border-dashboard-border pl-3">
+      <div className="min-w-0 justify-self-stretch" id={id}>
+        {open ? (
+          // A description is a Markdown file, such as a pull request body.
+          <DisplayText document text={props.text} />
+        ) : (
+          <div
+            className="line-clamp-2 text-xs leading-5 text-dashboard-text-muted"
+            ref={ref}
+          >
+            <DisplayText inline text={props.text} />
+          </div>
+        )}
+      </div>
+      {more || open ? (
+        <button
+          aria-controls={id}
+          aria-expanded={open}
+          aria-label={`${open ? "Show less" : "Show more"} of the ${props.label}`}
+          className="cursor-pointer rounded-sm border-0 bg-transparent p-0 font-sans text-xs font-medium text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          onClick={() => setOpen(!open)}
+          type="button"
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

@@ -14,6 +14,7 @@ import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
+import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
@@ -120,14 +121,15 @@ export function createJuniorApi(
 
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  const waitUntil: WaitUntilFn =
+    options.waitUntil ??
+    ((task) => vercelWaitUntil(typeof task === "function" ? task() : task));
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
       queue,
-      waitUntil:
-        options.waitUntil ??
-        ((task) => vercelWaitUntil(typeof task === "function" ? task() : task)),
+      waitUntil,
     }),
   );
   app.route(
@@ -145,9 +147,10 @@ export function createJuniorApi(
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/cache-warming", createCacheWarmingRoutes());
+  app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
-  app.route("/api/people", createPeopleRoutes());
+  app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());

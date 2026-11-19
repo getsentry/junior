@@ -96,6 +96,7 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
@@ -117,6 +118,7 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
@@ -332,6 +334,12 @@ export type {
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
 export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
+export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
   serviceAccountParamsSchema,
@@ -450,5 +458,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";
