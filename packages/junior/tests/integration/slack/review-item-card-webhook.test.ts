@@ -497,6 +497,7 @@ describe("Slack webhook: Review item cards", () => {
 
   it("gives a click on a plugin item's choice to the plugin, with no Turn", async () => {
     const answers: string[] = [];
+    let fails = true;
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -508,6 +509,7 @@ describe("Slack webhook: Review item cards", () => {
           hooks: {
             reviewItemAnswered: ({ choice, dedupeKey }) => {
               answers.push(`${dedupeKey}: ${choice}`);
+              if (fails) throw new Error("deploy API is down");
             },
           },
         }),
@@ -539,14 +541,23 @@ describe("Slack webhook: Review item cards", () => {
     ).toEqual(["junior_review_item:choice:0", "junior_review_item:dismiss"]);
 
     const [item] = await getDb().query.juniorReviewItems.findMany();
-    await click({
-      actionId: "junior_review_item:choice:0",
-      actionTs: "1712345.0003",
-      itemId: item!.id,
-      userId: "U123",
-      value: buttonValue(card, "junior_review_item:choice:0"),
-    });
-    expect(answers).toEqual(["deploy-stopped:api: Resume"]);
+    const resume = (actionTs: string) =>
+      click({
+        actionId: "junior_review_item:choice:0",
+        actionTs,
+        itemId: item!.id,
+        userId: "U123",
+        value: buttonValue(card, "junior_review_item:choice:0"),
+      });
+    // The plugin fails after the click closes the item. The card keeps its
+    // button, and a second click calls the plugin again.
+    await resume("1712345.0003").catch(() => undefined);
+    fails = false;
+    await resume("1712345.0004");
+    expect(answers).toEqual([
+      "deploy-stopped:api: Resume",
+      "deploy-stopped:api: Resume",
+    ]);
     expect(await getReviewItem(getDb(), item!.id)).toMatchObject({
       status: "done",
     });

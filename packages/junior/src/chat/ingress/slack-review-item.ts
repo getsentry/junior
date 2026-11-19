@@ -150,13 +150,17 @@ async function act(args: {
     const current = await readReviewItemForUser(actor.user, args.itemId);
     // The plugin that added an item does the work of its answer, so the
     // thread gets the recorded Message, not input that starts a Turn.
-    recordOnly ||= isPluginReviewItem(current);
+    const pluginAnswer =
+      args.action === "submit" && isPluginReviewItem(current);
+    recordOnly ||= pluginAnswer;
     item = await actOnReviewItem({
       action: args.action,
       ...(recordOnly ? undefined : { exceptConversationId: conversationId }),
       // Two clicks can both see an open item. Only the click that closes it
-      // adds the input to this thread, so one action adds one Turn.
-      firstCloseOnly: true,
+      // adds the input to this thread, so one action adds one Turn. A plugin
+      // answer adds no input, so a retry of it after a failed plugin hook
+      // calls the plugin again.
+      firstCloseOnly: !pluginAnswer,
       delivery,
       id: current.id,
       user: actor.user,
