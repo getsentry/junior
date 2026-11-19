@@ -16,10 +16,11 @@ import type {
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
@@ -60,6 +61,7 @@ export async function embedConversationEvents(
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
+  const lexemes = juniorConversationEventLexemes;
   const text = sql<
     string | null
   >`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
@@ -84,11 +86,24 @@ export async function embedConversationEvents(
             eq(embeddings.model, embedder.model),
           ),
         )
+        .leftJoin(
+          lexemes,
+          and(
+            eq(lexemes.conversationId, events.conversationId),
+            eq(lexemes.seq, events.seq),
+          ),
+        )
         .where(
           and(
             eq(events.conversationId, conversationId),
             inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
             isNull(embeddings.seq),
+            // An event without text never gets a vector, so it would stay
+            // missing and be read again on every run. Its stored lexemes are
+            // empty, so skip it, as the heartbeat backfill does. Text of only
+            // stopwords also has empty lexemes and gets no vector. An event
+            // without stored lexemes yet is read until a run stores them.
+            or(isNull(lexemes.seq), sql`length(${lexemes.lexemes}) > 0`),
             after ? lt(events.seq, after.seq) : undefined,
           ),
         )
