@@ -2149,7 +2149,20 @@ Conversation: \`local:test:old-conversation\`
     },
   );
 
-  it("asks the named reviewers and keeps the requester as the assignee", async () => {
+  it.each([
+    {
+      name: "asks the named reviewers and keeps the requester as the assignee",
+      named: { reviewers: ["@octocat", "jane"] },
+      assignees: ["dcramer"],
+      reviewers: ["octocat", "jane"],
+    },
+    {
+      name: "assigns the named assignees and keeps the requester as the reviewer",
+      named: { assignees: ["@octocat", "jane"] },
+      assignees: ["octocat", "jane"],
+      reviewers: ["dcramer"],
+    },
+  ])("$name", async ({ named, assignees, reviewers }) => {
     const ctx = githubToolsContext({
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       resolveActor: async () => ({
@@ -2192,7 +2205,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "feature",
         base: "main",
-        reviewers: ["@octocat", "jane"],
+        ...named,
       },
       { toolCallId: "call-create-pull-request-reviewers" },
     );
@@ -2203,38 +2216,44 @@ Conversation: \`local:test:old-conversation\`
       "github.pull.request_reviewers",
     ]);
     await expect(ctx.egressRequests()[1].request.json()).resolves.toEqual({
-      assignees: ["dcramer"],
+      assignees,
     });
     const reviewRequest = ctx.egressRequests()[2].request;
     expect(reviewRequest.url).toBe(
       "https://api.github.com/repos/getsentry/junior/pulls/693/requested_reviewers",
     );
     await expect(reviewRequest.json()).resolves.toEqual({
-      reviewers: ["octocat", "jane"],
+      reviewers,
     });
   });
 
-  it("rejects an invalid reviewer before it opens the pull request", async () => {
-    const ctx = githubToolsContext();
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
+  it.each([
+    { role: "reviewer", named: { reviewers: ["not a login"] } },
+    { role: "assignee", named: { assignees: ["not a login"] } },
+  ])(
+    "rejects an invalid $role before it opens the pull request",
+    async ({ role, named }) => {
+      const ctx = githubToolsContext();
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed PR",
-          head: "feature",
-          base: "main",
-          reviewers: ["not a login"],
-        },
-        { toolCallId: "call-create-pull-request-bad-reviewer" },
-      ),
-    ).rejects.toThrow("Invalid GitHub reviewer login: not a login");
-    expect(ctx.egressRequests()).toEqual([]);
-  });
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Typed PR",
+            head: "feature",
+            base: "main",
+            ...named,
+          },
+          { toolCallId: `call-create-pull-request-bad-${role}` },
+        ),
+      ).rejects.toThrow(`Invalid GitHub ${role} login: not a login`);
+      expect(ctx.egressRequests()).toEqual([]);
+    },
+  );
 
   it.each([
     {
