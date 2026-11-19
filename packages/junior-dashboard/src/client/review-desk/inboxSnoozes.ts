@@ -44,9 +44,17 @@ export function useInboxSnoozes(read: SnoozedRead) {
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   // The items that were just woken, by id.
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
-  // When the viewer's last snooze change saved; Infinity until the lists
-  // refetch after it. Snoozed read before that time may be stale.
-  const [changedAtMs, setChangedAtMs] = useState(-Infinity);
+  // When the viewer's last snooze change saved and the lists refetched.
+  // Snoozed read before that time may be stale.
+  const [savedAtMs, setSavedAtMs] = useState(-Infinity);
+  // The snooze changes in flight. Snoozed may be stale until all settle.
+  const [changing, setChanging] = useState(0);
+  const changedAtMs = changing > 0 ? Infinity : savedAtMs;
+  const startChange = () => setChanging((count) => count + 1);
+  const endChange = (saved?: number) => {
+    if (saved !== undefined) setSavedAtMs((last) => Math.max(last, saved));
+    setChanging((count) => count - 1);
+  };
   const hide = (key: string, savedAtMs: number | undefined) =>
     setHidden((current) => {
       const next = new Map(current);
@@ -62,9 +70,8 @@ export function useInboxSnoozes(read: SnoozedRead) {
     subject: InboxSnoozeSubjectBody,
     untilMs: number,
   ) => {
-    const lastChangedAtMs = changedAtMs;
     hide(key, Infinity);
-    setChangedAtMs(Infinity);
+    startChange();
     try {
       const body: InboxSnoozeCreateBody = {
         ...subject,
@@ -74,32 +81,31 @@ export function useInboxSnoozes(read: SnoozedRead) {
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.
       hide(key, undefined);
-      setChangedAtMs(lastChangedAtMs);
+      endChange();
       toast.add({ title: "The row could not be snoozed", type: "error" });
       return;
     }
     // The refetch cancels reads in flight, so every read that ends after
     // it started after the save.
-    const savedAtMs = Date.now();
+    const saved = Date.now();
     await invalidateReviewItemCollections(queryClient);
-    hide(key, savedAtMs);
-    setChangedAtMs(savedAtMs);
+    hide(key, saved);
+    endChange(saved);
   };
   /** Undo the viewer's snoozes on `subject`, and mark its items waking. */
   const unsnooze = async (
     itemIds: readonly string[],
     subject: InboxSnoozeSubjectBody,
   ) => {
-    const lastChangedAtMs = changedAtMs;
     setWaking((current) => new Set([...current, ...itemIds]));
-    setChangedAtMs(Infinity);
+    startChange();
     try {
       await deleteDashboardResource(SNOOZES_PATH, subject);
-      const savedAtMs = Date.now();
+      const saved = Date.now();
       await invalidateReviewItemCollections(queryClient);
-      setChangedAtMs(savedAtMs);
+      endChange(saved);
     } catch {
-      setChangedAtMs(lastChangedAtMs);
+      endChange();
       // The row stays in Snoozed, so say why it did not wake.
       toast.add({ title: "The row could not be woken", type: "error" });
     } finally {
