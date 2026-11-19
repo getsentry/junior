@@ -14,17 +14,19 @@ import { mentionName } from "./composerMentionToken";
 import { conversationDetailQueryKey } from "./queries";
 
 /**
- * The public Conversation that a mention card can Invite people to, and the
- * Slack ids of its Participants. Without it the card has no Invite.
+ * The Conversation that a composer writes to. The `@` menu finds people of
+ * its Slack workspace. `invite` is true when a mention card can Invite
+ * people to it: it is public and not archived.
  */
-export type ComposerInviteTarget = {
+export type ComposerConversation = {
   conversationId: string;
+  invite: boolean;
   participantSlackUserIds: ReadonlySet<string>;
 };
 
-/** Give the mention cards of one composer their Invite target. */
-export const ComposerInviteContext = createContext<
-  ComposerInviteTarget | undefined
+/** Give the `@` menu and mention cards of one composer their Conversation. */
+export const ComposerConversationContext = createContext<
+  ComposerConversation | undefined
 >(undefined);
 
 /**
@@ -36,8 +38,8 @@ export function ComposerMention(props: {
   person: Partial<MentionablePerson> & { slackUserId: string };
 }) {
   const { person } = props;
-  const target = useContext(ComposerInviteContext);
-  const card = person.email ? personFromActor(person) : undefined;
+  const conversation = useContext(ComposerConversationContext);
+  const card = personFromActor(person);
   const chip = (
     <>
       {person.avatarUrl ? <MentionPhoto src={person.avatarUrl} /> : null}@
@@ -55,8 +57,11 @@ export function ComposerMention(props: {
       content={
         <PersonCard
           actions={
-            target ? (
-              <InviteAction slackUserId={person.slackUserId} target={target} />
+            conversation?.invite ? (
+              <InviteAction
+                conversation={conversation}
+                slackUserId={person.slackUserId}
+              />
             ) : undefined
           }
           person={card}
@@ -91,10 +96,10 @@ function MentionPhoto(props: { src: string }) {
  * Conversation is public and that the viewer can act on it.
  */
 function InviteAction(props: {
+  conversation: ComposerConversation;
   slackUserId: string;
-  target: ComposerInviteTarget;
 }) {
-  const { target } = props;
+  const { conversation } = props;
   const queryClient = useQueryClient();
   const invite = useMutation({
     mutationFn: (conversationId: string) =>
@@ -109,7 +114,7 @@ function InviteAction(props: {
       }),
   });
   if (
-    target.participantSlackUserIds.has(props.slackUserId) ||
+    conversation.participantSlackUserIds.has(props.slackUserId) ||
     invite.isSuccess
   ) {
     return <span className="text-dashboard-text-muted">Subscribed</span>;
@@ -121,7 +126,7 @@ function InviteAction(props: {
       ) : null}
       <Button
         disabled={invite.isPending}
-        onClick={() => invite.mutate(target.conversationId)}
+        onClick={() => invite.mutate(conversation.conversationId)}
         type="button"
         variant="outline"
       >

@@ -12,8 +12,15 @@ export const personParamsSchema = z
   .strict();
 
 /** Query of the people search that the composer `@` menu uses. */
+/**
+ * A people search. With `conversationId`, it finds only people in the Slack
+ * workspace of that Conversation, so a mention reaches them there.
+ */
 export const peopleSearchQuerySchema = z
-  .object({ q: z.string().trim().min(1).max(100) })
+  .object({
+    conversationId: z.string().min(1).max(500).optional(),
+    q: z.string().trim().min(1).max(100),
+  })
   .strict();
 
 /** A person that a Message can mention: they have a Slack user id. */

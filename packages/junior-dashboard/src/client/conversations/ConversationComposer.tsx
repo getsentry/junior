@@ -32,8 +32,8 @@ import {
   type MentionablePerson,
 } from "@sentry/junior/api/schema";
 import {
-  ComposerInviteContext,
-  type ComposerInviteTarget,
+  ComposerConversationContext,
+  type ComposerConversation,
 } from "./ComposerMention";
 import { splitMentions } from "./composerMentionToken";
 import type ComposerEditor from "./composer-editor/ComposerEditor";
@@ -124,8 +124,8 @@ type ConversationComposerProps = {
   footerStart?: ReactNode;
   /** Text only, for a narrow panel: no files, no key hint, icon-only send. */
   compact?: boolean;
-  /** The public Conversation that a mentioned person's card can Invite to. */
-  invite?: ComposerInviteTarget | undefined;
+  /** The Conversation that this composer writes to, if it exists yet. */
+  conversation?: ComposerConversation | undefined;
   label: string;
   placeholder?: string | undefined;
   /**
@@ -589,7 +589,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           tabIndex={-1}
           type="file"
         />
-        <ComposerInviteContext.Provider value={props.invite}>
+        <ComposerConversationContext.Provider value={props.conversation}>
           {Editor ? (
             <Editor
               autocorrect={autocorrect}
@@ -620,7 +620,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           ) : (
             standIn
           )}
-        </ComposerInviteContext.Provider>
+        </ComposerConversationContext.Provider>
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5",

@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { getDb } from "@/chat/db";
 import { readImage } from "@/chat/images/read";
+import {
+  readableSlackTeamId,
+  readConversationAccessFromSql,
+} from "../conversations/access";
 import { jsonResponse, throwApiError } from "../http";
 import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
@@ -65,10 +70,23 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
     "/search",
     requireViewer,
     validateRequest("query", peopleSearchQuerySchema, "Invalid search query."),
-    async (context) =>
-      jsonResponse(peopleSearchReportSchema, {
-        people: await readPeopleSearchFromSql(context.req.valid("query").q),
-      }),
+    async (context) => {
+      const { conversationId, q } = context.req.valid("query");
+      const slackTeamId = conversationId
+        ? readableSlackTeamId(
+            (
+              await readConversationAccessFromSql(
+                getDb(),
+                [conversationId],
+                context.get("viewer"),
+              )
+            ).get(conversationId),
+          )
+        : undefined;
+      return jsonResponse(peopleSearchReportSchema, {
+        people: await readPeopleSearchFromSql(q, slackTeamId),
+      });
+    },
   );
 
   app.get(

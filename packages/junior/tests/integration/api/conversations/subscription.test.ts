@@ -33,15 +33,15 @@ const rootTurnTools = turnBehavior({
 const CONVERSATION_ID = "slack:C1:subscription";
 let nowMs = 1_000;
 
-/** A dashboard viewer who is also a Slack user in the same workspace. */
-async function person(name: string) {
+/** A dashboard viewer who is also a Slack user, by default in this workspace. */
+async function person(name: string, teamId = "T1") {
   const email = `${name}@example.com`;
   const viewer = await resolveViewerUser(email);
   if (!viewer) throw new Error(`missing viewer for ${email}`);
   const identityId = await resolveActorIdentityId(getSqlExecutor(), {
     email,
     platform: "slack",
-    teamId: "T1",
+    teamId,
     userId: `U-${name}`,
   });
   const app = new Hono<JuniorApiEnv>();
@@ -176,7 +176,7 @@ async function sharedThread(
         }
       : undefined),
     conversationId: CONVERSATION_ID,
-    destination: { platform: "local", conversationId: CONVERSATION_ID },
+    destination: { channelId: "C1", platform: "slack", teamId: "T1" },
     nowMs,
     source: "internal",
     title: "Shared thread",
@@ -310,5 +310,23 @@ describe("conversation subscription", () => {
     expect(invited.status).toBe(404);
     expect(await cleo.feed()).toEqual([]);
     expect(await cleo.feed("?q=shared")).toEqual([]);
+  });
+
+  it("Invite names a person of the conversation's Slack workspace", async () => {
+    const { ana } = await sharedThread();
+    const dana = await person("dana", "T2");
+
+    expect((await ana.invite("U-dana")).status).toBe(404);
+    expect(await dana.feed()).toEqual([]);
+  });
+
+  it("Invite on an archived conversation is refused", async () => {
+    const { ana, ben } = await sharedThread();
+    const cleo = await person("cleo");
+    await ana.setSubscribed(false);
+    await ben.setSubscribed(false);
+
+    expect((await ana.invite("U-cleo")).status).toBe(409);
+    expect(await cleo.feed("?status=archived")).toEqual([]);
   });
 });

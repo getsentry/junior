@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { peopleSearchReportSchema } from "@/api/schema";
-import { closeDb, getSqlExecutor } from "@/chat/db";
+import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
@@ -18,9 +18,13 @@ async function signedIn(email: string) {
     await next();
   });
   app.route("/", createJuniorApi());
-  return async (query: string) => {
+  return async (query: string, conversationId?: string) => {
+    const params = new URLSearchParams({
+      q: query,
+      ...(conversationId ? { conversationId } : undefined),
+    });
     const response = await app.request(
-      `http://localhost/api/people/search?q=${encodeURIComponent(query)}`,
+      `http://localhost/api/people/search?${params}`,
     );
     expect(response.status).toBe(200);
     return peopleSearchReportSchema.parse(await response.json()).people;
@@ -80,5 +84,23 @@ describe("people search API", () => {
     expect(await search("silvaa")).toEqual([]);
     // Punctuation is not tsquery syntax.
     expect(await search("&|!")).toEqual([]);
+  });
+
+  it("in a Slack conversation, finds only people of its workspace", async () => {
+    await slackPerson({ fullName: "Burak Kaya", userId: "UBURAK" });
+    await slackPerson({ fullName: "Burak Kaya", teamId: "T2", userId: "UB2" });
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C2:1.0",
+      destination: { channelId: "C2", platform: "slack", teamId: "T2" },
+      nowMs: 1_000,
+      source: "internal",
+      title: "Second workspace",
+      visibility: "public",
+    });
+    const search = await signedIn("ana@example.com");
+
+    expect(
+      (await search("bu", "slack:C2:1.0")).map((person) => person.slackUserId),
+    ).toEqual(["UB2"]);
   });
 });

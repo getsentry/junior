@@ -39,8 +39,8 @@ const MOCK_MENTIONABLE_PEOPLE: MentionablePerson[] = [
     slackUserId: "U789",
     slackUserName: "avery",
   },
+  // No verified email: no People page, but still a card with Invite.
   {
-    email: "sam@example.com",
     fullName: "Sam Ortiz",
     slackUserId: "U234",
     slackUserName: "sam",

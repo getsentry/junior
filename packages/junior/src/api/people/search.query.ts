@@ -20,10 +20,13 @@ const PEOPLE_SEARCH_TERMS = 4;
  * Find Slack people whose name or handle has a word that starts with each
  * word of the query, for the composer `@` menu. It reads one index
  * (`junior_identities_slack_person_search_idx`) and the photos of the
- * matches. A person with Slack accounts in two workspaces shows once.
+ * matches. With `slackTeamId`, it finds only people in that Slack
+ * workspace. Without it, a person with Slack accounts in two workspaces
+ * shows once.
  */
 export async function readPeopleSearchFromSql(
   query: string,
+  slackTeamId?: string,
 ): Promise<MentionablePerson[]> {
   const terms = (query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).slice(
     0,
@@ -51,6 +54,9 @@ export async function readPeopleSearchFromSql(
       and(
         slackPersonPredicate(juniorIdentities),
         sql`${slackPersonSearchDocument(juniorIdentities)} @@ to_tsquery('simple', ${tsquery})`,
+        slackTeamId
+          ? eq(juniorIdentities.providerTenantId, slackTeamId)
+          : undefined,
       ),
     )
     .orderBy(

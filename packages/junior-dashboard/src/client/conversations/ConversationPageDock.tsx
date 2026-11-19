@@ -37,25 +37,28 @@ export function ConversationPageDock(props: {
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
   // Invite subscribes a person to a public Conversation and grants no
-  // access, so a private one has none. The API checks again.
-  const conversation = detail.data;
-  const invite = useMemo(
-    () =>
-      conversation?.visibility === "public" && conversation.kind !== "task"
-        ? {
-            conversationId: props.conversationId,
-            participantSlackUserIds: new Set(
-              conversation.participants?.flatMap((person) =>
-                person.slackUserId ? [person.slackUserId] : [],
-              ),
-            ),
-          }
-        : undefined,
+  // access, so a private one has none. An archived one is in no feed. The
+  // API checks again.
+  const data = detail.data;
+  const composerConversation = useMemo(
+    () => ({
+      conversationId: props.conversationId,
+      invite:
+        data?.visibility === "public" &&
+        data.kind !== "task" &&
+        !data.archivedAt,
+      participantSlackUserIds: new Set(
+        data?.participants?.flatMap((person) =>
+          person.slackUserId ? [person.slackUserId] : [],
+        ),
+      ),
+    }),
     [
       props.conversationId,
-      conversation?.visibility,
-      conversation?.kind,
-      conversation?.participants,
+      data?.visibility,
+      data?.kind,
+      data?.archivedAt,
+      data?.participants,
     ],
   );
 
@@ -68,7 +71,7 @@ export function ConversationPageDock(props: {
       // too large to re-enter the footer on every live poll while typing.
       committedMessageIds={mailboxCommittedIds}
       focusRequest={props.focusRequest}
-      invite={invite}
+      conversation={composerConversation}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
       onShowQuestion={props.onShowQuestion}

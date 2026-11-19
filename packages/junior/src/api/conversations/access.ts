@@ -149,6 +149,18 @@ export function canAddConversationMessages(
   return Boolean(access?.isParticipant || access?.visibility === "public");
 }
 
+/**
+ * The Slack workspace of a Conversation that the viewer can read. A mention
+ * in it must name a Slack user of that workspace.
+ */
+export function readableSlackTeamId(
+  access: ConversationAccess | undefined,
+): string | undefined {
+  return access?.canViewPrivateContent && access.tenant?.provider === "slack"
+    ? access.tenant.providerTenantId
+    : undefined;
+}
+
 /** Read viewer access for a bounded set of Conversations. */
 export type ConversationAccessReader = (
   conversationIds: readonly string[],

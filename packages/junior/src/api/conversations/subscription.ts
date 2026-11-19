@@ -18,6 +18,7 @@ import type {
 } from "../schema/conversation-subscription";
 import {
   canAddConversationMessages,
+  readableSlackTeamId,
   readConversationAccessFromSql,
 } from "./access";
 
@@ -59,8 +60,11 @@ import {
  *   person. It gives no access: anyone can already read a public
  *   Conversation and join it by posting. A private Conversation refuses
  *   Invite with the same error as a missing one, so Invite never shares
- *   private content. An existing Participant keeps their row, so Invite
- *   does not undo their unsubscribe. Nobody can unsubscribe another person.
+ *   private content. An archived root refuses Invite, because no feed shows
+ *   it and a restore is for everyone. The mention names a Slack user of the
+ *   Conversation's workspace. An existing Participant keeps their row, so
+ *   Invite does not undo their unsubscribe. Nobody can unsubscribe another
+ *   person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
@@ -198,6 +202,7 @@ export async function inviteToConversation(
   ) {
     throwApiError(404, "Conversation not found.");
   }
+  const slackTeamId = readableSlackTeamId(access);
   const [person] = await getDb()
     .select({ userId: juniorIdentities.userId })
     .from(juniorIdentities)
@@ -207,6 +212,9 @@ export async function inviteToConversation(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.providerSubjectId, body.slackUserId),
         isNotNull(juniorIdentities.userId),
+        slackTeamId
+          ? eq(juniorIdentities.providerTenantId, slackTeamId)
+          : undefined,
       ),
     )
     .limit(1);
@@ -218,11 +226,15 @@ export async function inviteToConversation(
     // Lock the root as an unsubscribe does, so a last-subscriber archive
     // either sees this subscriber or happens before it.
     const [root] = await db
-      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .select({
+        archivedAt: juniorConversations.archivedAt,
+        lastActivityAt: juniorConversations.lastActivityAt,
+      })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
     if (!root) throwApiError(404, "Conversation not found.");
+    if (root.archivedAt) throwApiError(409, "Conversation is archived.");
     // The detail ETag and the feed version read the subscription on each
     // request.
     // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
