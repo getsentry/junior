@@ -7,7 +7,7 @@ import {
   sandboxSkillFile,
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
-import { skillReferences } from "@/chat/skill-references";
+import { skillBodyReferences } from "@/chat/skill-references";
 import {
   loadSkillsByName,
   type Skill,
@@ -125,10 +125,7 @@ export function createLoadSkillTool(
       // `availableSkills` holds the manual-only skills that this skill
       // references, but `<available-skills>` leaves them out, so name them
       // here.
-      const loadable = skillReferences(
-        result.instructions ?? "",
-        availableSkills,
-      ).filter(
+      const loadable = skillBodyReferences(result.instructions ?? "").filter(
         (name) =>
           name !== result.skill_name &&
           availableSkills.some(

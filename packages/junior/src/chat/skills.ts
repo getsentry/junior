@@ -4,7 +4,7 @@ import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
-import { referencedSkillNames, skillReferences } from "@/chat/skill-references";
+import { skillBodyReferences, skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 import { mapBounded } from "@/chat/fan-out";
@@ -406,7 +406,7 @@ async function readSkillDirectory(
       parsed.skill.disableModelInvocation === true ||
       (await openAiImplicitInvocationDisabled(skillDir));
     const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
-    const references = referencedSkillNames(parsed.skill.body);
+    const references = skillBodyReferences(parsed.skill.body);
 
     return {
       name,

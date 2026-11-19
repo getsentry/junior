@@ -11,6 +11,7 @@ import {
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
+import { skillBodyReferences } from "@/chat/skill-references";
 import { renderTaskInput } from "@/chat/task-input";
 
 async function writeSkillFile(
@@ -192,6 +193,14 @@ describe("skills", () => {
     expect(parseSkillInvocations("read /brief/notes.md", stubSkills)).toEqual(
       [],
     );
+  });
+
+  it("reads only `$name` references from a SKILL.md body", () => {
+    expect(
+      skillBodyReferences(
+        "Run $release, then read /brief and /tmp/notes.md. Set $BETA_TOKEN.",
+      ),
+    ).toEqual(["release"]);
   });
 
   it("ignores unregistered skill references", () => {
