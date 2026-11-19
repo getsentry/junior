@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
-import { slackMention } from "@junior-evals/fixture/inputs";
+import { reply, slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { test } from "@junior-evals/fixture/test";
+import { test, type Conversation } from "@junior-evals/fixture/test";
 import { mockWebSearchResults } from "@junior-evals/fixture/web";
 
 describe("Output Contract", () => {
@@ -91,5 +91,170 @@ describe("Output Contract", () => {
         ],
       }),
     );
+  });
+});
+
+// Production runs Opus 5.5, whose default replies run long. These cases pin
+// it so they measure what people read in Slack.
+const PRODUCTION_MODEL_ID = "anthropic/claude-opus-5.5";
+
+/** Words that people read in the replies of a call, without code blocks. */
+function proseWordCount(conversation: Conversation): number {
+  return conversation.replies
+    .map((item) => item.text.replace(/```[\s\S]*?```/g, " "))
+    .join(" ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+/** Lines of the replies that start with a bold label, such as `**Why:**`. */
+function boldLabelLines(conversation: Conversation): string[] {
+  return conversation.replies
+    .flatMap((item) => item.text.split("\n"))
+    .filter((line) => /^\s*(?:[-*]\s+)?\*\*[^*]+\*\*/.test(line));
+}
+
+// None of these requests asks for a length. The reply length must come from
+// Junior's defaults, the way a teammate answers in Slack.
+describe("Reply Length", () => {
+  test("when asked a simple question, answer in a few sentences", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention("what's the difference between git fetch and git pull?"),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says that fetch downloads remote changes without changing the working branch, and that pull also merges or rebases them into it.",
+        ],
+        fail: ["Do not give a wrong description of either command."],
+      }),
+    );
+    expect(proseWordCount(conversation)).toBeLessThanOrEqual(80);
+    expect(boldLabelLines(conversation)).toEqual([]);
+  });
+
+  test("when asked a yes-or-no follow-up, answer it in one or two sentences", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention("so is that the same as no-store?"),
+      {
+        history: [
+          slackMention("what does `Cache-Control: no-cache` do?"),
+          reply(
+            "It lets a cache store the response, but the cache must revalidate it with the origin before each reuse.",
+          ),
+        ],
+      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says no, and that no-store forbids storing the response at all.",
+        ],
+        fail: ["Do not say that no-cache and no-store are the same."],
+      }),
+    );
+    expect(proseWordCount(conversation)).toBeLessThanOrEqual(50);
+    expect(boldLabelLines(conversation)).toEqual([]);
+  });
+
+  test("when a request leaves a small choice open, deliver without a report around it", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention(
+        "need a regex that matches a semver version string for a CI check",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply gives one regular expression that matches versions such as 1.2.3.",
+        ],
+        fail: [
+          "Do not ask which semver variant the person wants before giving a regex.",
+        ],
+      }),
+    );
+    expect(proseWordCount(conversation)).toBeLessThanOrEqual(80);
+    expect(boldLabelLines(conversation)).toEqual([]);
+  });
+
+  test("when a looked-up answer needs a judgment call, give the answer and the reason only", async ({
+    agent,
+  }) => {
+    mockWebSearchResults([
+      {
+        title: "Node.js Releases",
+        url: "https://nodejs.org/en/about/previous-releases",
+        excerpt:
+          "Node.js 24 is in Active LTS until October 2026, then Maintenance LTS until April 2028. Node.js 26 is the Current release and enters Active LTS in October 2026. Production applications should only use Active LTS or Maintenance LTS releases.",
+      },
+    ]);
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention(
+        "which node version should we pin for the new billing service?",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply recommends an LTS release, such as Node.js 24, and gives a reason.",
+        ],
+        fail: ["Do not recommend a release that is not LTS without a caveat."],
+      }),
+    );
+    expect(proseWordCount(conversation)).toBeLessThanOrEqual(100);
+    expect(boldLabelLines(conversation)).toEqual([]);
+  });
+
+  test("when thanked, reply in a few words or not at all", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention("perfect, that worked. thanks!"),
+      {
+        history: [
+          slackMention(
+            "how do I undo my last git commit but keep the changes?",
+          ),
+          reply("Run `git reset --soft HEAD~1`. The changes stay staged."),
+        ],
+      },
+    );
+    expect(proseWordCount(conversation)).toBeLessThanOrEqual(15);
+  });
+
+  test("when asked for depth, give a thorough answer", async ({ agent }) => {
+    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+    const conversation = await run(
+      slackMention(
+        "I'm writing onboarding docs for new backend engineers. Walk me through how TCP's three-way handshake, flow control, and congestion control work, in detail, with the reasoning behind each.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply explains the three-way handshake, flow control with the receive window, and congestion control, with the reasoning behind each.",
+        ],
+        fail: [
+          "Do not give only a short summary that leaves out the reasoning that was asked for.",
+        ],
+      }),
+    );
+    expect(proseWordCount(conversation)).toBeGreaterThanOrEqual(200);
   });
 });
