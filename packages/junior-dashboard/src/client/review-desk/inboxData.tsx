@@ -8,7 +8,6 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { useDashboardCoreData } from "../api";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -33,7 +32,6 @@ import {
 import {
   inboxBundles,
   itemUpForGrabs,
-  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -190,16 +188,6 @@ function useBuildInboxData(input: {
       ? [...read, ...held, ...left]
       : read;
   }, [leaving, missing, read, states]);
-  // Closed items, newest closed first, as Done lists them. A Conversation
-  // row says what the viewer answered until the Conversation moves on.
-  const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  const { items: closed } = useReviewItemsData({
-    closed: true,
-    enabled: signedIn,
-    forViewer: true,
-  });
-  const answerOf = (conversation: Conversation): string | undefined =>
-    conversationAnswerLine(closed, conversation, viewerEmail);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -346,8 +334,6 @@ function useBuildInboxData(input: {
 
   return {
     alerts,
-    /** What the viewer answered last in a Conversation, while it is news. */
-    answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     /** The Automations that need attention are in, so To do is complete. */

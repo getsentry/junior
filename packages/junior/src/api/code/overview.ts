@@ -6,6 +6,7 @@ import {
   gt,
   gte,
   inArray,
+  isNotNull,
   lt,
   ne,
   or,
@@ -19,6 +20,7 @@ import {
   juniorCodeChanges,
   juniorCodeRepositories,
   juniorConversations,
+  juniorUsers,
 } from "@/db/schema";
 import { conversationUsageCostExpr } from "../conversations/aggregate";
 import { decodePageCursor, encodePageCursor } from "../page-cursor";
@@ -151,7 +153,7 @@ async function readTreeCosts(conversationIds: readonly string[]) {
  * subquery starts from the user's Conversations, so Postgres hash-joins them
  * with the linked ids instead of one lookup per code change.
  */
-function ownedByUserSql(userId: string): SQL {
+function ownedByUserSql(userId: string | SQL): SQL {
   return sql`${juniorCodeChanges.id} IN (
     SELECT linked.id
     FROM junior_identities AS identities
@@ -534,4 +536,35 @@ export async function readPersonCodeOverview(args: {
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
   });
+}
+
+/**
+ * Read the code changes that one person merged most recently, by their
+ * normalized email, in one statement.
+ */
+export async function readPersonMergedChanges(args: {
+  email: string;
+  limit: number;
+}) {
+  const userId = getDb()
+    .select({ id: juniorUsers.id })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.primaryEmailNormalized, args.email));
+  const rows = await getDb()
+    .select({ change: codeChangeReportColumns })
+    .from(juniorCodeChanges)
+    .innerJoin(
+      juniorCodeRepositories,
+      eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
+    )
+    .where(
+      and(
+        ownedByUserSql(sql`(${userId})`),
+        eq(juniorCodeChanges.state, "merged"),
+        isNotNull(juniorCodeChanges.mergedAt),
+      ),
+    )
+    .orderBy(desc(juniorCodeChanges.mergedAt), asc(juniorCodeChanges.id))
+    .limit(args.limit);
+  return rows.map((row) => codeChangeReport(row.change));
 }

@@ -18,6 +18,8 @@ import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { answerLine, reviewItemText } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { ReviewItemCloser, ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** The answer, or the reason that the item closed. */
 function outcomeOf(item: ReviewItemPayload): string | undefined {
@@ -34,9 +36,6 @@ function DoneRow(props: {
 }) {
   const { item } = props;
   const dismissed = item.status === "dismissed";
-  const closedBy = item.closedBy
-    ? (item.closedBy.displayName ?? item.closedBy.email)
-    : "An agent";
   const outcome = outcomeOf(item);
   const text =
     item.kind === "notice" || !item.request
@@ -69,7 +68,7 @@ function DoneRow(props: {
             )}
             ref={fadeWhenOverflowing}
           >
-            {item.title}
+            <ReviewItemTitle item={item} />
           </span>
           <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-dashboard-text-muted">
             {outcome ? (
@@ -82,7 +81,8 @@ function DoneRow(props: {
             ) : null}
             <span className="shrink-0">
               {outcome ? "· " : ""}
-              {closedBy}
+              {/* The row is a button, which cannot hold a link. */}
+              <ReviewItemCloser card={false} item={item} />
             </span>
           </span>
         </span>
@@ -97,7 +97,7 @@ function DoneRow(props: {
       </button>
       {props.expanded ? (
         <div
-          aria-label={`${item.title}: how it closed`}
+          aria-label={`${reviewItemTitleText(item)}: how it closed`}
           className={cn(INBOX_ROW_DETAIL_CLASS, "gap-4 font-sans text-sm")}
           id={regionId}
           role="region"
@@ -120,7 +120,7 @@ function DoneRow(props: {
             </Link>
           </div>
           <ReviewItemObjects conversationId={item.addedByConversationId}>
-            <DisplayText text={text} />
+            <DisplayText mentions={item.mentions} text={text} />
             {item.subject ? (
               <ReviewItemSubjectPreview
                 conversationId={item.addedByConversationId}
