@@ -31,8 +31,10 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Thread cards and Task lines stay in the main view.
+  // Thread cards, Task lines, and started Conversation cards stay in the
+  // main view.
   if (entry.kind === "subagent") return false;
+  if (entry.kind === "tool" && entry.part.startedConversation) return false;
   // An agent invocation result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.

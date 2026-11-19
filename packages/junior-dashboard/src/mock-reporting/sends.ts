@@ -9,6 +9,7 @@ import type {
   ConversationDetailReport,
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
+import { mockLeadEvents } from "./lead-transcript";
 
 /** Time before the reply shows, so the working state can be seen. */
 const MOCK_REPLY_DELAY_MS = 2_000;
@@ -273,7 +274,9 @@ function createdConversation(
     return {
       ...base,
       displayTitle: created.title ?? "New conversation",
-      events: [],
+      events: created.lead
+        ? mockLeadEvents(created.actorIdentity, created.createdAtMs)
+        : [],
     };
   }
   const { messageId, sourceConversationId } = created.fork;

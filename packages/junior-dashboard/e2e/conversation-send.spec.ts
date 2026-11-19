@@ -14,7 +14,8 @@ import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
-test("starts and continues conversations from the dashboard", async ({
+// Classic home sends to the Lead. lead-home.spec.ts covers it.
+test("starts and continues conversations from the dashboard @new", async ({
   page,
   dashboard,
 }) => {
@@ -798,7 +799,7 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(pending).toBeHidden();
 });
 
-test("keeps details closed on a home send after the reader closed them", async ({
+test("keeps details closed on a home send after the reader closed them @new", async ({
   page,
   dashboard,
 }) => {

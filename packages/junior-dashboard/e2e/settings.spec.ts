@@ -82,7 +82,8 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
 });
 
-test("turns on push notifications from a one-time tip", async ({
+// The tip follows a home create, which only the inbox shell has.
+test("turns on push notifications from a one-time tip @new", async ({
   page,
   dashboard,
 }) => {

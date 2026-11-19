@@ -141,4 +141,61 @@ describe("transcript render grouping", () => {
     expect(currentKeys).toEqual(["tool:search-10", "11:message:0"]);
     expect(prependedKeys.slice(-currentKeys.length)).toEqual(currentKeys);
   });
+  it("links each started Conversation and marks the one a later watch watches", () => {
+    const start = (id: string, seq: number) =>
+      event(seq, `2026-01-01T00:00:0${seq}.000Z`, {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `start-${id}`,
+            name: "startConversation",
+            status: "completed",
+            startedConversationId: `local:web:${id}`,
+          },
+        ],
+      });
+    const watch = (input: Record<string, string>) =>
+      event(4, "2026-01-01T00:00:04.000Z", {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "watch-1",
+            name: "watchEvents",
+            status: "completed",
+            input,
+          },
+        ],
+      });
+    const started = (events: ConversationReportEvent[]) =>
+      conversationTranscriptMessages(conversation(events)).flatMap((message) =>
+        message.parts.flatMap((part) =>
+          part.type === "tool_call" && part.startedConversation
+            ? [part.startedConversation]
+            : [],
+        ),
+      );
+
+    expect(
+      started([
+        start("a", 1),
+        start("b", 2),
+        watch({
+          identifier: "local:web:a",
+          namespace: "junior",
+          resource_type: "conversation",
+        }),
+      ]),
+    ).toEqual([{ id: "local:web:a", watched: true }, { id: "local:web:b" }]);
+    // A watch of another resource type does not count.
+    expect(
+      started([
+        start("a", 1),
+        watch({
+          identifier: "local:web:a",
+          namespace: "github",
+          resource_type: "pull_request",
+        }),
+      ]),
+    ).toEqual([{ id: "local:web:a" }]);
+  });
 });

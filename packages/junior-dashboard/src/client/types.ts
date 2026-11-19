@@ -35,6 +35,11 @@ export type TranscriptViewToolCallPart = {
   output?: unknown;
   resultTimestamp?: number | undefined;
   startedTimestamp?: number | undefined;
+  /**
+   * The Conversation that this `startConversation` call started. `watched`
+   * is set when a later `watchEvents` call watches it.
+   */
+  startedConversation?: { id: string; watched?: true };
   status: "completed" | "error" | "running";
   type: "tool_call";
 };

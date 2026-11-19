@@ -186,7 +186,6 @@ function dashboardHostRoutePaths(
     `${pagePath("locations")}/*`,
     pagePath("inbox"),
     pagePath("review"),
-    pagePath("lead"),
     peoplePath,
     `${peoplePath}/*`,
     pagePath("automations"),

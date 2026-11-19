@@ -45,7 +45,7 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $");
@@ -98,7 +98,7 @@ test("describes the skill reference at the caret @classic", async ({
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   const skills = page.getByRole("grid", { name: "Skills" });
@@ -166,7 +166,7 @@ test("a caret move before the skill list loads shows the card @classic", async (
     await route.fallback();
   });
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $release-check now");
@@ -192,7 +192,7 @@ test.describe("on a touch screen", () => {
     await page.setViewportSize(mobile);
     await routeSkills(page);
     await page.goto(dashboard.baseURL);
-    const composer = page.getByLabel("Start a conversation");
+    const composer = page.getByLabel("Message your Lead");
     await expect(composer).toHaveAttribute("contenteditable", "true");
     await composer.fill("$");
     const skills = page.getByRole("grid", { name: "Skills" });
@@ -288,7 +288,7 @@ test("the pane follows the pointer only after it rests on a row @classic", async
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.pressSequentially("Run $");
   const skills = page.getByRole("grid", { name: "Skills" });

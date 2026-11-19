@@ -129,7 +129,8 @@ async function expectFocusedComposerAtVisualViewportBottom(
     .toBe("composer-at-bottom");
 }
 
-test("starts a new conversation from a centered compose empty state", async ({
+// Classic home sends to the Lead. lead-home.spec.ts covers it.
+test("starts a new conversation from a centered compose empty state @new", async ({
   page,
   dashboard,
 }) => {
@@ -215,7 +216,7 @@ test("starts a new conversation from a centered compose empty state", async ({
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("adds a line on Return instead of sending", async ({
+  test("adds a line on Return instead of sending @new", async ({
     page,
     dashboard,
   }) => {
@@ -303,7 +304,7 @@ test.describe("on a touch screen", () => {
     await expect(pinned.first()).toHaveAttribute("aria-label", second!);
   });
 
-  test("opens the keyboard on home only when the dashboard opens there", async ({
+  test("opens the keyboard on home only when the dashboard opens there @new", async ({
     page,
     dashboard,
   }) => {
@@ -360,10 +361,6 @@ test("opens and closes a conversation on mobile", async ({
   });
   await page.goto(`${dashboard.baseURL}/conversations`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  // Mobile home is the create landing (hero + list), same as desktop empty state.
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
@@ -815,9 +812,6 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();

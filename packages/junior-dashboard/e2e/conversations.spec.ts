@@ -19,7 +19,8 @@ async function openActiveConversation(page: Page, baseURL: string) {
   ).toBeVisible();
 }
 
-test("records loaded conversation views", async ({ page, dashboard }) => {
+// Classic home shows the Lead. lead-home.spec.ts covers it.
+test("records loaded conversation views @new", async ({ page, dashboard }) => {
   let releaseFeed: (() => void) | undefined;
   const feedPending = new Promise<void>((resolve) => {
     releaseFeed = resolve;
@@ -42,7 +43,12 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const composer = page.getByLabel("Start a conversation");
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
+});
 
+test("loads a finished conversation within its request budget", async ({
+  page,
+  dashboard,
+}) => {
   // A running Conversation polls every 2 seconds, so a slow load would
   // count a poll. Measure a finished one, which does not poll its detail.
   await expectRequestBudget(
@@ -242,7 +248,8 @@ test("reuses the fresh conversation feed after window focus", async ({
         page.getByRole("navigation", { name: "Your conversations" }),
       ).toBeVisible();
     },
-    { requests: 7, serialRounds: 1 },
+    // Classic home is the Lead: its id, then its Conversation page.
+    { requests: 11, serialRounds: 3 },
   );
   expect(requests).toBe(1);
 
