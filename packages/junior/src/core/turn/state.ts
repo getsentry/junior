@@ -32,10 +32,10 @@
 // commitStep takes the Conversation lock before it touches the Turn row. A
 // writer that needs both takes them in this order, so writers cannot deadlock.
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
-import {
-  appendStepMessages,
-  withConversationEventLock,
-} from "@/core/turn/history-bridge";
+import { contextProvenance } from "@/chat/conversations/provenance";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
@@ -153,7 +153,13 @@ export async function commitStep(
       if (rows.length === 0) {
         return false;
       }
-      await appendStepMessages(executor, turn.conversationId, step.messages);
+      await createSqlConversationEventStore(executor).append(
+        turn.conversationId,
+        step.messages.map((message) => ({
+          data: historyItemFromPiMessage(message, contextProvenance),
+          createdAtMs: message.timestamp,
+        })),
+      );
       return true;
     }),
   );

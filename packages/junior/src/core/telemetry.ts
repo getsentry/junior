@@ -1,6 +1,10 @@
 // Core's only import of the Sentry SDK. Core code records telemetry through
-// this file and never imports `chat/`. Span and attribute names match the
-// ones in TELEMETRY.md, so existing queries keep working.
+// this file. Span and attribute names match the ones in TELEMETRY.md, so
+// existing queries keep working.
+//
+// Core may import the chat modules that own shared state, such as the
+// Conversation history writer, but never chat's Turn engine, which core
+// replaces.
 import * as Sentry from "@sentry/node";
 
 /** Attribute values a span accepts. `undefined` values are not recorded. */
