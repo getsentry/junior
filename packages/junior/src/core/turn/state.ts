@@ -1,7 +1,29 @@
-// The state changes of a Turn. Each change is one fenced write. A write by the
-// lease holder matches only while the Turn runs under the same `lease_epoch`,
-// so a worker that lost its lease changes nothing and gets `false`. Lease
-// times use the database clock, so invocations on different hosts agree.
+// The state changes of a Turn. Each arrow is one function in this file.
+//
+//            claimTurn                      completeTurn
+//   queued ─────────────▶ running ─────────────────────▶ completed
+//     │   ◀─────────────    │  ↺ heartbeat
+//     │   reclaimExpired    │                failTurn
+//     │   (lease expired)   ├──────────────────────────▶ failed
+//     │                     │
+//     │     cancelTurn      │   cancelTurn
+//     └─────────────────────┴──────────────────────────▶ cancelled
+//
+// A Turn starts as queued. completed, failed and cancelled are final: no
+// function changes them.
+//
+// | Change         | Turn must be      | lease_epoch | attempts | Lease    |
+// | -------------- | ----------------- | ----------- | -------- | -------- |
+// | claimTurn      | queued            | +1          | +1       | set      |
+// | heartbeat      | running, fenced   |             |          | extended |
+// | completeTurn   | running, fenced   |             |          | cleared  |
+// | failTurn       | running, fenced   |             |          | cleared  |
+// | cancelTurn     | queued or running | +1          |          | cleared  |
+// | reclaimExpired | running, expired  |             |          | cleared  |
+//
+// Fenced: the write matches only while the Turn runs under the caller's
+// `lease_epoch`, so a worker that lost its lease changes nothing and gets
+// `false`. Lease times use the database clock, so hosts agree on expiry.
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
