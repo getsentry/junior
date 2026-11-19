@@ -654,9 +654,12 @@ people work on it:
   state, so it comes after the fix.
 
 For each conflict, Junior reads the pull request's timeline and review
-decision from GitHub. Merges and force pushes by a bot after the latest
-activity by a person count as earlier fixes. Junior stores only the time of
-the latest Resume. Each head commit publishes one event.
+decision from GitHub, for the latest activity by a person. Only the events
+that Junior published for a fix count as fixes, so a merge or force push for
+work that a person asked for does not. Junior stores those, with the time of
+the latest Resume. Each head commit publishes one event. When the head
+commit is the same a day after its fix, the fix did not land, and Junior
+adds the item.
 
 </details>
 

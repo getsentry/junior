@@ -17,6 +17,7 @@ import {
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
+import { withGitHubConflictFix } from "./policy.js";
 import {
   gitHubMergeConflictEvents,
   gitHubPullRequestMergeSchema,
@@ -43,7 +44,10 @@ export async function resumeGitHubConflictFixes(args: {
 }): Promise<void> {
   const t = juniorGitHubPullRequests;
   const [row] = await args.db
-    .select({ resumedAt: t.conflictFixesResumedAt })
+    .select({
+      fixes: t.conflictFixes,
+      resumedAt: t.conflictFixesResumedAt,
+    })
     .from(t)
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")));
   if (!row) return;
@@ -74,6 +78,17 @@ export async function resumeGitHubConflictFixes(args: {
       );
     return;
   }
+  // The fix counts as the first in a row, and the policy starts no second
+  // fix of this head commit.
+  await args.db
+    .update(t)
+    .set({
+      conflictFixes: withGitHubConflictFix(row.fixes, {
+        atMs: args.nowMs,
+        headSha: loaded.head.sha,
+      }),
+    })
+    .where(pullRequestRow(args.ref));
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {

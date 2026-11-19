@@ -437,27 +437,13 @@ describe("merge conflict check on webhook events", () => {
       ),
     ];
 
-    /**
-     * Push to main with a head commit on 946, and run the check. A published
-     * fix adds Junior's merge commit on GitHub.
-     */
+    /** Push to main with a head commit on 946, and run the check. */
     async function checkAt(nowMs: number, sha: string): Promise<void> {
       vi.setSystemTime(nowMs);
       headSha = sha.repeat(40);
       await deliver(`push-${nowMs}`, pushRequest("refs/heads/main"));
       vi.setSystemTime(nowMs + 2 * minute);
-      const fixes = fixedShas().length;
       await heartbeat(nowMs + 2 * minute);
-      if (fixedShas().length > fixes) {
-        timeline.push({
-          __typename: "PullRequestCommit",
-          commit: {
-            author: { user: { login: "sentry-junior[bot]" } },
-            committedDate: new Date(nowMs + 10 * minute).toISOString(),
-            parents: { totalCount: 2 },
-          },
-        });
-      }
     }
 
     /** A review or comment on 946 on GitHub. */
@@ -594,6 +580,44 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual(["4", "5", "6", "8"]);
     });
 
+    it("counts only the fixes it started, not merges and force pushes for requested work", async () => {
+      await askedInSlack();
+      // Junior merged main and force-pushed for work that a person asked for
+      // in Slack, with no activity by a person on GitHub.
+      for (let i = 1; i <= 3; i += 1) {
+        timeline.push(
+          {
+            __typename: "PullRequestCommit",
+            commit: {
+              author: { user: { login: "sentry-junior[bot]" } },
+              committedDate: new Date(pushedAt + i * hour).toISOString(),
+            },
+          },
+          {
+            __typename: "HeadRefForcePushedEvent",
+            actor: { __typename: "Bot" },
+            createdAt: new Date(pushedAt + i * hour + minute).toISOString(),
+          },
+        );
+      }
+      await checkAt(pushedAt + 4 * hour, "1");
+      expect(fixedShas()).toEqual(["1"]);
+      expect(h.notices).toEqual([]);
+    });
+
+    it("fixes a head commit once, and asks to resume when that fix lands nothing in a day", async () => {
+      await askedInSlack();
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + hour, "1");
+      expect(fixedShas()).toEqual(["1"]);
+      expect(h.notices).toEqual([]);
+      await checkAt(pushedAt + day, "1");
+      expect(h.notices.map(({ notice }) => notice.body)).toEqual([
+        "#946 conflicts with `main`. Fixes stopped because the last fix did not land. Resume fixes it now and on later conflicts.",
+      ]);
+    });
+
     it("stops after 3 fixes in a row, and Resume starts a fix and the count again", async () => {
       await askedInSlack();
       approvals.add(946);
@@ -644,14 +668,6 @@ describe("merge conflict check on webhook events", () => {
       const published = conflicts().length;
       await checkAt(pushedAt + 4 * hour + 10 * minute, "3");
       expect(conflicts()).toHaveLength(published);
-      timeline.push({
-        __typename: "PullRequestCommit",
-        commit: {
-          author: { user: { login: "sentry-junior[bot]" } },
-          committedDate: new Date(pushedAt + 4 * hour + minute).toISOString(),
-          parents: { totalCount: 2 },
-        },
-      });
 
       // The count starts again from the Resume, so the next conflicts get
       // fixes, up to 3 in a row with the fix that Resume started.
@@ -740,7 +756,7 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 4 * hour + day, "3");
       expect(h.notices.map(({ notice }) => notice.body)).toEqual([
         expect.stringContaining("after 3 in a row"),
-        "#946 conflicts with `main`. Fixes stopped because the fix after Resume did not land. Resume fixes it now and on later conflicts.",
+        "#946 conflicts with `main`. Fixes stopped because the last fix did not land. Resume fixes it now and on later conflicts.",
       ]);
       await h.answer({
         ...resume,
