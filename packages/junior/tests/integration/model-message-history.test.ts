@@ -15,7 +15,7 @@ import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
 import { signedInViewer } from "../fixtures/user";
 import { getSqlExecutor } from "@/chat/db";
-import { changePlan, setPlanItemStatusByUser } from "@/chat/plan/store";
+import { changeTodos, setTodoStatusByUser } from "@/chat/todos/store";
 
 const originalBotConfig = { ...botConfig };
 
@@ -223,7 +223,7 @@ describe("model message history", () => {
     expect(undone["workspaces"]).toBeNull();
   });
 
-  it("sends plan changes that a person made once, and none for the agent's own", async () => {
+  it("sends To-do changes that a person made once, and none for the agent's own", async () => {
     mockTitleModel("Conversation title");
     const agent = await createAgent({
       responses: ["First.", "Second.", "Third.", "Fourth."],
@@ -232,22 +232,22 @@ describe("model message history", () => {
       before: { messages: unknown[] },
       after: { messages: unknown[] },
     ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const deltas = (text: string) => text.split("<plan-delta>").length - 1;
+    const deltas = (text: string) => text.split("<todo-delta>").length - 1;
 
     await agent.run("first");
     const first = agent.snapshot();
-    // The agent's own changes are already in its tool results. The plan is
-    // in the database, so a fresh session reads the same items.
+    // The agent's own changes are already in its tool results. The To-dos
+    // are in the database, so a fresh session reads the same ones.
     const self = { conversationId: agent.conversationId() };
     const {
-      items: [, send],
-    } = await changePlan(getSqlExecutor(), {
+      todos: [, send],
+    } = await changeTodos(getSqlExecutor(), {
       conversationId: agent.conversationId(),
       nowMs: Date.now(),
       change: {
         add: [
-          { title: "Draft the brief", status: "in_progress", assignee: self },
-          { title: "Send the brief", status: "pending", assignee: self },
+          { title: "Draft the brief", status: "open", assignee: self },
+          { title: "Send the brief", status: "open", assignee: self },
         ],
         update: [],
         remove: [],
@@ -258,11 +258,11 @@ describe("model message history", () => {
     expect(deltas(newText(first, second))).toBe(0);
 
     const person = await signedInViewer("person@example.com");
-    await setPlanItemStatusByUser(getSqlExecutor(), {
+    await setTodoStatusByUser(getSqlExecutor(), {
       conversationId: agent.conversationId(),
       id: send!.id,
       nowMs: Date.now(),
-      status: "cancelled",
+      status: "dropped",
       userId: person.id,
     });
     await agent.run("third");
@@ -270,7 +270,7 @@ describe("model message history", () => {
     const delta = newText(second, third);
     expect(deltas(delta)).toBe(1);
     expect(delta).toContain(
-      `- #${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
+      `- #${send!.id} (dropped, assignee self, changed by person@example.com): Send the brief`,
     );
     expect(delta).not.toContain("Draft the brief");
     // The block stays in history, so the next Turn does not send it again.

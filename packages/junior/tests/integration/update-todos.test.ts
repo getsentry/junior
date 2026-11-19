@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getSqlExecutor } from "@/chat/db";
-import { setPlanItemStatusByUser } from "@/chat/plan/store";
+import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   invocationInput,
@@ -23,7 +23,7 @@ async function createHarness() {
     {
       ...invocationInput,
       agentName: "Echo",
-      idempotencyKey: "plan-child",
+      idempotencyKey: "todos-child",
       input: "Review the draft",
     },
     { conversationStore, queue: work.queue, state: work.state },
@@ -31,7 +31,7 @@ async function createHarness() {
   const { findMentionedUserId } = createSlackReviewItemToolServices(
     () => work.queue,
   );
-  const tool = createUpdatePlanTool(
+  const tool = createUpdateTodosTool(
     { conversationId: parentConversationId },
     findMentionedUserId,
   );
@@ -40,76 +40,72 @@ async function createHarness() {
     parentConversationId,
   };
   const childListAgents = createListAgentsTool(childContext);
-  const childUpdatePlan = createUpdatePlanTool(
+  const childUpdateTodos = createUpdateTodosTool(
     childContext,
     findMentionedUserId,
   );
   return {
     childConversationId: child.childConversationId,
     close: async () => await fixture.close(),
-    updatePlan: async (input: unknown) =>
+    updateTodos: async (input: unknown) =>
       await tool.execute!(tool.prepareArguments!(input) as never, {}),
     childListAgents: async () =>
       await childListAgents.execute!({} as never, {}),
-    childUpdatePlan: async (input: unknown) =>
-      await childUpdatePlan.execute!(
-        childUpdatePlan.prepareArguments!(input) as never,
+    childUpdateTodos: async (input: unknown) =>
+      await childUpdateTodos.execute!(
+        childUpdateTodos.prepareArguments!(input) as never,
         {},
       ),
   };
 }
 
-describe("updatePlan", () => {
+describe("updateTodos", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
   });
 
-  it("keeps items with their assignees across calls", async () => {
+  it("keeps To-dos with their assignees across calls", async () => {
     const harness = await createHarness();
     try {
       const reviewer = await signedInViewer("reviewer@example.com");
-      const added = await harness.updatePlan({
+      const added = await harness.updateTodos({
         add: [
-          { title: "Write the brief", status: "in_progress" },
+          { title: "Write the brief" },
           {
             title: "Review the draft",
             notes: "Check the error states.",
             assignee: "Echo",
           },
-          {
-            title: "Approve the release",
-            assignee: "reviewer@example.com",
-            status: "blocked",
-          },
+          { title: "Approve the release", assignee: "reviewer@example.com" },
           { title: "Added by mistake" },
+          { title: "Port the old theme", status: "dropped" },
         ],
       });
-      const [brief, review, approval, mistake] = added.items;
-      expect(added.items).toMatchObject([
-        { title: "Write the brief", status: "in_progress", assignee: "self" },
+      const [brief, review, approval, mistake] = added.todos;
+      expect(added.todos).toMatchObject([
+        { title: "Write the brief", status: "open", assignee: "self" },
         {
           title: "Review the draft",
           notes: "Check the error states.",
-          status: "pending",
+          status: "open",
           assignee: "Echo",
         },
         {
           title: "Approve the release",
-          status: "blocked",
+          status: "open",
           assignee: "reviewer@example.com",
         },
-        { title: "Added by mistake", status: "pending", assignee: "self" },
+        { title: "Added by mistake", status: "open", assignee: "self" },
+        { title: "Port the old theme", status: "dropped", assignee: "self" },
       ]);
 
-      // One item in progress per assignee: the child can work beside this
-      // agent, by name or by conversation_id.
+      // The child is the assignee by name or by conversation_id.
       await expect(
-        harness.updatePlan({
+        harness.updateTodos({
           update: [
             { id: brief!.id, status: "done" },
             {
               id: review!.id,
-              status: "in_progress",
               assignee: harness.childConversationId,
               notes: null,
             },
@@ -117,53 +113,55 @@ describe("updatePlan", () => {
           remove: [mistake!.id],
         }),
       ).resolves.toEqual({
-        items: [
+        todos: [
           { ...brief, status: "done" },
           {
             id: review!.id,
             title: "Review the draft",
-            status: "in_progress",
+            status: "open",
             assignee: "Echo",
           },
         ],
         removed_ids: [mistake!.id],
       });
 
-      // A call with no changes lists the open items.
-      await expect(harness.updatePlan({})).resolves.toEqual({
-        items: [
+      // A call with no changes lists only the open To-dos.
+      await expect(harness.updateTodos({})).resolves.toEqual({
+        todos: [
           {
             id: review!.id,
             title: "Review the draft",
-            status: "in_progress",
+            status: "open",
             assignee: "Echo",
           },
           approval,
         ],
       });
 
-      // The child reads the parent's open items, with assignees from its own
-      // view, but its updatePlan changes only its own plan.
+      // The child reads the parent's open To-dos, with assignees from its own
+      // view, but its updateTodos changes only its own To-dos.
       const { agents } = await harness.childListAgents();
       expect(agents.find((agent) => agent.relation === "parent")).toMatchObject(
         {
           conversation_id: parentConversationId,
-          plan: [
-            { id: review!.id, status: "in_progress", assignee: "self" },
+          todos: [
+            { id: review!.id, status: "open", assignee: "self" },
             { ...approval },
           ],
         },
       );
       await expect(
-        harness.childUpdatePlan({
+        harness.childUpdateTodos({
           update: [{ id: approval!.id, status: "done" }],
         }),
       ).rejects.toThrow(ToolInputError);
-      await expect(harness.childUpdatePlan({})).resolves.toEqual({ items: [] });
+      await expect(harness.childUpdateTodos({})).resolves.toEqual({
+        todos: [],
+      });
 
       // A person's status that the agent replaces shows in the result, since
-      // no later plan delta can show it.
-      await setPlanItemStatusByUser(getSqlExecutor(), {
+      // no later To-do delta can show it.
+      await setTodoStatusByUser(getSqlExecutor(), {
         conversationId: parentConversationId,
         id: approval!.id,
         nowMs: Date.now(),
@@ -171,11 +169,11 @@ describe("updatePlan", () => {
         userId: reviewer.id,
       });
       await expect(
-        harness.updatePlan({
-          update: [{ id: approval!.id, status: "blocked" }],
+        harness.updateTodos({
+          update: [{ id: approval!.id, status: "open" }],
         }),
       ).resolves.toEqual({
-        items: [approval],
+        todos: [approval],
         replaced_person_changes: [
           {
             id: approval!.id,
@@ -189,24 +187,31 @@ describe("updatePlan", () => {
     }
   });
 
-  it("rejects an assignee that is not a child agent and a second item in progress", async () => {
+  it("rejects an assignee that is not a child agent and an id that changes twice", async () => {
     const harness = await createHarness();
     try {
-      const { items } = await harness.updatePlan({
-        add: [{ title: "Write the brief", status: "in_progress" }],
+      const { todos } = await harness.updateTodos({
+        add: [{ title: "Write the brief" }, { title: "Run the checks" }],
       });
 
       await expect(
-        harness.updatePlan({
+        harness.updateTodos({
           add: [{ title: "Check the logs", assignee: "local:test:stranger" }],
         }),
       ).rejects.toThrow(ToolInputError);
       await expect(
-        harness.updatePlan({
-          add: [{ title: "Run the checks", status: "in_progress" }],
+        harness.updateTodos({
+          update: [{ id: todos[0]!.id, status: "done" }],
+          remove: [todos[0]!.id],
         }),
-      ).rejects.toThrow(/one item in_progress/);
-      await expect(harness.updatePlan({})).resolves.toEqual({ items });
+      ).rejects.toThrow(/once per call/);
+      // Only open, done, and dropped are statuses.
+      await expect(
+        harness.updateTodos({
+          update: [{ id: todos[1]!.id, status: "in_progress" }],
+        }),
+      ).rejects.toThrow(/open.*done.*dropped/s);
+      await expect(harness.updateTodos({})).resolves.toEqual({ todos });
     } finally {
       await harness.close();
     }

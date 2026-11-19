@@ -64,7 +64,7 @@ import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progre
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
 import { spawnAgentToolDefinition } from "@/chat/tools/runtime/spawn-agent";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
-import { updatePlanToolDefinition } from "@/chat/tools/runtime/update-plan";
+import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
@@ -150,7 +150,7 @@ function workspaceTool(
 // keep the order that they had.
 const CORE_TOOLS = {
   loadSkill: RUN_BUILT,
-  updatePlan: always(updatePlanToolDefinition),
+  updateTodos: always(updateTodosToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
   submitFeedback: always(submitFeedbackToolDefinition),

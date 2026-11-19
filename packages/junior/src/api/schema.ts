@@ -253,15 +253,15 @@ export {
   conversationWatchesReportSchema,
 } from "./schema/watch";
 export {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemStatusBodySchema,
-} from "./schema/plan";
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
+} from "./schema/todos";
 export type {
-  ConversationPlanItem,
-  ConversationPlanReport,
-  PlanItemStatusBody,
-} from "./schema/plan";
+  ConversationTodo,
+  ConversationTodosReport,
+  TodoStatusBody,
+} from "./schema/todos";
 export type {
   ConversationWatch,
   ConversationWatchesReport,

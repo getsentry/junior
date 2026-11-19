@@ -29,7 +29,7 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "./conversationMemory";
-import { ConversationPlan } from "./ConversationPlan";
+import { ConversationTodos } from "./ConversationTodos";
 import {
   ConversationWatches,
   useConversationWatches,
@@ -49,8 +49,8 @@ export function ConversationDetails(props: {
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
   brief?: Brief | undefined;
-  /** True when the viewer can close or reopen Plan items. */
-  canEditPlan: boolean;
+  /** True when the viewer can close or reopen To-dos. */
+  canEditTodos: boolean;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
@@ -184,8 +184,8 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        <ConversationPlan
-          canEdit={props.canEditPlan}
+        <ConversationTodos
+          canEdit={props.canEditTodos}
           conversationId={props.conversationId}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}

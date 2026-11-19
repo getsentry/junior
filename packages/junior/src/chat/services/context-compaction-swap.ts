@@ -36,7 +36,7 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -320,7 +320,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendPlanSnapshot(
+        await appendTodosSnapshot(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),

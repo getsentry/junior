@@ -1,7 +1,7 @@
 import type {
-  ConversationPlanItem,
-  ConversationPlanReport,
-  PlanItemStatusBody,
+  ConversationTodo,
+  ConversationTodosReport,
+  TodoStatusBody,
 } from "@sentry/junior/api/schema";
 import {
   ACTIVE_CONVERSATION_ID,
@@ -16,23 +16,23 @@ function iso(offsetMs: number): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
 
-/** Process-local status changes, so mock QA can close and reopen items. */
-const mockPlanStatuses = new Map<string, ConversationPlanItem["status"]>();
+/** Process-local status changes, so mock QA can close and reopen To-dos. */
+const mockTodoStatuses = new Map<string, ConversationTodo["status"]>();
 
-/** Clear mock plan changes so tests sharing a worker do not leak state. */
-export function resetMockPlan(): void {
-  mockPlanStatuses.clear();
+/** Clear mock To-do changes so tests sharing a worker do not leak state. */
+export function resetMockTodos(): void {
+  mockTodoStatuses.clear();
 }
 
-// The dashboard QA Conversation has one item of each shape: its own agent, a
-// child agent, a person, a private item, and a closed item. The viewer takes
-// part in the active one, so its rows show the status menu.
-const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
+// The dashboard QA Conversation has one To-do of each shape: its own agent, a
+// child agent, a person, a private To-do, a done one, and a dropped one. The
+// viewer takes part in the active one, so its rows show the status menu.
+const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
   [ACTIVE_CONVERSATION_ID]: () => [
     {
       id: 11,
       title: "Find the slow checkout span",
-      status: "in_progress",
+      status: "open",
       assignee: { kind: "self" },
       updatedAt: iso(-3 * MINUTE_MS),
     },
@@ -40,7 +40,7 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
       id: 12,
       title: "Compare p95 with last week",
       notes: "Use the same region filter as the alert.",
-      status: "in_progress",
+      status: "open",
       assignee: {
         kind: "agent",
         conversationId: "junior:local:checkout-latency:latency-sleuth",
@@ -51,7 +51,7 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
     {
       id: 13,
       title: "Confirm the rollback window",
-      status: "blocked",
+      status: "open",
       assignee: { kind: "user", name: "Morgan Lee" },
       updatedAt: iso(-6 * MINUTE_MS),
     },
@@ -67,7 +67,7 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
     {
       id: 41,
       title: "Fix the failing dashboard checks",
-      status: "in_progress",
+      status: "open",
       assignee: { kind: "self" },
       updatedAt: iso(-12 * MINUTE_MS),
     },
@@ -75,7 +75,7 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
       id: 42,
       title: "Review the dashboard plan before editing",
       notes: "Check the empty states and the dark theme too.",
-      status: "in_progress",
+      status: "open",
       assignee: {
         kind: "agent",
         conversationId: DASHBOARD_QA_PLAN_ID,
@@ -86,13 +86,13 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
     {
       id: 43,
       title: "Approve the preview deploy",
-      status: "blocked",
+      status: "open",
       assignee: { kind: "user", name: "Morgan Lee" },
       updatedAt: iso(-25 * MINUTE_MS),
     },
     {
       id: 44,
-      status: "pending",
+      status: "open",
       assignee: { kind: "self" },
       redacted: true,
       updatedAt: iso(-30 * MINUTE_MS),
@@ -105,35 +105,42 @@ const MOCK_PLANS: Record<string, () => ConversationPlanItem[]> = {
       changedBy: "Morgan Lee",
       updatedAt: iso(-40 * MINUTE_MS),
     },
+    {
+      id: 39,
+      title: "Port the old dashboard theme",
+      status: "dropped",
+      assignee: { kind: "self" },
+      updatedAt: iso(-45 * MINUTE_MS),
+    },
   ],
 };
 
-/** Return the Plan of one mock Conversation. */
-export function readMockConversationPlan(
+/** Return the To-dos of one mock Conversation. */
+export function readMockConversationTodos(
   conversationId: string,
-): ConversationPlanReport | undefined {
+): ConversationTodosReport | undefined {
   if (!readMockConversationDetail(conversationId)) return undefined;
-  const items = MOCK_PLANS[conversationId]?.() ?? [];
+  const todos = MOCK_TODOS[conversationId]?.() ?? [];
   return {
     conversationId,
-    items: items.map((item) => ({
-      ...item,
+    todos: todos.map((todo) => ({
+      ...todo,
       status:
-        mockPlanStatuses.get(`${conversationId}:${item.id}`) ?? item.status,
+        mockTodoStatuses.get(`${conversationId}:${todo.id}`) ?? todo.status,
     })),
   };
 }
 
-/** Set the status of one mock Plan item, like the API. */
-export function setMockPlanItemStatus(
+/** Set the status of one mock To-do, like the API. */
+export function setMockTodoStatus(
   conversationId: string,
-  itemId: number,
-  body: PlanItemStatusBody,
-): ConversationPlanItem | undefined {
-  const item = readMockConversationPlan(conversationId)?.items.find(
-    (candidate) => candidate.id === itemId,
+  todoId: number,
+  body: TodoStatusBody,
+): ConversationTodo | undefined {
+  const todo = readMockConversationTodos(conversationId)?.todos.find(
+    (candidate) => candidate.id === todoId,
   );
-  if (!item) return undefined;
-  mockPlanStatuses.set(`${conversationId}:${itemId}`, body.status);
-  return { ...item, status: body.status, updatedAt: iso(0) };
+  if (!todo) return undefined;
+  mockTodoStatuses.set(`${conversationId}:${todoId}`, body.status);
+  return { ...todo, status: body.status, updatedAt: iso(0) };
 }

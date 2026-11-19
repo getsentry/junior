@@ -4,8 +4,8 @@ import { createJuniorApi } from "@/api";
 import { CONVERSATION_VERSION_HEADER } from "@/api/schema";
 import type { JuniorApiEnv } from "@/api/route";
 import {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
+  conversationTodoSchema,
+  conversationTodosReportSchema,
 } from "@/api/schema";
 import {
   closeDb,
@@ -13,7 +13,7 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
-import { changePlan } from "@/chat/plan/store";
+import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationParticipants } from "@/db/schema";
 
@@ -29,12 +29,12 @@ async function authenticatedApi(email: string) {
   return { app, viewer };
 }
 
-async function readPlan(app: Hono<JuniorApiEnv>, conversationId: string) {
+async function readTodos(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await app.request(
-    `http://localhost/api/conversations/${conversationId}/plan`,
+    `http://localhost/api/conversations/${conversationId}/todos`,
   );
   expect(response.status).toBe(200);
-  return conversationPlanReportSchema.parse(await response.json()).items;
+  return conversationTodosReportSchema.parse(await response.json()).todos;
 }
 
 async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
@@ -46,11 +46,11 @@ async function detailVersion(app: Hono<JuniorApiEnv>, conversationId: string) {
 function setStatus(
   app: Hono<JuniorApiEnv>,
   conversationId: string,
-  itemId: number,
+  todoId: number,
   status: string,
 ) {
   return app.request(
-    `http://localhost/api/conversations/${conversationId}/plan/${itemId}`,
+    `http://localhost/api/conversations/${conversationId}/todos/${todoId}`,
     {
       body: JSON.stringify({ status }),
       headers: { "content-type": "application/json" },
@@ -59,13 +59,13 @@ function setStatus(
   );
 }
 
-describe("conversation plan API", () => {
+describe("conversation To-dos API", () => {
   afterEach(async () => {
     await closeDb();
   });
 
-  it("shows the plan to participants and lets them close items", async () => {
-    const conversationId = "local:test:plan";
+  it("shows To-dos to participants and lets them close and reopen them", async () => {
+    const conversationId = "local:test:todos";
     await getConversationStore().recordActivity({
       conversationId,
       destination: { platform: "local", conversationId },
@@ -73,7 +73,7 @@ describe("conversation plan API", () => {
       source: "internal",
       visibility: "private",
     });
-    const owner = await authenticatedApi("planner@example.com");
+    const owner = await authenticatedApi("owner@example.com");
     const outsider = await authenticatedApi("outsider@example.com");
     await getDb()
       .insert(juniorConversationParticipants)
@@ -84,8 +84,8 @@ describe("conversation plan API", () => {
       });
     const self = { conversationId };
     const {
-      items: [draft, approve],
-    } = await changePlan(getSqlExecutor(), {
+      todos: [draft, approve],
+    } = await changeTodos(getSqlExecutor(), {
       conversationId,
       nowMs: 1_000,
       change: {
@@ -93,12 +93,12 @@ describe("conversation plan API", () => {
           {
             title: "Draft the brief",
             notes: "Use the release notes.",
-            status: "in_progress",
+            status: "open",
             assignee: self,
           },
           {
             title: "Approve the brief",
-            status: "pending",
+            status: "open",
             assignee: { userId: owner.viewer.id },
           },
         ],
@@ -108,17 +108,17 @@ describe("conversation plan API", () => {
     });
 
     // Titles and notes are conversation content.
-    expect(await readPlan(outsider.app, conversationId)).toEqual([
+    expect(await readTodos(outsider.app, conversationId)).toEqual([
       {
         id: draft!.id,
-        status: "in_progress",
+        status: "open",
         assignee: { kind: "self" },
         redacted: true,
         updatedAt: new Date(1_000).toISOString(),
       },
       {
         id: approve!.id,
-        status: "pending",
+        status: "open",
         assignee: { kind: "user" },
         redacted: true,
         updatedAt: new Date(1_000).toISOString(),
@@ -128,9 +128,9 @@ describe("conversation plan API", () => {
       (await setStatus(outsider.app, conversationId, approve!.id, "done"))
         .status,
     ).toBe(404);
-    // Only the agent can start work.
+    // Only open, done, and dropped are statuses.
     expect(
-      (await setStatus(owner.app, conversationId, approve!.id, "in_progress"))
+      (await setStatus(owner.app, conversationId, approve!.id, "pending"))
         .status,
     ).toBe(400);
 
@@ -142,31 +142,39 @@ describe("conversation plan API", () => {
       "done",
     );
     expect(response.status).toBe(200);
-    // Open detail views reload the plan when the detail version moves.
+    // Open detail views reload the To-dos when the detail version moves.
     expect(await detailVersion(owner.app, conversationId)).not.toBe(
       beforeChange,
     );
-    expect(conversationPlanItemSchema.parse(await response.json())).toEqual(
+    expect(conversationTodoSchema.parse(await response.json())).toEqual(
       expect.objectContaining({
         status: "done",
-        changedBy: "planner@example.com",
+        changedBy: "owner@example.com",
       }),
     );
     expect(
       (await setStatus(owner.app, conversationId, 999_999, "done")).status,
     ).toBe(404);
 
-    // Open items come first, then recently closed ones.
-    expect(await readPlan(owner.app, conversationId)).toEqual([
+    // A person can drop a To-do and open it again.
+    expect(
+      (await setStatus(owner.app, conversationId, draft!.id, "dropped")).status,
+    ).toBe(200);
+    expect(
+      (await setStatus(owner.app, conversationId, draft!.id, "open")).status,
+    ).toBe(200);
+
+    // Open To-dos come first, then recently closed ones.
+    expect(await readTodos(owner.app, conversationId)).toEqual([
       expect.objectContaining({
         title: "Draft the brief",
         notes: "Use the release notes.",
-        status: "in_progress",
+        status: "open",
       }),
       expect.objectContaining({
         title: "Approve the brief",
         status: "done",
-        assignee: { kind: "user", name: "planner@example.com" },
+        assignee: { kind: "user", name: "owner@example.com" },
       }),
     ]);
   });

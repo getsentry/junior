@@ -2,19 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDashboardAgentName } from "../agentName";
 import {
   Circle,
-  CircleAlert,
   CircleCheck,
-  CircleDashed,
   CircleX,
   Ellipsis,
   LockKeyhole,
   type LucideIcon,
 } from "lucide-react";
 import {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  type ConversationPlanItem,
-  type PlanItemStatusBody,
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  type ConversationTodo,
+  type TodoStatusBody,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -34,67 +32,61 @@ import {
   DetailsRowLine,
 } from "./DetailsList";
 
-/** Load the open Plan items of one Conversation, then the latest closed ones. */
-export function useConversationPlan(conversationId: string) {
+/** Load the open To-dos of one Conversation, then the latest closed ones. */
+export function useConversationTodos(conversationId: string) {
   return useQuery({
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        conversationPlanReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/plan`,
+        conversationTodosReportSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/todos`,
         signal,
       ),
-    queryKey: conversationSideReadQueryKey(conversationId, "plan"),
+    queryKey: conversationSideReadQueryKey(conversationId, "todos"),
     retry: false,
   });
 }
 
-const statusIcons: Record<ConversationPlanItem["status"], LucideIcon> = {
-  pending: Circle,
-  in_progress: CircleDashed,
-  blocked: CircleAlert,
+const statusIcons: Record<ConversationTodo["status"], LucideIcon> = {
+  open: Circle,
   done: CircleCheck,
-  cancelled: CircleX,
+  dropped: CircleX,
 };
 
-const statusLabels: Record<ConversationPlanItem["status"], string> = {
-  pending: "Pending",
-  in_progress: "In progress",
-  blocked: "Blocked",
+const statusLabels: Record<ConversationTodo["status"], string> = {
+  open: "Open",
   done: "Done",
-  cancelled: "Cancelled",
+  dropped: "Dropped",
 };
 
-function assigneeLabel(item: ConversationPlanItem): string {
-  const { assignee } = item;
+function assigneeLabel(todo: ConversationTodo): string {
+  const { assignee } = todo;
   if (assignee.kind === "self") return getDashboardAgentName();
   if (assignee.kind === "agent") return assignee.name ?? "Child agent";
   return assignee.name ?? "Person";
 }
 
 /**
- * Show the Plan of one Conversation: open items, then recently closed ones,
- * each with its status and assignee. Participants can close or reopen an
- * item. The agent sees that change on its next Turn.
+ * Show the To-dos of one Conversation: open ones, then recently closed ones,
+ * each with its status and assignee. Participants can close or reopen a
+ * To-do. The agent sees that change on its next Turn.
  */
-export function ConversationPlan(props: {
+export function ConversationTodos(props: {
   canEdit: boolean;
   conversationId: string;
 }) {
-  const items = useConversationPlan(props.conversationId).data?.items ?? [];
-  if (items.length === 0) return null;
-  const open = items.filter(
-    (item) => item.status !== "done" && item.status !== "cancelled",
-  ).length;
+  const todos = useConversationTodos(props.conversationId).data?.todos ?? [];
+  if (todos.length === 0) return null;
+  const open = todos.filter((todo) => todo.status === "open").length;
   return (
-    <DetailsCard count={open} title="Plan">
+    <DetailsCard count={open} title="To-dos">
       <DetailsList
-        itemKey={(item) => String(item.id)}
-        items={items}
-        renderItem={(item) => (
-          <PlanItemRow
-            canEdit={props.canEdit && item.redacted !== true}
+        itemKey={(todo) => String(todo.id)}
+        items={todos}
+        renderItem={(todo) => (
+          <TodoRow
+            canEdit={props.canEdit && todo.redacted !== true}
             conversationId={props.conversationId}
-            item={item}
+            todo={todo}
           />
         )}
       />
@@ -102,42 +94,36 @@ export function ConversationPlan(props: {
   );
 }
 
-function PlanItemRow(props: {
+function TodoRow(props: {
   canEdit: boolean;
   conversationId: string;
-  item: ConversationPlanItem;
+  todo: ConversationTodo;
 }) {
-  const { item } = props;
-  const Icon = item.redacted ? LockKeyhole : statusIcons[item.status];
-  const closed = item.status === "done" || item.status === "cancelled";
+  const { todo } = props;
+  const Icon = todo.redacted ? LockKeyhole : statusIcons[todo.status];
+  const closed = todo.status !== "open";
   const row = (
     <DetailsRow
       icon={
         <Icon
-          aria-label={statusLabels[item.status]}
-          className={cn(
-            "size-3.5",
-            // Same tones as the Thread and Task status icons.
-            item.status === "in_progress" && "text-dashboard-accent",
-            item.status === "blocked" && "text-amber-400",
-            closed && "text-dashboard-text-faint",
-          )}
+          aria-label={statusLabels[todo.status]}
+          className={cn("size-3.5", closed && "text-dashboard-text-faint")}
           role="img"
         />
       }
-      meta={assigneeLabel(item)}
+      meta={assigneeLabel(todo)}
       title={
         <span
           className={cn(closed && "text-dashboard-text-muted line-through")}
         >
-          {item.title ?? "Private item"}
+          {todo.title ?? "Private To-do"}
         </span>
       }
-      tooltip={item.changedBy ? `Changed by ${item.changedBy}` : undefined}
+      tooltip={todo.changedBy ? `Changed by ${todo.changedBy}` : undefined}
     >
-      {item.notes ? (
+      {todo.notes ? (
         <DetailsRowLine className="line-clamp-2 break-words">
-          <DisplayText inline text={item.notes} />
+          <DisplayText inline text={todo.notes} />
         </DetailsRowLine>
       ) : null}
     </DetailsRow>
@@ -146,34 +132,34 @@ function PlanItemRow(props: {
   return (
     <div className="flex min-w-0 items-start gap-0.5">
       <div className="min-w-0 flex-1">{row}</div>
-      <PlanItemMenu
+      <TodoMenu
         closed={closed}
         conversationId={props.conversationId}
-        item={item}
+        todo={todo}
       />
     </div>
   );
 }
 
-function PlanItemMenu(props: {
+function TodoMenu(props: {
   closed: boolean;
   conversationId: string;
-  item: ConversationPlanItem;
+  todo: ConversationTodo;
 }) {
-  const setStatus = useSetPlanItemStatus(props.conversationId, props.item.id);
+  const setStatus = useSetTodoStatus(props.conversationId, props.todo.id);
   const actions: Array<{
     label: string;
-    status: PlanItemStatusBody["status"];
+    status: TodoStatusBody["status"];
   }> = props.closed
-    ? [{ label: "Reopen", status: "pending" }]
+    ? [{ label: "Reopen", status: "open" }]
     : [
         { label: "Mark done", status: "done" },
-        { label: "Cancel", status: "cancelled" },
+        { label: "Drop", status: "dropped" },
       ];
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
-        aria-label={`Change ${props.item.title ?? "plan item"}`}
+        aria-label={`Change ${props.todo.title ?? "To-do"}`}
         className="grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
         disabled={setStatus.isPending}
       >
@@ -193,18 +179,18 @@ function PlanItemMenu(props: {
   );
 }
 
-function useSetPlanItemStatus(conversationId: string, itemId: number) {
+function useSetTodoStatus(conversationId: string, todoId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (status: PlanItemStatusBody["status"]) =>
+    mutationFn: (status: TodoStatusBody["status"]) =>
       patch(
-        conversationPlanItemSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/plan/${itemId}`,
+        conversationTodoSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/todos/${todoId}`,
         { status },
       ),
     onSettled: () =>
       queryClient.invalidateQueries({
-        queryKey: conversationSideReadQueryKey(conversationId, "plan"),
+        queryKey: conversationSideReadQueryKey(conversationId, "todos"),
       }),
   });
 }

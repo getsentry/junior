@@ -5,7 +5,7 @@ import { reviewItemListQueryKey } from "../review-desk/queries";
 const CONVERSATION_SIDE_READS = [
   "agents",
   "memories",
-  "plan",
+  "todos",
   "watches",
 ] as const;
 

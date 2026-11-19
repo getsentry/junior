@@ -18,7 +18,7 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
@@ -187,8 +187,8 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updatePlan: (run) =>
-    createUpdatePlanTool(
+  updateTodos: (run) =>
+    createUpdateTodosTool(
       run.context,
       run.reviewItemServices().findMentionedUserId,
     ),

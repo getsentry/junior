@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
-import { deletePlanItems } from "@/chat/plan/store";
+import { deleteTodos } from "@/chat/todos/store";
 import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
@@ -133,8 +133,8 @@ export async function selectExpiredRoots(
           and review_items.automation_id is null
       )
       or exists (
-        select 1 from junior_plan_items plan_items
-        where plan_items.conversation_id = tree.conversation_id
+        select 1 from junior_todos todos
+        where todos.conversation_id = tree.conversation_id
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
@@ -198,7 +198,7 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. Plan items go with the transcript.
+ * conversations keep only safe metadata. To-dos go with the transcript.
  * Non-public content also loses its Briefs and the Review items that it
  * added. The metadata rows themselves survive.
  */
@@ -334,8 +334,8 @@ export async function purgeConversationTree(
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
-          // Plan items hold titles and notes from the transcript.
-          await deletePlanItems(executor, ids);
+          // To-dos hold titles and notes from the transcript.
+          await deleteTodos(executor, ids);
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic
