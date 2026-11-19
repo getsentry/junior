@@ -81,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
       await expect(composer).toBeVisible();
       await expect(composer).toHaveAttribute(
-        "placeholder",
+        "aria-placeholder",
         "Or type your answer…",
       );
       // The transcript keeps a one-line record of the ask.
@@ -114,7 +114,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       await question.getByRole("button", { name: /Roll out/ }).click();
       await expect(question).toHaveCount(0);
       await expect(record).toContainText("Roll out");
-      await expect(composer).toHaveAttribute("placeholder", "Message Junior…");
+      await expect(composer).toHaveAttribute(
+        "aria-placeholder",
+        "Message Junior…",
+      );
       await screenshot(page, "conversation-question-answered", {
         view: view.name,
       });
@@ -204,12 +207,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await composer.press("Enter");
     await expect(question).toContainText("1 of 2", { useInnerText: true });
     await expect(question.getByText("The batch is locked.")).toBeVisible();
-    await expect(composer).toHaveValue("Write off the negative invoices.");
+    await expect(composer).toHaveText("Write off the negative invoices.", {
+      useInnerText: true,
+    });
     await page.unroute(failing);
 
     await composer.press("Enter");
     await expect(question).toHaveCount(0);
-    await expect(composer).toHaveValue("");
+    await expect(composer).toHaveText("", { useInnerText: true });
     expect(actions).toEqual([
       {
         action: "submit",
@@ -486,7 +491,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(question).toBeFocused();
     await page.keyboard.type("Hold");
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Hold");
+    await expect(composer).toHaveText("Hold", { useInnerText: true });
     await composer.pressSequentially(" until Monday, the EU team is out.");
     await screenshot(page, "conversation-question-typed", { view: "desktop" });
     await composer.press("Enter");
@@ -536,7 +541,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Continue this conversation",
     });
     await expect(composer).toBeFocused();
-    await expect.poll(() => composer.inputValue()).toContain(`> ${quote}`);
+    await expect.poll(() => composer.innerText()).toContain(`> ${quote}`);
     await expect(question).toBeVisible();
   });
 });

@@ -11,6 +11,7 @@ export type ConversationTreeNode = {
   conversationId: string;
   kind: ConversationKind;
   parentConversationId?: string;
+  rootConversationId?: string;
 };
 
 /**
@@ -28,6 +29,7 @@ export async function readConversationTrees(
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(
@@ -42,6 +44,9 @@ export async function readConversationTrees(
         kind: conversationKindFromRow(row),
         ...(row.parentConversationId
           ? { parentConversationId: row.parentConversationId }
+          : undefined),
+        ...(row.rootConversationId
+          ? { rootConversationId: row.rootConversationId }
           : undefined),
       },
     ]),
