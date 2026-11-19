@@ -55,6 +55,8 @@ describe("merge conflict check on webhook events", () => {
   let pullRequestReads: number;
   let pullRequest: ReturnType<typeof pullRequestResponse>;
   let reactions: number;
+  /** Runs once, in the next read of the pull request. */
+  let duringPullRequestRead: (() => Promise<void>) | undefined;
 
   const deliver = async (
     deliveryId: string,
@@ -68,6 +70,7 @@ describe("merge conflict check on webhook events", () => {
     );
 
   beforeEach(async () => {
+    duringPullRequestRead = undefined;
     fixture = await createGitHubFixture();
     h = createPluginHarness(fixture);
     pullRequestReads = 0;
@@ -95,8 +98,11 @@ describe("merge conflict check on webhook events", () => {
       ),
       http.get(
         "https://api.github.com/repos/getsentry/junior/pulls/946",
-        () => {
+        async () => {
           pullRequestReads += 1;
+          const hook = duringPullRequestRead;
+          duringPullRequestRead = undefined;
+          await hook?.();
           return HttpResponse.json(pullRequest);
         },
       ),
@@ -654,6 +660,26 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 7 * hour, "7");
       expect(fixedShas()).toEqual(["1", "2", "3", "5", "6"]);
       expect(h.notices).toHaveLength(2);
+    });
+
+    it("adds no item for a conflict check that runs while Resume reads the pull request", async () => {
+      await askedInSlack();
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + hour, "2");
+      await checkAt(pushedAt + 2 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "3");
+      expect(h.notices).toHaveLength(1);
+      duringPullRequestRead = () => checkAt(pushedAt + 4 * hour, "3");
+      await h.answer({
+        choice: "Resume",
+        conversationId: "slack:C1:1.0",
+        dedupeKey: "merge-conflict:getsentry/junior#946",
+        itemId: "item-1",
+        nowMs: pushedAt + 4 * hour,
+      });
+      expect(duringPullRequestRead).toBeUndefined();
+      expect(h.notices).toHaveLength(1);
     });
 
     it("saves no Resume that starts no fix, so the next conflict asks again", async () => {

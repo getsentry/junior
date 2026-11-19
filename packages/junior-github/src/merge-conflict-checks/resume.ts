@@ -25,8 +25,8 @@ import {
 
 /**
  * Resume merge conflict fixes of one open Junior pull request, and start a
- * fix when it is not a draft and GitHub does not say that it can merge. Safe to repeat for one
- * item: the event key names the item, so a retry publishes no second fix.
+ * fix when it is not a draft and GitHub does not say that it can merge.
+ * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
  */
 export async function resumeGitHubConflictFixes(args: {
   db: GitHubDb;
@@ -41,25 +41,39 @@ export async function resumeGitHubConflictFixes(args: {
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
 }): Promise<void> {
+  const t = juniorGitHubPullRequests;
+  const [row] = await args.db
+    .select({ resumedAt: t.conflictFixesResumedAt })
+    .from(t)
+    .where(and(pullRequestRow(args.ref), eq(t.state, "open")));
+  if (!row) return;
+  // Save the Resume before the GitHub read. Core closed the item already,
+  // and until the Resume is saved a conflict check would add it again.
+  const resumedAt = new Date(args.nowMs);
+  const resumed = await args.db
+    .update(t)
+    .set({ conflictFixesResumedAt: resumedAt })
+    .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
+    .returning({ pullRequestId: t.pullRequestId });
+  if (resumed.length === 0) return;
   const loaded = gitHubPullRequestMergeSchema.parse(
     await args.loadPullRequest(args.ref),
   );
-  // A draft gets no fix, as in the policy. Save the Resume only when it
-  // starts a fix: the policy waits on a saved Resume until a fix lands.
+  // A draft gets no fix, as in the policy. Undo a Resume that starts no
+  // fix: the policy waits on a saved Resume until a fix lands.
   if (
     loaded.state !== "open" ||
     loaded.mergeable === true ||
     loaded.draft === true
   ) {
+    await args.db
+      .update(t)
+      .set({ conflictFixesResumedAt: row.resumedAt })
+      .where(
+        and(pullRequestRow(args.ref), eq(t.conflictFixesResumedAt, resumedAt)),
+      );
     return;
   }
-  const t = juniorGitHubPullRequests;
-  const resumed = await args.db
-    .update(t)
-    .set({ conflictFixesResumedAt: new Date(args.nowMs) })
-    .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
-    .returning({ pullRequestId: t.pullRequestId });
-  if (resumed.length === 0) return;
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {
