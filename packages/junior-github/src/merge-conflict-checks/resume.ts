@@ -25,7 +25,7 @@ import {
 
 /**
  * Resume merge conflict fixes of one open Junior pull request, and start a
- * fix when GitHub does not say that it can merge. Safe to repeat for one
+ * fix when it is not a draft and GitHub does not say that it can merge. Safe to repeat for one
  * item: the event key names the item, so a retry publishes no second fix.
  */
 export async function resumeGitHubConflictFixes(args: {
@@ -41,6 +41,18 @@ export async function resumeGitHubConflictFixes(args: {
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
 }): Promise<void> {
+  const loaded = gitHubPullRequestMergeSchema.parse(
+    await args.loadPullRequest(args.ref),
+  );
+  // A draft gets no fix, as in the policy. Save the Resume only when it
+  // starts a fix: the policy waits on a saved Resume until a fix lands.
+  if (
+    loaded.state !== "open" ||
+    loaded.mergeable === true ||
+    loaded.draft === true
+  ) {
+    return;
+  }
   const t = juniorGitHubPullRequests;
   const resumed = await args.db
     .update(t)
@@ -48,10 +60,6 @@ export async function resumeGitHubConflictFixes(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .returning({ pullRequestId: t.pullRequestId });
   if (resumed.length === 0) return;
-  const loaded = gitHubPullRequestMergeSchema.parse(
-    await args.loadPullRequest(args.ref),
-  );
-  if (loaded.state !== "open" || loaded.mergeable === true) return;
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {
@@ -85,7 +93,7 @@ export async function resumeGitHubConflictFixes(args: {
   ) {
     await args.watches.subscribe({
       ...gitHubPullRequestCreateWatch(args.subscription, {
-        draft: loaded.draft === true,
+        draft: false,
       }),
       resource,
     });
