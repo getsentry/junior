@@ -1,8 +1,10 @@
 // One invocation of the Turn engine runs one step: claim the Turn, run the
 // step on the stored history, then commit it and send the next step, or end
 // the Turn. A write that loses its lease changes nothing, so the invocation
-// stops and the new lease holder owns the Turn.
+// stops and the new lease holder owns the Turn. While the step runs, the
+// invocation checks its lease and aborts the step when the lease is lost.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import { publishTurnStep } from "@/core/turn/queue";
@@ -10,10 +12,16 @@ import {
   claimTurn,
   commitStep,
   failTurn,
+  holdsLease,
   type ClaimedTurn,
+  type TurnLease,
 } from "@/core/turn/state";
-import { runStep, type StepInput } from "@/core/turn/step";
+import { runStep, type StepInput, type StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
+
+// How often a running step checks that its lease still holds. A cancel or a
+// takeover stops the step's model request and tools within this time.
+const LEASE_CHECK_INTERVAL_MS = 1_000;
 
 /** The parts of a step's input that do not come from the Turn's history. */
 export type PreparedStep = Omit<StepInput, "messages" | "replay" | "signal">;
@@ -51,14 +59,15 @@ export async function advanceTurn(
     "gen_ai.conversation.id": claim.conversationId,
   });
   const prepared = await options.prepare(claim);
-  const result = await runStep({
+  const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
     messages: projectConversationEvents(events).messages,
     // A later claim of the same step means an earlier attempt did not commit.
     replay: claim.attempts > 1,
-    // Nothing aborts a step yet. The next change adds the cancel poll.
-    signal: new AbortController().signal,
   });
+  if (!result) {
+    return;
+  }
   switch (result.outcome) {
     case "continue":
       if (await commitStep(executor, claim, result)) {
@@ -75,5 +84,55 @@ export async function advanceTurn(
       const unhandled: never = result;
       throw new Error(`Unhandled step result: ${JSON.stringify(unhandled)}`);
     }
+  }
+}
+
+/**
+ * Runs the step, and aborts it when a check finds that the lease is lost.
+ * Undefined when the step stopped for that reason: the new lease holder or
+ * the cancel owns the Turn, so this invocation writes nothing.
+ */
+async function runStepWhileLeased(
+  executor: JuniorSqlDatabase,
+  lease: TurnLease,
+  input: Omit<StepInput, "signal">,
+): Promise<StepResult | undefined> {
+  const abort = new AbortController();
+  let checking = false;
+  let failureLogged = false;
+  const check = async () => {
+    if (checking || abort.signal.aborted) {
+      return;
+    }
+    checking = true;
+    try {
+      if (!(await holdsLease(executor, lease))) {
+        abort.abort(new Error("The Turn was cancelled or taken over"));
+      }
+    } catch (error) {
+      // A failed check proves nothing about the lease, so the step goes on.
+      // The commit fence still discards it if the lease is lost.
+      if (!failureLogged) {
+        failureLogged = true;
+        logException(error, "turn.lease_check.failed", {
+          "app.turn.id": lease.turnId,
+        });
+      }
+    } finally {
+      checking = false;
+    }
+  };
+  const timer = setInterval(() => void check(), LEASE_CHECK_INTERVAL_MS);
+  timer.unref?.();
+  try {
+    return await runStep({ ...input, signal: abort.signal });
+  } catch (error) {
+    // runStep throws when its signal aborts.
+    if (abort.signal.aborted) {
+      return undefined;
+    }
+    throw error;
+  } finally {
+    clearInterval(timer);
   }
 }

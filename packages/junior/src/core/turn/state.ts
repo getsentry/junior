@@ -30,9 +30,10 @@
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
-// `false`. Step: the write also matches only at the caller's claimed
-// `step_seq`, so a second commit of the same step changes nothing. Lease times
-// use the database clock, so hosts agree on expiry.
+// `false`. holdsLease reads the same fence without a write. Step: the write
+// also matches only at the caller's claimed `step_seq`, so a second commit of
+// the same step changes nothing. Lease times use the database clock, so hosts
+// agree on expiry.
 //
 // commitStep takes the Conversation lock before it touches the Turn row. A
 // writer that needs both takes them in this order, so writers cannot deadlock.
@@ -60,7 +61,7 @@ function leaseExpiry(leaseMs: number) {
   return sql`now() + ${leaseMs}::integer * interval '1 millisecond'`;
 }
 
-function holdsLease(lease: TurnLease) {
+function leaseFence(lease: TurnLease) {
   return and(
     eq(juniorTurns.id, lease.turnId),
     eq(juniorTurns.state, "running"),
@@ -110,6 +111,22 @@ export async function claimTurn(
   return claimed;
 }
 
+/**
+ * Checks without a write that the lease still holds: the Turn runs under the
+ * caller's `lease_epoch`. False after a cancel, a takeover, or a reclaim.
+ */
+export async function holdsLease(
+  executor: JuniorSqlDatabase,
+  lease: TurnLease,
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .select({ id: juniorTurns.id })
+    .from(juniorTurns)
+    .where(leaseFence(lease));
+  return rows.length > 0;
+}
+
 /** Extends the lease by `leaseMs` from now. False when the lease is lost. */
 export async function heartbeat(
   executor: JuniorSqlDatabase,
@@ -120,7 +137,7 @@ export async function heartbeat(
     .db()
     .update(juniorTurns)
     .set({ leaseExpiresAt: leaseExpiry(leaseMs), updatedAt: sql`now()` })
-    .where(holdsLease(lease))
+    .where(leaseFence(lease))
     .returning({ id: juniorTurns.id });
   return rows.length > 0;
 }
@@ -156,7 +173,7 @@ export async function commitStep(
         )
         .where(
           and(
-            holdsLease(turn),
+            leaseFence(turn),
             eq(juniorTurns.conversationId, turn.conversationId),
             eq(juniorTurns.stepSeq, turn.stepSeq),
           ),
@@ -192,7 +209,7 @@ export async function completeTurn(
       updatedAt: sql`now()`,
       endedAt: sql`now()`,
     })
-    .where(holdsLease(lease))
+    .where(leaseFence(lease))
     .returning({ id: juniorTurns.id });
   return rows.length > 0;
 }
@@ -214,7 +231,7 @@ export async function failTurn(
       updatedAt: sql`now()`,
       endedAt: sql`now()`,
     })
-    .where(holdsLease(lease))
+    .where(leaseFence(lease))
     .returning({ id: juniorTurns.id });
   return rows.length > 0;
 }

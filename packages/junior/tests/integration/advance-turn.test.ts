@@ -18,6 +18,7 @@ import {
 import {
   buildJuniorSqlConversation,
   createJuniorSqlFixture,
+  hasJuniorPostgresTestDatabase,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
@@ -161,6 +162,60 @@ function advance(prepare: () => Promise<PreparedStep>, leaseMs = LEASE_MS) {
   );
 }
 
+/**
+ * A step whose model request runs `interrupt`, then waits until the step's
+ * signal aborts. The request ends only through the abort.
+ */
+function prepareInterrupted(interrupt: () => Promise<unknown>): {
+  prepare: () => Promise<PreparedStep>;
+} {
+  const complete = createModelComplete([
+    { type: "text", text: "Too late.", waitFor: "abort" },
+  ]);
+  return {
+    prepare: () =>
+      Promise.resolve({
+        systemPrompt: "You are Junior.",
+        tools: [],
+        complete: async (context, signal) => {
+          await interrupt();
+          return complete(context, signal);
+        },
+      }),
+  };
+}
+
+/** Waits until a lease check that started after `after` waits on a lock. */
+async function blockedLeaseCheck(after?: string) {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    // Its own session: a transaction would see one snapshot of
+    // pg_stat_activity. Text keeps the microseconds that a Date would drop.
+    const [check] = await fixture.sql.queryIsolated<{
+      pid: number;
+      queryStart: string;
+    }>(
+      `
+        select pid, query_start::text as "queryStart"
+        from pg_stat_activity
+        where datname = current_database()
+          and pid <> pg_backend_pid()
+          and wait_event_type = 'Lock'
+          and query ilike 'select%from "junior_turns"%'
+          and query_start > coalesce($1::timestamptz, '-infinity')
+      `,
+      [after ?? null],
+    );
+    if (check) {
+      return check;
+    }
+    if (Date.now() > deadline) {
+      throw new Error("Timed out waiting for a lease check");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 function sendTool(executed: string[]): ToolDefinition {
   return {
     name: "send",
@@ -260,26 +315,29 @@ describe("advanceTurn", () => {
     },
   );
 
-  it("writes nothing when another invocation took over the Turn during the step", async () => {
-    const reply = sendCallReply();
-    const { prepare } = prepareWith([reply]);
-    const takeover = async () => {
-      const prepared = await prepare();
-      return {
-        ...prepared,
-        complete: async (context: Context, signal: AbortSignal) => {
-          // The lease of this invocation has expired, so a redelivery claims it.
-          await claimTurn(fixture.sql, {
-            turnId,
-            owner: "worker-b",
-            leaseMs: LEASE_MS,
-          });
-          return prepared.complete(context, signal);
-        },
-      };
-    };
+  it("stops the step when the Turn is cancelled during it, and writes nothing", async () => {
+    const { prepare } = prepareInterrupted(() =>
+      cancelTurn(fixture.sql, turnId),
+    );
 
-    await advance(takeover, EXPIRED_LEASE_MS);
+    await advance(prepare);
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "cancelled",
+      stepSeq: 0,
+      leaseOwner: null,
+    });
+    await expect(loadHistory()).resolves.toEqual([]);
+    await expect(deliveredStepMessages()).resolves.toBe(0);
+  });
+
+  it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
+    // The lease of this invocation has expired, so a redelivery claims it.
+    const { prepare } = prepareInterrupted(() =>
+      claimTurn(fixture.sql, { turnId, owner: "worker-b", leaseMs: LEASE_MS }),
+    );
+
+    await advance(prepare, EXPIRED_LEASE_MS);
 
     await expect(readTurn()).resolves.toMatchObject({
       state: "running",
@@ -290,6 +348,77 @@ describe("advanceTurn", () => {
     await expect(loadHistory()).resolves.toEqual([]);
     await expect(deliveredStepMessages()).resolves.toBe(0);
   });
+
+  it("stops a tool that respects the signal when the Turn is cancelled", async () => {
+    const reply = sendCallReply();
+    await advance(prepareWith([reply]).prepare);
+    const send: ToolDefinition = {
+      ...sendTool([]),
+      execute: async (_args, { signal }) => {
+        await cancelTurn(fixture.sql, turnId);
+        // The tool works until its signal aborts.
+        await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+        return { content: [{ type: "text", text: "sent" }] };
+      },
+    };
+
+    await advance(prepareWith([], [send]).prepare);
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "cancelled",
+      stepSeq: 1,
+    });
+    await expect(loadHistory()).resolves.toEqual([reply]);
+    // Only the step that the first advance committed.
+    await expect(deliveredStepMessages()).resolves.toBe(1);
+  });
+
+  // Holding a table lock needs a second database session, which PGlite lacks.
+  it.skipIf(!hasJuniorPostgresTestDatabase())(
+    "goes on with the step when a lease check fails",
+    async () => {
+      const reply = createAssistantMessage({ type: "text", text: "All done." });
+      const { prepare } = prepareWith([reply]);
+      let abortedAfterFailedCheck: boolean | undefined;
+      const failingCheck = async () => {
+        const prepared = await prepare();
+        return {
+          ...prepared,
+          complete: async (context: Context, signal: AbortSignal) => {
+            // Injected fault: a lease check fails. A table lock holds the
+            // check, and the test cancels its query.
+            await fixture.sql.transaction(async () => {
+              await fixture.sql.execute(
+                "LOCK TABLE junior_turns IN ACCESS EXCLUSIVE MODE",
+              );
+              const failed = await blockedLeaseCheck();
+              await fixture.sql.query("select pg_cancel_backend($1)", [
+                failed.pid,
+              ]);
+              // Checks do not overlap, so a later check means the failed one
+              // has ended.
+              await blockedLeaseCheck(failed.queryStart);
+            });
+            abortedAfterFailedCheck = signal.aborted;
+            return prepared.complete(context, signal);
+          },
+        };
+      };
+
+      await advance(failingCheck);
+
+      expect(abortedAfterFailedCheck).toBe(false);
+      await expect(readTurn()).resolves.toMatchObject({
+        state: "completed",
+        stepSeq: 1,
+      });
+      await expect(loadHistory()).resolves.toEqual([reply]);
+    },
+  );
 
   it("runs a tool that must not run twice on the first attempt of its step", async () => {
     const executed: string[] = [];
