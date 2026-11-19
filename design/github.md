@@ -8,7 +8,7 @@ also wake a Conversation or run an Event automation.
 ## Intent
 
 - Junior carries its PR to the requester's review without asking
-  ([Notifications](./notifications.md)).
+  ([Attention](./attention.md)).
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
 - Junior never approves or merges a PR. A person merges it.

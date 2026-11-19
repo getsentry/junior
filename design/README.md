@@ -34,6 +34,8 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
+- [Attention](./attention.md): when Junior asks for a person's attention.
+  Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
@@ -43,8 +45,6 @@ Do not list behaviors. The verification map in
 - [Guardian](./guardian.md): review of each tool action before it runs.
 - [Inbox](./inbox.md): the dashboard view of the Review desk, one stack of
   cards for each root Conversation.
-- [Notifications](./notifications.md): when Junior interrupts a person, and
-  when it works without a word.
 - [Review desk](./review-desk.md): work that waits for a person, labeled
   "Inbox" in the dashboard.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for

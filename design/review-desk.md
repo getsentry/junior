@@ -13,7 +13,7 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   these.
 - There is one way to ask a person, and only for a decision that is theirs
   and blocks the work. Progress, status, offers, scope choices, and work
-  that Junior owns are not items ([Notifications](./notifications.md)).
+  that Junior owns are not items ([Attention](./attention.md)).
   Whether Junior starts new work for the requester, such as a Thread that
   implements an issue it filed, is the requester's decision, not an offer.
 - A notice tells a person about something that they must fix, such as a

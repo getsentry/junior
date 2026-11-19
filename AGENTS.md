@@ -7,8 +7,8 @@ Read the reference files at the end when your work touches their area.
 - Don't state the obvious. Minimize visual noise in UI. In UI copy, agent
   replies, Slack messages, docs, and PR text, cut what the context already shows.
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
-- Never ask a person to do the obviously right thing; do it. Interrupt a
-  person only as `design/notifications.md` allows.
+- Never ask a person to do the obviously right thing; do it. Ask for a
+  person's attention only as `design/attention.md` allows.
 - Build the smallest design that solves the proven problem. No speculative
   abstractions, configuration, or wrappers.
 - Write TypeScript, not Java: functions, plain objects, simple types, small
