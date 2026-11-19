@@ -30,8 +30,10 @@ export interface OutcomeBucket {
 const changes = juniorCodeChanges;
 const linked = alias(juniorConversations, "linked");
 const tree = alias(juniorConversations, "outcome_tree");
-// A code change lists every Conversation that worked on it.
-const linksChange = sql`${linked.conversationId} = any(${changes.conversationIds})`;
+// A code change lists every Conversation that worked on it. Joining the
+// unnested ids by equality lets Postgres hash-join them to Conversations
+// instead of looking up each listed id by key.
+const unnestedConversationId = sql<string>`unnest(${changes.conversationIds})`;
 // Roots normally reference themselves. A root without the reference is its
 // own root.
 const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.conversationId})`;
@@ -180,15 +182,23 @@ export async function readWindowMerges(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ) {
-  const mergedRoots = db
-    .selectDistinct({
+  const mergedIds = db
+    .select({
       changeId: changes.id,
+      listedId: unnestedConversationId.as("listed_id"),
       mergedAt: changes.mergedAt,
-      rootId: linkedRoot.as("root_id"),
     })
     .from(changes)
-    .innerJoin(linked, linksChange)
     .where(eq(changes.state, "merged"))
+    .as("merged_ids");
+  const mergedRoots = db
+    .selectDistinct({
+      changeId: mergedIds.changeId,
+      mergedAt: mergedIds.mergedAt,
+      rootId: linkedRoot.as("root_id"),
+    })
+    .from(mergedIds)
+    .innerJoin(linked, eq(linked.conversationId, mergedIds.listedId))
     .as("merged_roots");
   const counted = db
     .select({
@@ -246,10 +256,9 @@ export async function readBriefOutcomeRoots(
     .orderBy(desc(briefs.version))
     .limit(1)
     .as("latest_brief");
-  // Every root with a linked code change, read once for the anti-join. One
-  // hash join on the unnested ids replaces a key lookup per listed id.
+  // Every root with a linked code change, read once for the anti-join.
   const changeIds = db
-    .select({ id: sql<string>`unnest(${changes.conversationIds})`.as("id") })
+    .select({ id: unnestedConversationId.as("id") })
     .from(changes)
     .as("change_ids");
   const changeRoots = db
