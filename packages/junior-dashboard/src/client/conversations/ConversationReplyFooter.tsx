@@ -33,6 +33,7 @@ import {
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
+import { queuedTextInDraft, setQueuedTextInDraft } from "./queuedEditText";
 import {
   useAppendConversationMessage,
   useCancelConversationPendingMessages,
@@ -145,14 +146,28 @@ function ReplyFooter(props: {
   const hasQuestionAnswersRef = useRef(hasQuestionAnswers);
   hasQuestionAnswersRef.current = hasQuestionAnswers;
   const { confirmSubmit } = unsentAnswers;
+  // Resolves to true when the queued message of the edit in flight left the
+  // queue. Its text is in the draft before the cancel lands.
+  const editCancelledRef = useRef<Promise<boolean>>(undefined);
   // A failed answer keeps the draft, so the reader can send both again.
   // Only a message drops the details-panel picks, so only a message asks.
   const beforeSubmit = useCallback(
     ({ sendsMessage }: { sendsMessage: boolean }) => {
-      const confirmation = sendsMessage ? confirmSubmit() : undefined;
-      if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
+      const editCancelled = editCancelledRef.current;
+      // A send during an edit waits for its cancel, and stops when the
+      // queued message is still queued or Junior read it. Then the text does
+      // not go out twice, and the reader sees the edit error. The unsent
+      // answers dialog opens only after the wait, so a stopped send leaves
+      // none open.
+      const confirm = () => (sendsMessage ? confirmSubmit() : undefined);
+      const confirmation = editCancelled ? undefined : confirm();
+      if (!editCancelled && !confirmation && !hasQuestionAnswersRef.current) {
+        return undefined;
+      }
       return (async () => {
-        if (confirmation && !(await confirmation)) return false;
+        if (editCancelled && !(await editCancelled)) return false;
+        const confirmed = editCancelled ? confirm() : confirmation;
+        if (confirmed && !(await confirmed)) return false;
         return (await questionAnswersRef.current?.send()) ?? true;
       })();
     },
@@ -298,13 +313,30 @@ function ReplyFooter(props: {
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
+      const conversationId = props.conversationId;
       const inboundMessageId = message.inboundMessageId;
+      const text = message.text ?? "";
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
+      // Text alone moves at once, before the cancel, and into the saved
+      // draft. When the edit fails, it stays with the error and the reader
+      // decides. Text with files moves with its files after the cancel, so
+      // the reader cannot send the text without them.
+      const textFirst = !message.attachments?.length;
+      let settleEdit = (_cancelled: boolean) => {};
+      if (textFirst) {
+        editCancelledRef.current = new Promise((resolve) => {
+          settleEdit = resolve;
+        });
+      }
+      if (textFirst && !queuedTextInDraft(conversationId, inboundMessageId)) {
+        setQueuedTextInDraft(conversationId, inboundMessageId, true);
+        composerRef.current?.restoreMessage({ text });
+      }
       try {
         // Read files first. A failed read must leave the message queued.
         const files = await readStoredComposerFiles(
-          props.conversationId,
+          conversationId,
           message.attachments,
         );
         // The reader left during the read. Keep the message in the queue.
@@ -318,23 +350,31 @@ function ReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
+        const cancelled =
+          result.cancelledInboundMessageIds.includes(inboundMessageId);
+        settleEdit(cancelled);
+        if (textFirst) {
+          setQueuedTextInDraft(conversationId, inboundMessageId, false);
+        }
         // Junior can read the message before the cancel lands, or someone
         // else can remove it. Then there is nothing to edit.
-        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+        if (!cancelled) {
           setQueueActionError("That message was already read or removed.");
           return;
         }
-        const restored = { files, text: message.text ?? "" };
+        if (textFirst) return;
         if (composerRef.current) {
-          composerRef.current.restoreMessage(restored);
+          composerRef.current.restoreMessage({ files, text });
         } else {
           // The reader left during the cancel. Keep the text in the saved
           // draft so it is there when they come back.
-          restoreStoredDraftText(props.conversationId, restored.text);
+          restoreStoredDraftText(conversationId, text);
         }
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
+        settleEdit(false);
+        editCancelledRef.current = undefined;
         editingRef.current = false;
         setEditTargetInboundMessageId(undefined);
       }

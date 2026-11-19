@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { AVATAR_WIDTH } from "@/chat/identities/avatar";
 import { readImage } from "@/chat/images/read";
+import type { WaitUntilFn } from "@/handlers/types";
 import { jsonResponse, throwApiError } from "../http";
 import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
@@ -20,11 +21,13 @@ import { readPersonCard } from "./card";
 import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
-import { readPeopleProfile } from "./profile";
+import { readPeopleProfileFromSql } from "./profile.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
-export function createPeopleRoutes(): Hono<JuniorApiEnv> {
+export function createPeopleRoutes(options: {
+  waitUntil: WaitUntilFn;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   // Profile photos keep this stable path. The shared image code fetches and
@@ -54,7 +57,10 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   });
 
   app.get("/", async () =>
-    jsonResponse(actorDirectoryReportSchema, await readPeopleList()),
+    jsonResponse(
+      actorDirectoryReportSchema,
+      await readPeopleList({ waitUntil: options.waitUntil }),
+    ),
   );
 
   app.get(
@@ -115,7 +121,7 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
       const viewer = context.get("viewer");
       return jsonResponse(
         actorProfileReportSchema,
-        await readPeopleProfile(email, viewer ? { viewer } : {}),
+        await readPeopleProfileFromSql(email, viewer ? { viewer } : {}),
       );
     },
   );

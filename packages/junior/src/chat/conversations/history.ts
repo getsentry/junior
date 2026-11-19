@@ -749,6 +749,11 @@ export interface ConversationEventStore {
     conversationId: string,
     type: KnownConversationEventType,
   ): Promise<ConversationEvent[]>;
+  /** Events of one type in the current history version in `seq` order. */
+  loadCurrentEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
   /**
    * Bounded raw event page for observational/debug reads.
    * Defaults to the newest matching events when neither bound is set.

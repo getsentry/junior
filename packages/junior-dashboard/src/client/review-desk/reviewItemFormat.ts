@@ -1,6 +1,5 @@
 import * as z from "zod";
 import {
-  answeredChoices,
   normalizeUserInputAnswer,
   type ConversationReportEvent,
   type ReviewItemPayload,
@@ -167,18 +166,6 @@ function answeredLine(choices: readonly string[]): string {
   return choices.length > 0
     ? `You answered ${choices.join(", ")}`
     : "You replied";
-}
-
-/**
- * Say what the viewer answered, such as "You answered Hold", so a toast
- * confirms it as it goes. An answer with no choice, only text, is "You
- * replied".
- */
-export function viewerAnswerLine(
-  item: Pick<ReviewItemPayload, "answer" | "request">,
-): string | undefined {
-  if (!item.request || !item.answer) return undefined;
-  return answeredLine(answeredChoices(item.request, item.answer));
 }
 
 /**

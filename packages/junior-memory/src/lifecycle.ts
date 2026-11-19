@@ -6,9 +6,23 @@
  * changed. Both soft-archive the old memory with a reason, so a person can
  * restore it. Callers own the evidence gate; this module owns the write.
  */
-import { and, eq, gt, inArray, isNull, or, type SQL } from "drizzle-orm";
-import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import { publicMemoryScope } from "./scope";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  type SQL,
+} from "drizzle-orm";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
+} from "./db/schema";
+import { publicMemoryScope, type ResolvedMemoryScope } from "./scope";
 import type { MemoryDb } from "./store";
 
 /** Archive reasons that automatic retirement writes. */
@@ -56,12 +70,41 @@ export async function loadActiveMemoryRows(
 }
 
 /**
- * Soft-archive active public memories with an automatic reason, and drop
- * their vectors. A memory that is no longer active is left as it is.
+ * Find the archived memory that holds a write key. A retried write with that
+ * key must not bring back a memory that a person or a Turn retired. An
+ * expired memory is not retired: a retry may write it again.
+ */
+export async function findArchivedWriteKeyMemory(
+  db: MemoryDb,
+  args: { idempotencyKey: string; scope: ResolvedMemoryScope },
+): Promise<MemoryRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        eq(juniorMemoryMemories.scope, args.scope.scope),
+        eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+        eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
+        isNotNull(juniorMemoryMemories.archivedAtMs),
+        ne(juniorMemoryMemories.archiveReason, "expired"),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
+ * Soft-archive active public memories with an automatic reason, drop their
+ * vectors, and record one signal per memory with the evidence Conversation.
+ * A memory that is no longer active is left as it is.
  */
 export async function retireMemoryRows(
   db: MemoryDb | MemoryTx,
   args: {
+    /** Write key of the Turn or memory that retired the rows. */
+    auditKey: string;
+    conversationId: string | undefined;
     filters?: SQL[];
     ids: readonly string[];
     nowMs: number;
@@ -70,30 +113,46 @@ export async function retireMemoryRows(
   },
 ): Promise<MemoryRow[]> {
   if (args.ids.length === 0) return [];
-  const retired = await db
-    .update(juniorMemoryMemories)
-    .set({
-      archivedAtMs: args.nowMs,
-      archiveReason: args.reason,
-      // supersededAtMs stays empty: with it, an archived row would read as
-      // an idempotency alias. An active row has no supersededById yet.
-      supersededById: args.supersededById ?? null,
-    })
-    .where(
-      and(
-        ...activePublicPredicate(args.nowMs),
-        ...(args.filters ?? []),
-        inArray(juniorMemoryMemories.id, [...args.ids]),
-      ),
-    )
-    .returning();
-  if (retired.length > 0) {
-    await db.delete(juniorMemoryEmbeddings).where(
-      inArray(
-        juniorMemoryEmbeddings.memoryId,
-        retired.map((row) => row.id),
-      ),
-    );
-  }
-  return retired;
+  // Archive and signal commit together, so the audit trail has no gaps. In a
+  // caller's transaction this is a savepoint.
+  return await db.transaction(async (tx) => {
+    const retired = await tx
+      .update(juniorMemoryMemories)
+      .set({
+        archivedAtMs: args.nowMs,
+        archiveReason: args.reason,
+        // supersededAtMs stays empty: with it, an archived row would read as
+        // an idempotency alias. An active row has no supersededById yet.
+        supersededById: args.supersededById ?? null,
+      })
+      .where(
+        and(
+          ...activePublicPredicate(args.nowMs),
+          ...(args.filters ?? []),
+          inArray(juniorMemoryMemories.id, [...args.ids]),
+        ),
+      )
+      .returning();
+    if (retired.length > 0) {
+      await tx.delete(juniorMemoryEmbeddings).where(
+        inArray(
+          juniorMemoryEmbeddings.memoryId,
+          retired.map((row) => row.id),
+        ),
+      );
+      await tx
+        .insert(juniorMemorySignals)
+        .values(
+          retired.map((row) => ({
+            conversationId: args.conversationId ?? null,
+            idempotencyKey: args.auditKey,
+            memoryId: row.id,
+            observedAtMs: args.nowMs,
+            signal: args.reason,
+          })),
+        )
+        .onConflictDoNothing();
+    }
+    return retired;
+  });
 }

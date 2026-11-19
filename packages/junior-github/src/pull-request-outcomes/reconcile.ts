@@ -163,6 +163,7 @@ async function reconcileDraft(
     db: args.db,
     log: args.log,
     outcome,
+    reviewItems: args.reviewItems,
   });
 }
 
@@ -284,6 +285,7 @@ async function reconcilePullRequest(
     db: args.db,
     log: args.log,
     outcome,
+    reviewItems: args.reviewItems,
   });
 }
 

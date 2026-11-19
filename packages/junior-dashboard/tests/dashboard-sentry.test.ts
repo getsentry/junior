@@ -4,6 +4,9 @@ import {
   startInactiveSpan,
   type BrowserOptions,
 } from "@sentry/browser";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initDashboardSentry, sendFeedback } from "@dashboard/sentry";
@@ -201,5 +204,72 @@ describe("dashboard browser Sentry", () => {
         ],
       },
     ]);
+  });
+
+  it("records each compressed body size on its own fetch span", async () => {
+    // Two requests to one URL overlap, and the first one finishes last.
+    const bodies = [
+      gzipSync(JSON.stringify({ rows: "x".repeat(10_000) })),
+      gzipSync(JSON.stringify({ rows: "y" })),
+    ];
+    let requests = 0;
+    const server = createServer((_request, response) => {
+      const body = bodies[requests++];
+      setTimeout(
+        () => {
+          response.writeHead(200, {
+            "content-encoding": "gzip",
+            "content-type": "application/json",
+          });
+          response.end(body);
+        },
+        body === bodies[0] ? 100 : 0,
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as AddressInfo;
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+    });
+    const originalFetch = globalThis.fetch;
+    try {
+      initDashboardSentry("classic");
+      const client = getClient();
+      const spans: Span[] = [];
+      client?.on("beforeEnvelope", (envelope) => {
+        for (const [, payload] of envelope[1]) {
+          spans.push(...((payload as { items?: Span[] }).items ?? []));
+        }
+      });
+
+      const url = `http://127.0.0.1:${port}/api/report`;
+      const first = fetch(url).then((response) => response.text());
+      await vi.waitFor(() => expect(requests).toBe(1));
+      await Promise.all([
+        first,
+        fetch(url).then((response) => response.text()),
+      ]);
+      await vi.waitFor(async () => {
+        await client?.flush();
+        const fetchSpans = spans
+          .filter(
+            ({ attributes }) =>
+              (attributes["sentry.op"] as { value?: string })?.value ===
+              "http.client",
+          )
+          .sort((a, b) => a.start_timestamp - b.start_timestamp);
+        expect(fetchSpans.map(({ attributes }) => attributes)).toMatchObject(
+          bodies.map((body) => ({
+            "http.response.body.size": { value: body.length },
+          })),
+        );
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      server.close();
+    }
   });
 });

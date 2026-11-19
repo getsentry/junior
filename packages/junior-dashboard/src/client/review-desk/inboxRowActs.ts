@@ -8,7 +8,6 @@ import type { RefObject } from "react";
 import { useToastManager } from "../components/ui/toast";
 import { useReviewItemAction } from "./queries";
 import type { InboxCardActions } from "./RowHoverActions";
-import { viewerAnswerLine } from "./reviewItemFormat";
 import {
   showReturnedRow,
   type useLeaveCard,
@@ -58,9 +57,6 @@ function openRowKey(scroller: HTMLElement): string {
  * of a row with more puts only that card away. Actions in flight settle
  * one by one.
  *
- * An answer says what the viewer answered in a toast as it goes, so the
- * row that leaves at once still confirms it.
- *
  * When an action fails, its items come back in their places, and a toast
  * names the action and offers Retry. The row opens again only when the
  * viewer has not moved on: the row that opened in its place is still the
@@ -85,7 +81,6 @@ export function useInboxRowActs(options: {
     body: ReviewItemActionBody,
   ): Promise<void> => {
     const toastId = `inbox-action-error:${row.key}`;
-    const answerToastId = `inbox-answer:${row.key}`;
     close(toastId);
     const ids = new Set(items.map((item) => item.id));
     const open = row.items.filter((item) => item.status === "open");
@@ -99,22 +94,6 @@ export function useInboxRowActs(options: {
       holdLeaving(items, true);
       opened = leaveCard(row.key, only.id, () => holdLeaving(items, false));
     }
-    const [answered] = items;
-    const answerTitle =
-      body.action === "submit" && answered
-        ? viewerAnswerLine({
-            answer: { ...body.answer, requestId: answered.id },
-            request: answered.request,
-          })
-        : undefined;
-    if (answerTitle) {
-      add({
-        description: row.title,
-        id: answerToastId,
-        title: answerTitle,
-        type: "success",
-      });
-    }
     const limit = pLimit(ROW_ACTION_REQUESTS);
     const results = await Promise.allSettled(
       items.map((item) =>
@@ -125,8 +104,6 @@ export function useInboxRowActs(options: {
       (_, index) => results[index]?.status === "rejected",
     );
     if (failed.length === 0) return;
-    // The failure toast takes the place of the answer's.
-    close(answerToastId);
     const area = scroller.current;
     if (area) {
       if (opened !== undefined && openRowKey(area) === opened && !typing())

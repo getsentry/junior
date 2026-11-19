@@ -255,6 +255,14 @@ async function vectorCount(fixture: MemoryFixture, id: string) {
   return rows.length;
 }
 
+async function signalRows(fixture: MemoryFixture, id: string) {
+  return await fixture
+    .db()
+    .select()
+    .from(memorySqlSchema.juniorMemorySignals)
+    .where(eq(memorySqlSchema.juniorMemorySignals.memoryId, id));
+}
+
 describe("automatic memory retirement", () => {
   it("archives a recalled memory that the Turn's tool result contradicts", async () => {
     const fixture = await createMemoryFixture();
@@ -315,6 +323,29 @@ describe("automatic memory retirement", () => {
         supersededById: replacement.id,
       });
       expect(await vectorCount(fixture, old.id)).toBe(0);
+      expect(await signalRows(fixture, old.id)).toEqual([
+        expect.objectContaining({
+          conversationId: "slack:C123:1718800099.000000",
+          idempotencyKey: expect.stringMatching(/^session:/),
+          signal: "contradicted",
+        }),
+      ]);
+      // A retry of the write that made the old memory does not bring it back.
+      const retry = await createMemoryStore(
+        fixture.db(),
+        slackRuntime("1718800001.000000"),
+        { embedder, now: () => TEST_NOW_MS },
+      ).createConversationMemory({
+        content:
+          "Junior skips OpenTelemetry setup with skipOpenTelemetrySetup.",
+        idempotencyKey:
+          "test:Junior skips OpenTelemetry setup with skipOpenTelemetrySetup.",
+        kind: "knowledge",
+      });
+      expect(retry).toMatchObject({ created: false, memory: { id: old.id } });
+      expect(await memoryRow(fixture, old.id)).toMatchObject({
+        archiveReason: "contradicted",
+      });
       expect(emitted[0]!.data).toEqual({
         archived: [
           expect.objectContaining({
@@ -472,6 +503,12 @@ describe("automatic memory retirement", () => {
         supersededAtMs: null,
         supersededById: expect.any(String),
       });
+      expect(await signalRows(fixture, old.id)).toEqual([
+        expect.objectContaining({
+          conversationId: "slack:C123:1718800100.000000",
+          signal: "superseded",
+        }),
+      ]);
       expect(emitted[0]!.data).toMatchObject({
         archived: [
           expect.objectContaining({ id: old.id, reason: "superseded" }),

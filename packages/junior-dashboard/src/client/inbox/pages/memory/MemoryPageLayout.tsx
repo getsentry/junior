@@ -6,30 +6,16 @@ import { PageHeader } from "../../../components/layout/PageHeader";
 import { PageLayout } from "../../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../../components/layout/SecondaryNavigation";
 import { getDashboardAgentName } from "../../../agentName";
+import { NAV_PAGES } from "../../../navPages";
 
-const MEMORY_BASE_PATH = "/memories";
-const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
+const MEMORY_LIBRARY_PATH = NAV_PAGES.memoryLibrary.to;
 const RESERVED_MEMORY_SEGMENTS = new Set(["library"]);
 
 /** The Memories pages, for the in-page links and the pane list. */
 export const memoryNavigationItems = [
-  { end: true, label: "Overview", to: MEMORY_BASE_PATH },
-  {
-    isActive: isMemoryLibraryPath,
-    label: "Memories",
-    to: MEMORY_LIBRARY_PATH,
-  },
-];
-
-/** The Overview's sections, which the pane lists under it as anchors. */
-export const memoryOverviewSections = [
-  { anchor: "activity", label: "Activity" },
-  { anchor: "cost", label: "Cost" },
-  {
-    anchor: "memory-types",
-    label: `What ${getDashboardAgentName()} remembers`,
-  },
-  { anchor: "memory-sources", label: "How they got here" },
+  // The Overview is the area's root page.
+  { end: true, label: "Overview", to: NAV_PAGES.memoryLibrary.area },
+  { ...NAV_PAGES.memoryLibrary, isActive: isMemoryLibraryPath },
 ];
 
 /** Identify library and memory routes that keep the list beside its details. */

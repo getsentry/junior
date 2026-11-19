@@ -11,12 +11,13 @@ import { ConnectionBanner } from "../components/ConnectionBanner";
 import { LoadingView } from "../components/LoadingView";
 import { VersionDriftBanner } from "../components/VersionDriftBanner";
 import { PageContentSkeleton } from "../components/PageContentSkeleton";
+import { FeedbackDialog } from "./components/FeedbackDialog";
 import { ProfileMenu, SpendSummary } from "./components/ProfileMenu";
 import {
   InboxDashboardChrome,
   DashboardChromeProvider,
 } from "../components/layout/DashboardChrome";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, MessageSquareHeart } from "lucide-react";
 import {
   CommandPalette,
   paletteGroupForPath,
@@ -100,6 +101,7 @@ import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
 import { useVersionsPoll } from "../versions";
 import { getDashboardAgentName } from "../agentName";
+import { canSendFeedback } from "../sentry";
 
 // Pages outside the conversation workspace load on first visit, so the
 // workspace's first paint skips their code and the chart library.
@@ -282,7 +284,6 @@ function Shell() {
   // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
-    versionsPoll: true,
   });
   useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
@@ -883,7 +884,10 @@ function LegacyAutomationsRedirect() {
   );
 }
 
-/** The command palette, with Zen mode among its actions where it exists. */
+/**
+ * The command palette, with Zen mode among its actions where it exists, and
+ * Send feedback where the profile menu offers it.
+ */
 function ShellCommandPalette({
   pathname,
   ...props
@@ -892,24 +896,46 @@ function ShellCommandPalette({
 }) {
   const zen = useZenMode();
   const eventLogShown = useEventLogShown();
+  const reader = useDashboardCoreData().data?.me.user;
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // The profile menu's own rule: a signed-in viewer and a DSN to send to.
+  const feedback = Boolean(reader?.email) && canSendFeedback();
   return (
-    <CommandPalette
-      {...props}
-      activeGroup={paletteGroupForPath(pathname, eventLogShown)}
-      actions={
-        zen.available
-          ? [
-              {
-                icon: Maximize2,
-                id: "zen-mode",
-                label: zen.active ? "Leave Zen mode" : "Zen mode",
-                run: zen.toggle,
-                shortcut: ZEN_MODE_SHORTCUT,
-              },
-            ]
-          : []
-      }
-    />
+    <>
+      <CommandPalette
+        {...props}
+        activeGroup={paletteGroupForPath(pathname, eventLogShown)}
+        actions={[
+          ...(zen.available
+            ? [
+                {
+                  icon: Maximize2,
+                  id: "zen-mode",
+                  label: zen.active ? "Leave Zen mode" : "Zen mode",
+                  run: zen.toggle,
+                  shortcut: ZEN_MODE_SHORTCUT,
+                },
+              ]
+            : []),
+          ...(feedback
+            ? [
+                {
+                  icon: MessageSquareHeart,
+                  id: "send-feedback",
+                  label: "Send feedback",
+                  run: () => setFeedbackOpen(true),
+                },
+              ]
+            : []),
+        ]}
+      />
+      {feedbackOpen && reader ? (
+        <FeedbackDialog
+          onClose={() => setFeedbackOpen(false)}
+          reader={reader}
+        />
+      ) : null}
+    </>
   );
 }
 

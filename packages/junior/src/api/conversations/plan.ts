@@ -4,7 +4,6 @@ import { listPlanItems, setPlanItemStatusByUser } from "@/chat/plan/store";
 import { isOpenPlanItemStatus, type PlanItem } from "@/chat/plan/types";
 import { throwApiError } from "../http";
 import {
-  conversationPlanReportSchema,
   type ConversationPlanItem,
   type ConversationPlanReport,
   type PlanItemStatusBody,
@@ -67,13 +66,13 @@ export async function requireConversationPlan(
     .filter((item) => !isOpenPlanItemStatus(item.status))
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     .slice(0, RECENT_CLOSED_ITEMS);
-  return conversationPlanReportSchema.parse({
+  return {
     conversationId,
     items: [
       ...items.filter((item) => isOpenPlanItemStatus(item.status)),
       ...closed,
     ].map((item) => reportItem(item, canViewPrivateContent)),
-  });
+  };
 }
 
 /**

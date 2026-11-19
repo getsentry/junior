@@ -94,6 +94,55 @@ function clientManifestPlugin(): Rolldown.Plugin {
 // the package name anywhere in the path.
 const WORKSPACE_PACKAGE = /[\\/]@sentry[\\/]junior[\\/]/;
 
+type ChunkingContext = Parameters<Rolldown.CodeSplittingNameFunction>[1];
+
+const SHELL_ENTRIES: Record<DashboardShell, string> = {
+  classic: path.resolve("src/classic.ts"),
+  inbox: path.resolve("src/inbox.ts"),
+};
+
+// The modules that each shell imports statically, for one chunking pass.
+// Rolldown reuses its module infos within a pass, so the entry's info keys
+// the result.
+const shellModules = new WeakMap<object, Record<DashboardShell, Set<string>>>();
+
+function staticModulesOf(entry: string, ctx: ChunkingContext): Set<string> {
+  const seen = new Set([entry]);
+  const pending = [entry];
+  for (let id = pending.pop(); id; id = pending.pop()) {
+    for (const imported of ctx.getModuleInfo(id)?.importedIds ?? []) {
+      if (seen.has(imported)) continue;
+      seen.add(imported);
+      pending.push(imported);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Name a first-load group chunk by the shells that import its module
+ * statically. Both shells share the group's chunk only for code that both
+ * load first. Code that only one shell loads first gets that shell's chunk,
+ * so the other shell does not download it.
+ */
+function shellGroupName(group: string): Rolldown.CodeSplittingNameFunction {
+  return (id, ctx) => {
+    const key = ctx.getModuleInfo(SHELL_ENTRIES.inbox);
+    if (!key) return group;
+    let modules = shellModules.get(key);
+    if (!modules) {
+      modules = {
+        classic: staticModulesOf(SHELL_ENTRIES.classic, ctx),
+        inbox: staticModulesOf(SHELL_ENTRIES.inbox, ctx),
+      };
+      shellModules.set(key, modules);
+    }
+    const inbox = modules.inbox.has(id);
+    if (inbox === modules.classic.has(id)) return group;
+    return `${group}-${inbox ? "inbox" : "classic"}`;
+  };
+}
+
 // Run with `--config-loader unrun`: Node's own loader cannot resolve the
 // extensionless imports in ./src/public-assets.
 //
@@ -155,31 +204,36 @@ export default defineConfig({
     codeSplitting: {
       groups: [
         {
-          name: "vendor-react",
+          debugName: "vendor-react",
+          name: shellGroupName("vendor-react"),
           test: /node_modules[\\/](?:react|react-dom|react-router|scheduler)[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          name: "vendor-sentry",
+          debugName: "vendor-sentry",
+          name: shellGroupName("vendor-sentry"),
           test: /node_modules[\\/]@sentry[\\/](?!junior)/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          name: "vendor-icons",
+          debugName: "vendor-icons",
+          name: shellGroupName("vendor-icons"),
           test: /node_modules[\\/]lucide-react[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          name: "vendor-ui",
+          debugName: "vendor-ui",
+          name: shellGroupName("vendor-ui"),
           test: /node_modules[\\/]@base-ui[\\/]/,
           tags: ["$initial"],
           priority: 2,
         },
         {
-          name: "vendor",
+          debugName: "vendor",
+          name: shellGroupName("vendor"),
           test: (id) =>
             /node_modules[\\/]/.test(id) && !WORKSPACE_PACKAGE.test(id),
           tags: ["$initial"],
@@ -188,7 +242,8 @@ export default defineConfig({
         {
           // Lowest priority: `vendor` takes zod first. Otherwise this group
           // would pull it in as a dependency of @sentry/junior.
-          name: "junior",
+          debugName: "junior",
+          name: shellGroupName("junior"),
           test: WORKSPACE_PACKAGE,
           tags: ["$initial"],
           priority: 0,
