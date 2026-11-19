@@ -13,5 +13,7 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  // Not type-checked yet. See scripts/typecheck-coverage-baseline.json.
+  "exclude": ["tests/ranking.test.ts", "tests/storage.test.ts"]
 }

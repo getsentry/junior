@@ -129,6 +129,7 @@ describe("plugin conversation events", () => {
         return undefined;
       },
     });
+    let taskEvents: unknown;
     const plugin = defineJuniorPlugin({
       manifest: {
         name: "prompt-event-demo",
@@ -136,6 +137,15 @@ describe("plugin conversation events", () => {
         description: "Prompt event demo",
       },
       conversationEvents: [recallEvent],
+      tasks: {
+        processSession: {
+          async run(ctx) {
+            taskEvents = await ctx.turnEvents.list({
+              eventName: "memories_recalled",
+            });
+          },
+        },
+      },
       hooks: {
         async userPrompt(ctx) {
           if (!ctx.events) {
@@ -163,6 +173,11 @@ describe("plugin conversation events", () => {
 
     await getPluginUserPromptContributions(request);
     await getPluginUserPromptContributions(request);
+    // Another Turn of the same Conversation emits its own event.
+    await getPluginUserPromptContributions({
+      ...request,
+      turnId: `${sessionId}:next`,
+    });
 
     const events =
       await getConversationEventStore().loadHistory(conversationId);
@@ -178,6 +193,24 @@ describe("plugin conversation events", () => {
           turnId: sessionId,
           content: { costUsd: 0.0042, memories: [] },
         },
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ turnId: `${sessionId}:next` }),
+      }),
+    ]);
+
+    // A task reads only the events of the Turn that it processes.
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    await processPluginTask({
+      name: "processSession",
+      params: { conversationId, sessionId },
+      plugin: "prompt-event-demo",
+    });
+    expect(taskEvents).toEqual([
+      expect.objectContaining({
+        content: { costUsd: 0.0042, memories: [] },
+        turnId: sessionId,
+        version: 1,
       }),
     ]);
   });
