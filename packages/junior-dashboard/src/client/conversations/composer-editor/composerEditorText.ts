@@ -11,7 +11,7 @@ import {
   type TextNode,
 } from "lexical";
 
-import { splitMentions } from "../composerMentionToken";
+import { mentionText, splitMentions } from "../composerMentionToken";
 import {
   $createComposerMentionNode,
   type ComposerMentionPerson,
@@ -41,7 +41,8 @@ export function $writeComposerText(text: string, lookup: LookupPerson): void {
 
 /**
  * Turn `<@U…>` in one text node into mentions, for pasted or restored text.
- * The caret moves after the last part when it was in the node.
+ * A caret in the node keeps its place in the text, so one inside or right
+ * after a token lands after its mention.
  */
 export function $replaceMentionTokens(
   node: TextNode,
@@ -52,42 +53,72 @@ export function $replaceMentionTokens(
   const parts = splitMentions(text);
   if (parts.every((part) => "text" in part)) return;
   const selection = $getSelection();
-  const hadCaret =
-    $isRangeSelection(selection) && selection.anchor.key === node.getKey();
-  const nodes = composerNodes(text, lookup);
+  const caret =
+    $isRangeSelection(selection) && selection.anchor.key === node.getKey()
+      ? selection.anchor.offset
+      : undefined;
+  const pieces = composerPieces(parts, lookup);
   let last: LexicalNode = node;
-  for (const next of nodes) {
-    last.insertAfter(next);
-    last = next;
+  for (const piece of pieces) {
+    last.insertAfter(piece.node);
+    last = piece.node;
   }
   node.remove();
-  if (!hadCaret) return;
-  if ($isTextNode(last)) last.select();
-  else last.selectNext(0, 0);
+  if (caret !== undefined) $placeCaret(pieces, caret);
+}
+
+type ComposerPiece = { node: LexicalNode; length: number };
+
+// Put the caret at `caret` characters into the replaced text.
+function $placeCaret(pieces: ComposerPiece[], caret: number): void {
+  let start = 0;
+  for (const { node, length } of pieces) {
+    const end = start + length;
+    if (caret <= end) {
+      if ($isTextNode(node)) node.select(caret - start, caret - start);
+      else if (caret === start) node.selectPrevious();
+      else node.selectNext(0, 0);
+      return;
+    }
+    start = end;
+  }
 }
 
 function composerNodes(text: string, lookup: LookupPerson): LexicalNode[] {
-  return splitMentions(text).flatMap((part) =>
+  return composerPieces(splitMentions(text), lookup).map(({ node }) => node);
+}
+
+// Each node with the length of the message text that it stands for.
+function composerPieces(
+  parts: ReturnType<typeof splitMentions>,
+  lookup: LookupPerson,
+): ComposerPiece[] {
+  return parts.flatMap((part) =>
     "slackUserId" in part
       ? [
-          $createComposerMentionNode(
-            lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
-          ),
+          {
+            node: $createComposerMentionNode(
+              lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
+            ),
+            length: mentionText(part.slackUserId).length,
+          },
         ]
       : plainTextNodes(part.text),
   );
 }
 
 // Plain text mode writes a new line as a line break and a tab as a tab node.
-function plainTextNodes(text: string): LexicalNode[] {
+function plainTextNodes(text: string): ComposerPiece[] {
   return text
     .split(/(\n|\t)/)
     .filter(Boolean)
-    .map((piece) =>
-      piece === "\n"
-        ? $createLineBreakNode()
-        : piece === "\t"
-          ? $createTabNode()
-          : $createTextNode(piece),
-    );
+    .map((piece) => ({
+      node:
+        piece === "\n"
+          ? $createLineBreakNode()
+          : piece === "\t"
+            ? $createTabNode()
+            : $createTextNode(piece),
+      length: piece.length,
+    }));
 }
