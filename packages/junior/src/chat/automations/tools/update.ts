@@ -17,9 +17,13 @@ import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
   requireToolCaller,
-  requireToolDestination,
+  type AutomationToolCaller,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
+import {
+  automationDestinationParam,
+  resolveToolDestination,
+} from "@/chat/automations/tool-destination";
 import {
   automationSkillToolSchema,
   automationToolResult,
@@ -30,8 +34,7 @@ import {
   type AutomationTriggerChangesInput,
 } from "@/chat/automations/tool-support";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
-import { getConversationStore, getDb } from "@/chat/db";
-import type { AutomationDestination } from "@/chat/automations/creator";
+import { getDb } from "@/chat/db";
 import { sameDestination } from "@/chat/destination";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { changedEventMatch } from "@/chat/event-automations/tool-support";
@@ -43,15 +46,6 @@ import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import { scheduleIntentFromTool } from "@/chat/scheduled-automations/schedule-intent";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { scheduledAutomationAttributes } from "@/chat/scheduled-automations/telemetry";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import {
-  checkSlackChannelReadAccess,
-  joinPublicChannelForRead,
-} from "@/chat/slack/tool-support/channel-access";
-import {
-  resolveSlackChannelRef,
-  slackChannelRefParam,
-} from "@/chat/slack/tool-support/channel-target";
 import { getConversationAccess } from "@/chat/scheduled-automations/tool-support";
 import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
@@ -93,69 +87,10 @@ async function requireNoIncompleteRun(automationId: string): Promise<void> {
   }
 }
 
-/**
- * Resolve where a move goes. "current_conversation" is this Conversation. A
- * channel reference must name a public Slack channel in this workspace, and
- * Junior joins it so the Automation can post there.
- */
-async function requireMoveDestination(
-  context: AutomationToolContext,
-  value: string,
-): Promise<{
-  destination: AutomationDestination;
-  visibility: "public" | "private" | undefined;
-}> {
-  const here = requireToolDestination(context);
-  if (value === "current_conversation") {
-    return { destination: here, visibility: context.visibility };
-  }
-  const teamId = parseSlackTeamId(here.teamId);
-  if (!teamId) throw new ToolInputError("Slack workspace is unavailable.");
-  const { channelId, channelName } = await resolveSlackChannelRef({
-    field: "destination",
-    value,
-    teamId,
-  });
-  if (channelId === here.channelId) {
-    return { destination: here, visibility: context.visibility };
-  }
-  const access = await checkSlackChannelReadAccess({
-    currentChannelIds: [],
-    targetChannelId: channelId,
-    teamId,
-  });
-  if (!access.allowed) {
-    throw new ToolInputError(
-      access.reason === "private"
-        ? "Only a public channel can be named as a destination. To move an automation into a private channel or DM, ask from there."
-        : access.error,
-    );
-  }
-  if (access.isMember !== true) {
-    const joined = await joinPublicChannelForRead({
-      targetChannelId: channelId,
-      ...(channelName ? { channelName } : undefined),
-    });
-    if (!joined.ok) throw new ToolInputError(joined.error);
-  }
-  const destination: AutomationDestination = {
-    platform: "slack",
-    teamId,
-    channelId,
-  };
-  // Automation access reads visibility from the Destination directory.
-  const name = access.channelName ?? channelName;
-  await getConversationStore().recordDestinationVisibility({
-    destination,
-    ...(name ? { channelName: name } : undefined),
-    visibility: "public",
-  });
-  return { destination, visibility: "public" };
-}
-
 /** Edit and save a scheduled Automation, including a move to a new Destination. */
 async function updateScheduled(
   context: AutomationToolContext,
+  caller: AutomationToolCaller,
   current: Extract<TaskCandidate, { kind: "scheduled" }>,
   input: UpdateInput,
   editedTask: AutomationTask | undefined,
@@ -163,7 +98,7 @@ async function updateScheduled(
 ): Promise<TaskCandidate> {
   const { task, ownedByViewer: isCreator } = current;
   const target = input.destination
-    ? await requireMoveDestination(context, input.destination)
+    ? await resolveToolDestination(context, caller, input.destination)
     : undefined;
   const destination = target?.destination;
   const moving =
@@ -349,10 +284,10 @@ export function createUpdateAutomationTool(
           "Set active to resume a paused or blocked automation, or paused to stop it. When it uses its creator's credentials, only the creator can resume it. Omit or use null to leave unchanged.",
         )
         .optional(),
-      destination: slackChannelRefParam
+      destination: automationDestinationParam
         .nullable()
         .describe(
-          'Where to move a scheduled automation. Set "current_conversation" for the channel or DM of this conversation, or name a public Slack channel by id, mention, or known name. Omit to keep its destination.',
+          `Where to move a scheduled automation. ${automationDestinationParam.description} Omit to keep its destination.`,
         )
         .optional(),
     })
@@ -431,7 +366,14 @@ export function createUpdateAutomationTool(
       if (Object.keys(input).length > 0) {
         saved =
           current.kind === "scheduled"
-            ? await updateScheduled(context, current, input, editedTask, editor)
+            ? await updateScheduled(
+                context,
+                caller,
+                current,
+                input,
+                editedTask,
+                editor,
+              )
             : await updateEvent(current, input, editedTask, editor, catalog);
       }
       // Setting the current status again changes nothing.
