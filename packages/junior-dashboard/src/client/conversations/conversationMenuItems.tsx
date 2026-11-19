@@ -81,6 +81,22 @@ export type ConversationMenu = {
 };
 
 /**
+ * Whether the viewer can pin or unpin the conversation. The API takes pins
+ * only from participants, Threads and Tasks use their root's pin, and a pin
+ * restores an archived conversation for everyone, so it restores first.
+ */
+export function canPinConversation(
+  conversation: Pick<Conversation, "archivedAt" | "parentConversationId">,
+  participant: boolean,
+) {
+  return (
+    participant &&
+    !conversation.archivedAt &&
+    !conversation.parentConversationId
+  );
+}
+
+/**
  * List the rows of the conversation `⋯` menu and the sidebar row menu, in
  * groups that the menus divide with a separator. Both menus render this
  * list, so their rows, order, labels, icons, and enabled rules stay the same.
@@ -161,14 +177,12 @@ export function useConversationMenuItems(
   }
 
   const viewerItems: ConversationMenuItem[] = [];
-  // A pin restores an archived conversation for everyone, so archived
-  // conversations restore first.
+  // Archived conversations restore before they pin.
   if (!archived) {
     viewerItems.push({
-      // Threads and Tasks use their root's pin.
       disabled:
-        !participant ||
-        Boolean(conversation?.parentConversationId) ||
+        !conversation ||
+        !canPinConversation(conversation, participant) ||
         pending.pin,
       icon: pinned ? PinOff : Pin,
       key: "pin",

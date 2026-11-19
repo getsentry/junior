@@ -4,6 +4,8 @@ import {
   ArchiveRestore,
   LockKeyhole,
   MessageSquare,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -28,6 +30,8 @@ import {
   ConversationStatusText,
 } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
+import { CardSwipeLayer, useCardSwipe } from "./ConversationCardSwipe";
+import { canPinConversation } from "./conversationMenuItems";
 import { ConversationRowContextMenu } from "./ConversationRowContextMenu";
 import {
   useConversationRowActions,
@@ -250,140 +254,181 @@ function ConversationCard(props: ConversationCardProps) {
   // in place of the time, and failed and stopped are text beside the time.
   const showStatus = props.waitingOnViewer && status !== "active";
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
+  const pinned = Boolean(conversation.pinnedAt);
+  const archived = Boolean(conversation.archivedAt);
+  // The API takes row actions only from participants.
+  const participant = conversation.isParticipant;
+  const swipe = useCardSwipe({
+    leading:
+      canPinConversation(conversation, participant) && !pin.pending
+        ? { icon: pinned ? PinOff : Pin, run: () => pin.set(!pinned) }
+        : undefined,
+    trailing:
+      participant && !archive.pending
+        ? { icon: archived ? ArchiveRestore : Archive, run: archive.toggle }
+        : undefined,
+  });
   return (
-    <ConversationRowContextMenu
-      move={drag?.move}
-      {...prefetch}
-      {...drag?.listeners}
-      archive={archive}
-      className={cn(
-        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft not-data-pressing:has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
-        // A held card sinks through the 500ms long press, so the row sheet
-        // opens at the end of a press that the reader can see. A release
-        // springs back fast, and a scroll ends the press.
-        "motion-safe:data-pressing:scale-[0.97] motion-safe:data-pressing:duration-500 motion-safe:data-pressing:ease-linear",
-        drag?.dragging && "opacity-40",
-      )}
-      conversation={conversation}
-      onActionError={props.onActionError}
-      onKeyDown={drag?.onKeyDown}
-      pin={pin}
+    <div
+      className={cn("relative", swipe.enabled && "touch-pan-y")}
+      // The row menu trigger stops the touchstart, so listen before it.
+      onTouchCancelCapture={swipe.onTouchCancel}
+      onTouchEndCapture={swipe.onTouchEnd}
+      onTouchMoveCapture={swipe.onTouchMove}
+      onTouchStartCapture={swipe.onTouchStart}
       ref={drag?.setNodeRef}
-      render={<article />}
       role="listitem"
     >
-      <Link
-        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-        aria-label={`Open ${title}`}
-        className={cn(
-          "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
-          // A long press opens the card menu or drags a pin, not the iOS
-          // link callout.
-          "[-webkit-touch-callout:none]",
-        )}
-        // The browser's own link drag would take the pointer from the reorder.
-        draggable={drag ? false : undefined}
-        to={conversationPath(conversation.id)}
-      />
-      <span className="pointer-events-none relative z-[1] mt-0.5 grid size-8 place-items-center rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel text-dashboard-text-muted">
-        <VisibilityIcon
-          aria-label={
-            isPrivate ? "Private conversation" : "Public conversation"
-          }
-          role="img"
-          size={15}
+      {swipe.leading ? (
+        <CardSwipeLayer
+          {...swipe.leading}
+          className="bg-dashboard-accent text-dashboard-text-inverse"
+          side="leading"
         />
-        {showStatus ? (
-          // Inside the tile corner, on the tile color, so the badge stays
-          // within the tile.
-          <span className="absolute bottom-px right-px grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
-            <ConversationListStatusIcon
-              status={status}
-              waitingOnViewer={props.waitingOnViewer}
-            />
-          </span>
-        ) : null}
-      </span>
-      <div className="grid min-w-0">
-        <div className="flex min-w-0 items-center gap-3">
-          <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
-            {title}
-          </h4>
-          {participants.length > 0 ? (
-            <span className="pointer-events-none relative z-[1] hidden sm:inline-flex">
-              <ParticipantAvatarStack participants={participants} size="list" />
+      ) : null}
+      {swipe.trailing ? (
+        <CardSwipeLayer
+          {...swipe.trailing}
+          className="bg-dashboard-fill-strong text-dashboard-text"
+          side="trailing"
+        />
+      ) : null}
+      <ConversationRowContextMenu
+        move={drag?.move}
+        {...prefetch}
+        {...drag?.listeners}
+        archive={archive}
+        className={cn(
+          "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft not-data-pressing:has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
+          // A held card sinks through the 500ms long press, so the row sheet
+          // opens at the end of a press that the reader can see. A release
+          // springs back fast, and a scroll ends the press.
+          "motion-safe:data-pressing:scale-[0.97] motion-safe:data-pressing:duration-500 motion-safe:data-pressing:ease-linear",
+          drag?.dragging && "opacity-40",
+        )}
+        conversation={conversation}
+        onActionError={props.onActionError}
+        onKeyDown={drag?.onKeyDown}
+        pin={pin}
+        ref={swipe.cardRef}
+        render={<article />}
+      >
+        <Link
+          aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+          aria-label={`Open ${title}`}
+          className={cn(
+            "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+            // A long press opens the card menu or drags a pin, not the iOS
+            // link callout.
+            "[-webkit-touch-callout:none]",
+          )}
+          // The browser's own link drag would take the pointer from the reorder.
+          draggable={drag ? false : undefined}
+          to={conversationPath(conversation.id)}
+        />
+        <span className="pointer-events-none relative z-[1] mt-0.5 grid size-8 place-items-center rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel text-dashboard-text-muted">
+          <VisibilityIcon
+            aria-label={
+              isPrivate ? "Private conversation" : "Public conversation"
+            }
+            role="img"
+            size={15}
+          />
+          {showStatus ? (
+            // Inside the tile corner, on the tile color, so the badge stays
+            // within the tile.
+            <span className="absolute bottom-px right-px grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
+              <ConversationListStatusIcon
+                status={status}
+                waitingOnViewer={props.waitingOnViewer}
+              />
             </span>
           ) : null}
-          {status === "active" ? (
-            // Like the sidebar row: a running row shows that it runs, not
-            // when its last Event came, so the feed token can skip it.
-            <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
-              <Spinner
-                aria-label="Running"
-                className="size-3.5 text-dashboard-text-muted"
-              />
-            </span>
-          ) : (
-            <>
-              {/* The tile already shows the lock. */}
-              <ConversationStatusText
-                className="pointer-events-none relative z-[1]"
-                isPrivate={false}
-                status={status}
-              />
-              <time
-                className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
-                dateTime={activityAt}
-                title={formatTime(activityAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                {formatActivityDay(activityAt)}
-              </time>
-            </>
-          )}
-          <button
-            aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-            className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={archive.pending}
-            onClick={archive.toggle}
-            type="button"
-          >
-            {conversation.archivedAt ? (
-              <ArchiveRestore aria-hidden="true" size={15} />
+        </span>
+        <div className="grid min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
+              {title}
+            </h4>
+            {participants.length > 0 ? (
+              <span className="pointer-events-none relative z-[1] hidden sm:inline-flex">
+                <ParticipantAvatarStack
+                  participants={participants}
+                  size="list"
+                />
+              </span>
+            ) : null}
+            {status === "active" ? (
+              // Like the sidebar row: a running row shows that it runs, not
+              // when its last Event came, so the feed token can skip it.
+              <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
+                <Spinner
+                  aria-label="Running"
+                  className="size-3.5 text-dashboard-text-muted"
+                />
+              </span>
             ) : (
-              <Archive aria-hidden="true" size={15} />
+              <>
+                {/* The tile already shows the lock. */}
+                <ConversationStatusText
+                  className="pointer-events-none relative z-[1]"
+                  isPrivate={false}
+                  status={status}
+                />
+                <time
+                  className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+                  dateTime={activityAt}
+                  title={formatTime(activityAt, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                >
+                  {formatActivityDay(activityAt)}
+                </time>
+              </>
             )}
-          </button>
-        </div>
-        {conversation.activityPreview || status === "active" ? (
-          <p
-            className={cn(
-              "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",
-              conversation.activityPreview
-                ? "text-dashboard-text-subtle"
-                : "text-dashboard-text-muted",
-            )}
-          >
-            {conversation.activityPreview ? (
-              <DisplayText
-                inline
-                mentions={conversation.activityPreview.mentions}
-                text={conversation.activityPreview.text}
-              />
-            ) : (
-              "Working…"
-            )}
-          </p>
-        ) : null}
-        {tags ? (
-          // Only the tag links take clicks. The gaps open the card.
-          <div className="pointer-events-none relative z-[1] mt-1 min-w-0 overflow-hidden [&_a]:pointer-events-auto">
-            {tags}
+            <button
+              aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
+              className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={archive.pending}
+              onClick={archive.toggle}
+              type="button"
+            >
+              {conversation.archivedAt ? (
+                <ArchiveRestore aria-hidden="true" size={15} />
+              ) : (
+                <Archive aria-hidden="true" size={15} />
+              )}
+            </button>
           </div>
-        ) : null}
-      </div>
-    </ConversationRowContextMenu>
+          {conversation.activityPreview || status === "active" ? (
+            <p
+              className={cn(
+                "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",
+                conversation.activityPreview
+                  ? "text-dashboard-text-subtle"
+                  : "text-dashboard-text-muted",
+              )}
+            >
+              {conversation.activityPreview ? (
+                <DisplayText
+                  inline
+                  mentions={conversation.activityPreview.mentions}
+                  text={conversation.activityPreview.text}
+                />
+              ) : (
+                "Working…"
+              )}
+            </p>
+          ) : null}
+          {tags ? (
+            // Only the tag links take clicks. The gaps open the card.
+            <div className="pointer-events-none relative z-[1] mt-1 min-w-0 overflow-hidden [&_a]:pointer-events-auto">
+              {tags}
+            </div>
+          ) : null}
+        </div>
+      </ConversationRowContextMenu>
+    </div>
   );
 }
