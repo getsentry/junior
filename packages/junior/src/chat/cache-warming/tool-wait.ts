@@ -65,6 +65,9 @@ const storedWaitSchema = z
     startedAtMs: z.number(),
     prefixTokens: z.number(),
     warmed: z.boolean(),
+    // Warmups that refreshed the cache during the wait. Waits stored before
+    // this field have none.
+    warmupsSent: z.number().default(0),
   })
   .strict();
 
@@ -285,13 +288,11 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     return storedWaitSchema.parse(stored);
   };
 
-  // Count the savings of the tool wait that this request ends. A stored wait
-  // does not keep its warmup count.
+  // Count the savings of the tool wait that this request ends.
   const recordSavings = async (
     previous: StoredWait,
     request: ModelRequest,
     message: AssistantMessage,
-    warmupsSent = 0,
   ) => {
     const ttlMs = providerCacheTtlMs(previous.modelId);
     if (ttlMs === undefined) return;
@@ -309,7 +310,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       previous.modelId,
       savings,
       previous.warmed,
-      warmupsSent,
+      previous.warmupsSent,
     );
   };
 
@@ -318,6 +319,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     startedAtMs: open.request.startedAtMs,
     prefixTokens: open.prefixTokens,
     warmed: open.warmed,
+    warmupsSent: open.warmupsSent,
   });
 
   return {
@@ -341,12 +343,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       }
       if (previous) {
         await recordWait(request.startedAtMs - previous.request.startedAtMs);
-        await recordSavings(
-          storedWait(previous),
-          request,
-          message,
-          previous.warmupsSent,
-        );
+        await recordSavings(storedWait(previous), request, message);
       } else if (stored) {
         // The last run recorded this wait's gap when it ended.
         await recordSavings(stored, request, message);

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { createJuniorApi } from "@/api";
-import { cacheWarmingSavingsReportSchema } from "@/api/schema";
+import {
+  cacheWarmingHourlyReportSchema,
+  cacheWarmingSavingsReportSchema,
+} from "@/api/schema";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import type { ModelRequest } from "@/chat/cache-warming/request";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -246,6 +249,49 @@ describe("tool wait cache warming", () => {
       hits: 1,
       savedUsd: expect.closeTo(write - read, 3),
     });
+  });
+
+  it("counts a warmed tool wait carried to the next run that still wrote the cache", async () => {
+    vi.setSystemTime(new Date("2031-04-04T12:00:00.000Z"));
+    await seedToolWaits(8 * MINUTE);
+    const rewrote = (): AssistantMessage => {
+      const reply = message("stop", 0);
+      return { ...reply, usage: { ...reply.usage, cacheWrite: 60_000 } };
+    };
+    // A wait stored before stored waits kept a warmup count has none.
+    await getStateAdapter().set(OPEN_WAIT_KEY, {
+      modelId: model.id,
+      startedAtMs: Date.now() - 7 * MINUTE,
+      prefixTokens: 60_000,
+      warmed: true,
+    });
+    await createToolWaitWarmer("local:test:tool-wait").record(
+      request(),
+      rewrote(),
+    );
+    vi.advanceTimersByTime(10 * MINUTE);
+    const yielded = createToolWaitWarmer("local:test:tool-wait");
+    await yielded.record(request(), message("toolUse"));
+    // One warmup refreshes the cache before the run yields.
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(mocks.sendWarmup).toHaveBeenCalledTimes(1);
+    yielded.toolsReturned();
+    await yielded.end();
+    vi.advanceTimersByTime(2 * MINUTE);
+    await createToolWaitWarmer("local:test:tool-wait").record(
+      request(),
+      rewrote(),
+    );
+    await Promise.all(mocks.warmupCostWrites);
+
+    const response = await createJuniorApi().request(
+      "http://localhost/api/cache-warming/hourly?start=2031-04-04T12:00:00Z&end=2031-04-04T13:00:00Z",
+    );
+    const { totals } = cacheWarmingHourlyReportSchema.parse(
+      await response.json(),
+    );
+    expect(totals.savings).toMatchObject({ idlePeriods: 2, hits: 0 });
+    expect(totals.warmups).toMatchObject({ sent: 1, warmedRewrites: 1 });
   });
 
   it("leaves a wait that an answer tool ended to the idle period", async () => {
