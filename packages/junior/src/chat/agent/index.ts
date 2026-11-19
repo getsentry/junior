@@ -931,14 +931,17 @@ async function executeAgentRunInPrivacyContext(
         return false;
       }
       const replacement = [...compaction.piMessages];
+      // The replacement is committed. The live history and the resume
+      // baseline switch to it together, so a pause during the checkpoint
+      // below saves the replacement.
       runResume.adoptReplacement(replacement, compaction.piMessageSeqs);
+      setAgentHistory(replacement);
 
       priorPhaseUsage = addAgentTurnUsage(
         priorPhaseUsage,
         usageSinceCurrentBoundary(messages),
       );
       await runResume.requireDurableInputCheckpoint(replacement);
-      setAgentHistory(replacement);
       nextInputAfterReplacement.replaced(
         mode,
         getAgentContextCompactionTriggerTokens(activeModelId),
