@@ -252,7 +252,7 @@ describe("Google Slides tools", () => {
     const [, deck] = await outline.calls();
     expect(deck?.url.pathname).toBe(`/v1/presentations/${DECK_ID}`);
     expect(deck?.url.searchParams.get("fields")).toMatch(
-      /^revisionId,pageSize,slides\(objectId,/,
+      /^revisionId,pageSize,layouts\(objectId,.*\),slides\(objectId,/,
     );
 
     const slide = slidesTools([
