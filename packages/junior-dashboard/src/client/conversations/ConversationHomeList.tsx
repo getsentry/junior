@@ -313,6 +313,13 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
+          {/* The tile already shows the lock. A running row can also
+              need input, so this shows beside the spinner. */}
+          <ConversationStatusText
+            className="pointer-events-none relative z-[1]"
+            isPrivate={false}
+            status={status}
+          />
           {running ? (
             // Like the sidebar row: a running row shows that it runs, not
             // when its last Event came, so the feed token can skip it.
@@ -323,24 +330,16 @@ function ConversationCard(props: ConversationCardProps) {
               />
             </span>
           ) : (
-            <>
-              {/* The tile already shows the lock. */}
-              <ConversationStatusText
-                className="pointer-events-none relative z-[1]"
-                isPrivate={false}
-                status={status}
-              />
-              <time
-                className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
-                dateTime={activityAt}
-                title={formatTime(activityAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                {formatActivityDay(activityAt)}
-              </time>
-            </>
+            <time
+              className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+              dateTime={activityAt}
+              title={formatTime(activityAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatActivityDay(activityAt)}
+            </time>
           )}
           <button
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}

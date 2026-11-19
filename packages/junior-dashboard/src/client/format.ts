@@ -15,6 +15,7 @@ import type {
   TranscriptViewPart,
 } from "./types";
 import { getDashboardAgentName } from "./agentName";
+import { personFromActor, type Person } from "./person";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import { formatRuntime } from "./time";
 
@@ -195,6 +196,20 @@ export function transcriptMessageActor(
   if (actorLabel(message.actorIdentity)) return message.actorIdentity;
   if (actorLabel(conversation.actorIdentity)) return conversation.actorIdentity;
   return undefined;
+}
+
+/**
+ * Return the person who wrote one transcript user message, named as its
+ * transcript row names them. Agent and child agent messages have none.
+ */
+export function transcriptMessagePerson(
+  conversation: ConversationTranscript,
+  message: TranscriptViewMessage,
+): Person | undefined {
+  const person = personFromActor(transcriptMessageActor(conversation, message));
+  return person
+    ? { ...person, name: transcriptMessageActorLabel(conversation, message) }
+    : undefined;
 }
 
 /** Return the best available actor label for one transcript message. */
@@ -719,6 +734,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       awaitingAuthorization: summary.awaitingAuthorization,
+      viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));

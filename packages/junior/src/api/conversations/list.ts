@@ -81,6 +81,7 @@ import {
 import { readConversationFeedBriefs } from "./feed-brief";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
+import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
@@ -197,6 +198,10 @@ async function conversationRows(
       ),
       links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
       media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
+      viewerAnswer:
+        filter?.kind === "viewer"
+          ? feedViewerAnswerSql(db, filter.userId)
+          : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -708,6 +713,11 @@ export async function readConversationFeedFromSql(
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       const treeRead = treeStateByConversation.get(conversation.conversationId);
+      // The viewer saw the answer as they gave it, but like the Brief it
+      // holds private content.
+      const viewerAnswer = access?.canViewPrivateContent
+        ? feedViewerAnswer(row.viewerAnswer)
+        : undefined;
       return {
         ...summary,
         ...work,
@@ -722,6 +732,7 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
+        ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),

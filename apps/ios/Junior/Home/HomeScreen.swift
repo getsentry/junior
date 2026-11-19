@@ -212,10 +212,10 @@ struct ConversationCard: View {
   private var accessibilityText: String {
     var parts = [row.title]
     if row.pinnedAt != nil { parts.append("Pinned") }
+    // A running Turn can also need input, so say both.
+    if row.status == .needsInput { parts.append("Needs input") }
     if row.turnActive {
       parts.append("Working")
-    } else if row.status == .needsInput {
-      parts.append("Needs input")
     } else if let date = row.lastSeenAt.date {
       parts.append(app.clock.activityDay(date))
     }
@@ -235,24 +235,24 @@ struct ConversationCard: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    if row.turnActive {
-      Spinner()
-        .foregroundStyle(Tokens.textMuted)
-        .frame(minWidth: 56, alignment: .trailing)
-        .accessibilityElement()
-        .accessibilityLabel("Working")
-    } else {
-      HStack(spacing: 12) {
-        if row.status == .needsInput {
-          Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
-        }
-        if let date = row.lastSeenAt.date {
-          Text(app.clock.activityDay(date))
-            .type(.xs)
-            .monospacedDigit()
-            .foregroundStyle(Tokens.textMuted)
-            .frame(minWidth: 56, alignment: .trailing)
-        }
+    // A running Turn can also need input, so the spinner takes only the
+    // date's place.
+    HStack(spacing: 12) {
+      if row.status == .needsInput {
+        Text("Needs input").type(.xs).foregroundStyle(Color.palette(.amber, 400))
+      }
+      if row.turnActive {
+        Spinner()
+          .foregroundStyle(Tokens.textMuted)
+          .frame(minWidth: 56, alignment: .trailing)
+          .accessibilityElement()
+          .accessibilityLabel("Working")
+      } else if let date = row.lastSeenAt.date {
+        Text(app.clock.activityDay(date))
+          .type(.xs)
+          .monospacedDigit()
+          .foregroundStyle(Tokens.textMuted)
+          .frame(minWidth: 56, alignment: .trailing)
       }
     }
     Button(action: onArchive) {

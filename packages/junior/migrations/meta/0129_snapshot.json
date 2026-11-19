@@ -1,5 +1,5 @@
 {
-  "id": "cc945d73-f283-4e55-8433-29d02aba2fef",
+  "id": "496d0c67-2a83-4e91-b5bd-e848b6fc81d1",
   "prevId": "b313cf66-bbe6-4f1f-9a7a-2071b1bdd195",
   "version": "7",
   "dialect": "postgresql",
@@ -4872,22 +4872,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_open_action_added_by_idx": {
-          "name": "junior_review_items_open_action_added_by_idx",
-          "columns": [
-            {
-              "expression": "added_by_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_review_items_automation_idx": {
           "name": "junior_review_items_automation_idx",
           "columns": [
@@ -4905,6 +4889,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_review_items_answered_idx": {
+          "name": "junior_review_items_answered_idx",
+          "columns": [
+            {
+              "expression": "added_by_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "closed_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "closed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_review_items\".\"answer\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
