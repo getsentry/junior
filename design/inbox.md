@@ -27,7 +27,10 @@ snoozes each row on its own. `./review-desk.md` owns who sees an item and who ca
 
 - Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
   Conversations view.
-- The stack title, which opens the root Conversation.
+- The stack title, which opens the root Conversation. A click on empty
+  space in the stack's header does the same.
+- A right-click anywhere on a stack, which opens the root Conversation's
+  menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
   names as tooltips. A touch screen has no hover, so there a row shows its
