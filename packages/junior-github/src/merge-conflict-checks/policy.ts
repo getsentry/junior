@@ -117,7 +117,10 @@ interface GitHubConflictHistory {
   fixedAtMs?: number;
   /** Fixes after `activeAtMs`. */
   fixes: number;
-  /** No fix landed after the latest Resume, so its fix may still run. */
+  /**
+   * The latest Resume is the latest activity by a person, and no fix landed
+   * after it, so its fix may still run.
+   */
   resumeRunning: boolean;
 }
 
@@ -184,7 +187,7 @@ function parseGitHubConflictHistory(
     fixes: fixes.filter((atMs) => atMs > activeAtMs).length,
     ...(fixedAtMs.length ? { fixedAtMs: Math.max(...fixedAtMs) } : undefined),
     resumeRunning:
-      resumedAtMs !== undefined && fixes.every((atMs) => atMs <= resumedAtMs),
+      resumedAtMs === activeAtMs && fixes.every((atMs) => atMs <= resumedAtMs),
   };
 }
 
@@ -198,10 +201,14 @@ function gitHubConflictAction(
   const { approved, fixedAtMs } = history;
   const idleMs = nowMs - history.activeAtMs;
   if (idleMs > IDLE_MS && !approved) return "skip";
+  // Core already delivered the head commit, and Resume closed the item. So
+  // when the fix that Resume started lands nothing in a day, ask again.
+  if (history.resumeRunning && fixedAtMs !== undefined) {
+    return nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "stop";
+  }
   if ((idleMs <= ACTIVE_MS || approved) && history.fixes < MAX_FIXES) {
-    // An approved pull request skips the daily wait, but not while the fix
-    // that Resume started may still run.
-    return (!approved || history.resumeRunning) &&
+    // Only a pull request that is not approved waits a day between fixes.
+    return !approved &&
       fixedAtMs !== undefined &&
       nowMs - fixedAtMs < FIX_INTERVAL_MS
       ? "skip"
@@ -239,7 +246,7 @@ async function addStoppedItem(
     reviewItems: PluginConversationReviewItems;
     title?: string;
   },
-  fixes: number,
+  history: GitHubConflictHistory,
 ): Promise<void> {
   const { conflict, ref, title } = args;
   const opener = (
@@ -253,9 +260,10 @@ async function addStoppedItem(
   const url =
     conflict.url ??
     `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const reason =
-    fixes >= MAX_FIXES
-      ? `after ${fixes} in a row with no reply from a person`
+  const reason = history.resumeRunning
+    ? "because the fix after Resume did not land"
+    : history.fixes >= MAX_FIXES
+      ? `after ${history.fixes} in a row with no reply from a person`
       : "because nobody worked on it in the last 2 days";
   // An open item with the key only gets new content, so a check of a
   // conflict that has an item adds no second one.
@@ -311,7 +319,7 @@ export async function applyGitHubConflictPolicy(args: {
   if (action === "fix") return args.events;
   if (action === "stop") {
     try {
-      await addStoppedItem(args, history.fixes);
+      await addStoppedItem(args, history);
     } catch (error) {
       logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
         number: args.ref.number,

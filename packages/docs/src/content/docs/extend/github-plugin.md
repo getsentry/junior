@@ -644,7 +644,8 @@ people work on it:
 - **Resume** counts as activity by a person, so the count starts again. It
   also renews the pull request's watch, so the event reaches the
   conversation, and publishes the event at once. Until a fix lands after
-  it, the next event waits a day, also on an approved pull request.
+  it, Junior publishes no event. If no fix lands in a day, Junior adds the
+  item again.
 - After 3 days without activity by a person, Junior does nothing.
 - An approved pull request would be ready to merge but for the conflict. It
   gets the event after those 2 days too, and without the daily wait, up to

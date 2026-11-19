@@ -653,5 +653,45 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual(["1", "2", "3", "5", "6"]);
       expect(h.notices).toHaveLength(2);
     });
+
+    it("asks again when the fix that Resume started lands nothing in a day", async () => {
+      await askedInSlack();
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + hour, "2");
+      await checkAt(pushedAt + 2 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "3");
+      expect(h.notices).toHaveLength(1);
+      pullRequest.head.sha = "3".repeat(40);
+      const resume = {
+        choice: "Resume",
+        conversationId: "slack:C1:1.0",
+        dedupeKey: "merge-conflict:getsentry/junior#946",
+        itemId: "item-1",
+        nowMs: pushedAt + 4 * hour,
+      };
+      await h.answer(resume);
+
+      // Core already delivered a fix of this head commit, and Resume closed
+      // the item. So when no fix lands, the next check a day later asks
+      // again, and Resume on the new item starts another fix.
+      await checkAt(pushedAt + 4 * hour + 10 * minute, "3");
+      expect(h.notices).toHaveLength(1);
+      await checkAt(pushedAt + 4 * hour + day, "3");
+      expect(h.notices.map(({ notice }) => notice.body)).toEqual([
+        expect.stringContaining("after 3 in a row"),
+        "#946 conflicts with `main`. Fixes stopped because the fix after Resume did not land. Resume fixes it now and on later conflicts.",
+      ]);
+      await h.answer({
+        ...resume,
+        itemId: "item-2",
+        nowMs: pushedAt + 5 * hour + day,
+      });
+      expect(
+        conflicts().filter((event) =>
+          event.eventKey.endsWith(":resume:item-2"),
+        ),
+      ).not.toEqual([]);
+    });
   });
 });
