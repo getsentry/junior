@@ -429,7 +429,9 @@ export function useActorDirectoryData(enabled = true) {
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
+    refetchOnWindowFocus: false,
     retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
   });
 }
 
@@ -577,8 +579,9 @@ export function useSkillDetail(name: string) {
   });
 }
 
-// Reports and conversation stats are aggregates that are slow to build and
-// change slowly. Keep them across route changes and window focus.
+// Reports, conversation stats, and the people directory are aggregates that
+// are slow to build and change slowly. Keep them across route changes and
+// window focus.
 const dashboardAggregateStaleTimeMs = 5 * 60_000;
 
 /** Fetch operational plugin reports shown on the System Plugins pages. */
