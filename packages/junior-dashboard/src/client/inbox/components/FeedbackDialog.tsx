@@ -56,6 +56,7 @@ export function FeedbackDialog(props: {
               reader: props.reader,
               topic,
             });
+            // oxlint-disable-next-line toast/no-actionless-success -- The sheet closes, and nothing on screen shows that the feedback went out.
             toast.add({ title: "Feedback sent", type: "success" });
             sheet.close();
           }}

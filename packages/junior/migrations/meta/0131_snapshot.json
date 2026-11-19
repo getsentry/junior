@@ -1,5 +1,5 @@
 {
-  "id": "9cccbc8b-a5fa-49c6-8c75-b56c150a5bd8",
+  "id": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
   "prevId": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "version": "7",
   "dialect": "postgresql",
@@ -2054,6 +2054,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "outcome_status": {
+          "name": "outcome_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "search_text": {
           "name": "search_text",
           "type": "text",
@@ -2121,27 +2127,6 @@
               "expression": "version",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_created_at_idx": {
-          "name": "junior_conversation_briefs_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],

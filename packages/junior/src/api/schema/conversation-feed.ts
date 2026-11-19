@@ -131,3 +131,12 @@ export const conversationFeedSchema = z
   .strict();
 
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
+
+/**
+ * Carries the content token of one feed page in both directions, like
+ * `CONVERSATION_DETAIL_VERSION_HEADER` and for the same reason. A request
+ * that sends the token of the page it holds gets 304 while the page is
+ * unchanged.
+ */
+export const CONVERSATION_FEED_PAGE_VERSION_HEADER =
+  "x-junior-feed-page-version";

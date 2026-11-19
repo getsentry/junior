@@ -31,7 +31,10 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import {
+  activityPreviewText,
+  IDLE_CHANGE_DAYS,
+} from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
@@ -2493,7 +2496,7 @@ function summaryFromConversation(
             ? { mentions: activityEvent.mentions }
             : undefined),
           role: activityEvent.data.role as "assistant" | "user",
-          text: activityEvent.data.text,
+          text: activityPreviewText(activityEvent.data.text),
         }
       : undefined;
   const {
