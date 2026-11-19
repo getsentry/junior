@@ -21,6 +21,8 @@ it("finds the people reference at the caret", () => {
 
 it("skips an at sign in an email address or after a space", () => {
   expect(at("me@exa|")).toBeUndefined();
+  expect(at("müller@exa|")).toBeUndefined();
+  expect(at("田中@exa|")).toBeUndefined();
   expect(at("@@x|")).toBeUndefined();
   expect(at("@riley |")).toBeUndefined();
 });

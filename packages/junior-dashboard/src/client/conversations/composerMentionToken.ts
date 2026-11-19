@@ -1,9 +1,9 @@
 import type { MentionablePerson } from "@sentry/junior/api/schema";
 import type { ComposerToken } from "./composerSkillToken";
 
-// A word character or `@` before the `@` makes it part of an email address
-// or a handle, so `me@example.com` opens no menu.
-const TOKEN_BEFORE_CARET = /(?<![\w@])@([\p{L}\p{N}._-]*)$/u;
+// A letter, digit, `_` or `@` before the `@` makes it part of an email
+// address or a handle, so `me@example.com` and `müller@…` open no menu.
+const TOKEN_BEFORE_CARET = /(?<![\p{L}\p{N}_@])@([\p{L}\p{N}._-]*)$/u;
 const NAME_AFTER_CARET = /^[\p{L}\p{N}._-]*/u;
 // The token that core keeps in message text for a Slack user mention. Only
 // the form without a label: the composer writes no label, so text that it
