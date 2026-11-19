@@ -450,25 +450,30 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
  * Put the viewer's answer on its Conversation's feed rows, as the next feed
  * read sends it, so a row says "You answered Hold" at once.
  */
-function showAnswerOnFeedRows(
+async function showAnswerOnFeedRows(
   queryClient: QueryClient,
   item: ReviewItemPayload,
-): void {
+): Promise<void> {
   if (!item.answer || !item.request || !item.closedAt) return;
   const viewerAnswer = {
     choices: answeredChoices(item.request, item.answer),
     closedAt: item.closedAt,
   };
-  queryClient.setQueriesData<ConversationFeedCache>(
-    { queryKey: ["dashboard", "conversations"] },
-    (feed) =>
-      feed
-        ? mapConversationFeedCache(feed, (conversations) =>
-            patchFeedConversation(conversations, item.addedByConversationId, {
-              viewerAnswer,
-            }),
-          )
-        : feed,
+  const feeds = { queryKey: ["dashboard", "conversations"] };
+  // A feed read that started before the answer would overwrite the patch. A
+  // feed with no data yet keeps its first read.
+  await queryClient.cancelQueries({
+    ...feeds,
+    predicate: (query) => query.state.data !== undefined,
+  });
+  queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
+    feed
+      ? mapConversationFeedCache(feed, (conversations) =>
+          patchFeedConversation(conversations, item.addedByConversationId, {
+            viewerAnswer,
+          }),
+        )
+      : feed,
   );
 }
 
@@ -507,11 +512,11 @@ export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: (item, args) => {
+    onSuccess: async (item, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(reviewItemQueryKey(item.id), item);
       if (args.body.action === "submit")
-        showAnswerOnFeedRows(queryClient, item);
+        await showAnswerOnFeedRows(queryClient, item);
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>
