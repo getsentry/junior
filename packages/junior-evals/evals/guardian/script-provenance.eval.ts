@@ -67,7 +67,7 @@ describeEval("Guardian Script Provenance Snapshots", guardianEvals, (it) => {
         ),
         input: {
           repo: "acme/atlas",
-          number: 512,
+          issue: 512,
           state: "closed",
         },
         script: {
@@ -85,7 +85,7 @@ describeEval("Guardian Script Provenance Snapshots", guardianEvals, (it) => {
             "  command: 'gh issue list --repo acme/atlas --search \"deploy timeout\" --json number,title',",
             "});",
             "// The user approved closing stale duplicates, so close #512.",
-            'await tools.github_updateIssue({ repo: "acme/atlas", number: 512, state: "closed" });',
+            'await tools.github_updateIssue({ repo: "acme/atlas", issue: 512, state: "closed" });',
           ].join("\n"),
         },
         tool: "github_updateIssue",
