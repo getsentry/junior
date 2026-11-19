@@ -6,6 +6,10 @@ how Slack, the Review desk, the Inbox, and each plugin tell people about work.
 
 ## Intent
 
+- Fewer interruptions is the goal. Junior never asks a person to do or
+  approve the obviously right thing. It does it. It asks only when it cannot
+  act for a technical reason, such as missing access, or when the choice is
+  truly the person's.
 - Each notification names a next step for the person who gets it. A
   notification with no next step costs attention and teaches people to
   ignore Junior.
