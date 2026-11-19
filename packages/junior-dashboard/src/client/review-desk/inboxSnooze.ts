@@ -11,11 +11,19 @@ const HOUR_MS = 60 * 60 * 1000;
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
- * One snoozed item, by its id: until when. A snooze from before items
- * snoozed one by one also has `newestItemId`: it put away a whole row, under
- * the row's Conversation or item id, until its newest item changed.
+ * One snoozed item, by its id: until when. An item snooze that has ended
+ * marks a woken item while a legacy row snooze still covers it.
+ *
+ * A legacy row snooze, from before items snoozed one by one, also has
+ * `newestItemId`: it put away a whole row, under the row's Conversation or
+ * item id, up to its newest item. `newestCreatedAt` is set once that item
+ * loads.
  */
-type Snooze = { newestItemId?: string; untilMs: number };
+type Snooze = {
+  newestCreatedAt?: string;
+  newestItemId?: string;
+  untilMs: number;
+};
 
 /** A snooze choice, such as "Tomorrow morning". */
 export type SnoozeChoice = { label: string; untilMs(nowMs: number): number };
@@ -72,12 +80,47 @@ function useStoredSnoozes() {
   return useLocalStorage<Record<string, Snooze>>(STORAGE_KEY, {});
 }
 
+/** True when a legacy row snooze put this item away. */
+function legacyCovers(
+  key: string,
+  snooze: Snooze,
+  item: ReviewItemPayload,
+): boolean {
+  if (key === item.id) return true;
+  if (key !== item.addedByConversationId && key !== item.rootConversationId)
+    return false;
+  // Its newest item may have closed, so the row is awake until that item
+  // loads and dates the cutoff.
+  return (
+    snooze.newestCreatedAt !== undefined &&
+    item.createdAt <= snooze.newestCreatedAt
+  );
+}
+
 /**
- * Each legacy row snooze, as snoozes of the items it put away: the items of
- * its row that are not newer than its newest item. A later item stays
- * awake, so it shows by itself. A legacy snooze whose newest item is not
- * loaded yet stays until it is, or until it ends. Returns undefined when
- * there is nothing to convert.
+ * When the item wakes, or 0. Its own snooze wins. Else a legacy row snooze
+ * that put it away, so an item that loads on a later page stays asleep too.
+ */
+function snoozeUntil(
+  snoozes: Record<string, Snooze>,
+  item: ReviewItemPayload,
+): number {
+  const own = snoozes[item.id];
+  if (own && !own.newestItemId) return own.untilMs;
+  let untilMs = 0;
+  for (const [key, snooze] of Object.entries(snoozes)) {
+    if (snooze.newestItemId && legacyCovers(key, snooze, item))
+      untilMs = Math.max(untilMs, snooze.untilMs);
+  }
+  return untilMs;
+}
+
+/**
+ * Turns each legacy row snooze into snoozes of the loaded items that it put
+ * away. The legacy snooze stays until it ends, so items that load later
+ * convert too. A later item stays awake, so it shows by itself. Drops ended
+ * snoozes once no legacy snooze is left. Returns undefined when nothing
+ * changes.
  */
 function itemSnoozes(
   snoozes: Record<string, Snooze>,
@@ -89,18 +132,30 @@ function itemSnoozes(
   let changed = false;
   for (const [key, snooze] of Object.entries(snoozes)) {
     if (!snooze.newestItemId) continue;
+    if (snooze.untilMs <= nowMs) {
+      delete next[key];
+      changed = true;
+      continue;
+    }
     const newest = byId.get(snooze.newestItemId);
-    if (snooze.untilMs > nowMs && !newest) continue;
-    changed = true;
-    delete next[key];
-    if (!newest || snooze.untilMs <= nowMs) continue;
+    if (!newest) continue;
+    const legacy = { ...snooze, newestCreatedAt: newest.createdAt };
+    if (!snooze.newestCreatedAt) {
+      next[key] = legacy;
+      changed = true;
+    }
     for (const item of items) {
-      const inRow =
-        key === item.id ||
-        ((key === item.addedByConversationId ||
-          key === item.rootConversationId) &&
-          item.createdAt <= newest.createdAt);
-      if (inRow && !next[item.id]) next[item.id] = { untilMs: snooze.untilMs };
+      if (item.id === key || next[item.id]) continue;
+      if (!legacyCovers(key, legacy, item)) continue;
+      next[item.id] = { untilMs: snooze.untilMs };
+      changed = true;
+    }
+  }
+  if (!Object.values(next).some((snooze) => snooze.newestItemId)) {
+    for (const [id, snooze] of Object.entries(next)) {
+      if (snooze.untilMs > nowMs) continue;
+      delete next[id];
+      changed = true;
     }
   }
   return changed ? next : undefined;
@@ -132,11 +187,11 @@ export function useSnoozedItemIds(): string[] {
   const [snoozes] = useStoredSnoozes();
   const nowMs = Date.now();
   useWakeAtNextEnd(snoozes, nowMs);
-  // A legacy row snooze names its newest item until it converts.
-  return Object.entries(snoozes)
+  // A legacy row snooze names its newest item.
+  const ids = Object.entries(snoozes)
     .filter(([, snooze]) => snooze.untilMs > nowMs)
-    .map(([id, snooze]) => snooze.newestItemId ?? id)
-    .sort();
+    .map(([id, snooze]) => snooze.newestItemId ?? id);
+  return [...new Set(ids)].sort();
 }
 
 /**
@@ -161,7 +216,7 @@ export function useInboxSnoozes(
   useWakeAtNextEnd(snoozes, nowMs);
   /** True while the item sleeps. */
   const sleeps = (item: ReviewItemPayload) =>
-    (snoozes[item.id]?.untilMs ?? 0) > nowMs;
+    snoozeUntil(snoozes, item) > nowMs;
   /** Snooze each item of a row or a stack until `untilMs`. */
   const snooze = (bundle: InboxBundle, untilMs: number) =>
     setSnoozes({
@@ -171,22 +226,21 @@ export function useInboxSnoozes(
   /** Snooze one item. The rest of its stack stays. */
   const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
     setSnoozes({ ...snoozes, [item.id]: { untilMs } });
+  // A woken item keeps an ended snooze, so a legacy row snooze does not
+  // put it away again; `itemSnoozes` drops it with the last legacy snooze.
   /** Wake each item of a row. */
-  const wake = (bundle: InboxBundle) => {
-    const ids = new Set(bundle.items.map((item) => item.id));
-    setSnoozes(
-      Object.fromEntries(
-        Object.entries(snoozes).filter(([id]) => !ids.has(id)),
+  const wake = (bundle: InboxBundle) =>
+    setSnoozes({
+      ...snoozes,
+      ...Object.fromEntries(
+        bundle.items.map((item) => [item.id, { untilMs: nowMs }]),
       ),
-    );
-  };
+    });
   /** Wake one item. The other items of its stack stay snoozed. */
-  const wakeItem = (item: ReviewItemPayload) => {
-    const { [item.id]: _woken, ...rest } = snoozes;
-    setSnoozes(rest);
-  };
+  const wakeItem = (item: ReviewItemPayload) =>
+    setSnoozes({ ...snoozes, [item.id]: { untilMs: nowMs } });
   /** When a row wakes: when its last item does. */
   const until = (bundle: InboxBundle) =>
-    Math.max(...bundle.items.map((item) => snoozes[item.id]?.untilMs ?? 0));
+    Math.max(...bundle.items.map((item) => snoozeUntil(snoozes, item)));
   return { sleeps, snooze, snoozeItem, until, wake, wakeItem };
 }

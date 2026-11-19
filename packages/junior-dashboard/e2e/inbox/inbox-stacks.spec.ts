@@ -497,4 +497,42 @@ test.describe("new UI", { tag: "@new" }, () => {
       "2",
     );
   });
+
+  test("a row snooze from before item snoozes keeps its later page asleep", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.addInitScript(
+      ([key, newestItemId]) =>
+        window.localStorage.setItem(
+          "junior:inbox:snoozed",
+          JSON.stringify({
+            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
+          }),
+        ),
+      [conversationId, childReview.id],
+    );
+    // The row's older ask comes on the second page, after the first converts.
+    await mockReviewItems(page, {
+      open: [childReview, childLicense, rollout],
+      pageSize: 2,
+    });
+    let releaseLaterPages = () => {};
+    const laterPages = new Promise<void>((resolve) => {
+      releaseLaterPages = resolve;
+    });
+    await page.route(/\/api\/review-items\?.*cursor=/, async (route) => {
+      await laterPages;
+      await route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/`);
+    await expect(rowOf(page, childLicense)).toBeVisible();
+    await expect(rowOf(page, childReview)).toHaveCount(0);
+    releaseLaterPages();
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
+      "2",
+    );
+    await expect(rowOf(page, rollout)).toHaveCount(0);
+  });
 });
