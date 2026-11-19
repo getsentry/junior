@@ -2613,6 +2613,31 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
     .filter((summary) => !summary.archivedAt);
 }
 
+/** Root ids whose latest Turn failed, like `conversationTurnFailedSql`. */
+function mockTurnFailedIds(nowMs: number): Set<string> {
+  const ids = new Set<string>();
+  for (const conversation of mockConversations(nowMs)) {
+    const latest = conversation.events
+      .map((event) => event.data)
+      .filter((data) => data.type === "turn_lifecycle")
+      .at(-1);
+    if (latest?.type === "turn_lifecycle" && latest.state === "failed") {
+      ids.add(conversation.conversationId);
+    }
+  }
+  return ids;
+}
+
+/** Count a running Turn as active and a failed latest Turn as failed. */
+function addTurnCounts(
+  target: { active: number; failed: number },
+  summary: ConversationSummaryReport,
+  failedIds: Set<string>,
+) {
+  target.active += summary.turnActive ? 1 : 0;
+  target.failed += failedIds.has(summary.conversationId) ? 1 : 0;
+}
+
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
   const usage = summary.cumulativeUsage;
   return (
@@ -2630,8 +2655,9 @@ function statsItem(label: string): ConversationStatsItem {
 function addSummary(
   item: ConversationStatsItem,
   summary: ConversationSummaryReport,
+  failedIds: Set<string>,
 ) {
-  item.active += summary.status === "working" ? 1 : 0;
+  addTurnCounts(item, summary, failedIds);
   item.conversations += 1;
   item.durationMs += summary.cumulativeDurationMs;
   const tokens = summaryTokenTotal(summary);
@@ -3916,6 +3942,7 @@ export function readMockPeopleProfile(
   );
   const identity = summaries[0]?.actorIdentity;
   if (!identity) return undefined;
+  const failedIds = mockTurnFailedIds(nowMs);
   const totals: ActorProfileReport["totals"] = {
     active: 0,
     activeDays: 0,
@@ -3928,7 +3955,7 @@ export function readMockPeopleProfile(
   const locations = new Map<string, ConversationStatsItem>();
   const surfaces = new Map<string, ConversationStatsItem>();
   for (const summary of summaries) {
-    totals.active += summary.status === "working" ? 1 : 0;
+    addTurnCounts(totals, summary, failedIds);
     totals.conversations += 1;
     totals.durationMs += summary.cumulativeDurationMs;
     const tokens = summaryTokenTotal(summary);
@@ -3943,7 +3970,7 @@ export function readMockPeopleProfile(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "working" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
@@ -3955,7 +3982,7 @@ export function readMockPeopleProfile(
 
     const place = locationLabel(summary);
     const location = locations.get(place) ?? statsItem(place);
-    addSummary(location, summary);
+    addSummary(location, summary, failedIds);
     locations.set(place, location);
 
     const surfaceLabel =
@@ -3963,7 +3990,7 @@ export function readMockPeopleProfile(
         ? "API"
         : `${summary.surface.charAt(0).toUpperCase()}${summary.surface.slice(1)}`;
     const surface = surfaces.get(surfaceLabel) ?? statsItem(surfaceLabel);
-    addSummary(surface, summary);
+    addSummary(surface, summary, failedIds);
     surfaces.set(surfaceLabel, surface);
   }
   totals.activeDays = activeDates.size;
@@ -4233,6 +4260,7 @@ export function conversationTimeBounds(
 function publicLocation(
   summaries: ConversationSummaryReport[],
   channel: string,
+  failedIds: Set<string>,
 ): LocationSummaryReport {
   const [first, ...rest] = summaries.filter(
     (summary) => summary.channel === channel,
@@ -4242,7 +4270,7 @@ function publicLocation(
     [first, ...rest];
   const item = statsItem(locationLabel(first));
   for (const summary of matching) {
-    addSummary(item, summary);
+    addSummary(item, summary, failedIds);
   }
   const bounds = conversationTimeBounds(matching);
   return {
@@ -4269,6 +4297,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
         ),
     ),
   ];
+  const failedIds = mockTurnFailedIds(nowMs);
   const privateActivity = statsItem("Private activity");
   const sparseActivity = new Map<string, LocationActivityDayReport>();
   for (const summary of summaries) {
@@ -4284,7 +4313,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
     if (isPublic) day.publicConversations += 1;
     else {
       day.privateConversations += 1;
-      addSummary(privateActivity, summary);
+      addSummary(privateActivity, summary, failedIds);
     }
     sparseActivity.set(date, day);
   }
@@ -4299,7 +4328,9 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
   return {
     activityDays,
     generatedAt: iso(nowMs),
-    locations: channels.map((channel) => publicLocation(summaries, channel)),
+    locations: channels.map((channel) =>
+      publicLocation(summaries, channel, failedIds),
+    ),
     privateActivity,
     source: "conversation_index",
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
@@ -4318,6 +4349,7 @@ export function readMockLocationDetail(
   const recentConversations = activeMockSummaries(nowMs).filter(
     (summary) => summary.channel === location.providerDestinationId,
   );
+  const failedIds = mockTurnFailedIds(nowMs);
   const actorItems = new Map<string, LocationActorSummaryReport>();
   const sparseDays = new Map<
     string,
@@ -4331,7 +4363,7 @@ export function readMockLocationDetail(
         ...statsItem(actorLabel(identity)),
         actor: identity,
       };
-      addSummary(actorItem, summary);
+      addSummary(actorItem, summary, failedIds);
       actorItems.set(actorKey, actorItem);
     }
     const date = summary.lastSeenAt.slice(0, 10);
@@ -4342,7 +4374,7 @@ export function readMockLocationDetail(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "working" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
     const tokens = summaryTokenTotal(summary);
