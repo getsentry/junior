@@ -39,6 +39,7 @@ import { scrollPages } from "../../../review-desk/inboxQueries";
 import { PageEnd } from "../../../review-desk/PageEnd";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
+import { NAV_PAGES } from "../../../navPages";
 
 const EMPTY: AutomationListItem[] = [];
 
@@ -131,9 +132,9 @@ export function AutomationsPage(props: { enabled: boolean }) {
             <AutomationScopeTabs scope={scope} search={location.search} />
             <Link
               className={buttonVariants({ variant: "ghost" })}
-              to="/automations/runs"
+              to={NAV_PAGES.automationRuns.to}
             >
-              Runs
+              {NAV_PAGES.automationRuns.label}
             </Link>
             <FilterToggle filters={toolbar} />
           </>
