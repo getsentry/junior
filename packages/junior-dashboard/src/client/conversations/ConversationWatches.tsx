@@ -23,7 +23,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
-import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
   Collapsible,
@@ -37,12 +37,10 @@ import { formatTime } from "../time";
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationWatchesReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationWatchesReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "watches"),
     retry: false,
   });

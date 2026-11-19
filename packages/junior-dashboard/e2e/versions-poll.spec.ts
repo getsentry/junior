@@ -36,12 +36,13 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
+  const reviewItemStatuses: number[] = [];
   page.on("response", (response) => {
-    if (
-      response.request().method() === "GET" &&
-      new URL(response.url()).pathname === "/api/conversations"
-    ) {
-      feedStatuses.push(response.status());
+    if (response.request().method() !== "GET") return;
+    const { pathname } = new URL(response.url());
+    if (pathname === "/api/conversations") feedStatuses.push(response.status());
+    if (pathname.startsWith("/api/review-items/")) {
+      reviewItemStatuses.push(response.status());
     }
   });
   await page.route(
@@ -108,6 +109,12 @@ test("refreshes idle reads only when their version moves", async ({
   await expect(
     page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
   ).toBeVisible();
+  // The Review item reads did not change either.
+  const reviewItemReads = reviewItemStatuses.length;
+  versions.reviewItems = "review-2";
+  await expect
+    .poll(() => reviewItemStatuses.slice(reviewItemReads), { timeout: 15_000 })
+    .toContain(304);
 });
 
 test.describe("checks less often while the reader is away", () => {

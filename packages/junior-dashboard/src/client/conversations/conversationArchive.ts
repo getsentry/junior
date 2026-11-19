@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import { buildConversations } from "../format";
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import type { Conversation } from "../types";
 import {
   conversationFeedCacheRows,
@@ -330,7 +331,9 @@ export function archiveConversationMutationOptions(
         );
       }
       queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
-        detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
+        detail
+          ? withoutVersion({ ...detail, ...viewerMarks }, "detailEtag")
+          : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -372,11 +375,10 @@ export function archiveConversationMutationOptions(
         conversationDetailQueryKey(conversationId),
         (detail) =>
           detail
-            ? {
-                ...detail,
-                archivedAt: result.archivedAt,
-                detailEtag: undefined,
-              }
+            ? withoutVersion(
+                { ...detail, archivedAt: result.archivedAt },
+                "detailEtag",
+              )
             : detail,
       );
       if (!args.archived) {

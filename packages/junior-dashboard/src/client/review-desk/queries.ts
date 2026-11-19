@@ -37,6 +37,11 @@ import {
 } from "../conversations/conversationFeedCache";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
+import {
+  revalidatedJsonQuery,
+  withoutVersion,
+  type ContentVersioned,
+} from "../revalidation";
 import { automationKeys } from "../api";
 import { itemNeedsViewer } from "./reviewItemFormat";
 
@@ -154,12 +159,10 @@ export function useReviewItemData(
 function reviewItemQuery(id: string | undefined) {
   return {
     queryKey: reviewItemQueryKey(id),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      fetchDashboardJson(
-        reviewItemSchema,
-        `/api/review-items/${encodeURIComponent(id!)}`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      reviewItemSchema,
+      `/api/review-items/${encodeURIComponent(id!)}`,
+    ),
     retry: false,
   };
 }
@@ -278,12 +281,10 @@ export function useReviewItemCountData(enabled: boolean) {
   return useQuery({
     enabled,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemCountSchema,
-        "/api/review-items/count",
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      reviewItemCountSchema,
+      "/api/review-items/count",
+    ),
     retry: false,
   });
 }
@@ -349,19 +350,23 @@ function changeCounts(
   by: number,
 ) {
   if (!itemNeedsViewer(item)) return;
-  queryClient.setQueriesData<ReviewItemCount>(
+  queryClient.setQueriesData<ContentVersioned<ReviewItemCount>>(
     { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"] },
     (count) =>
-      count && {
-        ...count,
-        codeChanges: Math.max(
-          0,
-          count.codeChanges +
-            (item.subject?.objectType === "code_change" ? by : 0),
-        ),
-        decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
-        needsViewer: Math.max(0, count.needsViewer + by),
-      },
+      count &&
+      withoutVersion(
+        {
+          ...count,
+          codeChanges: Math.max(
+            0,
+            count.codeChanges +
+              (item.subject?.objectType === "code_change" ? by : 0),
+          ),
+          decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
+          needsViewer: Math.max(0, count.needsViewer + by),
+        },
+        "contentVersion",
+      ),
   );
 }
 
@@ -575,12 +580,10 @@ const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
 const waitingConversationsQuery = {
   queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
-  queryFn: ({ signal }: { signal: AbortSignal }) =>
-    fetchDashboardJson(
-      reviewItemWaitingConversationsSchema,
-      "/api/review-items/waiting-conversations",
-      signal,
-    ),
+  queryFn: revalidatedJsonQuery(
+    reviewItemWaitingConversationsSchema,
+    "/api/review-items/waiting-conversations",
+  ),
   retry: false,
 };
 

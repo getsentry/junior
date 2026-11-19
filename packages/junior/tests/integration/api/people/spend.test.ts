@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { personalSpendReportSchema } from "@/api/schema";
+import {
+  CONTENT_VERSION_HEADER,
+  personalSpendReportSchema,
+} from "@/api/schema";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import type { StoredSlackActor, WebActor } from "@/chat/actor";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -137,6 +140,19 @@ describe("personal spend API", () => {
         sevenDaysUsd: 0.42,
         thirtyDaysUsd: 0.82,
       });
+      // The versions poll reads it again with the token of the copy it
+      // holds. Unchanged spend comes back empty.
+      const version = firstResponse.headers.get(CONTENT_VERSION_HEADER)!;
+      expect(firstResponse.headers.get("cache-control")).toBe(
+        "private, no-store",
+      );
+      const readAgain = () =>
+        app.request("http://localhost/api/people/me/spend", {
+          headers: { [CONTENT_VERSION_HEADER]: version },
+        });
+      const unchanged = await readAgain();
+      expect(unchanged.status).toBe(304);
+      expect(await unchanged.text()).toBe("");
 
       await store.recordExecution({
         actorIdentityId,
@@ -153,9 +169,8 @@ describe("personal spend API", () => {
         updatedAtMs: Date.parse("2026-06-14T12:01:00.000Z"),
       });
 
-      const refreshedResponse = await app.request(
-        "http://localhost/api/people/me/spend",
-      );
+      const refreshedResponse = await readAgain();
+      expect(refreshedResponse.status).toBe(200);
       const refreshed = personalSpendReportSchema.parse(
         await refreshedResponse.json(),
       );

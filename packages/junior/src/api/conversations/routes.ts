@@ -1,7 +1,9 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { contentVersion, contentVersionHeaders } from "../content-version";
 import { jsonResponse, throwApiError } from "../http";
+import { CONTENT_VERSION_HEADER } from "../schema/common";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -27,7 +29,6 @@ import {
   createAttachmentUploadBodySchema,
 } from "../schema/conversation-attachment-upload";
 import {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "../schema/conversation-feed";
@@ -119,7 +120,6 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
-import { conversationFeedPageVersion } from "./feed-page-version";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -159,17 +159,12 @@ export function createConversationRoutes(
         status,
         ...(viewer ? { viewer } : undefined),
       });
-      const pageVersion = conversationFeedPageVersion(feed);
-      const headers = {
-        "cache-control": "private, no-store",
-        [CONVERSATION_FEED_PAGE_VERSION_HEADER]: pageVersion,
-      };
       // The token hashes the page itself, so it holds everything that the
-      // query and the viewer change on it.
-      if (
-        context.req.header(CONVERSATION_FEED_PAGE_VERSION_HEADER) ===
-        pageVersion
-      ) {
+      // query and the viewer change on it. Comparing it here, not in
+      // `revalidateContent`, skips the response parse and serialization.
+      const version = contentVersion(feed);
+      const headers = contentVersionHeaders(version);
+      if (context.req.header(CONTENT_VERSION_HEADER) === version) {
         return new Response(null, { status: 304, headers });
       }
       return jsonResponse(conversationFeedSchema, feed, { headers });

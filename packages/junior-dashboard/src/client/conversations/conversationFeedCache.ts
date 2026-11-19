@@ -3,6 +3,7 @@ import type {
   ConversationFeed,
   ConversationFeedItem,
 } from "@sentry/junior/api/schema";
+import { withoutVersion } from "../revalidation";
 
 /** One loaded page of the viewer's feed, with the version of its body. */
 export type ConversationFeedPage = ConversationFeed & { pageVersion?: string };
@@ -69,12 +70,12 @@ export function mapConversationFeedCache(
   }
   return {
     ...cache,
-    // A changed page no longer matches the body that its version names, so
-    // the next read gets the whole page.
-    pages: cache.pages.map(({ pageVersion: _pageVersion, ...page }, index) => ({
-      ...page,
-      conversations: map(page.conversations, index === 0),
-    })),
+    pages: cache.pages.map((page, index) =>
+      withoutVersion(
+        { ...page, conversations: map(page.conversations, index === 0) },
+        "pageVersion",
+      ),
+    ),
   };
 }
 

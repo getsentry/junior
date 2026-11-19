@@ -15,7 +15,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
+  CONTENT_VERSION_HEADER,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
@@ -58,7 +58,8 @@ import {
   dashboardIdentitySchema,
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
-import { fetchDashboardJson, readDashboardResponse } from "./http";
+import { fetchDashboardJson } from "./http";
+import { readRevalidated, revalidatedJsonQuery } from "./revalidation";
 import { readResponseJson } from "./sentry";
 import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemPluginsData } from "./types";
@@ -130,27 +131,6 @@ export function usePluginUserPagesData() {
   });
 }
 
-/** Reuse the cached feed page when the server reports no change. */
-async function readConversationFeedPage(
-  path: string,
-  signal: AbortSignal,
-  previous: ConversationFeedPage | undefined,
-): Promise<ConversationFeedPage> {
-  const response = await readDashboardResponse(
-    path,
-    signal,
-    previous?.pageVersion
-      ? { [CONVERSATION_FEED_PAGE_VERSION_HEADER]: previous.pageVersion }
-      : undefined,
-  );
-  if (response.status === 304 && previous) return previous;
-  const page = await readResponseJson(response, conversationFeedSchema);
-  const pageVersion = response.headers.get(
-    CONVERSATION_FEED_PAGE_VERSION_HEADER,
-  );
-  return pageVersion ? { ...page, pageVersion } : page;
-}
-
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
@@ -176,10 +156,18 @@ export function useConversationsData(search = "") {
           InfiniteData<ConversationFeedPage, string | undefined>
         >(queryKey);
       const index = cached?.pageParams.indexOf(pageParam) ?? -1;
-      return readConversationFeedPage(
-        `/api/conversations${query ? `?${query}` : ""}`,
-        signal,
-        index >= 0 ? cached?.pages[index] : undefined,
+      const page = index >= 0 ? cached?.pages[index] : undefined;
+      return readRevalidated<ConversationFeedPage>(
+        {
+          header: CONTENT_VERSION_HEADER,
+          path: `/api/conversations${query ? `?${query}` : ""}`,
+          signal,
+        },
+        page && { data: page, version: page.pageVersion },
+        async (response, pageVersion) => {
+          const read = await readResponseJson(response, conversationFeedSchema);
+          return pageVersion ? { ...read, pageVersion } : read;
+        },
       );
     },
     initialPageParam: undefined as string | undefined,
@@ -545,12 +533,10 @@ export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
     enabled,
     queryKey: ["dashboard", "personal-spend"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        personalSpendReportSchema,
-        "/api/people/me/spend",
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      personalSpendReportSchema,
+      "/api/people/me/spend",
+    ),
     retry: false,
     staleTime: 0,
   });
