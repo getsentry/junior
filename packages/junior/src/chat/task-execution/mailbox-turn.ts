@@ -43,6 +43,8 @@ export type MailboxTurnInput = {
   /** Grants of a system Actor that a child agent's input continues. */
   credentialContext?: CredentialContext;
   message: InboundMessage;
+  /** The words of a parent message, without its tag and generic instructions. */
+  requestText?: string;
   source: Source;
 };
 

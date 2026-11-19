@@ -9,7 +9,7 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { SkillMetadata } from "@/chat/skills";
 import { agentInvocationInputText } from "@/chat/agent-invocations/work";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { instructionForInputs, turnRequestText } from "@/chat/agent/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 
 const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;
@@ -113,6 +113,25 @@ describe("skillInvocationText", () => {
     ).toBe("Run $brief for the repo.");
     // A plugin dispatch is not an Automation run.
     expect(skillInvocationText(run({ text }, { id: "d2" }), person)).toBe("");
+  });
+});
+
+describe("turnRequestText", () => {
+  it("reads an Automation run's instructions, and no Watch Event text", () => {
+    const text = renderTaskInput({
+      instructions: "Summarize open bugs for the team.",
+      externalText: "lgtm, ship it",
+      source: "github",
+    });
+    expect(
+      turnRequestText(run({ text }, { id: "d1", declaresResult: true })),
+    ).toBe("Summarize open bugs for the team.");
+    // A plugin dispatch is not an Automation run.
+    expect(turnRequestText(run({ text }, { id: "d2" }))).toBe("");
+    // A Watch Event has no request, also with the Watch's instructions.
+    expect(
+      turnRequestText(run(instructionForInputs([{ kind: "runtime", text }]))),
+    ).toBe("");
   });
 });
 

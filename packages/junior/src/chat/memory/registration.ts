@@ -188,6 +188,7 @@ export function createMemoryRegistration(
                 ...(ctx.locationId
                   ? { locationId: ctx.locationId }
                   : undefined),
+                loadHistory: ctx.loadHistory,
                 log: ctx.log,
                 reranker: ctx.reranker,
                 setSpanAttributes: ctx.setSpanAttributes,

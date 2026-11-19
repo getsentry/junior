@@ -8,11 +8,11 @@ related:
   - /start-here/quickstart/
 ---
 
-Memory uses the Junior Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Memory is always on. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. Junior also has explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
+Memory uses the Junior Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Memory is always on. Before each Turn, Junior searches with the request of that Turn: what a person wrote, the task of a parent agent, or the instructions of an automation. It combines semantic and full-text matches, and includes only memories that directly help with the current request. It skips memories that the Conversation history still holds: memories it already added since the last compaction, and memories captured from the same Conversation since then. Turns with no request, such as Events, timers, and child agent results, get no recalled memories. Junior also has explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
 
 All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
-Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason.
+Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason, and the memory database records the reason and the Conversation that showed it. A retried write does not bring back an archived memory.
 
 ## Prerequisites
 
@@ -215,7 +215,7 @@ Memories are public. A durable fact remembered in a public Conversation can be r
 - **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
 - **Migration error — The Memory plugin migrations are not complete**: the database ran only part of the `@sentry/junior-memory` migrations. Run `junior upgrade` with `@sentry/junior` 0.310.0 and `@sentry/junior-memory` 0.310.0, then upgrade again.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
-- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
+- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, their reranking score may be below the recall threshold, or the Conversation history may already hold them. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 
