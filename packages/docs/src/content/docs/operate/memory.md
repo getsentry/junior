@@ -180,7 +180,7 @@ Through 0.310.0, Memory was the `@sentry/junior-memory` plugin. To upgrade an ap
 2. Move the `memoryPlugin({ ... })` options to `createApp({ memory: { ... } })`.
 3. Upgrade `@sentry/junior` and deploy. `junior upgrade` keeps the existing Memory tables and data.
 
-Before you upgrade, run `junior upgrade` once with `@sentry/junior-memory` 0.310.0, so that all of its migrations are applied. Otherwise `junior upgrade` stops with an error. After the upgrade, you can roll back to 0.310.0 with `@sentry/junior-memory` 0.310.0. A database that a later version created cannot roll back to 0.310.0 or earlier.
+Before you upgrade, run `junior upgrade` once with `@sentry/junior-memory` 0.310.0 or later, so that all of its migrations are applied. Otherwise `junior upgrade` stops with an error. After the upgrade, you can roll back to 0.310.0 with `@sentry/junior-memory` 0.310.0. A database that a later version created cannot roll back to 0.310.0 or earlier.
 
 ## Verify
 

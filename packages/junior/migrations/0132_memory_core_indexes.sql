@@ -12,4 +12,6 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_memories_search_idx" ON "
 --> statement-breakpoint
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_memories_idempotency_idx" ON "junior_memory_memories" USING btree ("scope","scope_key","idempotency_key") WHERE "junior_memory_memories"."idempotency_key" IS NOT NULL AND "junior_memory_memories"."archived_at_ms" IS NULL AND "junior_memory_memories"."superseded_at_ms" IS NULL AND "junior_memory_memories"."superseded_by_id" IS NULL;
 --> statement-breakpoint
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_memories_archived_idempotency_idx" ON "junior_memory_memories" USING btree ("scope","scope_key","idempotency_key") WHERE "junior_memory_memories"."idempotency_key" IS NOT NULL AND "junior_memory_memories"."archived_at_ms" IS NOT NULL AND "junior_memory_memories"."archive_reason" <> 'expired';
+--> statement-breakpoint
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_signals_observed_idx" ON "junior_memory_signals" USING btree ("memory_id","signal","observed_at_ms");
