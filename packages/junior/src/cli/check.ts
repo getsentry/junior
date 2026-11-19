@@ -3,6 +3,7 @@ import path from "node:path";
 import { mentionsTag } from "@sentry/junior-plugin-api";
 import { pathToFileURL } from "node:url";
 import pLimit from "p-limit";
+import * as z from "zod";
 import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
@@ -366,29 +367,39 @@ function validatePluginManifest(
   return { manifestPath, manifest, errors: [] };
 }
 
+const exportConditionTargetSchema = z.string().optional().catch(undefined);
+
+// A root export is a path, or conditions whose first path wins.
+const packageExportTargetSchema = z.union([
+  z.string(),
+  z
+    .object({
+      default: exportConditionTargetSchema,
+      import: exportConditionTargetSchema,
+      node: exportConditionTargetSchema,
+    })
+    .transform(
+      (conditions) =>
+        conditions.default ?? conditions.import ?? conditions.node,
+    ),
+]);
+
 function packageExportsEntryPath(exportsValue: unknown): string | undefined {
   if (typeof exportsValue === "string") {
     return exportsValue;
   }
-  if (!isRecord(exportsValue)) {
+  if (
+    typeof exportsValue !== "object" ||
+    exportsValue === null ||
+    Array.isArray(exportsValue)
+  ) {
     return undefined;
   }
 
-  const rootExport = exportsValue["."] ?? exportsValue;
-  if (typeof rootExport === "string") {
-    return rootExport;
-  }
-  if (!isRecord(rootExport)) {
-    return undefined;
-  }
-
-  for (const condition of ["default", "import", "node"]) {
-    const target = rootExport[condition];
-    if (typeof target === "string") {
-      return target;
-    }
-  }
-  return undefined;
+  const rootExport =
+    ("." in exportsValue ? exportsValue["."] : undefined) ?? exportsValue;
+  const target = packageExportTargetSchema.safeParse(rootExport);
+  return target.success ? target.data : undefined;
 }
 
 async function resolvePackageEntryPath(
@@ -431,11 +442,14 @@ function isPluginFactoryExport(
   );
 }
 
-function isPluginRegistrationLike(
-  value: unknown,
-): value is { manifest: PluginManifest } {
-  return isRecord(value) && isRecord(value["manifest"]);
-}
+// Factory output is checked only for a manifest object here.
+// parseInlinePluginManifest validates the manifest itself.
+const pluginRegistrationLikeSchema = z.object({
+  manifest: z.custom<PluginManifest>(
+    (value) =>
+      typeof value === "object" && value !== null && !Array.isArray(value),
+  ),
+});
 
 async function collectPackageJsPluginSources(
   packageDir: string,
@@ -486,7 +500,9 @@ async function collectPackageJsPluginSources(
       pluginSources.push(errorSource(manifestPath, error));
       continue;
     }
-    if (!isPluginRegistrationLike(registration)) {
+    const pluginRegistration =
+      pluginRegistrationLikeSchema.safeParse(registration);
+    if (!pluginRegistration.success) {
       continue;
     }
 
@@ -495,7 +511,10 @@ async function collectPackageJsPluginSources(
         pluginDir: packageDir,
         packageName,
         manifestPath,
-        manifest: parseInlinePluginManifest(registration.manifest, packageDir),
+        manifest: parseInlinePluginManifest(
+          pluginRegistration.data.manifest,
+          packageDir,
+        ),
       });
     } catch (error) {
       pluginSources.push(errorSource(manifestPath, error));
@@ -771,10 +790,6 @@ interface VercelProjectConfig {
   framework?: unknown;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 async function hasJuniorDeploymentMarkers(
   rootDir: string,
   packages: DeclaredPackage[],
@@ -862,20 +877,25 @@ async function validateDeploymentConfig(
     );
   }
 
-  if (isRecord(vercelConfig.functions)) {
-    const legacyFunctionConfig =
-      vercelConfig.functions[LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION];
-    if (legacyFunctionConfig !== undefined) {
-      checked = true;
-      errors.push(
-        `${vercelConfigPath}: functions.${LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION} targets a source file that Nitro does not deploy. Remove it; juniorNitro() emits the ${JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE} queue trigger through Nitro functionRules.`,
-      );
-    }
+  const { functions } = vercelConfig;
+  if (
+    typeof functions === "object" &&
+    functions !== null &&
+    LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION in functions
+  ) {
+    checked = true;
+    errors.push(
+      `${vercelConfigPath}: functions.${LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION} targets a source file that Nitro does not deploy. Remove it; juniorNitro() emits the ${JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE} queue trigger through Nitro functionRules.`,
+    );
   }
 
   if (hasJuniorMarkers && Array.isArray(vercelConfig.crons)) {
     const hasHeartbeatCron = vercelConfig.crons.some(
-      (cron) => isRecord(cron) && cron["path"] === JUNIOR_HEARTBEAT_ROUTE,
+      (cron: unknown) =>
+        typeof cron === "object" &&
+        cron !== null &&
+        "path" in cron &&
+        cron.path === JUNIOR_HEARTBEAT_ROUTE,
     );
     if (hasHeartbeatCron) {
       checked = true;
