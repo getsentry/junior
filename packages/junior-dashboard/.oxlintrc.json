@@ -41,6 +41,10 @@
       "specifier": "./oxlint/radius.ts"
     },
     {
+      "name": "toast",
+      "specifier": "./oxlint/toast.ts"
+    },
+    {
       "name": "nav-pages",
       "specifier": "./oxlint/nav-pages.ts"
     }
@@ -150,7 +154,8 @@
     {
       "files": ["src/client/**"],
       "rules": {
-        "time-format/no-raw-time-format": "error"
+        "time-format/no-raw-time-format": "error",
+        "toast/no-actionless-success": "error"
       }
     },
     {

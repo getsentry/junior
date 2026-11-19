@@ -14,7 +14,6 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { deleteDashboardResource } from "../../http";
 import {
@@ -32,7 +31,6 @@ export function WorkspaceDeleteDialog(props: {
 }) {
   const [open, setOpen] = useState(true);
   const queryClient = useQueryClient();
-  const toast = useToastManager();
   const deletion = useMutation({
     mutationFn: () =>
       deleteDashboardResource(
@@ -54,11 +52,6 @@ export function WorkspaceDeleteDialog(props: {
       // Drop the detail read too, so a later visit shows the not-found state.
       queryClient.removeQueries({
         queryKey: workspaceQueryKey(props.workspace.id),
-      });
-      toast.add({
-        title: "Workspace deleted",
-        description: props.workspace.name,
-        type: "success",
       });
       setOpen(false);
     },
