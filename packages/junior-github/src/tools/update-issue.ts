@@ -34,7 +34,7 @@ import {
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Issue number."),
+    issue: z.number().int().positive().describe("Issue number."),
     title: z
       .string()
       .trim()
@@ -156,7 +156,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       update.body !== undefined
         ? await readGitHubBody(ctx.egress, {
             operation: "github.issue.get",
-            path: `${repoPath(repo)}/issues/${update.number}`,
+            path: `${repoPath(repo)}/issues/${update.issue}`,
           })
         : undefined;
     const payload = {
@@ -181,7 +181,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       const response = await githubApi(ctx.egress, {
         operation: "github.issue.update",
         method: "PATCH",
-        path: `${repoPath(repo)}/issues/${update.number}`,
+        path: `${repoPath(repo)}/issues/${update.issue}`,
         body: payload,
       });
       parsed = response.body;
@@ -196,7 +196,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       const response = await githubApi(ctx.egress, {
         operation: "github.issue.assign",
         method: "POST",
-        path: `${repoPath(repo)}/issues/${update.number}/assignees`,
+        path: `${repoPath(repo)}/issues/${update.issue}/assignees`,
         body: { assignees: [assignee] },
       });
       parsed = response.body;

@@ -16,7 +16,7 @@ import {
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
     body: z.string().trim().min(1).describe("Comment text."),
     in_reply_to: z
       .number()
@@ -93,8 +93,8 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
     const prefix = repoPath(repo);
     const path =
       input.in_reply_to === undefined
-        ? `${prefix}/issues/${input.number}/comments`
-        : `${prefix}/pulls/${input.number}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
+        ? `${prefix}/issues/${input.pull_request}/comments`
+        : `${prefix}/pulls/${input.pull_request}/comments/${await threadRootId(egress, prefix, input.in_reply_to)}/replies`;
     const response = await githubApi(egress, {
       operation: "github.pull.comment.create",
       method: "POST",
@@ -114,7 +114,7 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
     return {
       target: "commentOnPullRequest",
       repo: repo.ref,
-      number: input.number,
+      number: input.pull_request,
       comment_id: comment.id,
       reply: { text: input.body, url: comment.html_url },
       url: comment.html_url,
