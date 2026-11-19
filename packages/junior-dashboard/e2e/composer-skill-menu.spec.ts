@@ -46,6 +46,8 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
   const composer = page.getByLabel("Start a conversation");
+  // The editor loads after the page. A textarea stands in until then.
+  await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $");
   const skills = page.getByRole("grid", { name: "Skills" });
   await expect(skills.getByRole("row")).toHaveCount(3);
@@ -84,7 +86,9 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await expect(composer).toBeFocused();
   await expect(active).toContainText("$release-check");
   await composer.press("Enter");
-  await expect(composer).toHaveValue("Run $release-check ");
+  await expect(composer).toHaveText("Run $release-check ", {
+    useInnerText: true,
+  });
 });
 
 test("describes the skill reference at the caret @classic", async ({
@@ -95,11 +99,15 @@ test("describes the skill reference at the caret @classic", async ({
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
   const composer = page.getByLabel("Start a conversation");
+  // The editor loads after the page. A textarea stands in until then.
+  await expect(composer).toHaveAttribute("contenteditable", "true");
   const skills = page.getByRole("grid", { name: "Skills" });
   const card = page.getByRole("group", { name: "$release-check" });
   await composer.fill("Run $rel");
   await composer.press("Enter");
-  await expect(composer).toHaveValue("Run $release-check ");
+  await expect(composer).toHaveText("Run $release-check ", {
+    useInnerText: true,
+  });
 
   // The skill that was just inserted, until the next edit.
   await expect(card).toContainText("then post a short summary");
@@ -128,7 +136,9 @@ test("describes the skill reference at the caret @classic", async ({
   await expect(card).toBeVisible();
   await composer.press("Escape");
   await expect(card).toHaveCount(0);
-  await expect(composer).toHaveValue("Run $release-check now");
+  await expect(composer).toHaveText("Run $release-check now", {
+    useInnerText: true,
+  });
 
   // An edit in the reference shows the menu instead.
   await composer.press("End");
@@ -155,6 +165,8 @@ test("a caret move before the skill list loads shows the card @classic", async (
   });
   await page.goto(dashboard.baseURL);
   const composer = page.getByLabel("Start a conversation");
+  // The editor loads after the page. A textarea stands in until then.
+  await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $release-check now");
   for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
   release();
@@ -179,6 +191,7 @@ test.describe("on a touch screen", () => {
     await routeSkills(page);
     await page.goto(dashboard.baseURL);
     const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toHaveAttribute("contenteditable", "true");
     await composer.fill("$");
     const skills = page.getByRole("grid", { name: "Skills" });
     const row = skills.getByRole("gridcell", { name: /^\$release-check/ });
@@ -195,13 +208,13 @@ test.describe("on a touch screen", () => {
     await details.tap();
     await expect(details).toHaveAttribute("aria-expanded", "true");
     await expect(description).toBeVisible();
-    await expect(composer).toHaveValue("$");
+    await expect(composer).toHaveText("$", { useInnerText: true });
     await screenshot(page, "composer-skill-menu-expanded", { view: "mobile" });
 
     await page.getByRole("button", { name: "View full skill" }).tap();
     const drawer = page.getByRole("dialog", { name: "$release-check" });
     await expect(drawer).toContainText("Compare the release branch");
-    await expect(composer).toHaveValue("$");
+    await expect(composer).toHaveText("$", { useInnerText: true });
     await drawer
       .getByRole("button", { name: "Close $release-check", exact: true })
       .tap();
@@ -211,7 +224,9 @@ test.describe("on a touch screen", () => {
       page.getByRole("button", { name: "View full skill" }),
     ).toBeInViewport({ ratio: 1 });
     await row.tap();
-    await expect(composer).toHaveValue("$release-check ");
+    await expect(composer).toHaveText("$release-check ", {
+      useInnerText: true,
+    });
     await expect(
       page.getByRole("group", { name: "$release-check" }),
     ).toBeVisible();
@@ -244,6 +259,7 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   const composer = page.getByRole("textbox", {
     name: "Continue this conversation",
   });
+  await expect(composer).toHaveAttribute("contenteditable", "true");
   // Type, so the caret is where a person leaves it.
   await composer.pressSequentially("$");
   const skills = page.getByRole("grid", { name: "Skills" });
@@ -261,4 +277,68 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   await composer.press("Escape");
   await expect(card).toBeHidden();
   await expect(question).toBeVisible();
+});
+
+test("the pane follows the pointer only after it rests on a row @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Start a conversation");
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await composer.pressSequentially("Run $");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  const cell = (name: string) =>
+    skills.getByRole("gridcell", { name: new RegExp(`^\\$${name}`) });
+  await expect(cell("diff-quality")).toHaveAttribute("aria-selected", "true");
+
+  // The pane waits for the pointer to rest on a row, so it does not follow
+  // a pass over rows on the way to it. Arrow keys act at once.
+  await cell("release-check").hover();
+  await expect(cell("diff-quality")).toHaveAttribute("aria-selected", "true");
+  await expect(cell("release-check")).toHaveAttribute("aria-selected", "true");
+  await composer.press("ArrowDown");
+  await expect(cell("self-update")).toHaveAttribute("aria-selected", "true");
+});
+
+test("the reply composer with Details open stays split @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "generate-project-local-verification-skill",
+          description: "Make a verify skill.",
+        },
+        { name: "why", description: "Explain why." },
+      ],
+    }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+  );
+  await expect(
+    page.getByRole("complementary", { name: "Conversation details" }),
+  ).toBeVisible();
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await composer.pressSequentially("$");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(skills).toBeVisible();
+  // About 606px wide: the list keeps 14rem, long names end in an ellipsis,
+  // and the pane shows the whole name.
+  await expect(
+    page.getByRole("button", { name: "View full skill" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Details for/ })).toHaveCount(
+    0,
+  );
+  await screenshot(page, "composer-skill-split-reply", { view: "desktop" });
 });

@@ -617,7 +617,7 @@ test("Send sends docked picks and asks before a message drops others", async ({
   // Go back keeps the draft and the picks.
   await confirm.getByRole("button", { name: "Go back" }).click();
   await expect(confirm).toBeHidden();
-  await expect(composer).toHaveValue("Friday works.");
+  await expect(composer).toHaveText("Friday works.", { useInnerText: true });
   await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
   expect(messages).toEqual([]);
 

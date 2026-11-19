@@ -128,6 +128,38 @@ export function userAvatarUrlsFromIdentities(
   return avatars;
 }
 
+/** One user photo Identity that a read joined with `hasUserPhoto`. */
+export type JoinedUserPhoto = {
+  avatarUrl: string | null;
+  identityId: string | null;
+  provider: string | null;
+  updatedAt: Date | null;
+};
+
+/**
+ * Pick the photo path of each user from rows that joined their photo
+ * Identities with `hasUserPhoto`: the Slack photo, then the Google photo.
+ */
+export function userAvatarUrlsFromJoinedPhotos(
+  rows: readonly { photo: JoinedUserPhoto | null; userId: string | null }[],
+): Map<string, string> {
+  return userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [
+            {
+              avatarUrl: photo.avatarUrl,
+              identityId: photo.identityId,
+              provider: photo.provider,
+              updatedAt: photo.updatedAt,
+              userId,
+            },
+          ]
+        : [],
+    ),
+  );
+}
+
 /**
  * Return the photo path for one Identity row. A linked Identity uses the
  * photo of its user. An Identity without a user uses its own photo.
