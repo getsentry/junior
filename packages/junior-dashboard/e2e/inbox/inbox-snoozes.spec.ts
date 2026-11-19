@@ -9,6 +9,7 @@ import {
   pinReview,
   prReady,
   prReview,
+  releaseNotes,
   rollout,
   rowHead,
 } from "./inbox-fixture";
@@ -55,6 +56,56 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
+    await expect(page.getByText("Nothing snoozed")).toBeVisible();
+  });
+
+  test("a lone card snoozes only its item, not its Conversation", async ({
+    dashboard,
+    page,
+  }) => {
+    // An FYI notice in the ask's Conversation, on a row of its own.
+    const notice = {
+      ...releaseNotes,
+      addedByConversationId: rollout.addedByConversationId,
+      conversationIds: [rollout.addedByConversationId],
+      rootConversationId: rollout.rootConversationId,
+    };
+    await mockReviewItems(page, { open: [rollout, notice] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    // The closed row's quick Snooze.
+    const row = rowHead(todo, checkout);
+    await row.hover();
+    await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: rollout.rootConversationId,
+      reviewItemId: rollout.id,
+      wakeAt: expect.any(String),
+    });
+    await expect(todo).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: "FYI" }).getByText(notice.title),
+    ).not.toHaveCount(0);
+
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await nav.getByRole("link", { name: /^Snoozed/ }).click();
+    await expandRow(rowHead(page, checkout));
+    const deleted = page.waitForRequest(
+      (request) =>
+        request.method() === "DELETE" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await page.getByRole("button", { name: "Wake" }).click();
+    expect((await deleted).postDataJSON()).toEqual({
+      conversationId: rollout.rootConversationId,
+      reviewItemId: rollout.id,
+    });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
@@ -251,8 +302,10 @@ test.describe("new UI", { tag: "@new" }, () => {
         new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Wake" }).click();
+    // Wake is per item, even when the snooze came from the whole row.
     expect((await woken).postDataJSON()).toEqual({
       conversationId: rollout.addedByConversationId,
+      reviewItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
     await nav.getByRole("link", { name: /^Inbox/ }).click();

@@ -406,7 +406,7 @@ export function InboxList(props: {
                 leave(
                   key,
                   () =>
-                    void (options.stacked
+                    void (options.stacked || options.itemRow
                       ? snoozes.wakeItem(row.newest)
                       : snoozes.wake(row)),
                 )
