@@ -43,7 +43,7 @@ const reviewCommentSchema = z
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
     event: z
       .enum(["COMMENT", "REQUEST_CHANGES"])
       .describe("Review result. You cannot approve pull requests."),
@@ -113,7 +113,7 @@ export const gitHubSubmitPullRequestReviewTool = definePluginTool({
     const response = await githubApi(egress, {
       operation: "github.pull.review.create",
       method: "POST",
-      path: `${repoPath(repo)}/pulls/${review.number}/reviews`,
+      path: `${repoPath(repo)}/pulls/${review.pull_request}/reviews`,
       body: {
         body: review.body,
         event: review.event,
@@ -129,7 +129,7 @@ export const gitHubSubmitPullRequestReviewTool = definePluginTool({
     return {
       target: "submitPullRequestReview",
       repo: repo.ref,
-      number: review.number,
+      number: review.pull_request,
       reply: { text: review.body, url: providerResult.html_url },
       review_id: providerResult.id,
       state: providerResult.state,

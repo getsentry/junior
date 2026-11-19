@@ -32,7 +32,7 @@ describe("submitPullRequestReview", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           event: "COMMENT",
           body: "No findings.",
           comments: [
@@ -93,7 +93,7 @@ describe("submitPullRequestReview", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           event: "REQUEST_CHANGES",
           body: "Please fix this.",
         },

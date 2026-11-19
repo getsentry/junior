@@ -66,7 +66,7 @@ describe("GitHub tool text", () => {
     await tools["github_commentOnPullRequest"]!.execute!(
       {
         repo: "getsentry/junior",
-        number: 1,
+        pull_request: 1,
         body: "<@U123> and <@U456|ada>: see <#C123|eng>, <https://docs.sentry.io|the docs>. <!here> <!-- keep --> `<@U123>`",
       },
       { toolCallId: "comment" },
