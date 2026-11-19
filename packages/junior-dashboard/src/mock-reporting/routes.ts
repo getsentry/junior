@@ -836,6 +836,7 @@ export function createMockReportingApi(): Hono<{
   // the poll does not refresh them.
   app.get("/versions", () =>
     jsonResponse(versionsSchema, {
+      conversationDetails: {},
       conversations: "mock",
       reviewItems: "mock",
       spend: "mock",
