@@ -66,6 +66,7 @@ import { useWaitingConversations } from "../inbox/queries";
 import { UnsentAnswersProvider } from "../inbox/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { HomeSummary } from "./HomeSummary";
+import { LeadLink } from "./Lead";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -293,13 +294,16 @@ export function ConversationWorkspace(props: {
           ref={homeList}
         >
           <section aria-label="Conversations" className="grid gap-3 pt-4">
-            <SearchInput
-              className="w-full sm:ml-auto sm:w-72"
-              label="Search your conversations"
-              onChange={setQuery}
-              placeholder="Search conversations…"
-              value={query}
-            />
+            <div className="flex items-center gap-2">
+              <LeadLink />
+              <SearchInput
+                className="min-w-0 flex-1 sm:ml-auto sm:w-72 sm:flex-none"
+                label="Search your conversations"
+                onChange={setQuery}
+                placeholder="Search conversations…"
+                value={query}
+              />
+            </div>
             <ConversationHomeList
               conversations={homeConversations}
               emptyLabel={feedError}
@@ -488,7 +492,8 @@ function NewConversationView(props: {
       {props.docked ? null : (
         // Hangs below the composer and takes no layout space, so the
         // composer stays centered while the summary loads.
-        <div className="absolute inset-x-0 top-full pt-8">
+        <div className="absolute inset-x-0 top-full grid gap-8 pt-6">
+          <LeadLink className="justify-self-center" />
           <HomeSummary />
         </div>
       )}

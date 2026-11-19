@@ -84,6 +84,7 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
+import { createMockLeadRoutes } from "./lead";
 import { readMockConversationOutline } from "./outline";
 import {
   answerMockReviewItemByReply,
@@ -287,6 +288,7 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(locationDetailReportSchema, report)
       : errorResponse("Location not found.", 404);
   });
+  app.route("/lead", createMockLeadRoutes());
   app.get("/conversations", (c) => {
     const query = conversationFeedQuerySchema.safeParse(c.req.query());
     if (!query.success) {

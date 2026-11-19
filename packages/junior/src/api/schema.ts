@@ -368,6 +368,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { leadSchema } from "./schema/lead";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

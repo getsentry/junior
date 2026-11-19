@@ -31,6 +31,7 @@ import { isNewConversationPath } from "../conversations/conversationRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "../conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "../conversations/ConversationWorkspaceLoading";
+import { LEAD_PATH, OpenLead } from "../conversations/Lead";
 import { useConversationData } from "../conversations/queries";
 import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
@@ -515,6 +516,7 @@ export function ClassicShell() {
               element={<Navigate replace to="/" />}
               path="/conversations/new"
             />
+            <Route element={<OpenLead />} path={LEAD_PATH} />
             <Route
               element={
                 loading ? (
