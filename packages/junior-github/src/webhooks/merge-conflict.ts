@@ -12,6 +12,7 @@
 import type {
   EventInput,
   EventPublisher,
+  PluginConversationReviewItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
@@ -35,7 +36,7 @@ const CLOSED_EVENT_TYPES = new Set([
 ]);
 
 /** The pull request fields that tell if it has a conflict. */
-const pullRequestSchema = z.object({
+export const gitHubPullRequestMergeSchema = z.object({
   base: z.object({ ref: z.string().min(1) }),
   draft: z.boolean().optional(),
   number: z.number().int().positive().optional(),
@@ -44,6 +45,7 @@ const pullRequestSchema = z.object({
   mergeable: z.boolean().nullable().optional(),
   mergeable_state: z.string().optional(),
   state: z.string(),
+  title: z.string().optional(),
 });
 
 /** Values that GitHub reports for a conflicted pull request. */
@@ -113,9 +115,9 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
 function deliveredPullRequest(
   payload: unknown,
   ref: GitHubPullRequestRef,
-): z.infer<typeof pullRequestSchema> | undefined {
+): z.infer<typeof gitHubPullRequestMergeSchema> | undefined {
   const parsed = z
-    .object({ pull_request: pullRequestSchema })
+    .object({ pull_request: gitHubPullRequestMergeSchema })
     .safeParse(payload);
   const pullRequest = parsed.success ? parsed.data.pull_request : undefined;
   return pullRequest?.number === ref.number &&
@@ -147,6 +149,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
+  reviewItems: PluginConversationReviewItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -157,7 +160,7 @@ export async function loadGitHubMergeConflictEvents(args: {
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??
-        pullRequestSchema.parse(await loadPullRequest(ref));
+        gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
       if (
         loaded.state !== "open" ||
         loaded.mergeable !== false ||
@@ -171,12 +174,16 @@ export async function loadGitHubMergeConflictEvents(args: {
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
       return await applyGitHubConflictPolicy({
+        conflict,
         db: args.db,
         draft: loaded.draft === true,
         events: gitHubMergeConflictEvents({ ...ref, conflict }),
         loadHistory: loadConflictHistory,
+        log: args.log,
         now: new Date(),
         ref,
+        reviewItems: args.reviewItems,
+        ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {
       // The delivered events still publish without the conflict check.

@@ -1,3 +1,7 @@
+import type { PluginContext } from "./context";
+import type { EventPublisher } from "./events";
+import type { PluginState } from "./state";
+
 /**
  * An item that a plugin puts on the review desk: a notice for information,
  * or an ask that waits on its assignees.
@@ -22,6 +26,13 @@ export interface PluginReviewNotice {
    * `Ready to merge · #946`. It is the reason that the dashboard shows.
    */
   title: string;
+  /**
+   * Buttons that answer the item, in display order, such as `Resume`. An
+   * item with choices waits on its assignees. The first click closes it as
+   * done and calls the plugin's `reviewItemAnswered` hook with the choice.
+   * The answer starts no Turn: the plugin does the work.
+   */
+  choices?: Array<{ label: string; description?: string }>;
   /**
    * The assignees must act, such as merge a pull request that is ready. The
    * item then waits on them: its Conversation shows in their Needs you, and
@@ -50,4 +61,22 @@ export interface PluginReviewItems {
 /** Review items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationReviewItems {
   forConversation(conversationId: string): PluginReviewItems;
+}
+
+/** A person picked one of the `choices` of an item that this plugin added. */
+export interface ReviewItemAnsweredHookContext extends PluginContext {
+  /** The label of the picked choice. */
+  choice: string;
+  /** The Conversation that the item belongs to. */
+  conversationId: string;
+  /** The plugin's own dedupe key of the item. */
+  dedupeKey: string;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
+  /** The closed item's id. It is the same on a retry of the same answer. */
+  itemId: string;
+  nowMs: number;
+  /** Review desk items, as from a plugin route. */
+  reviewItems: PluginConversationReviewItems;
+  state: PluginState;
 }

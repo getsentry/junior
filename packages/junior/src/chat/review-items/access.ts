@@ -276,6 +276,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
   return plugin || undefined;
 }
 
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
+}
+
 /**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public

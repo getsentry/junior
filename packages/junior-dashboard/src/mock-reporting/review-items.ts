@@ -221,6 +221,35 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Ready to merge · #2201",
     },
     {
+      // The GitHub plugin stopped fixing this pull request's conflicts.
+      // Resume starts a fix and the fix count again.
+      body: "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(40),
+      id: "qa-conflict-2188",
+      plugin: "github",
+      request: {
+        question:
+          "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+        fields: [
+          {
+            id: "choice",
+            kind: "choice",
+            label: "Merge conflict · #2188",
+            options: [{ label: "Resume" }],
+          },
+        ],
+      },
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/2188",
+        objectType: "code_change",
+        title: "Retry Slack uploads on rate limits",
+        url: "https://github.com/getsentry/junior/pull/2188",
+      },
+      title: "Merge conflict · #2188",
+    },
+    {
       body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(89),

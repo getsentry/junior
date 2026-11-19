@@ -20,9 +20,26 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
-// The live card of the mock release pull request: it conflicts with main,
-// so its review ask in the Inbox says "Merge conflict".
+// The live cards of mock pull requests that conflict with main, so their
+// asks in the Inbox say "Merge conflict".
 const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/2188": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#2188",
+    label: "getsentry/junior#2188",
+    title: "Retry Slack uploads on rate limits",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "fix/slack-upload-retry",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
   "https://github.com/getsentry/payments/pull/91": {
     kind: "object",
     objectType: "code_change",

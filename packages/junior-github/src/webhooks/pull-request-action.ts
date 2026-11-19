@@ -33,6 +33,10 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
+import {
+  GITHUB_CONFLICT_GONE_REASON,
+  gitHubConflictItemKey,
+} from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
@@ -301,7 +305,21 @@ async function syncOne(
     }
     // Close the old items only after the new one shows, so a failed show
     // does not leave the desk with no next-action item.
-    await closeLegacyItems(items, name);
+    await Promise.all([
+      closeLegacyItems(items, name),
+      // The same read closes the merge conflict item from
+      // `merge-conflict-checks/policy.ts` when the conflict is gone.
+      state.state !== "open" ||
+      (state.mergeableState && state.mergeableState !== "dirty")
+        ? items.close({
+            dedupeKey: gitHubConflictItemKey(target),
+            ...(endedReason(state) ?? {
+              reason: GITHUB_CONFLICT_GONE_REASON,
+              status: "done",
+            }),
+          })
+        : undefined,
+    ]);
     if (!changed) return previous;
     // Save after the items change, so a failure leaves the old action and
     // the next event tries again.

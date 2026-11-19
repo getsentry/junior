@@ -38,7 +38,6 @@
   "packages/junior-dashboard/src/client/sentry.ts": 2,
   "packages/junior-dashboard/src/conversation-cache.ts": 1,
   "packages/junior-dashboard/src/mock-reporting/fixtures.ts": 4,
-  "packages/junior-github/src/plugin.ts": 3,
   "packages/junior-github/src/reply-markdown.ts": 1,
   "packages/junior-github/src/tools/create-issue.ts": 1,
   "packages/junior-github/src/tools/create-pull-request.ts": 2,

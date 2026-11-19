@@ -66,7 +66,10 @@ function itemText(item: ReviewItem): string {
   return normalizeSlackReplyMarkdown(
     [
       titleText(item),
-      truncate(item.body, MAX_BODY_CHARS),
+      // A plugin item asks its body as the question, so it shows once.
+      ...(item.request?.question === item.body
+        ? []
+        : [truncate(item.body, MAX_BODY_CHARS)]),
       ...(item.request ? [slackUserInputText(item.request)] : []),
     ].join("\n\n"),
   );
@@ -106,12 +109,18 @@ function controls(item: ReviewItem): Button[] {
       // pick another option after the request changes.
       value: JSON.stringify({ itemId: item.id, label: option.label }),
     })),
-    {
-      type: "button",
-      action_id: ANSWER_ACTION_ID,
-      text: plainText("Other…"),
-      value: item.id,
-    },
+    // One choice is a plugin's action, such as Resume. The plugin does the
+    // work and reads no words, so there is no Other….
+    ...(buttonField.options.length > 1
+      ? [
+          {
+            type: "button" as const,
+            action_id: ANSWER_ACTION_ID,
+            text: plainText("Other…"),
+            value: item.id,
+          },
+        ]
+      : []),
     dismiss,
   ];
 }
