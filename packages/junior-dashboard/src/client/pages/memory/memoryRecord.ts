@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import * as z from "zod";
 
 import { fetchDashboardJson, patch } from "../../http";
@@ -141,4 +142,14 @@ export function useRestoreMemory() {
       });
     },
   });
+}
+
+/**
+ * Whether the list shows rows for `filter`. After a tab switch the list keeps
+ * the previous tab's rows as placeholder data until the new rows load.
+ */
+export function useListShowsFilter(filter: string, settled: boolean): boolean {
+  const [shownFilter, setShownFilter] = useState(filter);
+  if (settled && shownFilter !== filter) setShownFilter(filter);
+  return shownFilter === filter;
 }

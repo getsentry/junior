@@ -40,6 +40,7 @@ import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "../../../pages/memory/MemoryTimeline";
 import { MemoryCostChart } from "../../../pages/memory/MemoryCostChart";
 import {
+  useListShowsFilter,
   useMemoryRecord,
   useRestoreMemory,
 } from "../../../pages/memory/memoryRecord";
@@ -164,8 +165,15 @@ function MemoryLibrary(props: {
   const archived = filter === ARCHIVED_FILTER;
   const memoryQuery = useMemoryRecord(memoryId, archived);
   const restore = useRestoreMemory();
+  const listShowsFilter = useListShowsFilter(
+    filter,
+    Boolean(query.data) && !query.isPlaceholderData,
+  );
   const selectedRecord =
-    memoryQuery.data ?? records.find((record) => record.id === memoryId);
+    memoryQuery.data ??
+    (listShowsFilter
+      ? records.find((record) => record.id === memoryId)
+      : undefined);
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
   const closeDetails = () => {
@@ -227,7 +235,7 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  const loading = !query.data && !query.error;
+  const loading = (!query.data || !listShowsFilter) && !query.error;
 
   return (
     <div

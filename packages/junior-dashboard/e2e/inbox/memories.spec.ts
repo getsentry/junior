@@ -333,10 +333,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     let activeReads = 0;
     // Off when the permalink opens, as if the memory were past the first page.
     let listed = true;
+    // Holds the first archived list read, so the tab switch can be checked.
+    let releaseArchived = () => {};
+    const archivedGate = new Promise<void>((resolve) => {
+      releaseArchived = resolve;
+    });
     await page.route("**/api/user-pages/memory/memories*", async (route) => {
       const archived =
         new URL(route.request().url()).searchParams.get("filter") ===
         "archived";
+      if (archived) await archivedGate;
       const records = !archived
         ? [{ id: "memory-1", title: "First page memory." }]
         : restoreMethod || !listed
@@ -411,6 +417,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("tab", { name: "Archived" })
       .click();
     await expect(page).toHaveURL(/filter=archived/);
+    // Active rows do not stay on the Archived tab while it loads.
+    await expect(
+      page.getByRole("button", { name: /^View memory details: First page/ }),
+    ).toHaveCount(0);
+    releaseArchived();
     await expect(
       page.getByRole("heading", { name: "Archived memories" }),
     ).toBeVisible();
