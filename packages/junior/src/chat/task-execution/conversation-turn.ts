@@ -339,6 +339,7 @@ export function createConversationTurnWorker(
           ]
         : await webTurnInputs(
             turnInputs.map((message) => ({
+              leadTask: message.meta?.leadTask,
               reviewItemChange: message.meta?.reviewItemChanges?.[0],
               text: message.text,
             })),

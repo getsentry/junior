@@ -56,6 +56,12 @@ export interface ConversationMessageMeta {
    * agent's task, so a resumed Turn recalls from them as the first did.
    */
   requestText?: string;
+  /**
+   * Rendered task that the person's Lead wrote with this Message. A Turn
+   * that resumes before its first prompt rebuilds its input from it. The
+   * dashboard does not show it.
+   */
+  leadTask?: string;
   /** Person changes to Review items that this Message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;

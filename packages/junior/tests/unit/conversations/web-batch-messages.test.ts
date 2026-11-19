@@ -37,6 +37,25 @@ describe("webConversationMessage", () => {
     expect(webMessage("a", taken).meta?.reviewItemChanges).toEqual([taken]);
     expect(webMessage("b").meta).not.toHaveProperty("reviewItemChanges");
   });
+
+  // A Turn that resumes before its first prompt rebuilds its input from
+  // the saved Message, so the Lead's task must be saved with it.
+  it("keeps the Lead task out of the text and in the saved Message", () => {
+    const saved = webConversationMessage(
+      buildWebInboundMessage({
+        actor,
+        conversationId: "local:web:batch",
+        leadTask: "<agent-message>Fix the bug</agent-message>",
+        message: "Fix it",
+        messageId: "lead",
+      }),
+      author,
+    );
+    expect(saved.text).toBe("Fix it");
+    expect(saved.meta?.leadTask).toBe(
+      "<agent-message>Fix the bug</agent-message>",
+    );
+  });
 });
 
 describe("savedTurnInputMessages", () => {

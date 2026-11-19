@@ -53,7 +53,7 @@ export function webConversationMessage(
   author: ConversationAuthor,
 ): ConversationMessage {
   const attachments = readMessageAttachments(message.input.attachments);
-  const { reviewItemChange } = message.input;
+  const { leadTask, reviewItemChange } = message.input;
   return {
     id: message.inboundMessageId,
     role: "user",
@@ -66,6 +66,7 @@ export function webConversationMessage(
     meta: {
       ...(attachments.length ? { attachments } : undefined),
       explicitMention: true,
+      ...(leadTask ? { leadTask } : undefined),
       ...(reviewItemChange
         ? { reviewItemChanges: [reviewItemChange] }
         : undefined),
