@@ -7,6 +7,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationTitleSchema } from "./conversation-title";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -267,6 +268,13 @@ export const conversationSummaryReportSchema = z
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
+    /** Feed rows and the detail only. */
+    treeState: conversationTreeStateSchema.optional(),
+    /**
+     * A Conversation in the tree has an active Watch or a pending Timer.
+     * Feed rows and the detail only.
+     */
+    watching: z.boolean().optional(),
     /**
      * A Turn is queued or running. Live views poll and show thinking on it,
      * since `status` can read `needs_input` while a Turn runs.

@@ -45,6 +45,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { readConversationTreeStates } from "./tree-state";
 import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
 import { canPauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 
@@ -220,6 +221,7 @@ async function readConversationDetailFromSql(
     people,
     sourceTask,
     teamDomainByTeamId,
+    treeStateByConversation,
     page,
   ] = await Promise.all([
     readConversationAgentTree(
@@ -255,6 +257,7 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
+    readConversationTreeStates(getDb(), [conversationId], options.viewer?.id),
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
@@ -365,6 +368,7 @@ async function readConversationDetailFromSql(
   return {
     ...report,
     ...state.forks,
+    ...treeStateByConversation.get(conversationId),
     ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }

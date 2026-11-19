@@ -24,9 +24,12 @@ import type {
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { Spinner } from "../components/ui/spinner";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../conversations/ConversationStateIcon";
 import {
   ConversationCast,
   useConversationDensity,
@@ -92,7 +95,6 @@ import {
   fadeTextClass,
   fadeWhenOverflowing,
 } from "../textFade";
-import { conversationTurnIsActive } from "../conversations/turnActivity";
 import { ReviewItemTitle } from "./ReviewItemPeople";
 import { reviewItemTitleText } from "./reviewItemFormat";
 
@@ -597,8 +599,9 @@ function InboxRowBody(
   const controls = props.actionsBelow
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
-  const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversationTurnIsActive(conversation);
+  const state = conversation
+    ? conversationDisplayState(conversation)
+    : undefined;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
@@ -823,18 +826,8 @@ function InboxRowBody(
                   status={conversation.status}
                 />
               ) : null}
-              {pinned ? (
-                <Pin
-                  aria-label="Pinned"
-                  className="size-3 text-dashboard-text-muted"
-                  role="img"
-                />
-              ) : null}
-              {running ? (
-                <Spinner aria-label="Running" className="size-3.5" />
-              ) : (
-                formatCompactAge(props.time)
-              )}
+              <ConversationStateIcon state={state} />
+              {state === "working" ? null : formatCompactAge(props.time)}
             </span>
           </span>
         </div>

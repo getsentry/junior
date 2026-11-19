@@ -83,6 +83,10 @@ import {
 import { DashboardApiError } from "../../http";
 import { ConversationForkLinks } from "../../conversations/ConversationForkLinks";
 import { ChildConversationStatusPill } from "../../conversations/ChildConversationStatus";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../../conversations/ConversationStateIcon";
 import { useReviewItemData } from "../../review-desk/queries";
 import { reviewItemIdFromToolCall } from "../../review-desk/reviewItemFormat";
 import { conversationContextTags } from "../../conversations/ConversationContextTags";
@@ -396,6 +400,9 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  const displayState = conversation
+    ? conversationDisplayState(conversation)
+    : undefined;
   const links = conversationLinks(conversationDetail);
   const title =
     conversationDetailTitle(detail.data) ??
@@ -784,6 +791,11 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
+              state={
+                displayState ? (
+                  <ConversationStateIcon state={displayState} />
+                ) : null
+              }
               status={
                 isChildConversation(conversationDetail) && conversation ? (
                   <ChildConversationStatusPill status={conversation.status} />

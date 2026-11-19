@@ -371,6 +371,24 @@ describe("versions API", () => {
     const threadEnded = await threadTurn("idle", nowMs + 240_000);
     expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
 
+    // A Task has no row, but its work moves the root's tree state.
+    const taskTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationStore().recordExecution({
+        conversationId: `${OWN}:child`,
+        createdAtMs: atMs,
+        execution: { runId: "task-turn-2", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const taskRunning = await taskTurn("running", nowMs + 300_000);
+    expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
+    const taskEnded = await taskTurn("idle", nowMs + 300_000);
+    expect(feedMoved(taskRunning, taskEnded)).toEqual(["threads"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -384,7 +402,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(threadEnded, withReply)).toEqual([
+    expect(changed(taskEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);

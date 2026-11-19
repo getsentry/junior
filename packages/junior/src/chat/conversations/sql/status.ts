@@ -82,6 +82,19 @@ const starterRoot = alias(juniorConversations, "status_starter_root");
 const starterIdentity = alias(juniorIdentities, "status_starter_identity");
 const replyReader = alias(juniorIdentities, "status_reply_reader");
 
+/** SQL: the User id of the Conversation's starter, the User of its root's actor. */
+function conversationStarterUserIdSql(
+  conversation: ConversationStatusColumns,
+): SQL {
+  return sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
+    starterIdentity.id,
+    starterRoot.actorIdentityId,
+  )} where ${eq(
+    starterRoot.conversationId,
+    sql`coalesce(${conversation.rootConversationId}, ${conversation.conversationId})`,
+  )})`;
+}
+
 /**
  * SQL: the work of the Conversation waits on its starter. The starter is
  * the User of the root's actor: the person whose message started the root,
@@ -132,13 +145,7 @@ function conversationWaitsOnStarterSql(
   const replyInSlack = latestReply(
     sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START})`,
   );
-  const starterUserId = sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
-    starterIdentity.id,
-    starterRoot.actorIdentityId,
-  )} where ${eq(
-    starterRoot.conversationId,
-    sql`coalesce(${conversation.rootConversationId}, ${id})`,
-  )})`;
+  const starterUserId = conversationStarterUserIdSql(conversation);
   const readByStarter = or(
     and(
       sql`${conversation.parentConversationId} is null`,
@@ -198,4 +205,15 @@ export function conversationStatusSql(
     when ${conversationIsActiveSql(conversation)} then 'working'
     else 'done'
   end`;
+}
+
+/**
+ * SQL: the Conversation's work waits on this User as its starter. See
+ * `conversationWaitsOnStarterSql`.
+ */
+export function conversationWaitsOnUserSql(
+  conversation: ConversationStatusColumns,
+  userId: string,
+): SQL<boolean> {
+  return sql<boolean>`(${conversationStarterUserIdSql(conversation)} = ${userId} and ${conversationWaitsOnStarterSql(conversation)})`;
 }
