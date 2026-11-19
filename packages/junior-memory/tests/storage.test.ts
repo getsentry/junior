@@ -2823,12 +2823,29 @@ describe("memory plugin storage", () => {
         expect(missingRestore.status).toBe(404);
       }
 
-      // A new memory that reused the archived one's write key keeps it.
-      await firstStore.createConversationMemory({
+      // A write that reuses an archived memory's write key keeps it archived.
+      await expect(
+        firstStore.createConversationMemory({
+          content: "Deploy runbooks live in Confluence.",
+          idempotencyKey: "session:api:second",
+          kind: "knowledge",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: second.memory.id },
+      });
+      // An active memory written before archived write keys stayed retired
+      // can still hold the key.
+      const holder = await firstStore.createConversationMemory({
         content: "Deploy runbooks live in Confluence.",
-        idempotencyKey: "session:api:second",
+        idempotencyKey: "session:api:holder",
         kind: "knowledge",
       });
+      await fixture.execute(`
+UPDATE junior_memory_memories
+SET idempotency_key = 'session:api:second'
+WHERE id = '${holder.memory.id}'
+`);
       const conflictResponse = await restorePatch(second.memory.id, {
         archived: false,
       });
