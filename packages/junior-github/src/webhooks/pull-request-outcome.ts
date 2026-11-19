@@ -214,9 +214,12 @@ export function normalizeGitHubPullRequestOutcome(args: {
     isBotLogin(pullRequest.user.login, args.botEmail) &&
     pullRequest.body?.includes(GITHUB_SESSION_FOOTER_START),
   );
+  // GitHub can deliver the first push before `opened`.
   const candidateOwned =
     hasOwnershipMarker &&
-    (parsed.action === "opened" || parsed.action === "closed");
+    (parsed.action === "opened" ||
+      parsed.action === "closed" ||
+      parsed.action === "synchronize");
   const state =
     parsed.action !== "closed"
       ? "open"
