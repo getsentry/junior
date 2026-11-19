@@ -109,6 +109,7 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "junior/no-read-only-object-annotations": "error",
+    "junior/no-record-type-guard": "error",
     "junior/zod-namespace-import": "error"
   },
   "overrides": [
