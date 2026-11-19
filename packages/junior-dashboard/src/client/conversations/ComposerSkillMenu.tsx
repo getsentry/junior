@@ -20,6 +20,8 @@ import { Kbd } from "../components/ui/kbd";
 import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
 import {
+  cardPlacement,
+  composerRect,
   menuPlacement,
   type ComposerTypeahead,
   type MenuPlacement,
@@ -81,14 +83,28 @@ export function ComposerSkillMenu(props: { typeahead: ComposerTypeahead }) {
     setActiveIndex(0);
   }
 
-  // The composer moves with the layout, so follow it while a popup shows.
+  // The menu sits beside the composer, which it needs the width of. The
+  // card sits on its reference, and follows it when the box or the page
+  // scrolls. Both follow the layout.
+  const { referenceRect } = typeahead;
   useEffect(() => {
     if (!shown || !textbox) return;
-    const place = () => setPlacement(menuPlacement(textbox));
+    const place = () => {
+      const reference = open ? undefined : referenceRect();
+      setPlacement(
+        reference
+          ? cardPlacement(composerRect(textbox), reference)
+          : menuPlacement(textbox),
+      );
+    };
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [shown, textbox, typeahead.query, cardSkill]);
+    if (!open) window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, shown, textbox, referenceRect, typeahead.query, cardSkill]);
 
   const activeCell = open ? cellId(active) : undefined;
   useEffect(() => {
@@ -299,7 +315,7 @@ export function ComposerSkillMenu(props: { typeahead: ComposerTypeahead }) {
         ? createPortal(
             <div
               aria-label={skillLabel(cardSkill.name)}
-              className="fixed z-50 flex max-w-md flex-col overflow-hidden rounded-lg border border-input bg-secondary p-3 shadow-lg"
+              className="fixed z-50 flex flex-col overflow-hidden rounded-lg border border-input bg-secondary p-3 shadow-lg"
               role="group"
               {...popupProps}
             >

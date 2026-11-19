@@ -28,6 +28,11 @@ export type ComposerTypeahead = {
   inserted: string | undefined;
   /** The text box. The menu opens beside its form. */
   textbox: HTMLElement | null;
+  /**
+   * The screen box of the reference at the caret, or of the last insert,
+   * so a card can sit on it. It changes when the reference moves.
+   */
+  referenceRect(): DOMRect | undefined;
   /** Replace the reference, then put the caret after a space. */
   insert(insertion: ComposerInsertion): void;
   /** Close the menu until the caret leaves this reference. */
@@ -195,16 +200,24 @@ export type MenuPlacement = {
 // In rem, converted with the root font size: the free space is in px.
 const MENU_MAX_REM = 20;
 const MENU_GAP_REM = 0.5;
+const CARD_MAX_REM = 28;
+
+function rootRem(): number {
+  return Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+}
+
+/** The screen box of the composer that holds the text box. */
+export function composerRect(textbox: HTMLElement): DOMRect {
+  return (textbox.closest("form") ?? textbox).getBoundingClientRect();
+}
 
 /**
  * Open the menu on the side of the composer with more room, so the home
  * composer near the top of the page opens it downward.
  */
 export function menuPlacement(textbox: HTMLElement): MenuPlacement {
-  const rem = Number.parseFloat(
-    getComputedStyle(document.documentElement).fontSize,
-  );
-  const composer = (textbox.closest("form") ?? textbox).getBoundingClientRect();
+  const rem = rootRem();
+  const composer = composerRect(textbox);
   const gap = MENU_GAP_REM * rem;
   const above = composer.top;
   const below = window.innerHeight - composer.bottom;
@@ -215,5 +228,33 @@ export function menuPlacement(textbox: HTMLElement): MenuPlacement {
     ...(below > above
       ? { top: composer.bottom + gap }
       : { bottom: window.innerHeight - composer.top + gap }),
+  };
+}
+
+/**
+ * Put a card on the reference that it describes: below it, or above it when
+ * there is more room there. It is as wide as the composer, up to 28rem, and
+ * stays over the composer, so it does not cover a side panel and on a phone
+ * it spans the composer.
+ */
+export function cardPlacement(
+  composer: DOMRect,
+  reference: DOMRect,
+): MenuPlacement {
+  const rem = rootRem();
+  const gap = MENU_GAP_REM * rem;
+  const width = Math.min(CARD_MAX_REM * rem, composer.width);
+  const above = reference.top;
+  const below = window.innerHeight - reference.bottom;
+  return {
+    left: Math.max(
+      composer.left,
+      Math.min(reference.left, composer.right - width),
+    ),
+    width,
+    maxHeight: Math.min(MENU_MAX_REM * rem, Math.max(above, below) - 2 * gap),
+    ...(below > above
+      ? { top: reference.bottom + gap }
+      : { bottom: window.innerHeight - reference.top + gap }),
   };
 }

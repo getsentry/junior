@@ -278,3 +278,67 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   await expect(card).toBeHidden();
   await expect(question).toBeVisible();
 });
+
+test("the pane follows the pointer only after it rests on a row @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Start a conversation");
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await composer.pressSequentially("Run $");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  const cell = (name: string) =>
+    skills.getByRole("gridcell", { name: new RegExp(`^\\$${name}`) });
+  await expect(cell("diff-quality")).toHaveAttribute("aria-selected", "true");
+
+  // The pane waits for the pointer to rest on a row, so it does not follow
+  // a pass over rows on the way to it. Arrow keys act at once.
+  await cell("release-check").hover();
+  await expect(cell("diff-quality")).toHaveAttribute("aria-selected", "true");
+  await expect(cell("release-check")).toHaveAttribute("aria-selected", "true");
+  await composer.press("ArrowDown");
+  await expect(cell("self-update")).toHaveAttribute("aria-selected", "true");
+});
+
+test("the reply composer with Details open stays split @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "generate-project-local-verification-skill",
+          description: "Make a verify skill.",
+        },
+        { name: "why", description: "Explain why." },
+      ],
+    }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+  );
+  await expect(
+    page.getByRole("complementary", { name: "Conversation details" }),
+  ).toBeVisible();
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await composer.pressSequentially("$");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(skills).toBeVisible();
+  // About 606px wide: the list keeps 14rem, long names end in an ellipsis,
+  // and the pane shows the whole name.
+  await expect(
+    page.getByRole("button", { name: "View full skill" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Details for/ })).toHaveCount(
+    0,
+  );
+  await screenshot(page, "composer-skill-split-reply", { view: "desktop" });
+});

@@ -37,6 +37,8 @@ type CaretToken = ComposerToken & {
   nodeKey: NodeKey;
 };
 type TokenFinder = (text: string, caret: number) => ComposerToken | undefined;
+// Where a reference is: its text node and offsets.
+type TextRange = { nodeKey: NodeKey; start: number; end: number };
 // The text and a collapsed caret that the last sync read.
 type Synced = { text: string; caret: string };
 
@@ -55,6 +57,8 @@ export function useLexicalTypeahead(
 ): ComposerTypeahead {
   const [token, setToken] = useState<CaretToken>();
   const [inserted, setInserted] = useState<string>();
+  // Where the last text insert went, while `inserted` holds it.
+  const insertedRangeRef = useRef<TextRange>(undefined);
   const [textbox, setTextbox] = useState<HTMLElement | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
@@ -62,6 +66,10 @@ export function useLexicalTypeahead(
   const dismissedRef = useRef<{ nodeKey: NodeKey; start: number }>(undefined);
   // A press in the menu keeps it open through the blur that it causes.
   const heldRef = useRef(false);
+  const clearInserted = () => {
+    insertedRangeRef.current = undefined;
+    setInserted(undefined);
+  };
   const onMentionRef = useRef(onMention);
   onMentionRef.current = onMention;
 
@@ -82,13 +90,13 @@ export function useLexicalTypeahead(
         // A collapse back to the same caret, or a focus, reads it again.
         syncedRef.current = undefined;
         setToken(undefined);
-        setInserted(undefined);
+        clearInserted();
         return;
       }
       const last = syncedRef.current;
       if (last?.text === read.text && last.caret === read.caret) return;
       syncedRef.current = read;
-      setInserted(undefined);
+      clearInserted();
       const found = editor.getEditorState().read(() => $tokenAtCaret(tokenAt));
       const next = found && {
         ...found,
@@ -128,7 +136,7 @@ export function useLexicalTypeahead(
           if (heldRef.current) return false;
           syncedRef.current = undefined;
           setToken(undefined);
-          setInserted(undefined);
+          clearInserted();
           return false;
         },
         COMMAND_PRIORITY_LOW,
@@ -163,16 +171,29 @@ export function useLexicalTypeahead(
           };
         }
         setToken(undefined);
-        setInserted(undefined);
+        clearInserted();
       },
       focus: () => editor.focus(),
+      referenceRect: () => {
+        const range = insertedRangeRef.current ?? token;
+        return range && textRangeRect(editor, range);
+      },
       holdOpen: (held) => {
         heldRef.current = held;
       },
       insert: (insertion) => {
         const current = tokenRef.current;
         if (!current) return;
-        setInserted("text" in insertion ? insertion.text : undefined);
+        if ("text" in insertion) {
+          setInserted(insertion.text);
+          insertedRangeRef.current = {
+            nodeKey: current.nodeKey,
+            start: current.start,
+            end: current.start + insertion.text.length,
+          };
+        } else {
+          clearInserted();
+        }
         editor.update(() => $insertAtToken(current, insertion), {
           tag: INSERT_TAG,
         });
@@ -221,8 +242,22 @@ export function useLexicalTypeahead(
         );
       },
     }),
-    [edited, editor, inserted, name, query, textbox],
+    [edited, editor, inserted, name, query, textbox, token],
   );
+}
+
+/** The screen box of a reference, or of its first line when it wraps. */
+function textRangeRect(
+  editor: LexicalEditor,
+  range: TextRange,
+): DOMRect | undefined {
+  const text = editor.getElementByKey(range.nodeKey)?.firstChild;
+  if (!(text instanceof Text)) return;
+  const end = Math.min(range.end, text.length);
+  const dom = document.createRange();
+  dom.setStart(text, Math.min(range.start, end));
+  dom.setEnd(text, end);
+  return dom.getClientRects()[0] ?? dom.getBoundingClientRect();
 }
 
 /** The text and the collapsed caret, or nothing for a range selection. */
