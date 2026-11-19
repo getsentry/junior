@@ -1,13 +1,11 @@
 // The state changes of a Turn. Each arrow is one function in this file.
 //
-//            claimTurn            completeTurn, commitStep (completed)
-//   queued ─────────────▶ running ─────────────────────────────────▶ completed
+//            claimTurn            commitStep (completed)
+//   queued ─────────────▶ running ───────────────────────▶ completed
 //     │   ◀─────────────    │  ↺ claimTurn (lease expired)
 //     │   commitStep        │
 //     │   (continue),       │                failTurn
-//     │   releaseTurn,      ├──────────────────────────▶ failed
-//     │   reclaimExpired    │
-//     │   (lease expired)   │
+//     │   releaseTurn       ├──────────────────────────▶ failed
 //     │     cancelTurn      │   cancelTurn
 //     └─────────────────────┴──────────────────────────▶ cancelled
 //
@@ -20,14 +18,12 @@
 // | claimTurn              | queued, or expired    | +1          | +1       |          | set      |
 // | commitStep (continue)  | running, fenced, step |             | 0        | +1       | cleared  |
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
-// | completeTurn           | running, fenced       |             |          |          | cleared  |
 // | failTurn               | running, fenced       |             |          |          | cleared  |
 // | releaseTurn            | running, fenced       |             |          |          | cleared  |
 // | cancelTurn             | queued or running     | +1          |          |          | cleared  |
-// | reclaimExpired         | running, expired      |             |          |          | cleared  |
 //
-// Expired: running, but `lease_expires_at` has passed. claimTurn takes over
-// such a Turn, so the queue's redelivery after a crash resumes it.
+// Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
+// over such a Turn, so the queue's redelivery after a crash resumes it.
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
@@ -114,7 +110,7 @@ export async function claimTurn(
 
 /**
  * Checks without a write that the lease still holds: the Turn runs under the
- * caller's `lease_epoch`. False after a cancel, a takeover, or a reclaim.
+ * caller's `lease_epoch`. False after a cancel or a takeover.
  */
 export async function holdsLease(
   executor: JuniorSqlDatabase,
@@ -178,26 +174,6 @@ export async function commitStep(
       return true;
     }),
   );
-}
-
-/** Ends a running Turn as completed. False when the lease is lost. */
-export async function completeTurn(
-  executor: JuniorSqlDatabase,
-  lease: TurnLease,
-): Promise<boolean> {
-  const rows = await executor
-    .db()
-    .update(juniorTurns)
-    .set({
-      state: "completed",
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      updatedAt: sql`now()`,
-      endedAt: sql`now()`,
-    })
-    .where(leaseFence(lease))
-    .returning({ id: juniorTurns.id });
-  return rows.length > 0;
 }
 
 /** Ends a running Turn as failed, with the reason. False when the lease is lost. */
@@ -273,32 +249,4 @@ export async function cancelTurn(
     )
     .returning({ id: juniorTurns.id });
   return rows.length > 0;
-}
-
-/**
- * Queues each running Turn whose lease expired, so a sweeper can send it
- * through the queue again. Returns their ids. The next claim moves
- * `lease_epoch`, and until then the old lease holder's writes find no running
- * Turn.
- */
-export async function reclaimExpired(
-  executor: JuniorSqlDatabase,
-): Promise<string[]> {
-  const rows = await executor
-    .db()
-    .update(juniorTurns)
-    .set({
-      state: "queued",
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(juniorTurns.state, "running"),
-        lte(juniorTurns.leaseExpiresAt, sql`now()`),
-      ),
-    )
-    .returning({ id: juniorTurns.id });
-  return rows.map((row) => row.id);
 }

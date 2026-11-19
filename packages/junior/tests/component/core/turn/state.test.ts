@@ -11,10 +11,8 @@ import {
   cancelTurn,
   claimTurn,
   commitStep,
-  completeTurn,
   failTurn,
   holdsLease,
-  reclaimExpired,
 } from "@/core/turn/state";
 import {
   juniorConversations,
@@ -47,34 +45,30 @@ describe("Turn state", () => {
       providerTenantId: "T123",
       updatedAt: new Date(),
     });
-    turnId = await insertQueuedTurn(CONVERSATION_ID);
+    // This module does not create Turns, so the test writes a queued one.
+    await fixture.sql
+      .db()
+      .insert(juniorConversations)
+      .values(buildJuniorSqlConversation({ conversationId: CONVERSATION_ID }));
+    turnId = randomUUID();
+    await fixture.sql.db().insert(juniorTurns).values({
+      id: turnId,
+      conversationId: CONVERSATION_ID,
+      actorIdentityId: "identity:actor",
+      state: "queued",
+    });
   });
 
   afterEach(async () => {
     await fixture.close();
   });
 
-  // This module does not create Turns, so the test writes queued ones. A
-  // Conversation has at most one active Turn, so each gets its own.
-  async function insertQueuedTurn(conversationId: string) {
-    const conversation = buildJuniorSqlConversation({ conversationId });
-    await fixture.sql.db().insert(juniorConversations).values(conversation);
-    const id = randomUUID();
-    await fixture.sql.db().insert(juniorTurns).values({
-      id,
-      conversationId,
-      actorIdentityId: "identity:actor",
-      state: "queued",
-    });
-    return id;
-  }
-
-  async function readTurn(id = turnId) {
+  async function readTurn() {
     const [turn] = await fixture.sql
       .db()
       .select()
       .from(juniorTurns)
-      .where(eq(juniorTurns.id, id));
+      .where(eq(juniorTurns.id, turnId));
     return turn!;
   }
 
@@ -142,7 +136,7 @@ describe("Turn state", () => {
     await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
       false,
     );
-    await expect(completeTurn(fixture.sql, stale)).resolves.toBe(false);
+    await expect(failTurn(fixture.sql, stale, "late")).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(running);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
   });
@@ -166,83 +160,6 @@ describe("Turn state", () => {
     // The losing takeover wrote nothing, so each counter went up once.
     expect(turn).toMatchObject({ leaseEpoch: 2, attempts: 2 });
     expect(["worker-b", "worker-c"]).toContain(turn.leaseOwner);
-  });
-
-  it("queues a Turn whose lease expired and fences out the old lease holder", async () => {
-    const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
-
-    await expect(reclaimExpired(fixture.sql)).resolves.toEqual([turnId]);
-    const queued = await readTurn();
-    expect(queued).toMatchObject({
-      state: "queued",
-      leaseEpoch: 1,
-      attempts: 1,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-    });
-    await expect(completeTurn(fixture.sql, stale)).resolves.toBe(false);
-    await expect(readTurn()).resolves.toEqual(queued);
-
-    const reclaimed = await claim("worker-b");
-    expect(reclaimed).toEqual({
-      turnId,
-      conversationId: CONVERSATION_ID,
-      stepSeq: 0,
-      leaseEpoch: 2,
-      attempts: 2,
-    });
-    await expect(failTurn(fixture.sql, stale, "late")).resolves.toBe(false);
-    await expect(readTurn()).resolves.toMatchObject({
-      state: "running",
-      leaseOwner: "worker-b",
-      endReason: null,
-    });
-  });
-
-  it("queues only running Turns whose lease expired", async () => {
-    await claim("worker-a", EXPIRED_LEASE_MS);
-    const live = await insertQueuedTurn("slack:C123:live");
-    await claimTurn(fixture.sql, {
-      turnId: live,
-      owner: "worker-b",
-      leaseMs: LEASE_MS,
-    });
-    const queued = await insertQueuedTurn("slack:C123:queued");
-    const ended = await insertQueuedTurn("slack:C123:ended");
-    const endedLease = (await claimTurn(fixture.sql, {
-      turnId: ended,
-      owner: "worker-c",
-      leaseMs: EXPIRED_LEASE_MS,
-    }))!;
-    await completeTurn(fixture.sql, endedLease);
-    const others = [live, queued, ended];
-    const before = await Promise.all(others.map((id) => readTurn(id)));
-
-    await expect(reclaimExpired(fixture.sql)).resolves.toEqual([turnId]);
-    await expect(
-      Promise.all(others.map((id) => readTurn(id))),
-    ).resolves.toEqual(before);
-  });
-
-  it("completes a running Turn, and a terminal Turn takes no other change", async () => {
-    const claimed = (await claim())!;
-
-    await expect(completeTurn(fixture.sql, claimed)).resolves.toBe(true);
-    const completed = await readTurn();
-    expect(completed).toMatchObject({
-      state: "completed",
-      leaseEpoch: 1,
-      attempts: 1,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      endReason: null,
-    });
-    expect(completed.endedAt).toBeInstanceOf(Date);
-
-    await expect(claim()).resolves.toBeUndefined();
-    await expect(failTurn(fixture.sql, claimed, "late")).resolves.toBe(false);
-    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
-    await expect(readTurn()).resolves.toEqual(completed);
   });
 
   it("fails a running Turn with its end reason", async () => {
@@ -275,7 +192,6 @@ describe("Turn state", () => {
     });
     expect(cancelled.endedAt).toBeInstanceOf(Date);
     await expect(holdsLease(fixture.sql, claimed)).resolves.toBe(false);
-    await expect(completeTurn(fixture.sql, claimed)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(cancelled);
   });
 
@@ -297,7 +213,6 @@ describe("Turn state", () => {
   it("commits a step: appends its messages and moves the Turn to the next step", async () => {
     // A retried step: the commit resets attempts.
     await claim("worker-a", EXPIRED_LEASE_MS);
-    await reclaimExpired(fixture.sql);
     const claimed = (await claim("worker-b"))!;
     expect(claimed).toMatchObject({ leaseEpoch: 2, attempts: 2 });
     const messages = [toolCallReply(), toolResult()];
@@ -344,7 +259,7 @@ describe("Turn state", () => {
     await expect(readTurn()).resolves.toEqual(running);
   });
 
-  it("ends the Turn when the committed step completed it", async () => {
+  it("ends the Turn when the committed step completed it, and a terminal Turn takes no other change", async () => {
     const claimed = (await claim())!;
     const messages = [finalReply()];
 
@@ -366,6 +281,11 @@ describe("Turn state", () => {
       types: ["assistant_message"],
       messages,
     });
+
+    await expect(claim()).resolves.toBeUndefined();
+    await expect(failTurn(fixture.sql, claimed, "late")).resolves.toBe(false);
+    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
+    await expect(readTurn()).resolves.toEqual(completed);
   });
 
   it("rejects a second commit of the same step, and appends nothing", async () => {
@@ -384,25 +304,6 @@ describe("Turn state", () => {
       types: ["assistant_message", "tool_result"],
       messages,
     });
-  });
-
-  it("rejects a commit after reclaim or with a stale lease_epoch, and appends nothing", async () => {
-    const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
-    await reclaimExpired(fixture.sql);
-    const queued = await readTurn();
-
-    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
-      false,
-    );
-    await expect(readTurn()).resolves.toEqual(queued);
-
-    await claim("worker-b");
-    const running = await readTurn();
-    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
-      false,
-    );
-    await expect(readTurn()).resolves.toEqual(running);
-    await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
   });
 
   it("rejects a commit after cancel, and appends nothing", async () => {
