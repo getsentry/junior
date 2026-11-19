@@ -203,7 +203,12 @@ export async function readViewerFile(
 ): Promise<LinkedFile | undefined> {
   const file = await fetchFile(ctx, link.file);
   if (!fitsLink(file, link)) return undefined;
-  return (await personCanOpenFile(ctx, ctx.viewer.email, file, allowedDomains))
+  return (await personCanOpenFile(
+    ctx,
+    ctx.viewer.email,
+    { ...file, resourceKey: link.file.resourceKey },
+    allowedDomains,
+  ))
     ? file
     : undefined;
 }
@@ -239,7 +244,7 @@ async function canViewGoogleFileLink(
     (await personCanOpenFile(
       ctx,
       ctx.viewer.email,
-      file,
+      { ...file, resourceKey: link.file.resourceKey },
       config.allowedDomains,
     ))
   );

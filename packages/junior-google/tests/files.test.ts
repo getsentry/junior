@@ -241,7 +241,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       } as never);
       return {
         fetch,
-        read: () => run(tools, "readGoogleFile", { file: DOC_ID }),
+        read: (file: string = DOC_ID) => run(tools, "readGoogleFile", { file }),
       };
     };
 
@@ -253,6 +253,22 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       await expect(readAs(email).read()).resolves.toMatchObject({
         content: "# Q4 plan",
       });
+    }
+    // Drive lists an older Doc shared by link only with its resource key.
+    const keyed = readAs("link@other.com");
+    await expect(
+      keyed.read(
+        `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`,
+      ),
+    ).resolves.toMatchObject({ content: "# Q4 plan" });
+    const lists = keyed.fetch.mock.calls
+      .map(([call]) => call)
+      .filter((call) => call.operation === "google.drive.files.list");
+    expect(lists.length).toBeGreaterThan(0);
+    for (const call of lists) {
+      expect(call.request.headers.get("X-Goog-Drive-Resource-Keys")).toBe(
+        `${DOC_ID}/0-key`,
+      );
     }
     // A domain share opens the Doc only for the domain that owns it. A share
     // with a group names nobody, so it does not count.

@@ -10,6 +10,7 @@ import * as z from "zod";
 import { emailDomain } from "../config";
 import {
   readGoogleFileMetadata,
+  resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
 } from "./files";
@@ -27,6 +28,8 @@ interface CheckedFile {
   id: string;
   name: string;
   owners?: { emailAddress?: string | undefined }[] | undefined;
+  /** Drive needs the key of an older file shared by link to list it. */
+  resourceKey?: string | undefined;
 }
 
 type DriveContext = Pick<GoogleToolContext, "egress">;
@@ -45,6 +48,9 @@ async function queryFindsFile(
   terms: string,
 ): Promise<boolean> {
   const response = await googleApiRequest(ctx, {
+    headers: file.resourceKey
+      ? resourceKeyHeaders({ fileId: file.id, resourceKey: file.resourceKey })
+      : {},
     operation: "google.drive.files.list",
     path: "/drive/v3/files",
     query: {
@@ -124,7 +130,12 @@ export async function readRequesterFile(
     );
   }
   if (
-    !(await personCanOpenFile(ctx, requester, metadata, ctx.allowedDomains))
+    !(await personCanOpenFile(
+      ctx,
+      requester,
+      { ...metadata, resourceKey: ref.resourceKey },
+      ctx.allowedDomains,
+    ))
   ) {
     throw new PluginToolInputError(
       `Only people who can open "${metadata.name}" can ask you to read it, and ${requester} cannot. Access through a Google group is not checked: the owner must share it with ${requester}, with their domain, or with anyone who has the link.`,
