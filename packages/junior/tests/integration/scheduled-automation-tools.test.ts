@@ -2460,6 +2460,12 @@ describe("Scheduled automation tool wiring via createTools", () => {
       ).resolves.toMatchObject({
         automation: { title: "Weekly digest", credential_mode: "system" },
       });
+      await expect(
+        executeRegisteredTool(unlocated["updateAutomation"]!, {
+          automation_id: created.automation.id,
+          destination: "<#CPUBLIC>",
+        }),
+      ).rejects.toThrow("Move an automation from a Slack channel or DM");
 
       // A new one never delivers to the web Conversation. It needs a public
       // Slack channel in the person's workspace, not a DM or private channel.

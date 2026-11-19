@@ -97,6 +97,12 @@ async function updateScheduled(
   editor: Editor,
 ): Promise<TaskCandidate> {
   const { task, ownedByViewer: isCreator } = current;
+  // Only a Conversation in Slack can move an Automation.
+  if (input.destination && !context.destination) {
+    throw new ToolInputError(
+      "Move an automation from a Slack channel or DM, not from a web conversation.",
+    );
+  }
   const target = input.destination
     ? await resolveToolDestination(context, caller, input.destination)
     : undefined;
