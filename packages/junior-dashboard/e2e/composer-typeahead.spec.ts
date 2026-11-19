@@ -232,6 +232,13 @@ test("Invite subscribes a mentioned person to a public conversation", async ({
   await card.getByRole("button", { name: "Invite" }).click();
   await expect(card.getByText("Subscribed")).toBeVisible();
   await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
+
+  // A reopened card still shows the answer.
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await composer.locator("[data-mention='U456']").click();
+  await expect(card.getByText("Subscribed")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
   expect(invites).toEqual([{ slackUserId: "U456" }]);
 });
 

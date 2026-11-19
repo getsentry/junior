@@ -1,5 +1,9 @@
 import { createContext, useContext, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useMutationState,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   conversationInviteResponseSchema,
@@ -101,7 +105,16 @@ function InviteAction(props: {
 }) {
   const { conversation } = props;
   const queryClient = useQueryClient();
+  const mutationKey = [
+    "conversation-invite",
+    conversation.conversationId,
+    props.slackUserId,
+  ];
   const invite = useMutation({
+    // The card unmounts when it closes. A kept result lets a reopened card
+    // show the answer for this person and Conversation.
+    gcTime: Infinity,
+    mutationKey,
     mutationFn: (conversationId: string) =>
       post(
         conversationInviteResponseSchema,
@@ -113,11 +126,16 @@ function InviteAction(props: {
         queryKey: conversationDetailQueryKey(conversationId),
       }),
   });
+  const answer = useMutationState({
+    filters: { exact: true, mutationKey, status: "success" },
+    select: (mutation) =>
+      conversationInviteResponseSchema.safeParse(mutation.state.data).data,
+  }).at(-1);
   // Only the API knows who is subscribed, so the card shows its answer.
-  if (invite.data) {
+  if (answer) {
     return (
       <span className="text-dashboard-text-muted">
-        {invite.data.added ? "Subscribed" : "Already a participant"}
+        {answer.added ? "Subscribed" : "Already a participant"}
       </span>
     );
   }
