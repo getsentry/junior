@@ -693,7 +693,7 @@ async function executeAgentRunInPrivacyContext(
       ? runSandbox.agentSandbox.captureRepositoryInstructions()
       : Promise.resolve(undefined);
     const promptTurnContextPromise = loadPromptTurnContext({
-      context: createPromptHookContext({ actor, run, userInput }),
+      context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:

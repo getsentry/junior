@@ -79,7 +79,23 @@ describe("Memory Retirement", () => {
 
     await run(
       slackMention(
-        "Does getsentry/junior CI still run package tests with pnpm? I'm about to add a new package.",
+        "Before I add a new package: you remember getsentry/junior CI running package tests with pnpm, right? Just answer from memory, no need to look it up.",
+      ),
+    );
+
+    expect(await activeMemoryIds()).toContain(kept.id);
+  });
+
+  test("when a person states an exception for another scope, keep the general memory", async ({
+    run,
+  }) => {
+    const kept = await insertKnowledge(
+      "Junior's dashboard styles components with Tailwind utility classes.",
+    );
+
+    await run(
+      slackMention(
+        "FYI, Junior's Slack message renderer doesn't use Tailwind at all; it builds mrkdwn strings.",
       ),
     );
 

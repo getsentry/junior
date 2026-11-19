@@ -1,3 +1,4 @@
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useCallback,
@@ -14,6 +15,7 @@ import {
   shouldPreviewImageAttachment,
   type PreviewImage,
 } from "../components/ImageAttachment";
+import { ChangeSize } from "../components/ChangeSize";
 import { conversationAttachmentUrl } from "../conversations/TranscriptAttachment";
 import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
@@ -27,7 +29,11 @@ import {
 } from "./useConversationImages";
 
 /** Linked work with a preview image, such as a PR's first description image. */
-export type ImageWork = WorkLineObject & { imageUrl: string; url: string };
+export type ImageWork = WorkLineObject & {
+  imageUrl: string;
+  size?: CodeChangeSize | undefined;
+  url: string;
+};
 
 // One fixed box per image, so nothing moves while images load. The image
 // keeps its aspect inside it.
@@ -117,7 +123,8 @@ function mediaPreview(
   };
 }
 
-// A PR card: its image, then its line. An ask on it shows as its kind icon.
+// A PR card: its image, its line, then its size. An ask on it shows as its
+// kind icon.
 function WorkTile(props: {
   ask: AskPill | undefined;
   askToggle: AskToggle;
@@ -165,6 +172,7 @@ function WorkTile(props: {
         ) : null}
         <WorkLine href={work.url} main={props.main} work={work} />
       </span>
+      <ChangeSize size={work.size} />
     </div>
   );
 }

@@ -672,7 +672,9 @@ async function startAgentInvocationsForChildInput(
       input: renderEventBatchInputs(
         messages,
         await eventReviewItemInputs(messages),
-      ).join("\n\n"),
+      )
+        .map((input) => input.text)
+        .join("\n\n"),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),
@@ -900,6 +902,7 @@ export async function withAgentInvocationResultActors(
       return {
         ...entry,
         actor: parentMessage.actor,
+        requestText: entry.message.input.text.trim(),
         ...(parentMessage.credentialContext
           ? { credentialContext: parentMessage.credentialContext }
           : undefined),

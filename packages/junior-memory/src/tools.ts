@@ -30,6 +30,11 @@ import {
   type MemoryKind,
   type MemoryRuntimeContext,
 } from "./types";
+import { MemoryRestoreConflictError, restoreMemory } from "./restore";
+import {
+  listMemories as listViewerMemories,
+  MemoryNotFoundError,
+} from "./viewer";
 
 export type MemoryReviewer = Pick<MemoryAgent, "reviewCreateRequest">;
 
@@ -267,8 +272,25 @@ const archiveMemoryInputSchema = z
   })
   .strict();
 
+const restoreMemoryInputSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1)
+      .describe(
+        "Archived memory id or unambiguous short id prefix from listMemories with archived=true.",
+      ),
+  })
+  .strict();
+
 const listMemoriesInputSchema = z
   .object({
+    archived: z
+      .boolean()
+      .describe(
+        "True lists archived memories that restoreMemory can make active, instead of active ones.",
+      )
+      .optional(),
     limit: z
       .number()
       .min(1)
@@ -518,10 +540,47 @@ export const memoryArchiveTool = definePluginTool({
   },
 });
 
-/** List visible active memories in the active context. */
+/** Restore a visible archived memory, so recall uses it again. */
+export const memoryRestoreTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Restore one archived memory, so recall uses it again. Use when the user says a forgotten or retired memory is still true. archiveMemory undoes it.",
+  executionMode: "sequential",
+  inputSchema: restoreMemoryInputSchema,
+  outputSchema: memorySingleOutputSchema,
+  execute: async (input, _options, context: MemoryToolContext) => {
+    const parsedInput = parseMemoryToolInput(restoreMemoryInputSchema, input);
+    const memory = await (async () => {
+      try {
+        return await restoreMemory(context.db, {
+          id: parsedInput.id,
+          nowMs: Date.now(),
+        });
+      } catch (error) {
+        if (
+          error instanceof MemoryNotFoundError ||
+          error instanceof MemoryRestoreConflictError
+        ) {
+          throw new PluginToolInputError(error.message, { cause: error });
+        }
+        asToolInputError(error);
+      }
+    })();
+    return memoryToolResult("restoreMemory", {
+      memory: compactMemory(memory),
+    });
+  },
+});
+
+/** List visible active or archived memories in the active context. */
 export const memoryListTool = definePluginTool({
   description:
-    "List active memories visible in the current context. Use when the user asks what you remember or when memory ids are needed before removing a memory.",
+    "List memories visible in the current context, newest first. Use when the user asks what you remember, or when memory ids are needed before removing or restoring a memory.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -533,9 +592,11 @@ export const memoryListTool = definePluginTool({
   execute: async (input, _options, context: MemoryToolContext) => {
     const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
     const runtimeContext = await memoryRuntimeContext(context);
-    const memories = await memoryStore(context, runtimeContext).listMemories({
-      limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
-    });
+    const limit = boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT);
+    const memories = parsedInput.archived
+      ? (await listViewerMemories(context.db, { archived: true, limit }))
+          .memories
+      : await memoryStore(context, runtimeContext).listMemories({ limit });
     return memoryToolResult("listMemories", {
       memories: memories.map(compactMemory),
     });

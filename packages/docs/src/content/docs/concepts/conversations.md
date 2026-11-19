@@ -21,7 +21,7 @@ A turn may pause and resume without starting a new conversation. Junior can also
 
 ## Status
 
-Each conversation has one status. It comes from what Junior runs, never from the reply text, and it covers only that conversation's own work, not its child agents.
+Each conversation has one status. It comes from what Junior runs, never from the reply text, and it covers only that conversation's own work, not its child agents. Each person also gets a [viewer state](#viewer-state) that includes the child agents.
 
 | Status        | Meaning                                                                                                     |
 | ------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -32,6 +32,22 @@ Each conversation has one status. It comes from what Junior runs, never from the
 It waits on its starter, the person who started it, when its latest turn failed, its Brief outcome is `partial` or `blocked`, or the starter has not read its latest answer. An answer counts as read once Junior posts it in Slack, once the starter sends a later message, or once the starter reads it in the dashboard. A running turn is `working`, not waiting on its starter.
 
 When more than one applies, the first in the table wins, so a conversation with an open action Review item reads `needs_input` while a turn runs. Archive does not change the status.
+
+## Viewer State
+
+A conversation can start child agents, and they can start their own. The status of the conversation does not show their work. For example, a conversation whose child agent still runs can read `done`. The status is also the same for everyone, so it does not tell you whether a wait is on you.
+
+The **viewer state** covers the conversation and all of its child agents, and it is different for each person who looks at it. The dashboard shows it, and the MCP tools return it as `treeState`:
+
+| Viewer state | Icon          | Meaning                                                                                                        |
+| ----------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `needs_you` | Question mark | A conversation in the tree waits on you: a Review item for you or for everyone, or a sign-in that you must do. |
+| `working`   | Spinner       | A turn runs or waits to start anywhere in the tree.                                                            |
+| `done`      | None          | Anything else.                                                                                                 |
+
+A wait on the starter counts only for the conversation that waits, and only for the starter. Input that waits on another person does not show as `needs_you` for you. Archived child agents do not count. When more than one state applies, the first in the table wins.
+
+A separate `watching` flag is true when a conversation in the tree watches for an event or has a pending timer. The dashboard shows it as an eye icon when the tree is otherwise `done`. A watch is not work, so it does not change the status or make the tree `working`.
 
 ## Slack Behavior
 

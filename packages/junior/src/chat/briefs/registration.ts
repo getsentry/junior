@@ -1,9 +1,3 @@
-import type { PluginRegistration } from "@sentry/junior-plugin-api";
-import { notificationsTaskRegistration } from "@/chat/notifications/task";
-import { readWebPushConfig } from "@/chat/notifications/web-push";
-import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
-import { briefsTaskRegistration } from "./task";
-
 type BriefsConfig = Readonly<{ enabled?: boolean }>;
 type EventEmbeddingsConfig = Readonly<{ enabled?: boolean }>;
 
@@ -34,17 +28,4 @@ export function setEventEmbeddingsConfig(config?: {
 /** Return whether event embeddings and meaning search are enabled. */
 export function isEventEmbeddingsEnabled(): boolean {
   return configuredEventEmbeddings.enabled === true;
-}
-
-/**
- * Return enabled core task registrations: Briefs, event search, and reply
- * notifications. Event search always stores lexemes, which cost no provider
- * call. It embeds events only when event embeddings are enabled.
- */
-export function coreTaskRegistrations(): PluginRegistration[] {
-  return [
-    ...(isBriefsEnabled() ? [briefsTaskRegistration] : []),
-    eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
-    ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
-  ];
 }

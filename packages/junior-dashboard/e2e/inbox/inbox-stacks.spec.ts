@@ -105,6 +105,76 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a click on a stack header's empty space opens its root, as its title does", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    // The header's buttons keep their own actions.
+    await stack
+      .getByRole("button", {
+        exact: true,
+        name: "Snooze 2 items in this stack",
+      })
+      .click();
+    await expect(page.getByRole("button", { name: "Tomorrow" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    // A click on the header itself, not on anything in it.
+    await stack.locator("[data-inbox-stack-head]").dispatchEvent("click");
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+  });
+
+  test("a right-click on a stack's title or card opens its root's Conversation menu", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    const menu = page.getByRole("menu");
+    await stack.getByRole("link").first().click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await rowOf(page, childReview)
+      .locator("[data-inbox-head]")
+      .click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    // A lone item row, out of any stack, has no Conversation menu.
+    await page.keyboard.press("Escape");
+    await rowOf(page, other)
+      .locator("[data-inbox-head]")
+      .click({ button: "right" });
+    await expect(menu).toHaveCount(0);
+  });
+
+  test("a sub-thread's ask on its own names the sub-thread once, in its head", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [childLicense, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = rowOf(page, childLicense);
+    const child = row.getByRole("link", { name: /Read the agent logs/ });
+    // The head names the root and the sub-thread, in full: the line has
+    // room, so it does not fade.
+    await expect(child).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByText(/› Read the agent logs$/)).not.toHaveAttribute(
+      "data-overflow",
+    );
+    // The open row's detail does not name it again.
+    await child.click();
+    await expect(child).toHaveAttribute("aria-expanded", "true");
+    await expect(child).toHaveCount(1);
+  });
+
   for (const motion of ["no-preference", "reduce"] as const) {
     test(`a row click opens the row, each row dismisses by itself, and next stays in the stack (${motion} motion)`, async ({
       dashboard,

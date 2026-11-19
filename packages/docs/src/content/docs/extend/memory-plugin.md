@@ -10,11 +10,11 @@ related:
   - /start-here/quickstart/
 ---
 
-The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
+The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each Turn, Junior searches with the request of that Turn: what a person wrote, the task of a parent agent, or the instructions of an automation. It combines semantic and full-text matches, and includes only memories that directly help with the current request. It skips memories that the Conversation history still holds: memories it already added since the last compaction, and memories captured from the same Conversation since then. Turns with no request, such as Events, timers, and child agent results, get no recalled memories. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
 
 All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
-Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason.
+Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason, and the memory database records the reason and the Conversation that showed it. A retried write does not bring back an archived memory.
 
 New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 
@@ -168,16 +168,21 @@ result marks the matched words. Each record tells whether Junior
 learned it automatically or saved it because someone asked. Forgetting
 archives the memory for everyone, so Junior no longer recalls it.
 
+The **Archived** tab lists archived memories, with the date and the reason.
+**Restore** makes one active again, so Junior recalls it again. In a public
+Conversation, a person can also ask Junior to restore a memory.
+
 The plugin also exposes authenticated REST resources:
 
-| Method   | Path                               | Purpose                                       |
-| -------- | ---------------------------------- | --------------------------------------------- |
-| `GET`    | `/api/plugins/memory/dashboard`    | Read memory totals and timeline               |
-| `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
-| `GET`    | `/api/plugins/memory/memories/:id` | Read one memory                               |
-| `DELETE` | `/api/plugins/memory/memories/:id` | Forget one memory                             |
+| Method   | Path                                       | Purpose                                                                     |
+| -------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| `GET`    | `/api/plugins/memory/dashboard`            | Read memory totals and timeline                                             |
+| `GET`    | `/api/plugins/memory/memories`             | List memories with `q`, `cursor`, `limit`, and `archived=true` for archived |
+| `GET`    | `/api/plugins/memory/memories/:id`         | Read one memory, or one archived memory with `archived=true`                |
+| `DELETE` | `/api/plugins/memory/memories/:id`         | Forget one memory                                                           |
+| `PATCH`  | `/api/plugins/memory/memories/:id`         | Set `archived`: `false` restores an archived memory, `true` forgets it     |
 
-Personal API tokens can use the read endpoints. Deletion requires an
+Personal API tokens can use the read endpoints. Forget and restore require an
 authenticated dashboard browser session.
 
 ## Migrations
@@ -221,7 +226,7 @@ Memories are public. A durable fact remembered in a public Conversation can be r
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
-- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
+- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, their reranking score may be below the recall threshold, or the Conversation history may already hold them. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 

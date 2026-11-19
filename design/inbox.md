@@ -1,9 +1,9 @@
 # Inbox
 
 The Inbox shows the open Review items for the viewer, one item row each.
-The rows of one root Conversation sit together in a stack: a light border
-under the root's title. The viewer answers, dismisses, or snoozes each row
-on its own. `./review-desk.md` owns who sees an item and who can act on it.
+The rows of one root Conversation sit together in a stack: a lightly
+tinted tray under the root's title. The viewer answers, dismisses, or
+snoozes each row on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 ## Intent
 
@@ -27,7 +27,10 @@ on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 - Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
   Conversations view.
-- The stack title, which opens the root Conversation.
+- The stack title, which opens the root Conversation. A click on empty
+  space in the stack's header does the same.
+- A right-click anywhere on a stack, which opens the root Conversation's
+  menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
   names as tooltips. A touch screen has no hover, so there a row shows its
@@ -51,11 +54,14 @@ Grouping:
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
   root that they cannot see.
-- A Conversation with one item shows that item's row, with no border. A
+- A Conversation with one item shows that item's row, with no tray. A
   click on it opens the row, as in a stack.
 - A stack of more than four rows shows the first four and "+N more in this
   Conversation". That control shows the rest in place. A stack also shows
   the rest when its open row is past the first four.
+- An open row says each fact once. The row's head names the kind, the
+  number, the title, and the sub-thread. The open card and the subject's
+  preview do not say them again.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
@@ -67,10 +73,14 @@ Actions:
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
   that row comes back, and a toast offers Retry.
+- A toast shows only with an action, such as Undo or Retry, for an error,
+  or for a result that the screen does not show. An answer gets no toast.
+  On a phone, toasts sit at the top, away from the composer and the
+  keyboard, and swipe up to dismiss.
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.
-- When a stack shrinks to one row, the border goes and the row stays. An
+- When a stack shrinks to one row, the tray goes and the row stays. An
   open row stays open.
 - A stack's Snooze and Dismiss put the whole stack away with the same leave
   motion as a row. When a row of the stack was open, the next row after the
