@@ -4,10 +4,11 @@
  * lexemes (`event-lexemes.ts`) and embeds the newest searchable events that
  * have no vector of the configured model.
  *
- * Each run embeds a bounded slice, newest first, so a long Conversation
- * catches up over later Turns and older history gets vectors last. Keyword
- * search needs no vectors, so it covers every event at once. Retries are
- * safe: a stored vector is skipped, and a write replaces only its own row.
+ * Each run embeds a bounded slice, newest first, and older history gets
+ * vectors last. The heartbeat backfill (`event-search-backfill.ts`) embeds
+ * the rest in recently active Conversations. Keyword search needs no
+ * vectors, so it covers every event at once. Retries are safe: a stored
+ * vector is skipped, and a write replaces only its own row.
  */
 import type {
   PluginEmbedder,
@@ -33,7 +34,17 @@ import {
 const MAX_EMBEDDED_CHARS = 8_000;
 const MAX_EVENTS_PER_RUN = 256;
 const EMBEDDING_BATCH_SIZE = 32;
-const EMBEDDING_LOCK_TTL_MS = 10 * 60 * 1_000;
+/** How long the event search index of one Conversation stays locked. */
+export const EVENT_INDEX_LOCK_TTL_MS = 10 * 60 * 1_000;
+
+/**
+ * Lock of the event search index of one Conversation. The task and the
+ * heartbeat backfill take it, so they do not embed the same events twice.
+ * The `junior:event-search:` prefix keeps the key the same in plugin state.
+ */
+export function eventIndexLockKey(conversationId: string): string {
+  return `junior:event-search:index:${conversationId}`;
+}
 
 /**
  * Embed the newest searchable events of one Conversation that have no
@@ -43,14 +54,16 @@ export async function embedConversationEvents(
   db: JuniorDatabase,
   embedder: PluginEmbedder,
   conversationId: string,
+  limits: { deadlineMs?: number; maxEvents?: number } = {},
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
   const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
   const refresh = await refreshEmbeddings<{ seq: number; text: string }>({
     batchSize: EMBEDDING_BATCH_SIZE,
+    deadlineMs: limits.deadlineMs,
     embedder,
-    maxItems: MAX_EVENTS_PER_RUN,
+    maxItems: limits.maxEvents ?? MAX_EVENTS_PER_RUN,
     listMissing: async ({ after, limit }) =>
       await db
         .select({ seq: events.seq, text })
@@ -122,8 +135,8 @@ export function eventSearchTaskRegistration(options: {
         async run(context: PluginTaskContext) {
           const run = await context.run.load();
           await context.state.withLock(
-            `event-search:${run.conversationId}`,
-            EMBEDDING_LOCK_TTL_MS,
+            eventIndexLockKey(run.conversationId),
+            EVENT_INDEX_LOCK_TTL_MS,
             async () => {
               // Wait for both before the lock is released, even when one fails.
               const [lexemeResult, embeddingResult] = await Promise.allSettled([
