@@ -12,6 +12,7 @@ table documents its attributes and how to read them. Paths are under
 | `event_id`                          | captured Sentry error        | failure notice in Slack     |
 | `trace_id` / `span_id`              | one trace / one span         | errors, logs, spans         |
 | `gen_ai.conversation.id`            | Conversation                 | Slack footer, logs, spans   |
+| `app.conversation.root_id`          | root Conversation            | Turn logs and spans         |
 | `messaging.message.conversation_id` | Slack thread                 | logs, spans                 |
 | `messaging.message.id`              | Slack message ts or queue id | logs, spans                 |
 | `messaging.destination.name`        | Slack channel or queue topic | logs, spans                 |
@@ -25,7 +26,13 @@ table documents its attributes and how to read them. Paths are under
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
 | `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `vcs.change.id`                     | Code change number           | code change record spans    |
 
+- `gen_ai.conversation.id` also names child agents. Count root Conversations
+  by `app.conversation.root_id`.
+- Each provider event records a Code change again. Count Code changes by
+  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
+  `open`, `closed`, or `merged`.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only warnings and audit info events (`app.log.audit:true`),

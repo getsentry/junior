@@ -2,15 +2,12 @@ import type { ReactNode } from "react";
 import { matchPath } from "react-router";
 
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
-import { systemPluginsPath } from "./SystemPlugins";
+import { NAV_PAGES, navAreaPages } from "../../navPages";
 
 /** The System pages, for the in-page links and the pane list. */
 export const systemNavigationItems = [
-  { end: true, label: "Overview", to: "/system" },
-  { label: "People", to: "/system/people" },
-  { label: "Locations", to: "/system/locations" },
-  { label: "Workspaces", to: "/system/workspaces" },
-  { label: "Plugins", to: systemPluginsPath },
+  { end: true, label: "Overview", to: NAV_PAGES.system.to },
+  ...navAreaPages(NAV_PAGES.system.to),
 ];
 
 /** Identify Workspace routes whose list scrolls on its own beside the details. */
