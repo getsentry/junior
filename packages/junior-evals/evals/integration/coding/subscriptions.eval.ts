@@ -2,7 +2,11 @@ import { describe, expect } from "vitest";
 import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
 import { insertGitHubPullRequestWatch } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this draft with no required check
@@ -61,6 +65,11 @@ describe("Watches", () => {
     expect(delivery.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
     expect(delivery.replies).toEqual([]);
+    // The event data and the tool both name the number `pull_request`, so
+    // the first read works.
+    const reads = toolCallsOf("github_getPullRequest", delivery);
+    expect(reads.map((call) => call.status)).toContain("completed");
+    expect(reads.filter((call) => call.status !== "completed")).toEqual([]);
   });
 
   test("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
