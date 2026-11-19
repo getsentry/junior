@@ -158,15 +158,15 @@ describe("plugin conversation events", () => {
       },
     });
     const histories: unknown[] = [];
-    const turnContext = (pluginName: string) => ({
-      createdAtMs: 1_000,
+    const turnContext = (pluginName: string, createdAtMs = 1_000) => ({
+      createdAtMs,
       data: {
         type: "turn_context" as const,
-        turnId: "earlier-turn",
+        turnId: `turn-${createdAtMs}`,
         pluginName,
         kind: "recall",
         version: 1,
-        content: { memories: [`${pluginName} memory`] },
+        content: { memories: [`${pluginName} memory ${createdAtMs}`] },
       },
     });
     const { getPluginUserPromptContributions, setPlugins } =
@@ -199,6 +199,9 @@ describe("plugin conversation events", () => {
       },
     });
     await getPluginUserPromptContributions(request);
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo", 3_000),
+    ]);
     // Another Turn of the same Conversation emits its own event.
     await getPluginUserPromptContributions({
       ...request,
@@ -213,13 +216,24 @@ describe("plugin conversation events", () => {
           {
             kind: "recall",
             version: 1,
-            content: { memories: ["prompt-event-demo memory"] },
+            content: { memories: ["prompt-event-demo memory 1000"] },
             loadedAtMs: 1_000,
           },
         ],
       },
       { startedAtMs: 2_000, contexts: [] },
-      { startedAtMs: 2_000, contexts: [] },
+      // Only the context of the current History version comes back.
+      {
+        startedAtMs: 2_000,
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory 3000"] },
+            loadedAtMs: 3_000,
+          },
+        ],
+      },
     ]);
     const events = await eventStore.loadHistory(conversationId);
     expect(

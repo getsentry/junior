@@ -18,14 +18,12 @@ export async function loadPluginPromptHistory(args: {
       limit: 1,
       types: ["compaction", "handoff"],
     }),
-    eventStore.loadEventsOfType(args.conversationId, "turn_context"),
+    eventStore.loadCurrentEventsOfType(args.conversationId, "turn_context"),
   ]);
   const replacement = replacements.events[0];
-  const historyVersion = replacement?.historyVersion ?? 0;
   return {
     ...(replacement ? { startedAtMs: replacement.createdAtMs } : undefined),
     contexts: contextEvents.flatMap((event) =>
-      event.historyVersion === historyVersion &&
       event.data.type === "turn_context" &&
       event.data.pluginName === args.pluginName
         ? [
