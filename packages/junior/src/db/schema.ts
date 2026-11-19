@@ -23,7 +23,6 @@ import {
 } from "./schema/agent-invocations";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
-import { juniorGuardianReviewHours } from "./schema/guardian-review-hours";
 import { juniorIdentities } from "./schema/identities";
 import { juniorStats } from "./schema/stats";
 import { juniorAutomationRuns } from "./schema/automation-runs";
@@ -64,7 +63,6 @@ export {
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorGuardianReviewHours,
   juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
@@ -106,7 +104,6 @@ export const juniorSqlSchema = {
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorGuardianReviewHours,
   juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,

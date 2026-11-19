@@ -1,6 +1,6 @@
 {
-  "id": "0bf38327-3ab3-41b5-8b66-f72a06203f60",
-  "prevId": "44a0d393-5bd5-4492-b7f5-6c5ec9d46d3a",
+  "id": "4bf676d4-c49c-4f8d-ba11-823eae4b5806",
+  "prevId": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3835,51 +3835,6 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_guardian_review_hours": {
-      "name": "junior_guardian_review_hours",
-      "schema": "",
-      "columns": {
-        "hour": {
-          "name": "hour",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "decision": {
-          "name": "decision",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reviews": {
-          "name": "reviews",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cost_micro_usd": {
-          "name": "cost_micro_usd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "junior_guardian_review_hours_hour_decision_pk": {
-          "name": "junior_guardian_review_hours_hour_decision_pk",
-          "columns": [
-            "hour",
-            "decision"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

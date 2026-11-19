@@ -41,7 +41,6 @@ import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { writeMessageLinks } from "./message-links";
-import { addGuardianReviewHours } from "@/chat/guardian/review-hours";
 import {
   recordConversationParticipant,
   rootConversationIsArchived,
@@ -269,14 +268,6 @@ class SqlConversationEventStore implements ConversationEventStore {
           .insert(juniorConversationEvents)
           .values(rows);
         await writeMessageLinks(this.executor, conversationId, rows);
-        await addGuardianReviewHours(
-          this.executor,
-          pending.flatMap((event) =>
-            event.data.type === "guardian_action_reviewed"
-              ? [{ ...event.data, createdAtMs: event.createdAtMs }]
-              : [],
-          ),
-        );
         if (
           pending.some(
             (event) =>

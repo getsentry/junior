@@ -1,8 +1,7 @@
-import { and, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import type { JuniorDatabase } from "@/db/db";
-import { juniorGuardianReviewHours } from "@/db/schema";
-import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { microUsdToUsd } from "@/db/micro-usd";
+import { readGuardianHours } from "./guardian-hours";
 import {
   readConversationMetricBuckets,
   type ConversationMetricBucket,
@@ -30,8 +29,7 @@ import {
 
 const WINDOW_DAYS = 90;
 
-// Usage JSON keeps provider USD floats, and micro-USD converts to floats, so
-// USD sums need rounding.
+// Usage and event JSON keep provider USD floats, so their sums need rounding.
 function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
 }
@@ -352,36 +350,6 @@ function activityHours(roots: readonly WindowRoot[]) {
   return [...hours.values()];
 }
 
-async function readGuardianHours(
-  db: JuniorDatabase,
-  start: Date,
-  end: Date,
-): Promise<GuardianRow[]> {
-  const hours = juniorGuardianReviewHours;
-  const hour = sql<string>`TO_CHAR(
-    ${hours.hour} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const reviews = (decision: string) =>
-    sql<number>`COALESCE(SUM(${hours.reviews}) FILTER (WHERE ${hours.decision} = ${decision}), 0)::integer`;
-  const rows = await db
-    .select({
-      allow: reviews("allow"),
-      ask: reviews("ask"),
-      costMicroUsd: microUsdSql(sql`SUM(${hours.costMicroUsd})`),
-      date: hour,
-      deny: reviews("deny"),
-      requests: sql<number>`SUM(${hours.reviews})::integer`,
-    })
-    .from(hours)
-    .where(and(gte(hours.hour, start), lte(hours.hour, end)))
-    .groupBy(hours.hour);
-  return rows.map(({ costMicroUsd, ...row }) => ({
-    ...row,
-    costUsd: costMicroUsd === null ? null : microUsdToUsd(costMicroUsd),
-  }));
-}
-
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
@@ -395,7 +363,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
       readConversationMetricBuckets(db, { start, end }),
       readWindowMerges(db, { start, end }),
       readBriefOutcomeRoots(db, { start, end }),
-      readGuardianHours(db, start, end),
+      readGuardianHours(db, getStateAdapter(), { start, end }),
     ]);
   const activity = activityHours(windowRoots);
   const outcomes = outcomeBuckets({ briefRoots, merges, windowRoots });
