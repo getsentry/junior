@@ -89,3 +89,6 @@ never lets one Conversation read another.
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.
 - Memories are public only (#2684).
+- An Artifact with `conversation` visibility follows its root. `internal`
+  and `public` are the only ways a file reaches people outside the root's
+  audience, and only an explicit publish sets them.

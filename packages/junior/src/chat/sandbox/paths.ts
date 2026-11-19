@@ -14,6 +14,8 @@ export const SANDBOX_WORKSPACE_ROOT = normalizeWorkspaceRoot(
 export const SANDBOX_REPOS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/repos`;
 export const SANDBOX_SKILLS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/skills`;
 export const SANDBOX_DATA_ROOT = `${SANDBOX_WORKSPACE_ROOT}/data`;
+/** Directory, relative to the workspace root, whose files outlive the Sandbox. */
+export const SANDBOX_ARTIFACTS_DIR = "artifacts";
 /** Runtime-owned files inside the sandbox, outside every repository. */
 export const SANDBOX_JUNIOR_ROOT = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
 /**

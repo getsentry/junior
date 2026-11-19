@@ -11,6 +11,11 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Sandbox**: an isolated environment for a Run or snapshot build.
 - **Preview**: a public URL for a server that runs in a Sandbox. It stops
   working when the Sandbox stops.
+- **Artifact**: a file under the Sandbox `artifacts/` directory. It belongs
+  to its Conversation and outlives the Sandbox. Its visibility is
+  `conversation` (whoever can read the Conversation), `internal` (anyone who
+  signs in), or `public` (anyone with the URL). A public copy is frozen and
+  has no path.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate

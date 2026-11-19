@@ -13,15 +13,15 @@ import path from "node:path";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
 import { logException, logWarn } from "@/chat/logging";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_ARTIFACTS_DIR,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { inferMimeType } from "@/chat/tools/sandbox/file-uploads";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
-
-/** Sandbox directory, relative to the workspace root, whose files are artifacts. */
-const ARTIFACTS_DIR = "artifacts";
 
 const MAX_FILES = 200;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -34,7 +34,7 @@ const SAVE_TOOLS = new Set(["bash", "editFile", "writeFile"]);
 // Regular files only. `-P` and `-type f` skip symlinks, so a link that points
 // outside the directory is never read. A missing or linked directory lists
 // nothing, and nothing creates it.
-const LIST_SCRIPT = `if [ -d ${ARTIFACTS_DIR} ] && [ ! -L ${ARTIFACTS_DIR} ]; then find -P ${ARTIFACTS_DIR} -type f -printf '%s\\t%C@\\t%P\\0'; fi`;
+const LIST_SCRIPT = `if [ -d ${SANDBOX_ARTIFACTS_DIR} ] && [ ! -L ${SANDBOX_ARTIFACTS_DIR} ]; then find -P ${SANDBOX_ARTIFACTS_DIR} -type f -printf '%s\\t%C@\\t%P\\0'; fi`;
 
 /**
  * Size and status change time of one listed file. Equal stats mean
@@ -83,7 +83,7 @@ function safeArtifactPath(value: string): string | undefined {
 }
 
 function sandboxPath(artifactPath: string): string {
-  return `${ARTIFACTS_DIR}/${artifactPath}`;
+  return `${SANDBOX_ARTIFACTS_DIR}/${artifactPath}`;
 }
 
 function storageKey(conversationId: string, sha256: string): string {
@@ -137,7 +137,7 @@ async function hashArtifactFiles(
     "--",
     ...paths.map(sandboxPath),
   ]);
-  const prefix = `${ARTIFACTS_DIR}/`;
+  const prefix = `${SANDBOX_ARTIFACTS_DIR}/`;
   return new Map(
     stdout
       .split("\0")
@@ -428,7 +428,7 @@ export function createArtifactSync(args: {
           logException(error, "artifact.save.failed", {
             "app.conversation.id": conversationId,
           });
-          return `Files in ${ARTIFACTS_DIR}/ were not saved because the save failed. The save runs again after the next bash, writeFile, or editFile call.`;
+          return `Files in ${SANDBOX_ARTIFACTS_DIR}/ were not saved because the save failed. The save runs again after the next bash, writeFile, or editFile call.`;
         }
       });
       pending = run;
@@ -448,7 +448,7 @@ export function createArtifactSync(args: {
         logException(error, "artifact.restore.failed", {
           "app.conversation.id": conversationId,
         });
-        restoreNote = `Saved files in ${ARTIFACTS_DIR}/ could not be restored to this Sandbox, so some may be missing. Their saved copies are kept.`;
+        restoreNote = `Saved files in ${SANDBOX_ARTIFACTS_DIR}/ could not be restored to this Sandbox, so some may be missing. Their saved copies are kept.`;
       }
     },
   };
@@ -457,7 +457,7 @@ export function createArtifactSync(args: {
 function skippedNote(skipped: string[]): string | undefined {
   if (skipped.length === 0) return undefined;
   return [
-    `These files in ${ARTIFACTS_DIR}/ were not saved, so they will be lost when the Sandbox stops. A copy saved earlier stays as it was. Limits: ${MAX_FILES} files, 10 MB per file, 50 MB in total.`,
+    `These files in ${SANDBOX_ARTIFACTS_DIR}/ were not saved, so they will be lost when the Sandbox stops. A copy saved earlier stays as it was. Limits: ${MAX_FILES} files, 10 MB per file, 50 MB in total.`,
     ...skipped.map((entry) => `- ${entry}`),
   ].join("\n");
 }
