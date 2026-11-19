@@ -671,6 +671,8 @@ describe("merge conflict check on webhook events", () => {
         nowMs: pushedAt + 4 * hour,
       };
       await h.answer(resume);
+      // The Watch is still active, so Resume adds no second one.
+      expect(h.subscribed).toEqual([]);
 
       // Core already delivered a fix of this head commit, and Resume closed
       // the item. So when no fix lands, the next check a day later asks

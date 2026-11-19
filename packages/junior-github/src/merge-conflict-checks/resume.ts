@@ -52,21 +52,6 @@ export async function resumeGitHubConflictFixes(args: {
     await args.loadPullRequest(args.ref),
   );
   if (loaded.state !== "open" || loaded.mergeable === true) return;
-  // The pull request's Watch can expire while fixes are stopped. Renew it
-  // first, so the fix event reaches the Conversation.
-  const resource = gitHubPullRequestSubscribable({
-    canSubscribe: args.watches.canSubscribe,
-    number: args.ref.number,
-    repo: args.ref.repositoryFullName,
-  });
-  if (args.subscription && resource) {
-    await args.watches.subscribe({
-      ...gitHubPullRequestCreateWatch(args.subscription, {
-        draft: loaded.draft === true,
-      }),
-      resource,
-    });
-  }
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {
@@ -74,14 +59,38 @@ export async function resumeGitHubConflictFixes(args: {
       headSha: loaded.head.sha,
       ...(loaded.html_url ? { url: loaded.html_url } : undefined),
     },
-  });
-  for (const event of events) {
+  }).map((event) => ({
+    ...event,
     // A fix of the same head commit may have run already, so the key names
     // the Resume too.
-    // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
-    await args.events.publish({
-      ...event,
-      eventKey: `${event.eventKey}:resume:${args.itemId}`,
+    eventKey: `${event.eventKey}:resume:${args.itemId}`,
+  }));
+  // The pull request's Watch can expire while fixes are stopped. Then add it
+  // again first, so the fix event reaches the Conversation. A Watch that is
+  // still active stays as it is: one with other events, such as the Watch of
+  // a draft, would get a second Watch, and each would start a Turn.
+  const resource = gitHubPullRequestSubscribable({
+    canSubscribe: args.watches.canSubscribe,
+    number: args.ref.number,
+    repo: args.ref.repositoryFullName,
+  });
+  const watched = events.filter(
+    (event) => event.identifier === resource?.identifier,
+  );
+  if (
+    args.subscription &&
+    resource &&
+    (await args.events.hasMatch?.(watched)) !== true
+  ) {
+    await args.watches.subscribe({
+      ...gitHubPullRequestCreateWatch(args.subscription, {
+        draft: loaded.draft === true,
+      }),
+      resource,
     });
+  }
+  for (const event of events) {
+    // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+    await args.events.publish(event);
   }
 }
