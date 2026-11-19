@@ -77,6 +77,7 @@ attributes. Nested logs and spans inherit them.
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
