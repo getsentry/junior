@@ -89,6 +89,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
     published: [] as EventInput[],
   };
   const watches = { comments: true, conflicts: true };
+  /** Review desk calls that fail before one succeeds. */
+  const failures = { upsert: 0 };
   const state = memoryState();
   /** Dedupe keys of the open review items. */
   const openNotices = new Set<string>();
@@ -110,6 +112,10 @@ export function createPluginHarness(fixture: GitHubFixture) {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
+          if (failures.upsert > 0) {
+            failures.upsert -= 1;
+            throw new Error("The review desk is down");
+          }
           // Like core, an open item with the key only gets new content.
           if (openNotices.has(notice.dedupeKey)) return;
           openNotices.add(notice.dedupeKey);
@@ -209,6 +215,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     ...recorded,
     deliver,
     events,
+    failures,
     heartbeat,
     reviewItems,
     watches,

@@ -12,6 +12,7 @@
 import type {
   EventInput,
   EventPublisher,
+  PluginConversationReviewItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
@@ -44,6 +45,7 @@ const pullRequestSchema = z.object({
   mergeable: z.boolean().nullable().optional(),
   mergeable_state: z.string().optional(),
   state: z.string(),
+  title: z.string().optional(),
 });
 
 /** Values that GitHub reports for a conflicted pull request. */
@@ -147,6 +149,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
+  reviewItems: PluginConversationReviewItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -171,12 +174,16 @@ export async function loadGitHubMergeConflictEvents(args: {
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
       return await applyGitHubConflictPolicy({
+        conflict,
         db: args.db,
         draft: loaded.draft === true,
         events: gitHubMergeConflictEvents({ ...ref, conflict }),
         loadHistory: loadConflictHistory,
+        log: args.log,
         now: new Date(),
         ref,
+        reviewItems: args.reviewItems,
+        ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {
       // The delivered events still publish without the conflict check.

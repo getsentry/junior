@@ -476,22 +476,21 @@ describe("merge conflict check on webhook events", () => {
         });
     }
 
-    it("closes an open notice when the conflict is gone, and adds none", async () => {
+    it("closes the notice when the conflict is gone, and adds one for the next conflict", async () => {
       await askedInSlack();
-      await h.reviewItems.forConversation("slack:C1:1.0").upsert({
-        assigneeIdentityIds: ["identity-jane"],
-        body: "Pull request 946 has merge conflicts.",
-        dedupeKey: "merge-conflict:getsentry/junior#946",
-        title: "Merge conflict · #946",
-      });
-      // Nobody worked on it for 4 days, so the conflict does nothing.
-      await checkAt(pushedAt + 4 * day, "1");
-      expect(fixedShas()).toEqual([]);
+      await checkAt(pushedAt + 2 * day, "1");
+      expect(h.notices).toHaveLength(1);
 
       mergeability[946] = "MERGEABLE";
-      await checkAt(pushedAt + 4 * day + hour, "2");
+      await checkAt(pushedAt + 2 * day + hour, "2");
+      // Nothing is left to close.
+      await checkAt(pushedAt + 2 * day + 2 * hour, "2");
       expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
-      expect(h.notices).toHaveLength(1);
+
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + 2 * day + 3 * hour, "3");
+      expect(h.notices).toHaveLength(2);
+      expect(fixedShas()).toEqual([]);
     });
 
     it("publishes no conflict for a draft", async () => {
@@ -518,8 +517,8 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual(["1", "3", "4"]);
       expect(h.notices).toEqual([]);
 
-      // After the third fix, Junior stops and tells nobody. Many comments
-      // do not hide the fixes.
+      // After the third fix, Junior adds one notice. Many comments do not
+      // hide the fixes.
       for (let i = 0; i < 120; i += 1) {
         timeline.push({
           __typename: "IssueComment",
@@ -530,22 +529,46 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 3 * day, "5");
       await checkAt(pushedAt + 3 * day + 6 * hour, "6");
       expect(fixedShas()).toEqual(["1", "3", "4"]);
-      expect(h.notices).toEqual([]);
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C1:1.0",
+          notice: {
+            assigneeIdentityIds: ["identity-jane"],
+            body: "**Pull request 946** has merge conflicts with `main`. Automatic fixes stopped, because conflicts were already fixed 3 times. If they are still there, ask in this thread to fix them: https://github.com/getsentry/junior/pull/946",
+            dedupeKey: "merge-conflict:getsentry/junior#946",
+            subject: {
+              id: "https://github.com/getsentry/junior/pull/946",
+              title: "Pull request 946 (#946)",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            title: "Merge conflict · #946",
+          },
+        },
+      ]);
     });
 
-    it("fixes for 3 days after activity by a person, then stops until it is approved", async () => {
+    it("adds one notice when nobody worked on it for 2 days, then stops until it is approved", async () => {
       await askedInSlack();
       // The pull request opened an hour before `pushedAt`. A review by a bot
-      // is not activity by a person.
+      // is not activity by a person. The first notice fails, so the next
+      // check adds it.
       reviewAt(pushedAt + day, "Bot");
+      h.failures.upsert = 1;
       await checkAt(pushedAt + 2 * day, "1");
+      expect(h.notices).toEqual([]);
       await checkAt(pushedAt + 2 * day + 3 * hour, "1");
       await checkAt(pushedAt + 2 * day + 6 * hour, "2");
-      expect(fixedShas()).toEqual(["1"]);
+      expect(fixedShas()).toEqual([]);
+      expect(h.notices.map(({ notice }) => notice.body)).toEqual([
+        expect.stringContaining(
+          "because nobody worked on it in the last 2 days",
+        ),
+      ]);
 
       // After 3 days without activity, a conflict does nothing.
       await checkAt(pushedAt + 3 * day, "3");
-      expect(fixedShas()).toEqual(["1"]);
+      expect(fixedShas()).toEqual([]);
+      expect(h.notices).toHaveLength(1);
 
       // An approved pull request waits only for the fix to merge, so it
       // gets one at once, until the total limit. A check of the same head
@@ -555,8 +578,10 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 4 * day + 30 * minute, "4");
       await checkAt(pushedAt + 4 * day + hour, "5");
       await checkAt(pushedAt + 4 * day + 2 * hour, "6");
-      expect(fixedShas()).toEqual(["1", "4", "5"]);
-      expect(h.notices).toEqual([]);
+      await checkAt(pushedAt + 4 * day + 3 * hour, "7");
+      expect(fixedShas()).toEqual(["4", "5", "6"]);
+      // The notice stays until the conflict is gone.
+      expect(h.closedNotices).toEqual([]);
     });
   });
 });
