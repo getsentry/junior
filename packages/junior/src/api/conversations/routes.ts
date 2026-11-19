@@ -118,6 +118,7 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
+import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -159,6 +160,8 @@ export function createConversationRoutes(
           status,
           ...(viewer ? { viewer } : undefined),
         }),
+        undefined,
+        serializeConversationFeed,
       );
     },
   );

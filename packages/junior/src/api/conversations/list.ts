@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { setSpanAttributes } from "@/chat/logging";
 import {
   and,
   asc,
@@ -557,7 +558,12 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
+    const waitingRows = await waitingRowsOutsidePage(db, filter, rows, include);
+    // The final feed does not mark these rows, so the count is set here.
+    setSpanAttributes({
+      "app.conversation_feed.waiting_rows": waitingRows.length,
+    });
+    rows.push(...waitingRows);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
