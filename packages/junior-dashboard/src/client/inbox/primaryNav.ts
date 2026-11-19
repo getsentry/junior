@@ -1,6 +1,7 @@
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import type { DashboardHeaderNavItem } from "./components/layout/DashboardHeader";
+import { NAV_PAGES } from "../navPages";
 import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 
 const AUTH_PRIMARY_NAV_PREFIXES = [
@@ -18,16 +19,14 @@ export function isAuthPrimaryNavPath(pathname: string): boolean {
   );
 }
 
-const CODE_NAV_ITEM: DashboardHeaderNavItem = {
-  key: "code",
-  label: "Code",
-  to: "/code",
-};
-const SYSTEM_NAV_ITEM: DashboardHeaderNavItem = {
-  key: "system",
-  label: "System",
-  to: "/system",
-};
+function navItem(
+  key: "automations" | "code" | "inbox" | "system",
+): DashboardHeaderNavItem {
+  return { key, label: NAV_PAGES[key].label, to: NAV_PAGES[key].to };
+}
+
+const CODE_NAV_ITEM = navItem("code");
+const SYSTEM_NAV_ITEM = navItem("system");
 
 /** Build the signed-in primary nav, holding auth slots while shell data loads. */
 export function buildPrimaryNavItems(input: {
@@ -48,10 +47,8 @@ export function buildPrimaryNavItems(input: {
   const showAccountPages = !input.loading && !input.loggedIn;
 
   return [
-    { count: input.inboxCount, key: "inbox", label: "Inbox", to: "/" },
-    ...(showTasksNav
-      ? [{ key: "automations", label: "Automations", to: "/automations" }]
-      : []),
+    { ...navItem("inbox"), count: input.inboxCount },
+    ...(showTasksNav ? [navItem("automations")] : []),
     ...input.primaryUserPages.map(userPageNavItem),
     ...(showAccountPages ? [CODE_NAV_ITEM, SYSTEM_NAV_ITEM] : []),
   ];
