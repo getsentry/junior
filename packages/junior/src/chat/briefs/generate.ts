@@ -322,8 +322,6 @@ function promptInput(args: {
 }): string {
   const messages = args.entries.filter((entry) => entry.role !== "tool");
   const tools = args.entries.filter((entry) => entry.role === "tool");
-  const keptMessages = [...messages];
-  const keptTools: BriefEntry[] = [];
   const base = {
     conversation: {
       id: args.input.conversationId,
@@ -337,36 +335,76 @@ function promptInput(args: {
     previousBrief: args.previous,
     resources: args.input.resources,
   };
-  const serialize = (): string => {
-    const kept = new Set([...keptMessages, ...keptTools]);
-    return JSON.stringify({
-      ...base,
-      omitted: {
-        messages: messages.length - keptMessages.length,
-        toolResults: tools.length - keptTools.length,
-      },
-      entries: args.entries.filter((entry) => kept.has(entry)),
-    });
+  // Measure each entry once and serialize once. A long Conversation has
+  // thousands of entries, and serializing them again for each entry it
+  // drops or adds blocks the event loop for many seconds.
+  const emptyLength = JSON.stringify({
+    ...base,
+    omitted: { messages: 0, toolResults: 0 },
+    entries: [],
+  }).length;
+  // Exact length of the serialized input: the empty input with each "0"
+  // replaced by its omitted count, plus each kept entry and one comma
+  // between entries.
+  const lengthOf = (
+    keptMessages: number,
+    keptTools: number,
+    entryChars: number,
+  ): number => {
+    const kept = keptMessages + keptTools;
+    return (
+      emptyLength -
+      2 +
+      String(messages.length - keptMessages).length +
+      String(tools.length - keptTools).length +
+      entryChars +
+      Math.max(0, kept - 1)
+    );
   };
+  const entryLength = (entry: BriefEntry) => JSON.stringify(entry).length;
 
-  let text = serialize();
-  while (text.length > MAX_INPUT_CHARS && keptMessages.length > 0) {
-    keptMessages.shift();
-    text = serialize();
+  // Drop the oldest messages until the rest fit.
+  const messageLengths = messages.map(entryLength);
+  let messageChars = messageLengths.reduce((sum, length) => sum + length, 0);
+  let firstKeptMessage = 0;
+  while (
+    firstKeptMessage < messages.length &&
+    lengthOf(messages.length - firstKeptMessage, 0, messageChars) >
+      MAX_INPUT_CHARS
+  ) {
+    messageChars -= messageLengths[firstKeptMessage]!;
+    firstKeptMessage += 1;
   }
-  if (text.length > MAX_INPUT_CHARS) {
+  const keptMessageCount = messages.length - firstKeptMessage;
+  if (lengthOf(keptMessageCount, 0, messageChars) > MAX_INPUT_CHARS) {
     throw new Error("Brief metadata exceeds the 60,000 character input limit");
   }
 
+  // Fill the rest of the budget with the newest tool results that fit.
+  const kept = new Set(messages.slice(firstKeptMessage));
+  let keptToolCount = 0;
+  let entryChars = messageChars;
   for (let index = tools.length - 1; index >= 0; index -= 1) {
-    keptTools.push(tools[index]!);
-    const candidate = serialize();
-    if (candidate.length <= MAX_INPUT_CHARS) {
-      text = candidate;
-    } else {
-      keptTools.pop();
+    const tool = tools[index]!;
+    const length = entryLength(tool);
+    if (
+      lengthOf(keptMessageCount, keptToolCount + 1, entryChars + length) <=
+      MAX_INPUT_CHARS
+    ) {
+      kept.add(tool);
+      keptToolCount += 1;
+      entryChars += length;
     }
   }
+
+  const text = JSON.stringify({
+    ...base,
+    omitted: {
+      messages: messages.length - keptMessageCount,
+      toolResults: tools.length - keptToolCount,
+    },
+    entries: args.entries.filter((entry) => kept.has(entry)),
+  });
 
   return [
     renderTag("brief-input", {}, [text]),

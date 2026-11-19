@@ -355,6 +355,8 @@ describe("generateBrief", () => {
     const tools = payload.entries.filter((entry) => entry.role === "tool");
 
     expect(match?.[1]?.length).toBeLessThanOrEqual(60_000);
+    // No omitted tool result fits in what is left of the budget.
+    expect(match?.[1]?.length).toBeGreaterThan(60_000 - 1_600);
     expect(payload.omitted.messages).toBe(0);
     expect(payload.omitted.toolResults).toBeGreaterThan(0);
     expect(messages).toHaveLength(2);
