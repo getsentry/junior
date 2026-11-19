@@ -148,9 +148,8 @@ export function ConversationWorkspace(props: {
     [conversations, waitingConversations],
   );
   const homeList = useRef<HTMLDivElement>(null);
-  const createDock = useRef<HTMLDivElement>(null);
   // A pending create hides the home and docks its own composer.
-  useComposerDockHeight(createDock, !sidebarFits && !pendingCreate);
+  const createDock = useComposerDockHeight(!sidebarFits && !pendingCreate);
   // A new search starts at the top. Otherwise the shorter list leaves the
   // load-more row in view, and it loads a page before the results arrive.
   useEffect(() => {

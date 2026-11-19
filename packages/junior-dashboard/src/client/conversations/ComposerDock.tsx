@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, type ReactNode } from "react";
 
 import { cn } from "../styles";
 
@@ -25,29 +25,29 @@ const composerDockHeightProperty = "--dashboard-composer-dock-height";
 
 /**
  * Publish a docked composer's height, so toasts on a phone sit above the
- * composer and its Send button. One dock shows at a time.
+ * composer and its Send button. Pass the returned ref to the dock: it
+ * follows the dock as it mounts and unmounts. One dock shows at a time.
  */
-export function useComposerDockHeight(
-  dock: RefObject<HTMLElement | null>,
-  docked = true,
-) {
-  useEffect(() => {
-    const element = dock.current;
-    if (!element || !docked) return;
-    const root = document.documentElement;
-    const publish = () =>
-      root.style.setProperty(
-        composerDockHeightProperty,
-        `${element.offsetHeight}px`,
-      );
-    const observer = new ResizeObserver(publish);
-    observer.observe(element);
-    publish();
-    return () => {
-      observer.disconnect();
-      root.style.removeProperty(composerDockHeightProperty);
-    };
-  }, [dock, docked]);
+export function useComposerDockHeight(docked = true) {
+  return useCallback(
+    (element: HTMLElement | null) => {
+      if (!element || !docked) return;
+      const root = document.documentElement;
+      const publish = () =>
+        root.style.setProperty(
+          composerDockHeightProperty,
+          `${element.offsetHeight}px`,
+        );
+      const observer = new ResizeObserver(publish);
+      observer.observe(element);
+      publish();
+      return () => {
+        observer.disconnect();
+        root.style.removeProperty(composerDockHeightProperty);
+      };
+    },
+    [docked],
+  );
 }
 
 export function ComposerDock(props: {
@@ -56,8 +56,7 @@ export function ComposerDock(props: {
   /** Queue / authorization chrome above the composer. */
   above?: ReactNode;
 }) {
-  const dock = useRef<HTMLDivElement>(null);
-  useComposerDockHeight(dock);
+  const dock = useComposerDockHeight();
   return (
     <div
       ref={dock}
