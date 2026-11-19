@@ -14,7 +14,7 @@ vi.mock("@/chat/skills", () => ({
     throw new Error("discover failed");
   }),
   findSkillByName: vi.fn(),
-  parseSkillInvocation: vi.fn(),
+  parseSkillInvocations: vi.fn(() => []),
 }));
 
 const { executeAgentRun } = await import("@/chat/agent");

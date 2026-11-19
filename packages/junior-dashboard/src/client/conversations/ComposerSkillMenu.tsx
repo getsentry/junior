@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -26,6 +27,11 @@ import { skillTokenAt, type SkillToken } from "./composerSkillToken";
  * Suggest skills while the reader types `$` in the composer. Focus stays in
  * the textarea: arrows move, Enter or Tab inserts `$skill-name`, Ctrl or
  * Cmd I opens its SKILL.md, Escape closes. `onInsert` gets the new draft text.
+ *
+ * A card describes the installed skill that the caret moves into, and the
+ * skill that was just inserted. Typing shows the menu, and a caret move into
+ * a complete installed `$name` shows the card, so the two never show
+ * together. Pass `edit` to `onChange` and `sync` to `onSelect`.
  */
 export function useComposerSkillMenu(
   textareaRef: RefObject<HTMLTextAreaElement | null>,
@@ -33,6 +39,7 @@ export function useComposerSkillMenu(
 ) {
   const gridId = useId();
   const detailsId = useId();
+  const cardId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<SkillToken>();
   const [placement, setPlacement] = useState<MenuPlacement>();
@@ -50,20 +57,33 @@ export function useComposerSkillMenu(
   const [viewing, setViewing] = useState<string>();
   // The row that shows its description below it on narrow screens.
   const [expanded, setExpanded] = useState<string>();
-  const rows = token && skills ? skillRows(skills, token.query) : [];
+  // The reference that the card describes. `start` is the index of its `$`.
+  const [card, setCard] = useState<{ name: string; start: number }>();
+  // The text and caret of the last sync. `onSelect` also fires after an
+  // edit and after an insert, and that must not turn the menu into a card.
+  const synced = useRef<{ text: string; caret: number }>(undefined);
+  // A send clears the text without an edit event, so check that the
+  // reference is still there.
+  const cardSkill =
+    card && textareaRef.current?.value.startsWith(`$${card.name}`, card.start)
+      ? skills?.find((skill) => skill.name === card.name)
+      : undefined;
+  const rows =
+    token && skills && !cardSkill ? skillRows(skills, token.query) : [];
   const open = rows.length > 0;
+  const shown = open || Boolean(cardSkill);
   const active = Math.min(activeIndex, rows.length - 1);
   const cellId = (index: number) => `${gridId}-${index}`;
 
   // The composer moves with the layout, so follow it while the menu is open.
   useEffect(() => {
-    if (!open) return;
+    if (!shown) return;
     const place = () => {
       if (textareaRef.current) setPlacement(menuPlacement(textareaRef.current));
     };
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
-  }, [open, textareaRef]);
+  }, [shown, textareaRef]);
 
   const activeCell = open ? cellId(active) : undefined;
   useEffect(() => {
@@ -88,6 +108,7 @@ export function useComposerSkillMenu(
   const close = () => {
     cancelHover();
     setToken(undefined);
+    setCard(undefined);
   };
   // A tap on the menu blurs the textarea before its click lands, and a
   // scrollbar drag blurs it too. Keep the menu open while a press in it
@@ -97,7 +118,7 @@ export function useComposerSkillMenu(
   const pressingMenu = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!shown) return;
     const endPress = (event: PointerEvent) => {
       const menu = menuRef.current;
       if (!(event.target instanceof Node) || !menu?.contains(event.target)) {
@@ -106,14 +127,17 @@ export function useComposerSkillMenu(
     };
     document.addEventListener("pointerdown", endPress, true);
     return () => document.removeEventListener("pointerdown", endPress, true);
-  }, [open]);
+  }, [shown]);
 
   /**
    * Close on blur, unless the blur comes from a press in the menu or from
    * the SKILL.md drawer taking focus.
    */
   const blur = () => {
-    if (!pressingMenu.current && !viewing) close();
+    if (pressingMenu.current || viewing) return;
+    close();
+    // A click back in at the same caret reopens it.
+    synced.current = undefined;
   };
 
   /** Open a SKILL.md from a press on a View full skill button. */
@@ -129,24 +153,45 @@ export function useComposerSkillMenu(
   };
 
   /** Read the reference at the caret after an edit or caret move. */
-  const sync = () => {
+  const sync = (edited = false) => {
     const textarea = textareaRef.current;
     if (!textarea || textarea.selectionStart !== textarea.selectionEnd) {
       close();
+      // A collapse back to the same caret reopens it.
+      synced.current = undefined;
       return;
     }
-    const next = skillTokenAt(textarea.value, textarea.selectionStart);
+    const text = textarea.value;
+    const caret = textarea.selectionStart;
+    if (
+      !edited &&
+      synced.current?.text === text &&
+      synced.current.caret === caret
+    ) {
+      return;
+    }
+    synced.current = { text, caret };
+    const next = skillTokenAt(text, caret);
     if (next?.start !== dismissedStart) setDismissedStart(undefined);
     if (!next || next.start === dismissedStart) {
       close();
       return;
     }
+    setWanted(true);
+    setPlacement(menuPlacement(textarea));
+    const name = text.slice(next.start + 1, next.end);
+    if (!edited && skills?.some((skill) => skill.name === name)) {
+      setToken(undefined);
+      setCard({ name, start: next.start });
+      return;
+    }
+    // Before the skill list loads, a caret move can still be into an
+    // installed skill. Keep both, and the card wins if the name resolves.
+    setCard(!edited && !skills ? { name, start: next.start } : undefined);
     if (next.query !== token?.query || next.start !== token.start) {
       setActiveIndex(0);
     }
-    setWanted(true);
     setToken(next);
-    setPlacement(menuPlacement(textarea));
   };
 
   const insert = (name: string) => {
@@ -167,12 +212,16 @@ export function useComposerSkillMenu(
       );
     }
     close();
+    // Describe the new reference until the next edit or caret move.
+    setCard({ name, start: token.start });
+    synced.current = { text: textarea.value, caret: textarea.selectionStart };
     onInsert(textarea.value);
   };
 
   /** Handle menu keys. Returns true when the key belonged to the menu. */
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!open || event.nativeEvent.isComposing) return false;
+    if (event.nativeEvent.isComposing) return false;
+    if (!open) return cardKeyDown(event);
     const move = (delta: number) => {
       cancelHover();
       setActiveIndex((active + delta + rows.length) % rows.length);
@@ -203,11 +252,50 @@ export function useComposerSkillMenu(
     return true;
   };
 
+  /** Escape closes the card, and Ctrl or Cmd I opens its SKILL.md. */
+  const cardKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!card || !cardSkill) return false;
+    if (event.key === "Escape") {
+      setDismissedStart(card.start);
+      // Also drop a token kept while the skill list loaded.
+      close();
+    } else if (isPlatformShortcut(event.nativeEvent, "i")) {
+      setViewing(cardSkill.name);
+    } else {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  };
+
   // A textbox supports these. `aria-expanded` needs the combobox role.
   const textboxProps = {
     "aria-activedescendant": open ? cellId(active) : undefined,
     "aria-autocomplete": "list" as const,
     "aria-controls": open ? gridId : undefined,
+    "aria-describedby": cardSkill
+      ? `${cardId}-source ${cardId}-description`
+      : undefined,
+  };
+
+  // Shared by the menu and the card, which take the same place.
+  const popupProps = {
+    ref: menuRef,
+    style: placement,
+    // Keep focus and the caret in the textarea on desktop.
+    onMouseDown: (event: MouseEvent) => event.preventDefault(),
+    onPointerDown: () => {
+      pressingMenu.current = true;
+    },
+    onPointerCancel: () => {
+      pressingMenu.current = false;
+    },
+    // A tap moved focus out of the textarea. Put it back.
+    onClick: () => {
+      pressingMenu.current = false;
+      textareaRef.current?.focus({ preventScroll: true });
+    },
   };
 
   // A portal, because docks around the composer clip their overflow.
@@ -219,21 +307,7 @@ export function useComposerSkillMenu(
             // details pane. Narrower, rows expand in place.
             <div
               className="@container fixed z-50 flex overflow-hidden rounded-lg border border-input bg-secondary shadow-lg"
-              ref={menuRef}
-              style={placement}
-              // Keep focus and the caret in the textarea on desktop.
-              onMouseDown={(event) => event.preventDefault()}
-              onPointerDown={() => {
-                pressingMenu.current = true;
-              }}
-              onPointerCancel={() => {
-                pressingMenu.current = false;
-              }}
-              // A tap moved focus out of the textarea. Put it back.
-              onClick={() => {
-                pressingMenu.current = false;
-                textareaRef.current?.focus({ preventScroll: true });
-              }}
+              {...popupProps}
             >
               {/* A grid, not a listbox: narrow rows hold real buttons. */}
               <div
@@ -294,11 +368,35 @@ export function useComposerSkillMenu(
             document.body,
           )
         : null}
+      {!open && cardSkill && placement
+        ? createPortal(
+            <div
+              aria-label={skillLabel(cardSkill.name)}
+              className="fixed z-50 flex max-w-md flex-col overflow-hidden rounded-lg border border-input bg-secondary p-3 shadow-lg"
+              role="group"
+              {...popupProps}
+            >
+              <SkillDetails
+                id={cardId}
+                onView={() => view(cardSkill.name)}
+                skill={cardSkill}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
       {viewing ? <SkillDrawer name={viewing} onClose={closeDrawer} /> : null}
     </>
   );
 
-  return { blur, textboxProps, handleKeyDown, menu, sync };
+  return {
+    blur,
+    edit: () => sync(true),
+    textboxProps,
+    handleKeyDown,
+    menu,
+    sync: () => sync(),
+  };
 }
 
 type MenuPlacement = {

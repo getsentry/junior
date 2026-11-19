@@ -21,6 +21,7 @@ The composer is the message box under the transcript of a Conversation ("Continu
 - `skill-split` The menu shows the list beside the pane when the menu is at least 32rem wide, and stacked rows when it is narrower. The 606px reply composer at 1440 with Details open stays split.
 - `skill-menu-mobile` Below 32rem, `Details for $name` expands the row in place with the description and `View full skill`, and inserts nothing. A tap on the name inserts it.
 - `skill-esc` Esc closes the menu and leaves a question docked above the box open.
+- `skill-card` A card describes the skill just inserted, and the complete `$name` that the caret moves into. An edit or Esc hides it, and it never shows with the menu.
 - `read-only` A user who may not reply to a private Conversation sees "Only participants can reply to a private conversation." in place of the box.
 
 ## How to get to it (user POV)
@@ -39,7 +40,7 @@ Preconditions:
 
 - `instance.mjs launch` (no `--mock`) started a new instance, and `instance.mjs doctor` passes. `read-only` needs a `--mock` instance instead.
 - `E=$RUN_DIR/evidence/composer`, `C='role=textbox[name="Continue this conversation"]'`, `P='[aria-label="Pending messages"]'`.
-- For the skill menu: `H='role=textbox[name="Start a conversation"]'`, `K='role=grid[name="Skills"]'`, `V='role=button[name="View full skill"]'`.
+- For the skill menu: `H='role=textbox[name="Start a conversation"]'`, `K='role=grid[name="Skills"]'`, `V='role=button[name="View full skill"]'`, `G='role=group[name="$example-local"]'` (the card).
 - `R='article:has-text("junior-example")'` matches a reply from Junior.
 - The textbox value shows in the ARIA snapshot as the `text:` line under `textbox "Continue this conversation"`. Read it with `grep -A3 'textbox "Continue' NAME.aria.yml`.
 
@@ -51,6 +52,7 @@ Preconditions:
 - **Skill menu and details (`skill-menu`, `skill-details`).** On a `--mock` instance, run `node $S/browse.mjs --out $E/skill-menu --goto / --type "$H=Run \$exa" --expect "$K" --expect 'text=From the example-bundle plugin' --snap menu --press ArrowDown --expect 'text=App or local skill' --snap pane-arrow --hover "$K >> role=gridcell[name=/example-bundle-help/]" --expect 'text=From the example-bundle plugin' --snap pane-hover --click "$V" --expect 'role=dialog[name="$example-bundle-help"]' --snap drawer --click 'role=button[name="Close $example-bundle-help"]' --absent 'role=dialog' --press Control+i --expect 'role=dialog[name="$example-bundle-help"]' --click 'role=button[name="Close $example-bundle-help"]' --absent 'role=dialog' --press Enter --absent "$K" --snap inserted`. The pane follows ArrowDown to `$example-local` and the pointer back to `$example-bundle-help`. Ctrl+I after the close works only because focus is back in the box. `inserted` shows `text: Run $example-bundle-help`.
 - **Split width and Esc (`skill-split`, `skill-esc`).** On a `--mock` instance, run `node $S/browse.mjs --out $E/skill-esc --goto '/conversations/internal%3Aquestions-qa' --expect 'role=complementary[name="Conversation details"]' --expect 'role=region[name=/^Question: /]' --type "$C=\$" --expect "$K" --expect "$V" --absent 'role=button[name=/^Details for/]' --snap split --press Escape --absent "$K" --expect 'role=region[name=/^Question: /]' --snap esc`. At the default width 1440, Details is open and the menu is 606px wide. The pane shows and no row has a chevron, so it is split. After Esc the menu is gone and the questions stay.
 - **Mobile rows (`skill-menu-mobile`).** On a `--mock` instance, run `node $S/browse.mjs --out $E/skill-menu-mobile --touch --width 390 --goto / --type "$H=\$exa" --expect "$K" --absent "$V" --snap rows --tap 'role=button[name="Details for $example-local"]' --expect 'role=button[name="Details for $example-local"][expanded]' --expect "$V" --snap expanded --tap "$V" --expect 'role=dialog[name="$example-local"]' --tap 'role=button[name="Close $example-local"]' --absent 'role=dialog' --tap "$K >> role=gridcell[name=/example-local/]" --absent "$K" --snap inserted`. `expanded` still shows `text: $exa`, and `inserted` shows `text: $example-local`.
+- **Skill card (`skill-card`).** On a `--mock` instance, run `node $S/browse.mjs --out $E/skill-card --goto / --type "$H=Run \$exa" --expect "$K" --press ArrowDown --press Enter --absent "$K" --expect "$G" --snap inserted --type "$H=now" --absent "$G" --press ArrowLeft --press ArrowLeft --press ArrowLeft --press ArrowLeft --expect "$G" --absent "$K" --snap caret --click "$G >> $V" --expect 'role=dialog[name="$example-local"]' --click 'role=button[name="Close $example-local"]' --absent role=dialog --press Escape --absent "$G" --snap esc --press End --press ArrowLeft --press ArrowLeft --press ArrowLeft --press ArrowLeft --expect "$G" --press Backspace --expect "$K" --absent "$G" --snap edit`. The card shows after the insert, goes on the next edit, and comes back with the caret at the end of `$example-local`, with no menu. `edit` shows the menu for `text: Run $example-loca now` and no card.
 - **Read-only (`read-only`).** On a `--mock` instance, run `node $S/browse.mjs --out $E/read-only --goto '/conversations/slack%3ADQA123%3A1770007200.000300' --expect 'text=Only participants can reply to a private conversation.' --absent "$C" --snap read-only`. The mock viewer is not a participant of this private Slack DM.
 
 ## Gotchas
@@ -68,4 +70,6 @@ Preconditions:
 - Use `--type`, not `--fill`, before Esc. A `--fill` value moves the caret without the key events a person makes, and the next key can reopen the menu, so Esc looks broken.
 - Hover changes the pane only after the pointer rests about 120ms on a row. `--hover` leaves the pointer there, so `--expect` waits it out.
 - The mobile rows need `--touch --width 390`. A width alone keeps a mouse, and `--tap` needs the touch screen.
+- After Esc, the menu and card stay closed until the caret leaves that reference. Move the caret out, as `--press End` does, before a step needs them again.
+- Wait for `--absent role=dialog` after you close the drawer. The box gets focus back only then, and an earlier key goes to the page.
 - `read-only` needs a second user, which local development does not have (the viewer is always `dev@example.com`). The mock fixture is the only local path, and it proves only what the dashboard shows.

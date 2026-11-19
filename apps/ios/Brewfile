@@ -1,0 +1,6 @@
+# The tools that the scripts and fastlane lanes in this folder use.
+# `make init` installs them.
+brew "xcodegen"
+brew "xcbeautify"
+brew "jq"
+brew "rbenv"

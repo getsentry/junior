@@ -249,7 +249,7 @@ function subjectInput(
 }
 
 export const addReviewItemToolDefinition = zodToolDefinition({
-  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
+  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

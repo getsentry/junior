@@ -4,7 +4,7 @@
   "packageManager": "pnpm@12.18.0+sha512.9d7882d5dc82147ecfc4e062aa34834e0ad0296710a1837a1115ae012127d36b7109e321ac1598a1dd0a65597681b1e99917e12ed0d749eae91187943363beb3",
   "scripts": {
     "acp:local": "node scripts/acp-local.mjs",
-    "dev": "node scripts/dev-server.mjs",
+    "dev": "node scripts/dev.mjs",
     "dev:env": "pnpx vercel env pull .env.local --environment=development && pnpm run cloudflare:token",
     "cli": "node scripts/cli-with-root-env.mjs",
     "worktree": "node scripts/worktree.mjs",

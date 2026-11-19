@@ -87,6 +87,87 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await expect(composer).toHaveValue("Run $release-check ");
 });
 
+test("describes the skill reference at the caret @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Start a conversation");
+  const skills = page.getByRole("grid", { name: "Skills" });
+  const card = page.getByRole("group", { name: "$release-check" });
+  await composer.fill("Run $rel");
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("Run $release-check ");
+
+  // The skill that was just inserted, until the next edit.
+  await expect(card).toContainText("then post a short summary");
+  await expect(skills).toHaveCount(0);
+  await expect(composer).toHaveAccessibleDescription(/^App or local skill/);
+  await screenshot(page, "composer-skill-card", { view: "desktop" });
+  await composer.pressSequentially("now");
+  await expect(card).toHaveCount(0);
+
+  // A caret move into a complete reference shows the card, not the menu.
+  for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
+  await expect(card).toBeVisible();
+  await expect(skills).toHaveCount(0);
+  await card.getByRole("button", { name: "View full skill" }).click();
+  const drawer = page.getByRole("dialog", { name: "$release-check" });
+  await expect(drawer).toContainText("Compare the release branch");
+  await drawer
+    .getByRole("button", { name: "Close $release-check", exact: true })
+    .click();
+  await expect(composer).toBeFocused();
+  await expect(card).toBeVisible();
+  // A selection closes it, and a collapse back to the same caret reopens it.
+  await composer.press("Shift+ArrowLeft");
+  await expect(card).toHaveCount(0);
+  await composer.press("ArrowRight");
+  await expect(card).toBeVisible();
+  await composer.press("Escape");
+  await expect(card).toHaveCount(0);
+  await expect(composer).toHaveValue("Run $release-check now");
+
+  // An edit in the reference shows the menu instead.
+  await composer.press("End");
+  for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
+  await expect(card).toBeVisible();
+  await composer.press("Backspace");
+  await expect(skills).toBeVisible();
+  await expect(card).toHaveCount(0);
+});
+
+test("a caret move before the skill list loads shows the card @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  let release = () => {};
+  const loaded = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/skills", async (route) => {
+    await loaded;
+    await route.fallback();
+  });
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Start a conversation");
+  await composer.fill("Run $release-check now");
+  for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
+  release();
+  const card = page.getByRole("group", { name: "$release-check" });
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(card).toBeVisible();
+  await expect(skills).toHaveCount(0);
+  // Esc closes the card, and the menu does not open in its place.
+  await composer.press("Escape");
+  await expect(card).toHaveCount(0);
+  await expect(skills).toHaveCount(0);
+});
+
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
@@ -131,6 +212,19 @@ test.describe("on a touch screen", () => {
     ).toBeInViewport({ ratio: 1 });
     await row.tap();
     await expect(composer).toHaveValue("$release-check ");
+    await expect(
+      page.getByRole("group", { name: "$release-check" }),
+    ).toBeVisible();
+    await screenshot(page, "composer-skill-card", { view: "mobile" });
+
+    // A long description scrolls in the card, so its button stays in sight.
+    await composer.fill("$self");
+    await skills.getByRole("gridcell", { name: /^\$self-update/ }).tap();
+    await expect(
+      page
+        .getByRole("group", { name: "$self-update" })
+        .getByRole("button", { name: "View full skill" }),
+    ).toBeInViewport({ ratio: 1 });
   });
 });
 
@@ -156,5 +250,15 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   await expect(skills).toBeVisible();
   await composer.press("Escape");
   await expect(skills).toBeHidden();
+  await expect(question).toBeVisible();
+
+  // The same for the card of an inserted skill.
+  await composer.fill("");
+  await composer.pressSequentially("$diff");
+  await composer.press("Enter");
+  const card = page.getByRole("group", { name: "$diff-quality" });
+  await expect(card).toBeVisible();
+  await composer.press("Escape");
+  await expect(card).toBeHidden();
   await expect(question).toBeVisible();
 });

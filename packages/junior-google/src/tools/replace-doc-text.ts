@@ -106,7 +106,7 @@ export const replaceGoogleDocTextTool = definePluginTool({
     }
     const reply = await batchUpdateDoc(
       ctx,
-      doc.ref,
+      doc,
       [
         {
           replaceAllText: {

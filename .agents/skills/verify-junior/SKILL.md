@@ -26,6 +26,7 @@ S=.agents/skills/verify-junior/scripts
    - Each run gets a new, empty Postgres database (`verify_junior_<run>`) and an empty Redis database (1 to 15) in the compose services. `pnpm dev` migrates the database. Your `junior` database and Redis database 0 are not touched.
    - `--mock` sets `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true`. The dashboard then shows fixed Conversations, Review items, Automations, and stats, and the composer runs no agent. Use it only where a feature file says so.
    - `launch` refuses when port 3000 or 8969 is in use. `pnpm dev` binds both, so only one instance can run on a machine.
+   - `pnpm dev` runs inside `sentry local run`, so Nitro and the queue worker report to one Sentry Local server on port 8969. `launch` tails it to `$RUN_DIR/telemetry.ndjson`. See [Telemetry](#telemetry).
    - It generates a disposable `JUNIOR_ENCRYPTION_KEYS` and never writes it to a file.
    - It deletes the injected `dist` symlinks that an earlier `pnpm dev` left under `node_modules/.pnpm/@sentry+junior*`. With them, pnpm 12 fails the build with `ERR_PNPM_INJECTED_DEPS_SYNC_READ_DIR`.
    - A cold start takes 2 to 4 minutes.
@@ -38,6 +39,7 @@ Teardown is [Cleanup](#cleanup).
 Run `node $S/instance.mjs doctor $RUN_DIR` before the first drive, after any failed drive, and when anything looks wrong. It is read-only and exits `0` only when every line is `ok`:
 
 - `pnpm dev` from this run is up, and the port 3000 listener descends from it.
+- The telemetry tail of this run is up.
 - `GET /api/health` returns `200`.
 - The mock mode matches the launch.
 - `HEAD` is still the launched revision.
@@ -71,6 +73,15 @@ Put all evidence in `$RUN_DIR/evidence/<feature>/`. `$RUN_DIR` defaults to `${TM
 - Check side effects: the Inbox count and tab title, the item in search, the event log of the Conversation, the System page counts.
 - The model is real. Do not mock it. `--mock` replaces Junior's own API, so it proves only what the dashboard shows.
 - `dev.log` in `$RUN_DIR` has the server and worker logs. Use it to explain a failure, not as proof.
+
+## Telemetry
+
+`$RUN_DIR/telemetry.ndjson` has one JSON object per line for each error, span, and log that Nitro and the queue worker send. Use it to explain a result or a failure, such as which tool ran, which model call failed, or which step was slow. It is not proof of what a user sees.
+
+- `type` is `error`, `span`, `log`, or `session`. Logs have `level` and `message`, which is the event name, such as `agent.turn.timed_out`. Errors have `error_type`, `message`, the top frame, and `trace_id`.
+- Spans have `label`, `duration_ms`, `status`, and `attributes.sdk["sentry.op"]`, the full span name: `gen_ai.invoke_agent`, `gen_ai.chat`, `gen_ai.execute_tool`, `queue.process`. `TELEMETRY.md` has the names and attributes.
+- Turn spans and logs carry `gen_ai.conversation.id`. It is the last path segment of the Conversation URL, URL-decoded, such as `local:web:9a15...`.
+- One Conversation: `grep '"gen_ai.conversation.id":"local:web:<id>"' $RUN_DIR/telemetry.ndjson`. Its errors: `grep '"type":"error"' $RUN_DIR/telemetry.ndjson | grep '"trace_id":"<trace>"'`, with a `trace_id` from its spans.
 
 ## Cleanup
 
