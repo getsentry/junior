@@ -20,7 +20,7 @@ describe("renderTaskInput", () => {
   it("names the skill to run and keeps optional context as instructions", () => {
     expect(
       renderTaskInput({ instructions: "  ", skill: "release-check" }),
-    ).toContain("<task>\nRun the release-check skill.\nWhen an Event");
+    ).toContain("<task>\nRun the $release-check skill.\nWhen an Event");
     expect(
       renderTaskInput({
         instructions: "Only check getsentry/junior.",
@@ -28,7 +28,7 @@ describe("renderTaskInput", () => {
       }),
     ).toContain(
       [
-        "Run the release-check skill. The instructions below add context for this run.",
+        "Run the $release-check skill. The instructions below add context for this run.",
         "<instructions>Only check getsentry/junior.</instructions>",
       ].join("\n"),
     );

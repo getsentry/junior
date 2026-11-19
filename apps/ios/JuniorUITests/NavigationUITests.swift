@@ -7,9 +7,12 @@ import XCTest
 final class NavigationUITests: XCTestCase {
   enum Auth { case token, signedOut, kept }
 
+  /// `scripts/sim.sh` sets it from `JUNIOR_IOS_SERVER`.
+  private let server = ProcessInfo.processInfo.environment["JUNIOR_IOS_SERVER"] ?? "http://127.0.0.1:4317"
+
   override func setUp() async throws {
     // Undo writes from earlier journeys (`scripts/mock-server.mjs`).
-    var request = URLRequest(url: URL(string: "http://127.0.0.1:4317/__reset")!)
+    var request = URLRequest(url: URL(string: "\(server)/__reset")!)
     request.httpMethod = "POST"
     _ = try await URLSession.shared.data(for: request)
   }
@@ -17,7 +20,7 @@ final class NavigationUITests: XCTestCase {
   private func launch(open path: String = "/", auth: Auth = .token) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
-      "-JuniorServer", "http://127.0.0.1:4317", "-JuniorFixedNow", "2026-08-07T12:00:00Z",
+      "-JuniorServer", server, "-JuniorFixedNow", "2026-08-07T12:00:00Z",
       "-JuniorOpen", path, "-JuniorTheme", "dark",
     ]
     switch auth {

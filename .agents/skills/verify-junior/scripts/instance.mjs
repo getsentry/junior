@@ -8,7 +8,9 @@
 //       `pnpm dev` on them, wait until it is ready, and print the run
 //       directory on the last line. `--mock` sets
 //       JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true. DIR defaults to
-//       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>.
+//       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>. Every error, span,
+//       and log that Nitro and the queue worker send to Sentry Local goes
+//       to DIR/telemetry.ndjson.
 //   node instance.mjs doctor RUN_DIR
 //       Read-only. Exit 0 only when the instance of RUN_DIR is safe to drive.
 //   node instance.mjs crash-worker RUN_DIR [--when FILE]
@@ -44,7 +46,9 @@ const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
 const baseUrl = "http://localhost:3000";
 // `pnpm dev` binds 3000 (dashboard and API) and 8969 (Sentry Local UI).
 // Both are fixed, so only one instance can run on a machine.
-const ports = [3000, 8969];
+const sentryLocalPort = "8969";
+const ports = [3000, Number(sentryLocalPort)];
+const sentryCli = join(repoRoot, "node_modules/sentry/dist/bin.cjs");
 
 const git = (...args) =>
   execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -273,6 +277,7 @@ async function launch(args) {
         `pnpm dev exited; see ${join(runDir, "dev.log")}`,
       );
     if ((await status("/")) === 200 && (await status("/api/health")) === 200) {
+      startTelemetry(runDir);
       console.log(`ready: ${baseUrl} (mock=${mock})`);
       console.log(runDir);
       return 0;
@@ -283,6 +288,29 @@ async function launch(args) {
     runDir,
     `not ready after 10 minutes; see ${join(runDir, "dev.log")}`,
   );
+}
+
+// Tail the Sentry Local server of `pnpm dev` as NDJSON. A new consumer gets
+// the events that the server has kept, so a start after ready loses none.
+function startTelemetry(runDir) {
+  const out = openSync(join(runDir, "telemetry.ndjson"), "a");
+  const err = openSync(join(runDir, "telemetry.log"), "a");
+  const child = spawn(
+    process.execPath,
+    [
+      sentryCli,
+      "local",
+      "serve",
+      "--port",
+      sentryLocalPort,
+      "--format",
+      "json",
+      "--attributes",
+    ],
+    { cwd: repoRoot, detached: true, stdio: ["ignore", out, err] },
+  );
+  writeFileSync(join(runDir, "telemetry.pid"), String(child.pid));
+  child.unref();
 }
 
 // A failed launch stops what it started, so that the ports are free again.
@@ -314,6 +342,14 @@ async function doctor(runDir) {
       : ancestor === pid
         ? undefined
         : `pid ${listener} does not descend from ${pid}`,
+  );
+
+  const telemetryPid = Number(
+    readFileSync(join(runDir, "telemetry.pid"), "utf8"),
+  );
+  check(
+    `telemetry tail ${telemetryPid} writes telemetry.ndjson`,
+    alive(telemetryPid) ? undefined : "not running",
   );
 
   const health = await status("/api/health");
@@ -379,6 +415,10 @@ async function stop(runDir, log = console.log) {
     for (let i = 0; i < 30 && tree.some(alive); i++) await sleep(1000);
     for (const p of tree) if (alive(p)) process.kill(p, "SIGKILL");
     log(`stopped pnpm dev ${pid} and its children`);
+  }
+  if (existsSync(join(runDir, "telemetry.pid"))) {
+    const tail = Number(readFileSync(join(runDir, "telemetry.pid"), "utf8"));
+    if (alive(tail)) process.kill(tail, "SIGTERM");
   }
   // A launch that failed early has no databases yet.
   if (existsSync(join(runDir, "database.txt"))) {

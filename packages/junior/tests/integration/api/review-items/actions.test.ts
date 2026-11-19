@@ -6,6 +6,8 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -907,6 +909,27 @@ describe("review item actions API", () => {
           reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],
         }),
       }),
+    ]);
+    // The next Turn gets the dismiss as a note, so the agent does not keep
+    // treating the item as open.
+    await getTurnLifecycle().start({
+      conversationId: "slack:CPUB:1.000001",
+      createdAtMs: Date.now(),
+      inputMessageIds: ["after-dismiss-message"],
+      surface: "internal",
+      turnId: "after-dismiss",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: "slack:CPUB:1.000001",
+        turnId: "after-dismiss",
+      }),
+    ).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^cal@example\\.com dismissed review item .*\\(${id}\\)\\. It is closed with no answer\\.`,
+        ),
+      ),
     ]);
   });
 });

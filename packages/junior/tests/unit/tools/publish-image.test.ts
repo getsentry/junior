@@ -106,8 +106,8 @@ describe("publishImage tool", () => {
     expect(row).toMatchObject({
       conversationId: CONVERSATION_ID,
       deleteRequestedAt: null,
-      public: true,
       storageKey: `artifacts/${filename}`,
+      visibility: "public",
     });
     expect(tool.description).toContain("Anyone on the internet");
     expect(tool.approvalMode).toBe("approve");
