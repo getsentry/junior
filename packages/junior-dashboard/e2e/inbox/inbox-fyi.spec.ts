@@ -28,6 +28,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pull).toHaveCount(1);
     await expect(pull).toHaveAttribute("data-subject-card", "");
     await expect(pull).toContainText("getsentry/payments#91");
+    // The row's head names the change, so the card links by its reference
+    // and does not say its title again.
+    await expect(
+      pull.getByRole("link", { name: /getsentry\/payments#91/ }),
+    ).toBeVisible();
+    await expect(
+      pull.getByRole("link", { name: /Pin the release train/ }),
+    ).toHaveCount(0);
     await expect(pull.getByText("open", { exact: true })).toBeVisible();
     await expect(pull).toContainText("release/pin-payments-4.2");
     await expect(
@@ -35,7 +43,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     // The description shows its first lines, and opens in full.
     const more = pull.getByRole("button", {
-      name: "Expand description of Pin the release train to payments 4.2",
+      name: "Show more of the description of Pin the release train to payments 4.2",
     });
     const description = page.locator(
       `[id="${await more.getAttribute("aria-controls")}"]`,
@@ -45,7 +53,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await more.click();
     await expect(
       pull.getByRole("button", {
-        name: "Collapse description of Pin the release train to payments 4.2",
+        name: "Show less of the description of Pin the release train to payments 4.2",
       }),
     ).toHaveAttribute("aria-expanded", "true");
     await expect(description).toContainText("Merge after the 4.2 deploy");

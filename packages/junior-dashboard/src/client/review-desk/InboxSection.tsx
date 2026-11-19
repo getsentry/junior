@@ -7,7 +7,7 @@ import { useConversationDensity } from "../conversations/conversationDensity";
 import { cn } from "../styles";
 
 /**
- * One labelled group in the inbox stream, with a bold heading and a rule.
+ * One labelled group in the inbox stream, under a heading.
  * It hides when empty, and its heading collapses it.
  */
 export function InboxSection(props: {
@@ -27,14 +27,16 @@ export function InboxSection(props: {
   if (props.count === 0) return null;
   return (
     <section aria-label={props.label} className="grid gap-2 pt-5 first:pt-1">
-      {/* A bold heading and a rule split the stream of cards. */}
-      <div className="flex min-h-9 items-end gap-2 border-b border-dashboard-border pr-1 pb-1.5">
+      {/* A heading a step larger than the card titles splits the stream
+          of cards, with no rule. */}
+      <div className="flex min-h-9 items-end gap-2 pr-1 pb-1">
         <ConversationSectionHeading
-          className="px-1 font-semibold text-dashboard-text [&_*]:text-dashboard-text"
+          className="px-1"
           collapsed={props.collapsed}
           count={props.count}
           label={props.label}
           onToggle={props.onToggle}
+          size="heading"
         />
         {props.collapsed ? null : props.badge}
         <span className="flex-1" />

@@ -341,16 +341,37 @@ export function fyiCount(count: number): string {
 /**
  * The second line of a row for one item: what it is about, then its
  * Conversation. A part that repeats the item title drops out, and with no
- * part left the row has no second line.
+ * part left the row has no second line. A subject that ends with what the
+ * title says, as "Fix it (#12)" under "Review requested · #12", drops that
+ * end.
  */
 export function itemRowSubtitle(
   item: Pick<ReviewItemPayload, "subject" | "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
-  const parts = [...new Set([item.subject?.title, conversationTitle])].filter(
+  const subject = item.subject?.title;
+  const tail = subject ? / \(([^()]+)\)$/.exec(subject) : null;
+  const about =
+    subject && tail && item.title.includes(tail[1]!)
+      ? subject.slice(0, tail.index)
+      : subject;
+  const parts = [...new Set([about, conversationTitle])].filter(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * Where an item sits, for a row on its own: its root's title, then the
+ * sub-thread that added it, as "Triage deploys › Read the agent logs".
+ */
+export function childOf(
+  rootTitle: string | undefined,
+  item: Pick<ReviewItemPayload, "addedByLabel">,
+): string | undefined {
+  const child = item.addedByLabel;
+  if (!child || !rootTitle || child === rootTitle) return child ?? rootTitle;
+  return `${rootTitle} › ${child}`;
 }
 
 /**
