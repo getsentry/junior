@@ -47,9 +47,9 @@ Doctor cannot see a wedged page or a stuck Turn on a healthy process. Then open 
 
 ## Drive
 
-`node $S/browse.mjs --out DIR [--timeout MS] STEP...` drives the dashboard with Playwright. Steps run in order:
+`node $S/browse.mjs --out DIR [--width PX] [--touch] [--timeout MS] STEP...` drives the dashboard with Playwright. `--touch` emulates a phone with a touch screen. Use it with `--width 390`. Steps run in order:
 
-- `--goto PATH_OR_URL`, `--back NAME` (the URL that an earlier `--snap NAME` saved), `--click SELECTOR`, `--fill SELECTOR=TEXT`, `--press KEY`.
+- `--goto PATH_OR_URL`, `--back NAME` (the URL that an earlier `--snap NAME` saved), `--click SELECTOR`, `--fill SELECTOR=TEXT`, `--type SELECTOR=TEXT` (key by key, as a person types), `--press KEY`, `--hover SELECTOR`, `--tap SELECTOR` (needs `--touch`).
 - `--upload SELECTOR=PATH[,PATH]` sets the files of a file input, such as `role=button[name="Choose files"]`. `--select SELECTOR` selects the text of the element, as a mouse drag does.
 - `--expect SELECTOR` waits until it is visible. `--absent SELECTOR` waits until none is visible, and it also passes when the element never showed.
 - `--title PREFIX` waits for the tab title. `--order A|B|C` waits for the texts in that order.
