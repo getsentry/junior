@@ -125,12 +125,6 @@
       }
     },
     {
-      "files": ["packages/junior/src/api/conversations/list.ts"],
-      "rules": {
-        "junior/no-response-schema-parse": "off"
-      }
-    },
-    {
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
         "junior/no-raw-sql-queries": "error",
