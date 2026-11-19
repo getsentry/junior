@@ -30,6 +30,7 @@ import type {
 } from "../ComposerMenu";
 import type { ComposerToken } from "../composerSkillToken";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
+import { $isInCode } from "./composerMarkdown";
 
 type CaretToken = ComposerToken & {
   edited: boolean;
@@ -279,7 +280,8 @@ function $tokenAtCaret(
   const { anchor } = selection;
   if (anchor.type !== "text") return;
   const node = anchor.getNode();
-  if (!$isTextNode(node)) return;
+  // In code, `$` and `@` are only text.
+  if (!$isTextNode(node) || $isInCode(node)) return;
   const text = node.getTextContent();
   const found = tokenAt(text, anchor.offset);
   return (

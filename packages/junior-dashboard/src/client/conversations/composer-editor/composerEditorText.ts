@@ -1,9 +1,10 @@
 import {
-  $createLineBreakNode,
-  $createParagraphNode,
-  $createTabNode,
+  $convertFromMarkdownString,
+  $generateNodesFromMarkdownString,
+} from "@lexical/markdown";
+import { $dfs } from "@lexical/utils";
+import {
   $createTextNode,
-  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
@@ -16,6 +17,11 @@ import {
   $createComposerMentionNode,
   type ComposerMentionPerson,
 } from "./ComposerMentionNode";
+import {
+  $exportComposerMarkdown,
+  $isInCode,
+  COMPOSER_MARKDOWN,
+} from "./composerMarkdown";
 
 /** Find a person that the composer knows by Slack id. */
 export type LookupPerson = (
@@ -23,40 +29,60 @@ export type LookupPerson = (
 ) => ComposerMentionPerson | undefined;
 
 /**
- * Read the draft as message text. The editor keeps one paragraph with line
- * breaks, so text without mentions reads back exactly as it was written.
+ * Read the draft as message text: Markdown, with each mention as `<@U…>`.
+ * Each paragraph is one line, so text without Markdown reads back as it
+ * was written.
  */
 export function $readComposerText(): string {
-  return $getRoot().getTextContent();
+  return $exportComposerMarkdown();
 }
 
 /** Replace the draft with message text. Each `<@U…>` becomes a mention. */
 export function $writeComposerText(text: string, lookup: LookupPerson): void {
-  const root = $getRoot();
-  root.clear();
-  const paragraph = $createParagraphNode();
-  for (const node of composerNodes(text, lookup)) paragraph.append(node);
-  root.append(paragraph);
+  $convertFromMarkdownString(text, COMPOSER_MARKDOWN, undefined, true);
+  for (const { node } of $dfs()) {
+    if ($isTextNode(node)) $replaceMentionTokens(node, lookup);
+  }
+}
+
+/** Insert pasted text at the selection, with its Markdown rendered outside code. */
+export function $insertComposerMarkdown(text: string): void {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return;
+  if ($isInCode(selection.anchor.getNode())) {
+    selection.insertRawText(text);
+    return;
+  }
+  selection.insertNodes(
+    $generateNodesFromMarkdownString(text, COMPOSER_MARKDOWN, true),
+  );
 }
 
 /**
  * Turn `<@U…>` in one text node into mentions, for pasted or restored text.
- * The caret moves after the last part when it was in the node.
+ * Code keeps the token as text. The caret moves after the last part when
+ * it was in the node.
  */
 export function $replaceMentionTokens(
   node: TextNode,
   lookup: LookupPerson,
 ): void {
   const text = node.getTextContent();
-  if (!text.includes("<@")) return;
+  if (!text.includes("<@") || $isInCode(node)) return;
   const parts = splitMentions(text);
   if (parts.every((part) => "text" in part)) return;
   const selection = $getSelection();
   const hadCaret =
     $isRangeSelection(selection) && selection.anchor.key === node.getKey();
-  const nodes = composerNodes(text, lookup);
+  const format = node.getFormat();
   let last: LexicalNode = node;
-  for (const next of nodes) {
+  for (const part of parts) {
+    const next =
+      "slackUserId" in part
+        ? $createComposerMentionNode(
+            lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
+          )
+        : $createTextNode(part.text).setFormat(format);
     last.insertAfter(next);
     last = next;
   }
@@ -64,30 +90,4 @@ export function $replaceMentionTokens(
   if (!hadCaret) return;
   if ($isTextNode(last)) last.select();
   else last.selectNext(0, 0);
-}
-
-function composerNodes(text: string, lookup: LookupPerson): LexicalNode[] {
-  return splitMentions(text).flatMap((part) =>
-    "slackUserId" in part
-      ? [
-          $createComposerMentionNode(
-            lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
-          ),
-        ]
-      : plainTextNodes(part.text),
-  );
-}
-
-// Plain text mode writes a new line as a line break and a tab as a tab node.
-function plainTextNodes(text: string): LexicalNode[] {
-  return text
-    .split(/(\n|\t)/)
-    .filter(Boolean)
-    .map((piece) =>
-      piece === "\n"
-        ? $createLineBreakNode()
-        : piece === "\t"
-          ? $createTabNode()
-          : $createTextNode(piece),
-    );
 }
