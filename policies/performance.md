@@ -49,10 +49,10 @@ each rule, so new code cannot drift from it.
   needs one. Check: `pnpm nav-request-budgets:check`.
   `scripts/nav-request-budget-exceptions.mjs` lists the routes without one and
   why. Do not add entries.
-- Keep the first load of each dashboard UI shell inside a gzip budget. Check:
-  `pnpm dashboard-bundle-size:check` fails when a shell grows more than 2%
-  over `scripts/dashboard-bundle-size-baseline.json`. Update the baseline only
-  in the change that must grow the first load.
+- Keep the first load of each dashboard UI shell inside a gzip budget.
+  `scripts/dashboard-bundle-size-baseline.json` holds the size on `main`. A
+  change that grows the first load updates it, and may grow it at most 2%.
+  Check: `pnpm dashboard-bundle-size:check`.
 - Set a new budget to the measured value. When a change uses less, lower the
   budget in the same change. Do not raise a budget to pass. Fix the code.
 
