@@ -46,8 +46,8 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
-   `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` states
-   intent: precise and concise. No length targets or per-reply content lists.
+   `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` sets the
+   default reply length. No other block requires content in every reply.
    Put guidance for one situation in that tool result or input.
 7. **Personality.** The consumer's `SOUL.md`: voice and tone only.
 8. **World.** The consumer's `WORLD.md`: operator facts and workflow rules.
