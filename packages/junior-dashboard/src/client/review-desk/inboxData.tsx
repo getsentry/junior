@@ -195,7 +195,7 @@ function useBuildInboxData(input: {
   const serverCounts = useInboxCountData(signedIn).data;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(nowMs);
+  const snoozes = useInboxSnoozes(nowMs, list);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
