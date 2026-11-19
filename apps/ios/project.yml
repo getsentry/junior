@@ -8,6 +8,21 @@ options:
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig
+# Shown in the navigator for editing; no target builds them. The fastlane
+# files are listed one by one because fastlane writes ignored files there.
+fileGroups:
+  - README.md
+  - project.yml
+  - Makefile
+  - Gemfile
+  - Gemfile.lock
+  - .ruby-version
+  - .swift-format
+  - oauth-client.json
+  - fastlane/Appfile
+  - fastlane/Fastfile
+  - fastlane/Matchfile
+  - scripts
 settings:
   base:
     SWIFT_VERSION: "6.0"
