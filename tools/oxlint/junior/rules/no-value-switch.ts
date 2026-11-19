@@ -76,9 +76,19 @@ function caseActions(
 }
 
 function rootObject(node: ESTree.Node): ESTree.Node {
-  if (node.type === "MemberExpression") return rootObject(node.object);
-  if (node.type === "ChainExpression") return rootObject(node.expression);
-  return node;
+  switch (node.type) {
+    case "MemberExpression":
+      return rootObject(node.object);
+    case "ChainExpression":
+    case "ParenthesizedExpression":
+    case "TSAsExpression":
+    case "TSSatisfiesExpression":
+    case "TSTypeAssertion":
+    case "TSNonNullExpression":
+      return rootObject(node.expression);
+    default:
+      return node;
+  }
 }
 
 function resolveVariable(

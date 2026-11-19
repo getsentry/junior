@@ -134,6 +134,25 @@ new RuleTester().run("no-value-switch", noValueSwitchRule, {
     }
   }
 }`,
+    // Type wrappers around the discriminant still narrow it.
+    {
+      code: `function f(event) {
+  switch ((event as Event)!.kind) {
+    case "a":
+      record("a");
+      break;
+    case "b":
+      record("b");
+      break;
+    case "c":
+      record("c");
+      break;
+    default:
+      assertNever(event);
+  }
+}`,
+      filename: "switch.ts",
+    },
     // Real control flow in a case.
     `function f(k) {
   switch (k) {
