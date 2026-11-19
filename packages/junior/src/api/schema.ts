@@ -269,6 +269,8 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  PERSON_CARD_RECENT_LIMIT,
+  personCardReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -296,6 +298,7 @@ export type {
   ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
+  PersonCardReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";

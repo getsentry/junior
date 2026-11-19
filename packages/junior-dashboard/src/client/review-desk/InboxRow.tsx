@@ -93,6 +93,8 @@ import {
   fadeWhenOverflowing,
 } from "../textFade";
 import { conversationTurnIsActive } from "../conversations/turnActivity";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly ReviewItemPayload[] = [];
@@ -146,7 +148,7 @@ function RowItem(props: {
   ) : undefined;
   return (
     <section
-      aria-label={item.title}
+      aria-label={reviewItemTitleText(item)}
       className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 font-sans text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       data-inbox-card={item.id}
       data-inbox-item
@@ -174,7 +176,7 @@ function RowItem(props: {
             )}
             ref={fadeWhenOverflowing}
           >
-            {item.title}
+            <ReviewItemTitle item={item} links />
           </h4>
         )}
       </div>
@@ -195,8 +197,9 @@ function RowItem(props: {
         {showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
-            label={item.title}
+            label={reviewItemTitleText(item)}
             lines={4}
+            mentions={item.mentions}
             text={reviewItemText(item)}
           />
         ) : null}

@@ -12,6 +12,7 @@ import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { MentionText } from "./mentions";
 export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
 export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";
 
@@ -148,6 +149,7 @@ export function ClampedDisplayText(props: {
   /** What the clamp toggle expands, for its accessible name. */
   label: string;
   lines: number;
+  mentions?: readonly ActorIdentity[] | undefined;
   text: string;
 }) {
   const { prose, urls } = useMemo(
@@ -162,7 +164,7 @@ export function ClampedDisplayText(props: {
           label={props.label}
           lines={props.lines}
         >
-          <DisplayText text={prose} />
+          <DisplayText mentions={props.mentions} text={prose} />
         </ClampedPreview>
       ) : null}
       {urls.map((url, index) => (

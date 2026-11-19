@@ -685,16 +685,17 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain("@Riley Park</span> merged PR #42 for");
-    // The Event heading is a disclosure button, which cannot hold a link.
-    expect(html).toContain("@Taylor Chen</span>.");
+    // The Event heading is a disclosure button, which cannot hold a link,
+    // so its mentions are a photo mark and plain names.
+    expect(html).toContain("@Riley Park</span></span> merged PR #42 for");
+    expect(html).toContain("@Taylor Chen</span></span>.");
     expect(html.match(/href="\/people\/taylor%40example.com"/g)).toHaveLength(
       1,
     );
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(
-      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>.*?@Taylor Chen<\/a>/,
     );
     expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
     expect(html).toContain("@Riley Park");
