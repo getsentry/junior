@@ -3,6 +3,7 @@ import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { formatSentryEventReference } from "@/chat/sentry-links";
+import { buildProviderFailureResponse } from "@/chat/services/turn-failure-response";
 
 /** Terminal failure when one turn uses too many execution slices. */
 export class TurnSliceLimitExceededError extends Error {
@@ -110,7 +111,11 @@ export function buildTurnErrorResponse(
   error: unknown,
   eventId: string,
 ): string {
-  return isTurnExecutionLimitExceededError(error)
-    ? buildTurnLimitResponse(eventId)
-    : buildTurnFailureResponse(eventId);
+  if (isTurnExecutionLimitExceededError(error)) {
+    return buildTurnLimitResponse(eventId);
+  }
+  return (
+    buildProviderFailureResponse(error, eventId) ??
+    buildTurnFailureResponse(eventId)
+  );
 }
