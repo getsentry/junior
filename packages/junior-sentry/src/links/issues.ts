@@ -176,7 +176,7 @@ function sentryFeedbackCard(
   url: URL,
 ): ObjectAnnotation {
   const title =
-    text(issue.metadata?.summary) ??
+    issue.metadata?.summary?.trim() ||
     issue.title.replace(/^User Feedback: /, "").trim();
   const message = issue.metadata?.message?.trim() ?? "";
   const assignee = text(issue.assignedTo?.name);
