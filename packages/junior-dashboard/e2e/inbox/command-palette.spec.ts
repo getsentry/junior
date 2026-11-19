@@ -12,6 +12,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   const question = {
     addedByConversationId: CLOSED_ISSUE_ID,
+    rootConversationId: CLOSED_ISSUE_ID,
     assignedToEveryone: false,
     assignees: [
       {
@@ -278,8 +279,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await match.click();
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
+      // In its stack, the item's own row opens, under its question.
       page.getByRole("region", { name: /: asks$/ }).filter({
-        hasText: rollout.title,
+        hasText: rollout.request.question,
       }),
     ).toBeVisible();
   });
@@ -309,7 +311,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     const asks = page.getByRole("region", { name: /: asks$/ });
-    await expect(asks).toContainText(rollout.title);
+    await expect(
+      page.locator(`li[data-inbox-row="${rollout.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
     // It wakes from the open row.
     await asks.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();

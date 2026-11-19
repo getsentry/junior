@@ -1,5 +1,11 @@
-import { Check, Clock3 } from "lucide-react";
-import { type KeyboardEvent, useId, useState } from "react";
+import { Clock3, X } from "lucide-react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  useId,
+  useState,
+} from "react";
 
 import { Button } from "../components/ui/button";
 import { FieldError } from "../components/ui/field";
@@ -10,10 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  ATTENTION_TONE_CLASS,
-  OPEN_TONE_CLASS,
-} from "../conversations/ConversationMeta";
+import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
 import { atLocalHour, snoozeChoicesAt } from "./inboxSnooze";
@@ -41,14 +44,21 @@ function localInputValue(ms: number): string {
 }
 
 /**
- * Snooze an Inbox row from its action bar: a menu of the snooze times, and
- * Custom… for a picked date and time. Number keys pick the menu rows.
+ * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
+ * of the snooze times, and Custom… for a picked date and time. Number keys
+ * pick the menu rows.
  */
 export function RowSnoozeButton(props: {
+  /** The action bar's look by default (`ButtonLook`). */
+  look?: ButtonLook;
+  /** "Snooze" by default. */
+  label?: string;
   onOpenChange(open: boolean): void;
   /** Called with the wake time that the picked row shows. */
   onSnooze(untilMs: number): void;
   open: boolean;
+  /** Another trigger, such as a row's quick action. */
+  trigger?: ReactElement;
 }) {
   const [custom, setCustom] = useState(false);
   // Back from the picker focuses Custom… again, so the keys still work.
@@ -79,14 +89,24 @@ export function RowSnoozeButton(props: {
     >
       <PopoverTrigger
         render={
-          <Button variant="ghost">
-            <Clock3
-              aria-hidden="true"
-              className={ATTENTION_TONE_CLASS}
-              size={15}
-            />
-            Snooze
-          </Button>
+          props.trigger ?? (
+            <Button
+              className={props.look && LOOK_CLASSES[props.look]}
+              title={
+                props.look === "icon" ? (props.label ?? "Snooze") : undefined
+              }
+              variant="ghost"
+            >
+              <Clock3
+                aria-hidden="true"
+                className={ATTENTION_TONE_CLASS}
+                size={15}
+              />
+              <ButtonLabel look={props.look}>
+                {props.label ?? "Snooze"}
+              </ButtonLabel>
+            </Button>
+          )
         }
       />
       <PopoverContent
@@ -192,14 +212,47 @@ function CustomSnooze(props: {
 }
 
 /**
- * Dismiss an Inbox row: the main action of its action bar, so it goes
- * right-most.
+ * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
+ * has no check mark, so it does not read as an answer or an approval.
  */
-export function RowDismissButton(props: { onClick(): void }) {
+export function RowDismissButton(props: {
+  /** The action bar's look by default (`ButtonLook`). */
+  look?: ButtonLook;
+  /** "Dismiss" by default. */
+  label?: string;
+  onClick(): void;
+}) {
+  const label = props.label ?? "Dismiss";
   return (
-    <Button onClick={props.onClick} variant="outline">
-      <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-      Dismiss
+    <Button
+      className={props.look && LOOK_CLASSES[props.look]}
+      onClick={props.onClick}
+      title={props.look === "icon" ? label : undefined}
+      variant="ghost"
+    >
+      <X aria-hidden="true" size={15} />
+      <ButtonLabel look={props.look}>{label}</ButtonLabel>
     </Button>
+  );
+}
+
+/**
+ * How Snooze and Dismiss look outside the action bar. `quiet`, in a stack
+ * header: smaller, and only the icon on a narrow screen. `icon`, as a row's
+ * quick action: only the icon, with its label as the name and the tooltip.
+ */
+type ButtonLook = "icon" | "quiet";
+
+const LOOK_CLASSES: Record<ButtonLook, string> = {
+  icon: "size-7 p-0",
+  quiet: "h-7 gap-1.5 px-2 max-sm:w-7 max-sm:px-0",
+};
+
+function ButtonLabel(props: { children: ReactNode; look?: ButtonLook }) {
+  if (!props.look) return props.children;
+  return (
+    <span className={props.look === "icon" ? "sr-only" : "max-sm:sr-only"}>
+      {props.children}
+    </span>
   );
 }

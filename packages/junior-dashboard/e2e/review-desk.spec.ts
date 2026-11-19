@@ -12,6 +12,7 @@ const viewer = {
 
 const base = {
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
@@ -31,6 +32,7 @@ const conversationId = "slack:CQA123:1770003600.000200";
 const rollout = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
@@ -106,6 +108,7 @@ const answered = {
 const migration = {
   ...license,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T10:20:00.000Z",
@@ -249,6 +252,30 @@ test("each review item gets a fresh answer form", async ({
     },
     id: rollout.id,
   });
+});
+
+test("an item keeps unsent answers after another item or a reload", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  const list = page.getByRole("navigation", { name: "Review items" });
+  await detail.getByRole("radio", { name: "Approve" }).click();
+  await detail.getByLabel("Reason").fill("MIT license, no");
+
+  await list.getByRole("link", { name: new RegExp(audit.title) }).click();
+  await expect(
+    detail.getByRole("heading", { name: audit.title }),
+  ).toBeVisible();
+  await list.getByRole("link", { name: new RegExp(license.title) }).click();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
+
+  await page.reload();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
 });
 
 test("the inbox shows an item in its conversation", async ({

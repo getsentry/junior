@@ -162,6 +162,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Dismiss**: close a Review item without an answer. The one UI word for
+  removing an item, on a row, a card, or many FYIs at once. Not Clear or
+  Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Review items. Not
   Conversation archive.
 - **Plan**: the durable list of work that outlives a Turn in one
