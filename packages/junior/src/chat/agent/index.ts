@@ -930,13 +930,13 @@ async function executeAgentRunInPrivacyContext(
       ) {
         return false;
       }
-      runResume.adoptReplacementSeqs(compaction.piMessageSeqs);
+      const replacement = [...compaction.piMessages];
+      runResume.adoptReplacement(replacement, compaction.piMessageSeqs);
 
       priorPhaseUsage = addAgentTurnUsage(
         priorPhaseUsage,
         usageSinceCurrentBoundary(messages),
       );
-      const replacement = [...compaction.piMessages];
       await runResume.requireDurableInputCheckpoint(replacement);
       setAgentHistory(replacement);
       nextInputAfterReplacement.replaced(
@@ -944,7 +944,6 @@ async function executeAgentRunInPrivacyContext(
         getAgentContextCompactionTriggerTokens(activeModelId),
       );
       runResume.setBeforeMessageCount(replacement.length);
-      runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
         agent!.clearSteeringQueue();
       }

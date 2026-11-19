@@ -216,11 +216,19 @@ export function createResumeState(args: ResumeStateArgs) {
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
     },
-    /** Use the seqs of a history replacement that is already committed. */
-    adoptReplacementSeqs(seqs: readonly number[]): void {
+    /**
+     * Use a history replacement that is already committed: its seqs, and its
+     * messages as the resume baseline, so a later pause cannot save the
+     * history from before it.
+     */
+    adoptReplacement(messages: PiMessage[], seqs: readonly number[]): void {
       committedSeqs = seqs;
-      // The committed replacement covers the prompt, also when it is shorter.
-      promptSaved ||= promptMessageCount !== undefined;
+      this.adoptCommittedBoundary(messages);
+      // The replacement covers a prompt that the slice already added, also
+      // when it is shorter, and later messages extend it.
+      if (promptMessageCount !== undefined) {
+        promptMessageCount = messages.length;
+      }
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {

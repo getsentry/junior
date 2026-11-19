@@ -180,6 +180,24 @@ describe("agent resume", () => {
     ]);
   });
 
+  it("pauses at a history replacement, not at the history before it", async () => {
+    const conversationId = "local:test:prompt-replacement";
+    const turnId = "turn-prompt-replacement";
+    const summary = message("summary of the request");
+    const { resume } = await resumeState(conversationId, turnId);
+    resume.adoptCommittedBoundary([message("earlier")]);
+    resume.markPromptAdded(3);
+    resume.adoptReplacement([summary], [1]);
+    await resume.parkForAuth(
+      new AuthorizationPauseError("mcp", "example", "Example", "link_sent"),
+    );
+
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      piMessages: [summary],
+      promptSaved: true,
+    });
+  });
+
   it("fails a durable turn when committed history rejects its input checkpoint", async () => {
     const conversationId = "local:test:input-commit-lost";
     const turnId = "turn-input-commit-lost";
