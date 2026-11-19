@@ -8,6 +8,21 @@ options:
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig
+fileGroups:
+  - README.md
+  - project.yml
+  - Makefile
+  - Brewfile
+  - Brewfile.ci
+  - Gemfile
+  - Gemfile.lock
+  - .ruby-version
+  - .swift-format
+  - oauth-client.json
+  - fastlane/Appfile
+  - fastlane/Fastfile
+  - fastlane/Matchfile
+  - scripts
 settings:
   base:
     SWIFT_VERSION: "6.0"
