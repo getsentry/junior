@@ -17,6 +17,8 @@ export {
   promptMessageSchema,
   type PromptContext,
   type PromptContextContribution,
+  type PromptHistory,
+  type PromptHistoryContext,
   type PromptMessage,
   type SystemPromptContext,
   type UserPromptContribution,

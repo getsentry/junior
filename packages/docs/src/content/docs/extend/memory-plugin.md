@@ -10,7 +10,7 @@ related:
   - /start-here/quickstart/
 ---
 
-The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
+The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each Turn that a person wrote input for, Junior searches with that person's words, combines semantic and full-text matches, and includes only memories that directly help with the current request. It skips memories that the Conversation history still holds: memories it already added since the last compaction, and memories captured from the same Conversation since then. Turns with no person input, such as Events, timers, and child agent results, get no recalled memories. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
 
 All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
@@ -219,7 +219,7 @@ Memories are public. A durable fact remembered in a public Conversation can be r
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Vector recall misses memories after a model change**: the heartbeat has not embedded all memories with the new model yet. Wait a few minutes. Look for `plugin.heartbeat.failed` in the logs if it does not finish.
 - **Unsupported embedding vector size**: the model returns vectors that are not 1024 or 1536 numbers long. Pick a model or output size that matches.
-- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, or their reranking score may be below the recall threshold. Look for `memory_recall_rerank_failed` in the logs.
+- **Memories not recalled**: first confirm that the last deploy build log shows `junior upgrade` succeeded. If migrations are current, the memories may be outside the configured vector distance, their reranking score may be below the recall threshold, or the Conversation history may already hold them. Look for `memory_recall_rerank_failed` in the logs.
 
 ## Next step
 

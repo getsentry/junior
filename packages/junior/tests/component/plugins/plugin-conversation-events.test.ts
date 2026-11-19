@@ -112,7 +112,7 @@ describe("plugin conversation events", () => {
     ).toEqual({ icon: "activity", title: "Brief updated (v3)" });
   });
 
-  it("binds user prompt events to the current turn and deduplicates retries", async () => {
+  it("binds user prompt hooks to the current turn and model history, and deduplicates retries", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:prompt-event-${runId}`;
     const sessionId = `prompt-event-session:${runId}`;
@@ -141,9 +141,22 @@ describe("plugin conversation events", () => {
           if (!ctx.events) {
             throw new Error("User prompt event writer is missing");
           }
+          histories.push(await ctx.loadHistory?.());
           await ctx.events.emit(recallEvent({ costUsd: 0.0042, memories: [] }));
           return undefined;
         },
+      },
+    });
+    const histories: unknown[] = [];
+    const turnContext = (pluginName: string) => ({
+      createdAtMs: 1_000,
+      data: {
+        type: "turn_context" as const,
+        turnId: "earlier-turn",
+        pluginName,
+        kind: "recall",
+        version: 1,
+        content: { memories: [`${pluginName} memory`] },
       },
     });
     const { getPluginUserPromptContributions, setPlugins } =
@@ -151,6 +164,11 @@ describe("plugin conversation events", () => {
     const { getConversationEventStore } = await import("@/chat/db");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
+    const eventStore = getConversationEventStore();
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo"),
+      turnContext("other-plugin"),
+    ]);
     const request = {
       context: {
         conversationId,
@@ -162,10 +180,32 @@ describe("plugin conversation events", () => {
     };
 
     await getPluginUserPromptContributions(request);
+    await eventStore.replaceHistory(conversationId, {
+      createdAtMs: 2_000,
+      data: {
+        type: "compaction",
+        modelId: "test-model",
+        replacementHistory: [],
+      },
+    });
     await getPluginUserPromptContributions(request);
 
-    const events =
-      await getConversationEventStore().loadHistory(conversationId);
+    // A hook reads only its own plugin's contexts, and a History replacement
+    // drops the earlier ones.
+    expect(histories).toEqual([
+      {
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory"] },
+            loadedAtMs: 1_000,
+          },
+        ],
+      },
+      { startedAtMs: 2_000, contexts: [] },
+    ]);
+    const events = await eventStore.loadHistory(conversationId);
     expect(
       events.filter((event) => event.data.type === "structured_event"),
     ).toEqual([

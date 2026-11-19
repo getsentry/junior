@@ -59,7 +59,7 @@ import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createArtifactSync } from "@/chat/artifacts/sync";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
-import type { PromptHookContext } from "@/chat/agent/prompt";
+import { personInputText, type PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -186,7 +186,6 @@ export async function createRunSandbox(
 export function createPromptHookContext(args: {
   actor?: Actor | undefined;
   run: AgentRun;
-  userInput: string;
 }): PromptHookContext {
   const actor = args.actor;
   return {
@@ -196,7 +195,7 @@ export function createPromptHookContext(args: {
     ...(actor
       ? { resolveActorIdentity: async () => await readActorIdentity(actor) }
       : undefined),
-    userText: args.userInput,
+    userText: personInputText(args.run.instruction),
   };
 }
 

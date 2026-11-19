@@ -184,6 +184,25 @@ export function instructionForInputs(
   };
 }
 
+/**
+ * Return the words that people wrote in the inputs of an instruction, for
+ * context that must follow what a person asked, such as memory recall.
+ * Runtime tags are not in it, except the words a person typed inside one.
+ */
+export function personInputText(
+  instruction: Pick<AgentInstruction, "inputs" | "text">,
+): string {
+  const inputs = instruction.inputs ?? [
+    { kind: "person" as const, text: instruction.text },
+  ];
+  return inputs
+    .map((input) =>
+      (input.kind === "person" ? input.text : (input.personText ?? "")).trim(),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 // Render one prompt text part per input, in order. Inputs are never joined.
 // A batch has one Actor, so every person part has the same attributes.
 function renderInputParts(instruction: AgentInstruction): string[] {
