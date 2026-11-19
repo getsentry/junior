@@ -1,5 +1,5 @@
 {
-  "id": "cd90d3fe-f684-4646-8e13-da4d162b0783",
+  "id": "de0b7922-760f-4aea-b229-3baf89a3f410",
   "prevId": "4bf676d4-c49c-4f8d-ba11-823eae4b5806",
   "version": "7",
   "dialect": "postgresql",
@@ -2135,6 +2135,27 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_briefs_created_at_idx": {
+          "name": "junior_conversation_briefs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversation_briefs_search_idx": {
           "name": "junior_conversation_briefs_search_idx",
           "columns": [
@@ -4021,22 +4042,6 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
-          "with": {}
-        },
-        "junior_identities_slack_person_search_idx": {
-          "name": "junior_identities_slack_person_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
-          "concurrently": false,
-          "method": "gin",
           "with": {}
         }
       },
