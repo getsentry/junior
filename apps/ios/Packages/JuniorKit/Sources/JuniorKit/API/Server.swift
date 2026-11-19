@@ -7,6 +7,12 @@ public struct JuniorServer: Equatable, Sendable, Codable {
 
   public init(baseURL: URL) { self.baseURL = baseURL }
 
+  /// The built-in demo (`DemoServer`). The `.invalid` domain never resolves,
+  /// so nothing leaves the device.
+  public static let demo = JuniorServer(baseURL: URL(string: "https://demo.junior.invalid")!)
+
+  public var isDemo: Bool { self == .demo }
+
   /// The MCP endpoint, which is also the OAuth resource indicator.
   public var mcpURL: URL { URL(string: "/api/mcp", relativeTo: baseURL)!.absoluteURL }
 

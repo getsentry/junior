@@ -9,12 +9,12 @@ the MCP server at `/api/mcp`, and signs in with its OAuth flow.
 
 | Path                    | What it holds                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Packages/JuniorKit`    | Logic with no UI: the MCP client and OAuth, tool result models, Markdown, and display rules.                  |
+| `Packages/JuniorKit`    | Logic with no UI: the MCP client and OAuth, tool result models, Markdown, display rules, and the demo.        |
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
 | `JuniorUITests`         | UI journeys against the mock MCP server.                                                                       |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
 | `fastlane/`             | The signed TestFlight build that `.github/workflows/ios-beta.yml` runs.                                        |
-| `scripts/`              | `mock-server.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, `generate-icons.mjs`, and the CI steps in `.github/workflows/ios*.yml`. |
+| `scripts/`              | `mock-server.mjs`, `export-demo-data.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, `generate-icons.mjs`, and the CI steps in `.github/workflows/ios*.yml`. |
 
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
 `sendMessage`, …); their result types mirror the tool schemas in
