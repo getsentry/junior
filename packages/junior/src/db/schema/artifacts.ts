@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean,
   check,
   index,
   integer,
@@ -28,14 +27,8 @@ export const juniorArtifacts = pgTable(
     visibility: text("visibility")
       .$type<ArtifactVisibility>()
       .notNull()
-      // Only so the previous runtime's inserts stay public during rollout.
-      // Drop it together with `public`.
-      .default("public"),
-    /**
-     * Replaced by `visibility`. Nothing reads or writes it. It stays, with a
-     * default, while the previous runtime still reads it during rollout.
-     */
-    public: boolean("public").notNull().default(true),
+      // A write that omits it gets the narrowest audience, never public.
+      .default("conversation"),
     createdAt: timestamptz("created_at").notNull(),
     /** Set when the artifact should stop being served publicly. */
     deleteRequestedAt: timestamptz("delete_requested_at"),
@@ -44,12 +37,6 @@ export const juniorArtifacts = pgTable(
     check(
       "junior_artifacts_visibility_check",
       sql`${table.visibility} in ('conversation', 'internal', 'public')`,
-    ),
-    // The previous runtime upserts on this index. Drop it together with
-    // `public`; publishing then uses only the public-row index below.
-    uniqueIndex("junior_artifacts_conversation_sha_uidx").on(
-      table.conversationId,
-      table.sha256,
     ),
     uniqueIndex("junior_artifacts_public_sha_uidx")
       .on(table.conversationId, table.sha256)
