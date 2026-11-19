@@ -140,14 +140,12 @@ describe("people list API", () => {
       }
 
       // One round of bounded reads, whatever the history length. Each read
-      // of the metrics table uses an index.
-      const report = await expectNoFullScan(
-        () =>
-          expectSqlBudget(() => readPeopleListFromSql(), {
-            statements: 5,
-            serialRounds: 1,
-          }),
-        ["junior_conversation_metrics"],
+      // of a big table uses an index.
+      const report = await expectNoFullScan(() =>
+        expectSqlBudget(() => readPeopleListFromSql(), {
+          statements: 5,
+          serialRounds: 1,
+        }),
       );
 
       expect(report.people.map((person) => person.actor.email)).toEqual([

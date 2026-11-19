@@ -176,8 +176,26 @@ function isFullScan(node: PlanNode): boolean {
 // Only these statements have a plan. `BEGIN`, `SET`, and the like do not.
 const EXPLAINABLE = /^\s*(?:select|with|insert|update|delete)\b/i;
 
+// Tables that grow with use, so a full read of one gets slower over time.
+const BIG_TABLES = [
+  "junior_code_changes",
+  "junior_conversation_briefs",
+  "junior_conversation_metrics",
+];
+
 /**
- * Assert that the statements of `call` read no table in `tables` in full.
+ * A known full scan that a fix will remove. It matches a full scan of `table`
+ * in a statement whose text contains `statement`.
+ */
+type FullScanAllowance = {
+  table: string;
+  statement: string;
+  reason: string;
+};
+
+/**
+ * Assert that the statements of `call` read no big table in full. A big table
+ * grows with use, such as `junior_conversation_metrics`.
  *
  * Each statement is explained after `call` ends, with `EXPLAIN (FORMAT JSON)`
  * and the bind parameters that it sent. That is the plan that Postgres made
@@ -190,10 +208,13 @@ const EXPLAINABLE = /^\s*(?:select|with|insert|update|delete)\b/i;
  * statement. A join that probes an index for each outer row passes, however
  * many rows it reads. Explains run on `getSqlExecutor()`, the
  * product-configured database.
+ *
+ * `allowed` names known full scans, keyed by name. The assertion also fails
+ * when an entry matches no full scan, so the fix must remove it.
  */
 export async function expectNoFullScan<T>(
   call: () => T | Promise<T>,
-  tables: readonly string[],
+  allowed: Readonly<Record<string, FullScanAllowance>> = {},
 ): Promise<T> {
   const { result, statements } = await measureSql(call);
   const explainable = statements.filter((statement) =>
@@ -214,19 +235,31 @@ export async function expectNoFullScan<T>(
     }
     return rows;
   });
-  const fullScans = plans.flatMap((plan, index) =>
-    [...planNodes(plan)]
-      .filter(
-        (node) =>
-          node["Relation Name"] !== undefined &&
-          tables.includes(node["Relation Name"]) &&
-          isFullScan(node),
-      )
-      .map(
-        (node) =>
-          `statement ${index} reads ${node["Relation Name"]} in full (${node["Node Type"]}): ${explainable[index]!.text}`,
-      ),
-  );
-  if (fullScans.length > 0) throw new Error(fullScans.join("\n"));
+  const allowances = Object.entries(allowed);
+  const used = new Set<string>();
+  const failures: string[] = [];
+  for (const [index, plan] of plans.entries()) {
+    const text = explainable[index]!.text;
+    for (const node of planNodes(plan)) {
+      const table = node["Relation Name"];
+      if (!table || !BIG_TABLES.includes(table) || !isFullScan(node)) continue;
+      const allowance = allowances.find(
+        ([, entry]) => entry.table === table && text.includes(entry.statement),
+      );
+      if (allowance) {
+        used.add(allowance[0]);
+        continue;
+      }
+      failures.push(
+        `statement ${index} reads ${table} in full (${node["Node Type"]}): ${text}`,
+      );
+    }
+  }
+  for (const [name] of allowances) {
+    if (!used.has(name)) {
+      failures.push(`allowed full scan "${name}" matches nothing; remove it`);
+    }
+  }
+  if (failures.length > 0) throw new Error(failures.join("\n"));
   return result;
 }

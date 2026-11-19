@@ -34,36 +34,41 @@ describe("SQL budget measurement", () => {
     expect(budget).toEqual({ statements: 3, serialRounds: 3 });
   });
 
-  it("finds a statement that reads a named table in full", async () => {
+  it("finds a statement that reads a big table in full", async () => {
     const metrics = juniorConversationMetrics;
-    const tables = ["junior_conversation_metrics"];
+    const sum = () =>
+      getDb()
+        .select({ total: sql`sum(${metrics.value})` })
+        .from(metrics);
     // No index holds `value` for every metric, so the sum reads the table.
-    await expect(
-      expectNoFullScan(
-        () =>
-          getDb()
-            .select({ total: sql`sum(${metrics.value})` })
-            .from(metrics),
-        tables,
-      ),
-    ).rejects.toThrow(/statement 0 reads junior_conversation_metrics in full/);
+    await expect(expectNoFullScan(sum)).rejects.toThrow(
+      /statement 0 reads junior_conversation_metrics in full/,
+    );
     // With seq scans off, a count reads a whole index instead.
     await expect(
-      expectNoFullScan(
-        () =>
-          getDb()
-            .select({ count: sql`count(*)` })
-            .from(metrics),
-        tables,
+      expectNoFullScan(() =>
+        getDb()
+          .select({ count: sql`count(*)` })
+          .from(metrics),
       ),
     ).rejects.toThrow(/reads junior_conversation_metrics in full/);
-    await expectNoFullScan(
-      () =>
-        getDb()
-          .select({ total: sql`sum(${metrics.value})` })
-          .from(metrics)
-          .where(eq(metrics.actorIdentityId, "identity-1")),
-      tables,
+    const allowSum = {
+      "metric sum": {
+        table: "junior_conversation_metrics",
+        statement: "sum(",
+        reason: "The sum reads every metric.",
+      },
+    };
+    await expectNoFullScan(sum, allowSum);
+    // An indexed read passes, and an allowance that it does not need fails.
+    const indexed = () =>
+      getDb()
+        .select({ total: sql`sum(${metrics.value})` })
+        .from(metrics)
+        .where(eq(metrics.actorIdentityId, "identity-1"));
+    await expectNoFullScan(indexed);
+    await expect(expectNoFullScan(indexed, allowSum)).rejects.toThrow(
+      /allowed full scan "metric sum" matches nothing/,
     );
   });
 });

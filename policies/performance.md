@@ -45,8 +45,10 @@ each rule, so new code cannot drift from it.
   extra wrapper.
 - Do not read a big table in full on a hot API route. Integration tests check
   the plan of each statement with `expectNoFullScan` from the same file. It
-  fails when a plan reads a named table with no index condition, such as
-  `junior_conversation_metrics`.
+  fails when a plan reads a table in its `BIG_TABLES` list with no index
+  condition. A known full scan with a fix on the way gets a named `allowed`
+  entry with a reason. An entry that matches nothing fails, so the fix
+  removes it.
 - Keep the API requests of the main dashboard pages inside a budget. Dashboard
   e2e specs measure a first page load with `expectRequestBudget` from
   `packages/junior-dashboard/e2e/request-budget.ts`. Each primary nav route

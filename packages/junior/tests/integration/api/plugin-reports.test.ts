@@ -10,7 +10,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
-import { expectSqlBudget } from "../../fixtures/sql-budget";
+import { expectNoFullScan, expectSqlBudget } from "../../fixtures/sql-budget";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
@@ -95,9 +95,21 @@ describe("plugin reports API route", () => {
           })),
         );
 
-      const response = await expectSqlBudget(
-        () => createJuniorApi().request("http://localhost/api/plugin-reports"),
-        { statements: 2, serialRounds: 1 },
+      const response = await expectNoFullScan(
+        () =>
+          expectSqlBudget(
+            () =>
+              createJuniorApi().request("http://localhost/api/plugin-reports"),
+            { statements: 2, serialRounds: 1 },
+          ),
+        {
+          "brief counts": {
+            table: "junior_conversation_briefs",
+            statement: 'count(distinct "conversation_id")',
+            reason:
+              "operational-report.ts counts every Brief. Remove this when a fix bounds that read.",
+          },
+        },
       );
 
       expect(response.status).toBe(200);
