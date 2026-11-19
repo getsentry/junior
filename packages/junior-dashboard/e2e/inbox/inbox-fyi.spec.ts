@@ -2,6 +2,7 @@ import {
   mockReviewItems,
   pinConflict,
   pinReview,
+  prReview,
   releaseNotes,
   rowHead,
 } from "./inbox-fixture";
@@ -30,6 +31,52 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("a pull request card shows the size that its row head does not know", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [prReview] });
+    // Only a live read knows this change, so its size shows on the card.
+    await page.route("**/api/objects?**", (route) =>
+      route.fulfill({
+        json: {
+          objects: [
+            {
+              object: {
+                displayType: "Pull request",
+                facts: {
+                  type: "code_change",
+                  additions: 1204,
+                  changedFiles: 12,
+                  deletions: 340,
+                },
+                key: "getsentry/payments#91",
+                kind: "object",
+                label: "getsentry/payments#91",
+                objectType: "code_change",
+                plugin: "github",
+                status: "open",
+                title: "Pin the release train",
+                url: prReview.subject.url,
+              },
+              url: prReview.subject.url,
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/?item=${prReview.id}`);
+    const size = "1,204 lines added, 340 removed, 12 files changed";
+    const pull = page
+      .getByRole("region", { name: /: asks$/ })
+      .getByRole("region", { name: "Pull request: Pin the release train" });
+    await expect(pull.getByTitle(size)).toBeVisible();
+    await expect(pull.getByText(size)).toHaveCount(1);
+    await expect(rowHead(page, prReview.title)).not.toHaveAccessibleName(
+      /lines added/,
+    );
+  });
+
   test("a pull request ask shows one card, and a notice about it folds in", async ({
     dashboard,
     page,
@@ -55,6 +102,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
     await expect(pull.getByText("open", { exact: true })).toBeVisible();
     await expect(pull).toContainText("release/pin-payments-4.2");
+    // The head gives the change's size, so the card does not say it again.
+    await expect(rowHead(page, pinReview.title)).toHaveAccessibleName(
+      /48 lines added, 9 removed, 3 files changed/,
+    );
+    await expect(pull.getByText(/lines added/)).toHaveCount(0);
     // The head says "Review requested · #91", so the plugin's text that
     // says the same shows in Slack only.
     await expect(asks.getByText("GitHub asks you to review #91.")).toHaveCount(

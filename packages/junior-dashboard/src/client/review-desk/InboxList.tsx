@@ -44,6 +44,7 @@ import {
   itemRowSubtitle,
   linkedRowOf,
   singleRow,
+  subjectSize,
   sweepOf,
   timeGroups,
   viewRows,
@@ -384,6 +385,14 @@ export function InboxList(props: {
         expanded={state.expandedKey === key}
         foldedNotices={data.foldedNotices}
         itemTitle={options.itemRow ? row.newest.title : undefined}
+        itemSize={
+          options.itemRow
+            ? subjectSize(
+                row.newest,
+                data.conversationById.get(row.conversationId),
+              )
+            : undefined
+        }
         itemSubtitle={
           options.itemRow
             ? itemRowSubtitle(

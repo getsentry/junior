@@ -20,6 +20,7 @@ import type {
   ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
@@ -33,6 +34,8 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
+import { codeChangeSize } from "../codeChangeSize";
+import { ChangeSize } from "../components/ChangeSize";
 import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
@@ -140,6 +143,8 @@ type InboxRowProps = {
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
+  /** The size of the code change that a row for one item is about. */
+  itemSize?: CodeChangeSize | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
     item: ReviewItemPayload,
@@ -599,8 +604,12 @@ function InboxRowBody(
                   {props.itemTitle && bundle ? (
                     <AskKindIcon kind={inboxItemKind(bundle.newest)} />
                   ) : null}
-                  <span className={lineClass} ref={fadeWhenOverflowing}>
-                    {props.itemTitle ?? props.title}
+                  {/* The size wraps under the title where both do not fit. */}
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className={lineClass} ref={fadeWhenOverflowing}>
+                      {props.itemTitle ?? props.title}
+                    </span>
+                    <ChangeSize size={props.itemSize} />
                   </span>
                 </span>
                 {props.itemTitle && props.itemSubtitle ? (
@@ -764,6 +773,7 @@ function InboxRowBody(
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               onAction={props.onItemAction}
               rowActions={inlineActions ? rowActions(props, true) : undefined}
+              sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
             />
           ))}

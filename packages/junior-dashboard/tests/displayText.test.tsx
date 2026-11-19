@@ -433,7 +433,7 @@ describe("display text object links", () => {
   // The faint reference under the row title.
   function rowReference(html: string) {
     return html.match(
-      /<span class="min-w-0 truncate text-xs [^"]*">([^<]*)<\/span>/,
+      /<span class="flex min-w-0 items-baseline gap-1.5 text-xs [^"]*"><span class="min-w-0 truncate">([^<]*)<\/span>/,
     )?.[1];
   }
 

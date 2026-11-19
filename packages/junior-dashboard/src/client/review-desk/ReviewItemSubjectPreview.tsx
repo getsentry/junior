@@ -11,6 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { OutboundLink } from "../components/OutboundLink";
 import { StatusChip } from "../components/StatusChip";
@@ -40,6 +41,8 @@ type Subject = NonNullable<ReviewItemPayload["subject"]>;
 export function ReviewItemSubjectPreview(props: {
   subject: Subject;
   conversationId: string;
+  /** The row's head shows the subject's size. */
+  sizeShown?: boolean | undefined;
   titled?: boolean;
 }) {
   return (
@@ -52,6 +55,7 @@ export function ReviewItemSubjectPreview(props: {
 function SubjectCard(props: {
   subject: Subject;
   conversationId: string;
+  sizeShown?: boolean | undefined;
   titled?: boolean;
 }) {
   const { subject } = props;
@@ -141,6 +145,9 @@ function SubjectCard(props: {
                   {field.value}
                 </span>
               ))}
+              {props.sizeShown || card.facts?.type !== "code_change" ? null : (
+                <ChangeSize size={card.facts} />
+              )}
             </p>
           ) : null}
         </div>
