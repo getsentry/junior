@@ -494,9 +494,10 @@ async function executeAgentRunInPrivacyContext(
     const spanContext: LogContext = { modelId: activeModelId };
 
     // ── Skill discovery ──────────────────────────────────────────────
-    const availableSkills = await discoverRunSkills({
-      skillDirs: policy.skillDirs,
-    });
+    // A Turn with an `only` list gets no skills.
+    const availableSkills = behavior.tools.only
+      ? []
+      : await discoverRunSkills({ skillDirs: policy.skillDirs });
     if (shouldTrace) {
       const inboundAttachmentCount = input.inboundAttachmentCount ?? 0;
       const promptAttachmentCount = input.userAttachments?.length ?? 0;

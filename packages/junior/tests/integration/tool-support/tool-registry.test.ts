@@ -1,4 +1,5 @@
 import {
+  createEventSource,
   createLocalSource,
   createSlackSource,
   createWebSource,
@@ -37,6 +38,7 @@ const MODES: PromptMode[] = [
   "child_agent",
   "automation",
   "thread",
+  "lead",
 ];
 const PLATFORMS = ["slack", "local"] as const;
 
@@ -353,6 +355,51 @@ describe("static tool registry", () => {
     expect(turnInputFact(automation)).toContain(
       "<turn-input>\nThe automation sent the input of this Turn.\n</turn-input>",
     );
+  });
+
+  // A Lead finds, starts, and steers work, and never does it. A person's
+  // Turn and a Watch Turn send the same tools and system prompt.
+  it("sends a Lead only the tools that steer work", async () => {
+    const conversationId = "local:web:lead";
+    const [person, watch] = await Promise.all(
+      [true, false].map((personInput) =>
+        sentTurn(
+          turnBehavior({ kind: "lead", personInput }),
+          turnRun(
+            conversationId,
+            personInput,
+            createEventSource({
+              eventKey: "event-1",
+              eventType: "timer.fired",
+              identifier: "timer-1",
+              namespace: "junior",
+            }),
+          ),
+        ),
+      ),
+    ).then((turns) => turns as [SentTurn, SentTurn]);
+
+    expectSameCachedPrefix([person, watch]);
+    expect(Object.keys(person.tools).sort()).toEqual(
+      [
+        "listWatches",
+        "messageAgent",
+        "noReply",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchReviewItems",
+        "startConversation",
+        "stopWatchingResources",
+        "systemTime",
+        "updateReviewItem",
+        // `updateUserCustomization` is listed only with its experiment on.
+        "watchEvents",
+        "watchTimer",
+      ].sort(),
+    );
+    expect(person.disabled).toEqual([]);
   });
 
   // A stale run-built name would hide a static tool from the check above.

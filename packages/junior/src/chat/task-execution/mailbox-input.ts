@@ -14,11 +14,13 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 /**
  * Return the Turn inputs of web Messages, one per non-empty Message, in
  * order. Each one becomes its own prompt content part. A Message that
- * records an answer becomes its Review item tag. A batch with only
+ * records an answer becomes its Review item tag. A Lead's task comes before
+ * the person's Message that it goes with. A batch with only
  * attachments keeps one empty input, so the prompt still has an instruction.
  */
 export async function webTurnInputs(
   messages: readonly {
+    leadTask?: string | undefined;
     reviewItemChange?: ReviewItemChangeRecord | undefined;
     text: string;
   }[],
@@ -29,7 +31,12 @@ export async function webTurnInputs(
       const reviewItem = await loadReviewItemInput(message.reviewItemChange);
       if (reviewItem) return [reviewItem];
       const text = message.text.trim();
-      return text ? [{ kind: "person", text }] : [];
+      return [
+        ...(message.leadTask
+          ? [{ kind: "runtime" as const, text: message.leadTask }]
+          : []),
+        ...(text ? [{ kind: "person" as const, text }] : []),
+      ];
     },
   );
   const flat = inputs.flat();

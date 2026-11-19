@@ -1,14 +1,20 @@
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
+import type { StaticToolName } from "@/chat/tools/registry";
 
 /**
  * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
  * when spawnAgent is available. `children_and_parent`: the same, but
  * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn. `none`: neither.
+ * to spawn. `top_level`: only messageAgent, to other top-level agents.
+ * `none`: neither.
  */
-export type AgentTools = "none" | "children" | "children_and_parent";
+export type AgentTools =
+  | "none"
+  | "children"
+  | "children_and_parent"
+  | "top_level";
 
 /**
  * What one Turn does that depends on the Conversation kind and on who opened
@@ -84,6 +90,11 @@ export type TurnBehavior = {
      */
     reportBlocked: "none" | "parent" | "automation";
     noReply: boolean;
+    /**
+     * When set, the Turn lists only these core tools. It gets no run-built,
+     * plugin, or MCP tools, and no skills.
+     */
+    only?: readonly string[];
   };
 };
 
@@ -190,6 +201,40 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   sender: "person",
 };
 
+// A Lead finds, starts, and steers its person's other Conversations, and
+// never does their work. So it gets only the tools for that, and no sandbox,
+// skills, MCP, provider, or child-agent tools. Automation tools stay out
+// until a Lead can pick a Slack Destination for one.
+const LEAD_TOOLS = [
+  "startConversation",
+  "messageAgent",
+  "searchConversations",
+  "searchConversationEvents",
+  "readConversationEvent",
+  "searchReviewItems",
+  "updateReviewItem",
+  "searchEventTypes",
+  "watchEvents",
+  "watchTimer",
+  "listWatches",
+  "stopWatchingResources",
+  "systemTime",
+  "updateUserCustomization",
+  "noReply",
+] as const satisfies readonly StaticToolName[];
+
+const LEAD: TurnBehavior = {
+  ...ROOT,
+  promptMode: "lead",
+  sessionTasks: false,
+  tools: {
+    ...ROOT.tools,
+    agents: "top_level",
+    subscriptions: false,
+    only: LEAD_TOOLS,
+  },
+};
+
 /** Return the behavior of one Turn. */
 export function turnBehavior(args: {
   kind: ConversationKind;
@@ -207,9 +252,7 @@ export function turnBehavior(args: {
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
-      // Nothing creates a lead yet. Its own behavior comes with the writer
-      // (#3727), so a lead never runs with the tools of a root.
-      throw new Error("A lead Conversation has no Turn behavior yet");
+      return LEAD;
   }
 }
 
@@ -228,6 +271,8 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
       return THREAD_TOOLS;
     case "conversation":
       return ROOT.tools;
+    case "lead":
+      return LEAD.tools;
   }
 }
 

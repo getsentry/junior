@@ -198,6 +198,13 @@ function searchConversationsInputSchema(
               .describe("Channel of the conversation."),
           }
         : undefined),
+      participating: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Only conversations that your person takes part in: the person of this Turn, or of this Lead. Default false.",
+        ),
       roots_only: z
         .boolean()
         .nullable()
@@ -255,6 +262,8 @@ export function createSearchConversationsTool(context: {
   conversationId: string;
   /** Embeds a query to also match Briefs by meaning. */
   embedder?: PluginEmbedder;
+  /** Reads the User id of the person, for `participating`. */
+  resolveUserId?: () => Promise<string | undefined>;
 }) {
   const { channels } = context;
   return zodTool({
@@ -282,6 +291,14 @@ export function createSearchConversationsTool(context: {
         channels && channelInput
           ? await channels.resolveChannel(channelInput)
           : undefined;
+      const participantUserId = input.participating
+        ? await context.resolveUserId?.()
+        : undefined;
+      if (input.participating && !participantUserId) {
+        throw new ToolInputError(
+          "`participating` needs a person: this Turn has none",
+        );
+      }
       const matches = await searchConversations(getDb(), {
         ...(context.embedder ? { embedder: context.embedder } : undefined),
         requesterConversationId: context.conversationId,
@@ -294,6 +311,7 @@ export function createSearchConversationsTool(context: {
           includeArchived: input.include_archived ?? false,
           limit: input.limit ?? DEFAULT_LIMIT,
           ...(outcomeStatus ? { outcomeStatus } : undefined),
+          ...(participantUserId ? { participantUserId } : undefined),
           ...(query ? { query } : undefined),
           rootsOnly: input.roots_only ?? true,
         },

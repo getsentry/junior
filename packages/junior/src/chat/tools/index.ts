@@ -3,6 +3,8 @@ import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { createStartConversationTool } from "@/chat/lead/start-conversation-tool";
+import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -275,6 +277,10 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
+      // A Lead Turn that no person started searches for the Lead's person.
+      resolveUserId: async () =>
+        (await run.context.resolveActorIdentity?.())?.user?.id ??
+        (await readLeadUser(run.context.conversationId))?.id,
     }),
   spawnAgent: (run) =>
     run.context.spawnAgent
@@ -348,6 +354,7 @@ const STATIC_TOOL_BINDERS = {
     createSearchReviewItemsTool(run.context, run.reviewItemServices()),
   updateReviewItem: (run) =>
     createUpdateReviewItemTool(run.context, run.reviewItemServices()),
+  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
@@ -640,9 +647,11 @@ export function createTools(
         : tool;
   }
 
-  for (const [name, pluginTool] of Object.entries(
-    getPluginTools(context, options.pluginSandbox),
-  )) {
+  // A Turn with an `only` list gets no plugin tools.
+  const pluginTools = listedTools.only
+    ? {}
+    : getPluginTools(context, options.pluginSandbox);
+  for (const [name, pluginTool] of Object.entries(pluginTools)) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

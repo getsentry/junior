@@ -9,6 +9,7 @@ import {
   and,
   desc,
   eq,
+  exists,
   gt,
   gte,
   ilike,
@@ -44,6 +45,7 @@ import type {
 import {
   juniorConversationEmbeddings,
   juniorConversationBriefs,
+  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -107,6 +109,8 @@ export interface ConversationSearch {
   query?: string;
   /** Return only root Conversations, not their child agents. */
   rootsOnly: boolean;
+  /** Only Conversations whose root has this User as a Participant. */
+  participantUserId?: string;
   /** Only Conversations whose agent has one of these statuses. */
   statuses?: readonly ConversationStatus[];
 }
@@ -186,6 +190,25 @@ export async function searchConversations(
       : undefined,
     search.statuses
       ? inArray(conversations.executionStatus, [...search.statuses])
+      : undefined,
+    search.participantUserId
+      ? exists(
+          db
+            .select({ one: sql`1` })
+            .from(juniorConversationParticipants)
+            .where(
+              and(
+                eq(
+                  juniorConversationParticipants.rootConversationId,
+                  roots.conversationId,
+                ),
+                eq(
+                  juniorConversationParticipants.userId,
+                  search.participantUserId,
+                ),
+              ),
+            ),
+        )
       : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])

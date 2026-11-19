@@ -842,6 +842,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
     local: buildStaticSystemPrompt("local", "conversation"),
     slack: buildStaticSystemPrompt("slack", "conversation"),
   },
+  lead: {
+    local: buildStaticSystemPrompt("local", "lead"),
+    slack: buildStaticSystemPrompt("slack", "lead"),
+  },
   thread: {
     local: buildStaticSystemPrompt("local", "thread"),
     slack: buildStaticSystemPrompt("slack", "thread"),

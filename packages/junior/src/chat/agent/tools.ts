@@ -621,8 +621,8 @@ export async function wireAgentTools(
   // current turn. Restore only providers this credential subject connected.
   // Shared Pi history mixes people and must not grant provider authority.
   // Intentional use still connects on demand through searchMcpTools under the
-  // current credential subject.
-  if (credentialUserId) {
+  // current credential subject. A Turn with an `only` list has no MCP tools.
+  if (credentialUserId && !toolRuntimeContext.listedTools?.only) {
     for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
@@ -781,6 +781,11 @@ export function bindAgentTools(
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (agents === "none" || !bindSpawnAgent) return {};
+  // A Lead steers other top-level agents and starts no child agents.
+  if (agents === "top_level") {
+    const messageAgent = bindMessageAgent?.(run, agents);
+    return messageAgent ? { messageAgent } : {};
+  }
   // The rule reads only the Turn behavior and the deployment, so a child gets
   // the same tools on every path. Every child has depth 1 or more, so with
   // maxAgentDepth 0 no child can spawn. With more, a child past the limit
