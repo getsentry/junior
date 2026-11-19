@@ -59,6 +59,8 @@ import { renderThreadContext, THREAD_CONTEXT_TAGS } from "@/chat/input-tags";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
+import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
+import { readTaskInstructions } from "@/chat/task-input";
 import type {
   AgentAttachment,
   AgentInstruction,
@@ -185,19 +187,28 @@ export function instructionForInputs(
 }
 
 /**
- * Return the words that people wrote in the inputs of an instruction, for
- * context that must follow what a person asked, such as memory recall.
- * Runtime tags are not in it, except the words a person typed inside one.
+ * Return the request of a Run, for context that must follow what was asked,
+ * such as memory recall: person input, the `requestText` of runtime inputs,
+ * or the instructions of an Automation run. Runtime tags, generic
+ * instructions, and Event text are not in it.
  */
-export function personInputText(
-  instruction: Pick<AgentInstruction, "inputs" | "text">,
+export function turnRequestText(
+  run: Pick<AgentRun, "dispatch" | "instruction">,
 ): string {
+  const { instruction } = run;
+  // An Automation run's task instructions are its creator's request. Another
+  // dispatch, such as a plugin dispatch, has no request.
+  if (run.dispatch) {
+    return dispatchInstructionsInvokeSkills(run.dispatch)
+      ? (readTaskInstructions(instruction.text) ?? "")
+      : "";
+  }
   const inputs = instruction.inputs ?? [
     { kind: "person" as const, text: instruction.text },
   ];
   return inputs
     .map((input) =>
-      (input.kind === "person" ? input.text : (input.personText ?? "")).trim(),
+      (input.kind === "person" ? input.text : (input.requestText ?? "")).trim(),
     )
     .filter(Boolean)
     .join("\n\n");

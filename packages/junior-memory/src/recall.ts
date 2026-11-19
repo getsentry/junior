@@ -173,7 +173,7 @@ const memoryRecallContext = definePromptContext({
 export async function createMemoryPromptContributions(
   context: MemoryRecallContext,
 ): Promise<UserPromptContribution[] | undefined> {
-  // The text holds only words that people wrote. A Turn with none, such as
+  // The text holds only the request of the Turn. A Turn with none, such as
   // an Event or a child agent result, gets no recall.
   if (!context.text.trim()) {
     return undefined;

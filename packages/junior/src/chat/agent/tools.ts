@@ -59,7 +59,7 @@ import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createArtifactSync } from "@/chat/artifacts/sync";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
-import { personInputText, type PromptHookContext } from "@/chat/agent/prompt";
+import { turnRequestText, type PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -195,7 +195,7 @@ export function createPromptHookContext(args: {
     ...(actor
       ? { resolveActorIdentity: async () => await readActorIdentity(actor) }
       : undefined),
-    userText: personInputText(args.run.instruction),
+    userText: turnRequestText(args.run),
   };
 }
 

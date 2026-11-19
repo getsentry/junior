@@ -52,7 +52,7 @@ function renderReviewItemAnswer(
 ): ReviewItemAnswerInput | undefined {
   if (!item.request || !item.answer) return undefined;
   const question = item.request.question.trim();
-  const personText = typedAnswerText(item.request, item.answer);
+  const requestText = typedAnswerText(item.request, item.answer);
   const text = renderTag(
     "review-item-answer",
     { id: item.id },
@@ -68,7 +68,7 @@ function renderReviewItemAnswer(
   return {
     kind: "runtime",
     text,
-    ...(personText ? { personText } : undefined),
+    ...(requestText ? { requestText } : undefined),
   };
 }
 

@@ -123,9 +123,10 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   source: Source;
   state: PluginState;
   /**
-   * Words that people wrote in the inputs of this Turn. Runtime text, such
-   * as an Event, a child agent result, or the question of a Review item, is
-   * not in it. Empty when no person wrote input for this Turn.
+   * The request of this Turn: what a person wrote, the task or message of a
+   * parent agent, or the instructions of an Automation. Runtime text, such as
+   * tags, generic instructions, Events, child agent results, and the question
+   * of a Review item, is not in it. Empty when the Turn has no request.
    */
   text: string;
   users: {
