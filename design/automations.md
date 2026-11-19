@@ -21,6 +21,8 @@ Automation run posts its result to the Automation's Destination.
 ## Entry points
 
 - Slack: ask Junior in the conversation that should get the results.
+- Dashboard: ask Junior in a Conversation, and name a public Slack channel
+  as the Destination.
 - Dashboard: Automations, and its Runs view.
 - MCP server: read-only search and fetch with the `automations:read` scope.
 
