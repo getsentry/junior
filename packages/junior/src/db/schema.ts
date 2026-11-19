@@ -37,7 +37,9 @@ import {
 import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
-import { juniorTurnInbox, juniorTurnOutbox, juniorTurns } from "./schema/turns";
+import { juniorTurnInbox } from "./schema/turn-inbox";
+import { juniorTurnOutbox } from "./schema/turn-outbox";
+import { juniorTurns } from "./schema/turns";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
