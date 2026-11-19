@@ -620,6 +620,11 @@ describe("merge conflict check on webhook events", () => {
         }),
         expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
+      // Until the fix that Resume started lands, a check starts no second
+      // fix, though an approved pull request skips the daily wait.
+      const published = conflicts().length;
+      await checkAt(pushedAt + 4 * hour + 10 * minute, "3");
+      expect(conflicts()).toHaveLength(published);
       timeline.push({
         __typename: "PullRequestCommit",
         commit: {

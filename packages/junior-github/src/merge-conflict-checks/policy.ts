@@ -117,6 +117,8 @@ interface GitHubConflictHistory {
   fixedAtMs?: number;
   /** Fixes after `activeAtMs`. */
   fixes: number;
+  /** No fix landed after the latest Resume, so its fix may still run. */
+  resumeRunning: boolean;
 }
 
 /**
@@ -181,6 +183,8 @@ function parseGitHubConflictHistory(
     approved: pullRequest.reviewDecision === "APPROVED",
     fixes: fixes.filter((atMs) => atMs > activeAtMs).length,
     ...(fixedAtMs.length ? { fixedAtMs: Math.max(...fixedAtMs) } : undefined),
+    resumeRunning:
+      resumedAtMs !== undefined && fixes.every((atMs) => atMs <= resumedAtMs),
   };
 }
 
@@ -195,7 +199,9 @@ function gitHubConflictAction(
   const idleMs = nowMs - history.activeAtMs;
   if (idleMs > IDLE_MS && !approved) return "skip";
   if ((idleMs <= ACTIVE_MS || approved) && history.fixes < MAX_FIXES) {
-    return !approved &&
+    // An approved pull request skips the daily wait, but not while the fix
+    // that Resume started may still run.
+    return (!approved || history.resumeRunning) &&
       fixedAtMs !== undefined &&
       nowMs - fixedAtMs < FIX_INTERVAL_MS
       ? "skip"

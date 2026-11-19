@@ -642,7 +642,8 @@ people work on it:
   closes when the conflict is gone, or when the pull request merges or
   closes.
 - **Resume** counts as activity by a person, so the count starts again. It
-  also publishes the event at once.
+  also publishes the event at once. Until a fix lands after it, the next
+  event waits a day, also on an approved pull request.
 - After 3 days without activity by a person, Junior does nothing.
 - An approved pull request would be ready to merge but for the conflict. It
   gets the event after those 2 days too, and without the daily wait, up to
