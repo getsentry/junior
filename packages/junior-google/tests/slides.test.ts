@@ -223,6 +223,17 @@ describe("Google Slides tools", () => {
               "Source: logs",
               { fontSize: 9 },
             ),
+            // A flipped box extends left from its translation and fits.
+            (() => {
+              const flipped = textBox(
+                "s2_flipped",
+                { height: 60, left: 680, top: 300, width: 200 },
+                "Two lines of text that wrap once",
+                { fontSize: 18 },
+              );
+              flipped.transform.scaleX = -1;
+              return flipped;
+            })(),
           ],
         },
       ),

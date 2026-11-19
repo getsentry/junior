@@ -126,13 +126,17 @@ function elementBox(element: Element): Box | undefined {
   }
   const left = points(transform.translateX, transform.unit);
   const top = points(transform.translateY, transform.unit);
-  const width = points(size.width.magnitude, size.width.unit);
-  const height = points(size.height.magnitude, size.height.unit);
+  // A negative scale flips the element, so it extends left or up from its
+  // translation.
+  const right =
+    left + points(size.width.magnitude, size.width.unit) * transform.scaleX;
+  const bottom =
+    top + points(size.height.magnitude, size.height.unit) * transform.scaleY;
   return {
-    bottom: top + height * transform.scaleY,
-    left,
-    right: left + width * transform.scaleX,
-    top,
+    bottom: Math.max(top, bottom),
+    left: Math.min(left, right),
+    right: Math.max(left, right),
+    top: Math.min(top, bottom),
   };
 }
 
