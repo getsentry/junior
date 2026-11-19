@@ -43,6 +43,11 @@ each rule, so new code cannot drift from it.
   channels that Sentry's Postgres spans use. Tests inject them into `pg` with
   `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
   extra wrapper.
+- Keep the JSON body of hot API routes inside a size budget. A budget holds
+  the size of the largest item of a list. A nested list with no cap on its
+  count gets its own budget. Integration tests measure it with
+  `expectResponseBudget` from `packages/junior/tests/fixtures/response-budget.ts`.
+  Seed the fields at their max lengths, so the budget holds for real data.
 - Keep the API requests of the main dashboard pages inside a budget. Dashboard
   e2e specs measure a first page load with `expectRequestBudget` from
   `packages/junior-dashboard/e2e/request-budget.ts`. Each primary nav route

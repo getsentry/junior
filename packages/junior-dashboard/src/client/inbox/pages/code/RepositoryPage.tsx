@@ -38,6 +38,7 @@ import {
 import { cn, dashboardInlineLinkClass } from "../../../styles";
 import { OutboundLink } from "../../../components/OutboundLink";
 import { getDashboardAgentName } from "../../../agentName";
+import { NAV_PAGES } from "../../../navPages";
 
 const RECENT_ROWS = 5;
 const DESCRIPTION = "Conversations and code changes in this repository.";
@@ -135,7 +136,7 @@ function BackToCode() {
   return (
     <Link
       className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-      to="/code"
+      to={NAV_PAGES.code.to}
     >
       <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
       Back to code
