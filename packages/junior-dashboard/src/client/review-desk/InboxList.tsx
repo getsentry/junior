@@ -477,6 +477,7 @@ export function InboxList(props: {
     const title = titleOf(row.conversationId) ?? row.newest.title;
     return (
       <InboxStack
+        conversation={data.conversationById.get(row.conversationId)}
         conversationId={row.conversationId}
         expandedKey={state.expandedKey}
         key={stackKey}
