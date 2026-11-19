@@ -9,10 +9,12 @@ import type {
   Context,
   Model,
 } from "@earendil-works/pi-ai/compat";
+import * as z from "zod";
 import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
+import { recordBreakerEvent } from "./counters";
 import {
   MINUTE_MS,
   WARMUP_MARGIN_MS,
@@ -45,6 +47,17 @@ const breakerOutcomesKey = (provider: string) =>
   `${KEY_PREFIX}:breaker:${provider}:outcomes`;
 const breakerOpenKey = (provider: string) =>
   `${KEY_PREFIX}:breaker:${provider}:open`;
+// When the breaker last opened, and when an admin last closed it. Written
+// only when the breaker opens or closes, and read only by the System page.
+const breakerEventsKey = (provider: string) =>
+  `${KEY_PREFIX}:breaker:${provider}:events`;
+const BREAKER_EVENTS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
+
+const breakerEventsSchema = z.object({
+  openedAtMs: z.number().optional(),
+  closedAtMs: z.number().optional(),
+});
+type BreakerEvents = z.output<typeof breakerEventsSchema>;
 const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
 
 /** One model request of an agent run, as the provider received it. */
@@ -171,25 +184,56 @@ export async function breakerOpen(
   );
 }
 
+/** The breaker of one provider. Times are ISO and unset before any event. */
+export interface BreakerState {
+  provider: string;
+  open: boolean;
+  lastOpenedAt?: string;
+  /** When an admin closed it, or when its pause ended. */
+  lastClosedAt?: string;
+}
+
 /**
  * Report whether the breaker is open for each warmed provider of these
- * models. Providers that no model uses are left out.
+ * models, and when it last opened and closed. Providers that no model uses
+ * are left out.
  */
 export async function breakerStates(
   state: ConnectedState,
   modelIds: readonly string[],
-): Promise<Array<{ provider: string; open: boolean }>> {
+  nowMs = Date.now(),
+): Promise<BreakerState[]> {
   const providers = new Set(
     modelIds
       .map(providerOf)
       .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
   );
   const warmed = [...providers];
-  const open = await getStateValues(state, warmed.map(breakerOpenKey));
-  return warmed.map((provider, index) => ({
-    provider,
-    open: open[index] === true,
-  }));
+  const values = await getStateValues(state, [
+    ...warmed.map(breakerOpenKey),
+    ...warmed.map(breakerEventsKey),
+  ]);
+  return warmed.map((provider, index) => {
+    const open = values[index] === true;
+    const parsed = breakerEventsSchema.safeParse(values[warmed.length + index]);
+    if (!parsed.success) return { provider, open };
+    const { openedAtMs } = parsed.data;
+    // Opening clears the close time, so a breaker that its pause closed has
+    // only the open time.
+    const closedAtMs =
+      parsed.data.closedAtMs ??
+      (open || openedAtMs === undefined
+        ? undefined
+        : Math.min(nowMs, openedAtMs + BREAKER_OPEN_TTL_MS));
+    const breaker: BreakerState = { provider, open };
+    if (openedAtMs !== undefined) {
+      breaker.lastOpenedAt = new Date(openedAtMs).toISOString();
+    }
+    if (closedAtMs !== undefined) {
+      breaker.lastClosedAt = new Date(closedAtMs).toISOString();
+    }
+    return breaker;
+  });
 }
 
 /**
@@ -202,8 +246,23 @@ export async function closeBreaker(
   provider: string,
 ): Promise<boolean> {
   if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  const wasOpen = (await state.get<boolean>(breakerOpenKey(provider))) === true;
   await state.delete(breakerOutcomesKey(provider));
   await state.delete(breakerOpenKey(provider));
+  if (wasOpen) {
+    const events = breakerEventsSchema.safeParse(
+      await state.get(breakerEventsKey(provider)),
+    );
+    await state.set(
+      breakerEventsKey(provider),
+      {
+        ...(events.success ? events.data : undefined),
+        closedAtMs: Date.now(),
+      } satisfies BreakerEvents,
+      BREAKER_EVENTS_TTL_MS,
+    );
+    await recordBreakerEvent(provider, "closed");
+  }
   return true;
 }
 
@@ -234,6 +293,12 @@ async function countOutcome(
     ))
   ) {
     await state.delete(breakerOutcomesKey(provider));
+    await state.set(
+      breakerEventsKey(provider),
+      { openedAtMs: Date.now() } satisfies BreakerEvents,
+      BREAKER_EVENTS_TTL_MS,
+    );
+    await recordBreakerEvent(provider, "opened");
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],

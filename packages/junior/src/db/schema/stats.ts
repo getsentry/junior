@@ -6,6 +6,7 @@ import {
   primaryKey,
   text,
 } from "drizzle-orm/pg-core";
+import { timestamptz } from "./timestamps";
 
 /**
  * Daily named counters used by Junior and loaded plugins.
@@ -29,6 +30,29 @@ export const juniorStats = pgTable(
     primaryKey({
       name: "junior_stats_date_namespace_metric_name_pk",
       columns: [table.date, table.namespace, table.metric, table.name],
+    }),
+  ],
+);
+
+/**
+ * Hourly copies of the named counters that a writer asks for, such as cache
+ * warming. The retention cron deletes rows older than
+ * `HOURLY_STATS_RETENTION_MS`, so the table stays small.
+ */
+export const juniorHourlyStats = pgTable(
+  "junior_hourly_stats",
+  {
+    /** Start of the UTC hour. */
+    hour: timestamptz("hour").notNull(),
+    namespace: text("namespace").notNull(),
+    metric: text("metric").notNull(),
+    name: text("name").notNull(),
+    count: bigint("value", { mode: "number" }).notNull().default(0),
+  },
+  (table) => [
+    primaryKey({
+      name: "junior_hourly_stats_hour_namespace_metric_name_pk",
+      columns: [table.hour, table.namespace, table.metric, table.name],
     }),
   ],
 );

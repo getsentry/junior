@@ -67,10 +67,11 @@ import {
   type ConnectedState,
   type ModelRequest,
 } from "./request";
+import { recordModelCallCache, recordWarmupSkipped } from "./counters";
 import {
   idlePeriodSavings,
   recordIdlePeriodSavings,
-  recordWarmupCost,
+  recordWarmup,
 } from "./savings";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
@@ -357,6 +358,7 @@ async function recordSavings(
   idle: IdlePeriod,
   request: ModelRequest,
   message: AssistantMessage,
+  warmupsSent: number,
 ): Promise<void> {
   const prefixTokens = idle.warm?.prefixTokens ?? idle.prefixTokens;
   const ttlMs = idle.warm?.cacheTtlMs ?? providerCacheTtlMs(request.model.id);
@@ -375,6 +377,7 @@ async function recordSavings(
     idle.warm?.modelId ?? request.model.id,
     savings,
     idle.warm !== undefined,
+    warmupsSent,
   );
 }
 
@@ -391,13 +394,14 @@ async function recordModelCall(
     conversationKey(conversationId),
   );
   const idle = previous?.idle;
+  let warmups = 0;
   if (idle?.warm) {
     const gapMs = request.startedAtMs - idle.sinceMs;
     if (gapMs > 0) {
       await recordGap(state, conversationId, idle.generation, idle.warm, gapMs);
     }
     await state.delete(snapshotKey(conversationId, idle.generation));
-    const warmups =
+    warmups =
       (await state.get<number>(warmupsKey(conversationId, idle.generation))) ??
       0;
     if (warmups > 0) {
@@ -411,7 +415,7 @@ async function recordModelCall(
       });
     }
   }
-  if (idle) await recordSavings(idle, request, message);
+  if (idle) await recordSavings(idle, request, message, warmups);
 
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
@@ -557,9 +561,12 @@ export function createCacheWarmingRecorder(
       const request = lastRequest;
       lastRequest = undefined;
       await warmupsStopped;
-      if (!getChatConfig().cacheWarmingEnabled || !request) {
-        return;
+      if (!request) return;
+      // Cache health counts with warming off too, so the two can be compared.
+      if (message.stopReason !== "error" && message.stopReason !== "aborted") {
+        await recordModelCallCache(request.model.id, message.usage);
       }
+      if (!getChatConfig().cacheWarmingEnabled) return;
       try {
         await toolWait.record(request, message);
       } catch (error) {
@@ -732,6 +739,7 @@ export async function runCacheWarmup(
         });
         setOutcome("skipped", skipReason);
         await stop();
+        await recordWarmupSkipped(reason);
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
@@ -812,6 +820,7 @@ export async function runCacheWarmup(
       // Warming stopped, or the idle period ended.
       if (context === "stopped") {
         setOutcome("skipped", { "app.cache_warming.skip_reason": "stopped" });
+        await recordWarmupSkipped("stopped");
         return;
       }
       if (context === "image_missing") {
@@ -831,7 +840,11 @@ export async function runCacheWarmup(
         throw error;
       });
       Object.assign(attributes, warmup.attributes);
-      await recordWarmupCost(warm.modelId, warmup.costUsd);
+      await recordWarmup(warm.modelId, {
+        costUsd: warmup.costUsd,
+        refreshed: warmup.refreshed,
+        sentAs: warm.turnEnding ?? "unknown",
+      });
       if (!warmup.refreshed) {
         // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);

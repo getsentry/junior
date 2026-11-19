@@ -9,7 +9,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { useCacheWarmingSavings } from "../../api";
+import { useCacheWarmingHourly, useCacheWarmingSavings } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
   activityChartMargin,
@@ -31,6 +31,9 @@ import {
 } from "../../format";
 
 type Day = CacheWarmingSavingsReport["days"][number];
+type Totals = CacheWarmingSavingsReport["totals"];
+// A day or an hour. Hour keys are `YYYY-MM-DDTHH`.
+type Bucket = Omit<Day, "unwarmedIdlePeriods" | "unwarmedOracleSavingsUsd">;
 
 const GAIN_COLOR = "var(--color-emerald-400)";
 const LOSS_COLOR = "var(--color-rose-400)";
@@ -42,12 +45,16 @@ const chartConfig = {
   netSavingsUsd: { color: GAIN_COLOR, label: "Net savings" },
   effectiveness: { color: EFFECTIVENESS_COLOR, label: "Effectiveness" },
 };
-const legend = [
-  { color: GAIN_COLOR, key: "netSavingsUsd", label: "Daily net savings" },
+const legendOf = (adjective: string) => [
+  {
+    color: GAIN_COLOR,
+    key: "netSavingsUsd",
+    label: `${adjective} net savings`,
+  },
   {
     color: EFFECTIVENESS_COLOR,
     key: "effectiveness",
-    label: "Daily effectiveness",
+    label: `${adjective} effectiveness`,
   },
 ];
 const historyLegend = {
@@ -59,17 +66,43 @@ const historyLegend = {
 const usd = (value: number) => formatCostBreakdown({ total: value });
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
+/** Hours of the hourly report for a range. Longer ranges plot days. */
+export function cacheWarmingHours(range: TimeRangeDays): number {
+  return range === 1 ? 24 : 7 * 24;
+}
+
 /**
  * Show what cache warming saved in the range: net savings, effectiveness
- * against an ideal warmer, and net savings per UTC day. An admin can re-fill
- * the days before live recording from history. Days from history show as
- * lighter bars.
+ * against an ideal warmer, and net savings per UTC hour (24h and 7d) or day.
+ * An admin can re-fill the days before live recording from history. Days
+ * from history show as lighter bars.
  */
 export function CacheWarmingSavings(props: {
   admin: boolean;
   range: TimeRangeDays;
 }) {
-  const query = useCacheWarmingSavings(props.range);
+  const daily = useCacheWarmingSavings(props.range);
+  const hourly = useCacheWarmingHourly(cacheWarmingHours(props.range));
+  const unit = props.range <= 7 ? "hour" : "day";
+  const query = unit === "hour" ? hourly : daily;
+  const data =
+    unit === "hour"
+      ? hourly.data && {
+          buckets: hourly.data.hours.map((hour) => ({
+            ...hour.savings,
+            date: hour.hour.slice(0, 13),
+            history: false,
+          })),
+          totals: {
+            ...hourly.data.totals.savings,
+            liveOracleSavingsUsd: hourly.data.totals.savings.oracleSavingsUsd,
+            historyDays: 0,
+          },
+        }
+      : daily.data && {
+          buckets: daily.data.days,
+          totals: daily.data.totals,
+        };
   return (
     <section aria-label="Cache warming">
       <Card>
@@ -81,11 +114,11 @@ export function CacheWarmingSavings(props: {
             warmups. Effectiveness is net savings as a share of what an ideal
             warmer would save.
           </p>
-          {query.data ? <Totals totals={query.data.totals} /> : null}
+          {data ? <SavingsTotals totals={data.totals} /> : null}
           {props.admin ? <CacheWarmingRefill /> : null}
         </div>
-        {query.data ? (
-          <SavingsChart days={query.data.days} />
+        {data ? (
+          <SavingsChart buckets={data.buckets} unit={unit} />
         ) : (
           <EmptyTelemetry>
             {query.error
@@ -98,7 +131,7 @@ export function CacheWarmingSavings(props: {
   );
 }
 
-function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
+function SavingsTotals(props: { totals: Totals }) {
   const { totals } = props;
   const net = totals.netSavingsUsd;
   return (
@@ -134,18 +167,20 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
           {percent(
             totals.unwarmedOracleSavingsUsd / totals.liveOracleSavingsUsd,
           )}{" "}
-          of possible savings on live days had no warm state.
+          of possible savings{totals.historyDays > 0 ? " on live days" : ""} had
+          no warm state.
         </p>
       ) : null}
     </>
   );
 }
 
-function SavingsChart(props: { days: Day[] }) {
-  const data = props.days.map((day) => ({
-    ...day,
-    effectiveness: dayEffectiveness(day),
+function SavingsChart(props: { buckets: Bucket[]; unit: "day" | "hour" }) {
+  const data = props.buckets.map((bucket) => ({
+    ...bucket,
+    effectiveness: bucketEffectiveness(bucket),
   }));
+  const legend = legendOf(props.unit === "hour" ? "Hourly" : "Daily");
   const shares = data.flatMap((day) =>
     day.effectiveness === null ? [] : [day.effectiveness],
   );
@@ -155,8 +190,8 @@ function SavingsChart(props: { days: Day[] }) {
   const maximum = Math.max(0.01, ...values);
   const minimum = Math.min(0, ...values);
   // Warmup cost lands when a warmup runs, before a call ends its idle period.
-  const empty = props.days.every(
-    (day) => day.idlePeriods === 0 && day.warmupCostUsd === 0,
+  const empty = props.buckets.every(
+    (bucket) => bucket.idlePeriods === 0 && bucket.warmupCostUsd === 0,
   );
   return (
     <div className="relative px-2 py-3 sm:px-4 sm:py-4">
@@ -165,7 +200,7 @@ function SavingsChart(props: { days: Day[] }) {
           ariaLabel="Cache warming chart legend"
           inline
           items={
-            props.days.some((day) => day.history)
+            props.buckets.some((bucket) => bucket.history)
               ? [...legend, historyLegend]
               : legend
           }
@@ -173,7 +208,7 @@ function SavingsChart(props: { days: Day[] }) {
       </div>
       <ChartContainer className="aspect-auto h-50 w-full" config={chartConfig}>
         <ComposedChart
-          aria-label="Cache warming net savings and effectiveness per day"
+          aria-label={`Cache warming net savings and effectiveness per ${props.unit}`}
           data={data}
           margin={activityChartMargin}
           role="img"
@@ -200,7 +235,7 @@ function SavingsChart(props: { days: Day[] }) {
           <ChartTooltip
             content={
               <ActivityChartTooltipContent
-                rows={(day: Day & { effectiveness: number | null }) => [
+                rows={(day: Bucket & { effectiveness: number | null }) => [
                   ...(day.history ? [["source", "history"] as const] : []),
                   ["net savings", usd(day.netSavingsUsd)],
                   [
@@ -263,7 +298,7 @@ function SavingsChart(props: { days: Day[] }) {
 }
 
 /** Net savings as a share of the oracle, or null without oracle savings. */
-function dayEffectiveness(day: Day): number | null {
-  if (day.oracleSavingsUsd <= 0) return null;
-  return day.netSavingsUsd / day.oracleSavingsUsd;
+function bucketEffectiveness(bucket: Bucket): number | null {
+  if (bucket.oracleSavingsUsd <= 0) return null;
+  return bucket.netSavingsUsd / bucket.oracleSavingsUsd;
 }

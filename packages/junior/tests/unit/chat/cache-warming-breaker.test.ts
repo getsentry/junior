@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Context } from "@earendil-works/pi-ai/compat";
 import {
   breakerOpen,
+  breakerStates,
   connectedState,
   sendWarmup,
 } from "@/chat/cache-warming/request";
@@ -11,6 +12,7 @@ const MINUTE = 60_000;
 const modelId = "anthropic/claude-opus-5.5";
 const OUTCOMES_KEY = "junior:cache_warming:breaker:anthropic:outcomes";
 const OPEN_KEY = "junior:cache_warming:breaker:anthropic:open";
+const EVENTS_KEY = "junior:cache_warming:breaker:anthropic:events";
 const context: Context = {
   systemPrompt: "Answer briefly.",
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
@@ -33,10 +35,12 @@ describe("cache warming breaker", () => {
     const state = await connectedState();
     await state.delete(OUTCOMES_KEY);
     await state.delete(OPEN_KEY);
+    await state.delete(EVENTS_KEY);
   });
 
   it("pauses warming briefly after a burst of misses", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2031-05-09T08:00:00.000Z"));
     const state = await connectedState();
     for (let i = 0; i < 9; i++) {
       expect((await warm(0)).refreshed).toBe(false);
@@ -45,6 +49,13 @@ describe("cache warming breaker", () => {
 
     await warm(0);
     expect(await breakerOpen(state, modelId)).toBe(true);
+    expect(await breakerStates(state, [modelId])).toEqual([
+      {
+        provider: "anthropic",
+        open: true,
+        lastOpenedAt: "2031-05-09T08:00:00.000Z",
+      },
+    ]);
     // A provider that stays broken must miss again to reopen the breaker.
     expect(await state.getList(OUTCOMES_KEY)).toEqual([]);
     // A warmup that started before the breaker opened does not count.
@@ -53,6 +64,15 @@ describe("cache warming breaker", () => {
 
     vi.advanceTimersByTime(31 * MINUTE);
     expect(await breakerOpen(state, modelId)).toBe(false);
+    // The pause ended, so the breaker closed by itself.
+    expect(await breakerStates(state, [modelId])).toEqual([
+      {
+        provider: "anthropic",
+        open: false,
+        lastOpenedAt: "2031-05-09T08:00:00.000Z",
+        lastClosedAt: "2031-05-09T08:30:00.000Z",
+      },
+    ]);
     // One more miss after the pause does not reopen it.
     await warm(0);
     expect(await breakerOpen(state, modelId)).toBe(false);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isFullRewrite } from "@/chat/cache-warming/counters";
 import { idlePeriodSavings } from "@/chat/cache-warming/savings";
 
 const MINUTE = 60_000;
@@ -36,4 +37,15 @@ describe("cache warming savings", () => {
   ])("skips %s", (_name, gapMs, input) => {
     expect(idlePeriodSavings({ ...period, ...input, gapMs })).toBeUndefined();
   });
+
+  it.each([
+    ["a write over 50k with a read under 20k", 50_001, 19_999, true],
+    ["a write of 50k", 50_000, 0, false],
+    ["a read of 20k", 99_000, 20_000, false],
+  ])(
+    "counts %s as a full rewrite: %s",
+    (_name, cacheWrite, cacheRead, full) => {
+      expect(isFullRewrite({ cacheRead, cacheWrite })).toBe(full);
+    },
+  );
 });

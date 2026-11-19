@@ -7,7 +7,7 @@ import {
   appendConversationBrief,
   readConversationBriefForTurn,
 } from "@/chat/briefs/store";
-import { recordWarmupCost } from "@/chat/cache-warming/savings";
+import { recordWarmup } from "@/chat/cache-warming/savings";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -88,7 +88,11 @@ describe("money totals in micro-USD", () => {
           source: "slack",
           updatedAtMs: atMs,
         });
-        await recordWarmupCost("anthropic/claude-opus-5.5", costUsd);
+        await recordWarmup("anthropic/claude-opus-5.5", {
+          costUsd: costUsd,
+          refreshed: true,
+          sentAs: "reply",
+        });
       }
 
       const expected = microUsdTotal(costs);

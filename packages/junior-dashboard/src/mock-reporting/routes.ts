@@ -51,6 +51,8 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
+  cacheWarmingHourlyQuerySchema,
+  cacheWarmingHourlyReportSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemActionSchema,
@@ -137,7 +139,10 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import { readMockCacheWarmingSavings } from "./cache-warming";
+import {
+  readMockCacheWarmingHourly,
+  readMockCacheWarmingSavings,
+} from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
@@ -274,6 +279,16 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(
       cacheWarmingSavingsReportSchema,
       readMockCacheWarmingSavings(days),
+    );
+  });
+  app.get("/cache-warming/hourly", (c) => {
+    const query = cacheWarmingHourlyQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    return jsonResponse(
+      cacheWarmingHourlyReportSchema,
+      readMockCacheWarmingHourly(query.data.startMs, query.data.endMs),
     );
   });
   app.get("/locations", () =>

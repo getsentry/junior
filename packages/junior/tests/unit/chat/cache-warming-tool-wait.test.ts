@@ -27,8 +27,11 @@ vi.mock("@/chat/cache-warming/savings", async (importOriginal) => {
     await importOriginal<typeof import("@/chat/cache-warming/savings")>();
   return {
     ...savings,
-    recordWarmupCost: (modelId: string, costUsd: number) => {
-      const write = savings.recordWarmupCost(modelId, costUsd);
+    recordWarmup: (
+      modelId: string,
+      warmup: Parameters<typeof savings.recordWarmup>[1],
+    ) => {
+      const write = savings.recordWarmup(modelId, warmup);
       mocks.warmupCostWrites.push(write);
       return write;
     },

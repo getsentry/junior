@@ -24,7 +24,7 @@ import {
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
-import { juniorStats } from "./schema/stats";
+import { juniorHourlyStats, juniorStats } from "./schema/stats";
 import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
@@ -73,6 +73,7 @@ export {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
+  juniorHourlyStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
@@ -113,6 +114,7 @@ export const juniorSqlSchema = {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
+  juniorHourlyStats,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,

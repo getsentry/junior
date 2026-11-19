@@ -21,6 +21,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheWarmingHourlyReportSchema,
   cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
@@ -669,6 +670,29 @@ export function useCacheWarmingSavings(days: number) {
       fetchDashboardJson(
         cacheWarmingSavingsReportSchema,
         `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+const HOUR_MS = 60 * 60 * 1_000;
+
+/**
+ * Fetch the hourly cache warming report of the last `hours` UTC hours, the
+ * current one included.
+ */
+export function useCacheWarmingHourly(hours: number) {
+  const endMs = (Math.floor(Date.now() / HOUR_MS) + 1) * HOUR_MS;
+  const start = new Date(endMs - hours * HOUR_MS).toISOString();
+  const end = new Date(endMs).toISOString();
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "hourly", start, end],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheWarmingHourlyReportSchema,
+        `/api/cache-warming/hourly?${new URLSearchParams({ start, end })}`,
         signal,
       ),
     placeholderData: keepPreviousData,

@@ -1,5 +1,5 @@
+import { CACHE_WARMING_NAMESPACE } from "@/chat/cache-warming/counters";
 import {
-  SAVINGS_NAMESPACE,
   savingsTotals,
   type SavingsTotals,
 } from "@/chat/cache-warming/savings";
@@ -12,8 +12,8 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-// Dollar fields of the report, converted once from micro-USD.
-function savingsUsd(totals: SavingsTotals) {
+/** Dollar fields of a savings report, converted once from micro-USD. */
+export function savingsUsd(totals: SavingsTotals) {
   return {
     hits: totals.hits,
     idlePeriods: totals.idlePeriods,
@@ -27,7 +27,8 @@ function savingsUsd(totals: SavingsTotals) {
   };
 }
 
-function netSavingsUsd(totals: SavingsTotals): number {
+/** Saved writes less warmup cost, in dollars. */
+export function netSavingsUsd(totals: SavingsTotals): number {
   return microUsdToUsd(totals.savedMicroUsd - totals.warmupCostMicroUsd);
 }
 
@@ -45,7 +46,7 @@ export async function readCacheWarmingSavings(
     new Date(nowMs - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10),
   );
   const stats = (await readStats(dates[0]!, dates.at(-1)!)).filter(
-    (stat) => stat.namespace === SAVINGS_NAMESPACE,
+    (stat) => stat.namespace === CACHE_WARMING_NAMESPACE,
   );
   const dayTotals = dates.map((date) => ({
     date,

@@ -325,11 +325,14 @@ export type {
 } from "./schema/notification";
 export {
   cacheWarmingBreakerListSchema,
+  cacheWarmingHourlyQuerySchema,
+  cacheWarmingHourlyReportSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheWarmingHourlyReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";

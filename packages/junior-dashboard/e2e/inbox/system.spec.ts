@@ -363,6 +363,51 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
   });
 
+  test("shows hourly cache health and warmup outcomes", async ({
+    page,
+    dashboard,
+  }) => {
+    const hourly = page.waitForResponse("**/api/cache-warming/hourly?*");
+    await page.goto(`${dashboard.baseURL}/system`);
+    expect((await hourly).ok()).toBe(true);
+    const health = page.getByRole("region", { name: "Cache health" });
+    await expect(
+      health.getByText(/^Write share, \d+% last week$/),
+    ).toBeVisible();
+    await expect(
+      health.getByText(/^Full rewrites, \d+ of [\d.]+k? calls$/),
+    ).toBeVisible();
+    await expect(
+      health.getByText(/Hourly counters show the last 7 days/),
+    ).toBeVisible();
+    await expect(health.getByText("anthropic warming on")).toBeVisible();
+    await expect(
+      health.getByText("unlikely return", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      health.getByLabel(
+        "Prompt cache write share and full-rewrite rate per hour",
+      ),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "24h", exact: true }).click();
+    const savings = page.getByRole("region", { name: "Cache warming" });
+    await expect(
+      savings.getByLabel(
+        "Cache warming net savings and effectiveness per hour",
+      ),
+    ).toBeVisible();
+    await expect(health.getByText(/Hourly counters show/)).toHaveCount(0);
+    await screenshot(page, "system-cache-warming-24h", {
+      target: savings,
+      view: "desktop",
+    });
+    await screenshot(page, "system-cache-health-24h", {
+      target: health,
+      view: "desktop",
+    });
+  });
+
   test("lets an admin re-fill cache warming savings from history", async ({
     page,
     dashboard,

@@ -10,15 +10,18 @@
  * gap, so it sends only the warmups that the gap needs, and only when they cost
  * less than the write. Each warmup adds its own cost when it runs, so
  * warmups of periods with no return count too. A tool wait counts as an idle
- * period (`tool-wait.ts`).
+ * period (`tool-wait.ts`). Live counters also count per hour
+ * (`counters.ts`).
  */
-import { logWarn } from "@/chat/logging";
 import { usdToMicroUsd } from "@/db/micro-usd";
-import { addStats, firstStatDate, replaceStats, type Stat } from "@/stats";
+import { firstStatDate, replaceStats, type Stat } from "@/stats";
+import {
+  addCacheCounters,
+  CACHE_WARMING_NAMESPACE,
+  OUTCOME_METRICS,
+} from "./counters";
 import { MIN_WARMUP_PREFIX_TOKENS, WARMUP_MARGIN_MS } from "./model";
 
-/** `junior_stats` namespace of the cache warming counters. */
-export const SAVINGS_NAMESPACE = "cache_warming";
 // Dollar counters store whole micro-USD.
 const METRICS = {
   hits: "hits",
@@ -113,7 +116,7 @@ export type SavingsCounts = Partial<Record<keyof typeof METRICS, number>>;
 
 const savingsStats = (modelId: string, counts: SavingsCounts) =>
   Object.entries(counts).map(([metric, count]) => ({
-    namespace: SAVINGS_NAMESPACE,
+    namespace: CACHE_WARMING_NAMESPACE,
     metric: METRICS[metric as keyof typeof METRICS],
     name: modelId,
     count,
@@ -137,42 +140,61 @@ function periodCounts(
   };
 }
 
-// The counters only report savings. A failure to write them is logged and
-// does not change warming.
-async function addSavingsStats(
-  modelId: string,
-  counts: SavingsCounts,
-): Promise<void> {
-  if (!process.env["DATABASE_URL"]) return;
-  try {
-    await addStats(savingsStats(modelId, counts));
-  } catch (error) {
-    logWarn("cache_warming.savings.record_failed", {
-      "gen_ai.request.model": modelId,
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
 /**
  * Count one idle period that counts, as `idlePeriodSavings` returned it.
- * `warmed` is false for a period with no warm state.
+ * `warmed` is false for a period with no warm state. A period whose
+ * `warmupsSent` warmups refreshed the cache, but whose return still missed
+ * it, also counts as a warmed rewrite.
  */
 export async function recordIdlePeriodSavings(
   modelId: string,
   savings: IdlePeriodSavings,
   warmed: boolean,
+  warmupsSent = 0,
 ): Promise<void> {
-  await addSavingsStats(modelId, periodCounts(savings, warmed));
+  await addCacheCounters([
+    ...savingsStats(modelId, periodCounts(savings, warmed)),
+    ...(warmupsSent > 0 && !savings.hit
+      ? [
+          {
+            namespace: CACHE_WARMING_NAMESPACE,
+            metric: OUTCOME_METRICS.warmedRewrites,
+            name: modelId,
+            count: 1,
+          },
+        ]
+      : []),
+  ]);
 }
 
-/** Add the cost of one warmup call. */
-export async function recordWarmupCost(
+/**
+ * Count one warmup call that the provider answered: its cost, and its
+ * outcome. `sentAs` is how the Turn before the idle period ended, or
+ * `tool_wait`.
+ */
+export async function recordWarmup(
   modelId: string,
-  costUsd: number,
+  warmup: { costUsd: number; refreshed: boolean; sentAs: string },
 ): Promise<void> {
-  await addSavingsStats(modelId, { warmupCost: usdToMicroUsd(costUsd) });
+  await addCacheCounters([
+    ...savingsStats(modelId, { warmupCost: usdToMicroUsd(warmup.costUsd) }),
+    {
+      namespace: CACHE_WARMING_NAMESPACE,
+      metric: OUTCOME_METRICS.sent,
+      name: warmup.sentAs,
+      count: 1,
+    },
+    ...(warmup.refreshed
+      ? []
+      : [
+          {
+            namespace: CACHE_WARMING_NAMESPACE,
+            metric: OUTCOME_METRICS.missed,
+            name: modelId,
+            count: 1,
+          },
+        ]),
+  ]);
 }
 
 /**
@@ -226,7 +248,7 @@ export function addHistoryWarmupCost(
  * that `replaceHistorySavings` wrote do not count.
  */
 export async function firstLiveSavingsDate(): Promise<string | undefined> {
-  return await firstStatDate(SAVINGS_NAMESPACE, METRICS.historyDays);
+  return await firstStatDate(CACHE_WARMING_NAMESPACE, METRICS.historyDays);
 }
 
 /**
@@ -243,11 +265,11 @@ export async function replaceHistorySavings(
     ([date]) => date >= range.start && date < range.end,
   );
   await replaceStats(
-    SAVINGS_NAMESPACE,
+    CACHE_WARMING_NAMESPACE,
     range,
     days.flatMap(([date, byModel]) => [
       {
-        namespace: SAVINGS_NAMESPACE,
+        namespace: CACHE_WARMING_NAMESPACE,
         metric: METRICS.historyDays,
         name: HISTORY_NAME,
         count: 1,
@@ -274,12 +296,14 @@ export interface SavingsTotals {
 }
 
 /** Sum the cache warming counters of these stats over all models. */
-export function savingsTotals(stats: readonly Stat[]): SavingsTotals {
+export function savingsTotals(
+  stats: ReadonlyArray<Pick<Stat, "count" | "metric" | "namespace">>,
+): SavingsTotals {
   const sum = (metric: string) =>
     stats
       .filter(
         (stat) =>
-          stat.namespace === SAVINGS_NAMESPACE && stat.metric === metric,
+          stat.namespace === CACHE_WARMING_NAMESPACE && stat.metric === metric,
       )
       .reduce((total, stat) => total + stat.count, 0);
   return {

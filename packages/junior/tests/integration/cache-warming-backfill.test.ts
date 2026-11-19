@@ -17,7 +17,7 @@ import {
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import {
   addHistoryPeriod,
-  recordWarmupCost,
+  recordWarmup,
   replaceHistorySavings,
   type HistorySavings,
 } from "@/chat/cache-warming/savings";
@@ -516,7 +516,11 @@ describe("cache warming savings re-fill", () => {
       });
     }
     vi.setSystemTime(DAY_2 + 10 * MINUTE);
-    await recordWarmupCost(MODEL_ID, 0.05);
+    await recordWarmup(MODEL_ID, {
+      costUsd: 0.05,
+      refreshed: true,
+      sentAs: "reply",
+    });
     const nowMs = DAY_2 + 26 * 60 * MINUTE;
     const before = await savings(nowMs);
 
@@ -681,7 +685,11 @@ describe("cache warming savings re-fill", () => {
     const nowMs = DAY_2 + 26 * 60 * MINUTE;
     // Live recording covers every day of the 90-day window.
     vi.setSystemTime(nowMs - 90 * 24 * 60 * MINUTE);
-    await recordWarmupCost(MODEL_ID, 0.05);
+    await recordWarmup(MODEL_ID, {
+      costUsd: 0.05,
+      refreshed: true,
+      sentAs: "reply",
+    });
     const before = await savings(nowMs);
 
     expect((await refill(admin, nowMs, "POST")).status).toBe(202);

@@ -1,7 +1,13 @@
 import * as z from "zod";
 
 export const cacheWarmingBreakerSchema = z
-  .object({ provider: z.string(), open: z.boolean() })
+  .object({
+    provider: z.string(),
+    open: z.boolean(),
+    lastOpenedAt: z.string().datetime().optional(),
+    /** When an admin closed it, or when its pause ended. */
+    lastClosedAt: z.string().datetime().optional(),
+  })
   .strict();
 
 export const cacheWarmingBreakerListSchema = z
@@ -79,6 +85,127 @@ export const cacheWarmingSavingsReportSchema = z
 
 export type CacheWarmingSavingsReport = z.output<
   typeof cacheWarmingSavingsReportSchema
+>;
+
+const HOUR_MS = 60 * 60 * 1_000;
+/** Longest hourly window. Hourly counters are kept for 15 days. */
+export const CACHE_WARMING_HOURLY_MAX_HOURS = 14 * 24;
+
+/**
+ * An hourly window. `end` defaults to now and `start` to 24 hours before
+ * `end`. Both round to whole UTC hours: `start` down, `end` up, so the
+ * current hour counts.
+ */
+export const cacheWarmingHourlyQuerySchema = z
+  .object({
+    start: z.string().datetime({ offset: true }).optional(),
+    end: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .transform((query, context) => {
+    const endMs =
+      Math.ceil((query.end ? Date.parse(query.end) : Date.now()) / HOUR_MS) *
+      HOUR_MS;
+    const startMs =
+      Math.floor(
+        (query.start ? Date.parse(query.start) : endMs - 24 * HOUR_MS) /
+          HOUR_MS,
+      ) * HOUR_MS;
+    const hours = (endMs - startMs) / HOUR_MS;
+    if (hours < 1 || hours > CACHE_WARMING_HOURLY_MAX_HOURS) {
+      context.addIssue({
+        code: "custom",
+        message: `The window must span 1 to ${CACHE_WARMING_HOURLY_MAX_HOURS} hours.`,
+      });
+      return z.NEVER;
+    }
+    return { startMs, endMs };
+  });
+
+const hourlySavingsSchema = cacheWarmingSavingsSchema.extend({
+  netSavingsUsd: z.number(),
+  /** Net savings over oracle savings. Null with no oracle savings. */
+  effectiveness: z.number().nullable(),
+});
+
+/**
+ * Prompt cache of agent model calls, not warmups. A full rewrite wrote over
+ * 50k cache tokens and read under 20k.
+ */
+const modelCacheSchema = z
+  .object({
+    calls: z.number().int().nonnegative(),
+    fullRewrites: z.number().int().nonnegative(),
+    /** Every input token, cached or not. */
+    inputTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative(),
+    /** Cache write tokens over input tokens. Null with no input. */
+    writeShare: z.number().nullable(),
+    /** Full rewrites over calls. Null with no calls. */
+    fullRewriteRate: z.number().nullable(),
+  })
+  .strict();
+
+const warmupOutcomesSchema = z
+  .object({
+    /** Warmup calls that the provider answered, idle and tool wait. */
+    sent: z.number().int().nonnegative(),
+    /** Sent warmups that did not read the cached prefix. */
+    missed: z.number().int().nonnegative(),
+    /** Warmed idle periods whose return still wrote the cache. */
+    warmedRewrites: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const countsSchema = z.record(z.string(), z.number().int().nonnegative());
+
+export const cacheWarmingHourlyReportSchema = z
+  .object({
+    start: z.string().datetime(),
+    end: z.string().datetime(),
+    hours: z.array(
+      z
+        .object({
+          hour: z.string().datetime(),
+          savings: hourlySavingsSchema,
+          modelCache: modelCacheSchema,
+          warmups: warmupOutcomesSchema,
+        })
+        .strict(),
+    ),
+    totals: z
+      .object({
+        savings: hourlySavingsSchema,
+        modelCache: modelCacheSchema,
+        modelCacheByModel: z.array(
+          modelCacheSchema.extend({ model: z.string() }),
+        ),
+        warmups: warmupOutcomesSchema.extend({
+          /** By how the Turn before the idle period ended, or `tool_wait`. */
+          sentByTurnEnding: countsSchema,
+          /** By `app.cache_warming.skip_reason`. */
+          skipReasons: countsSchema,
+        }),
+        breakerOpened: z.number().int().nonnegative(),
+        breakerClosed: z.number().int().nonnegative(),
+      })
+      .strict(),
+    /** The same window a week earlier. */
+    lastWeek: z
+      .object({
+        start: z.string().datetime(),
+        end: z.string().datetime(),
+        modelCache: modelCacheSchema,
+      })
+      .strict(),
+    breakers: z.array(cacheWarmingBreakerSchema),
+  })
+  .strict();
+
+export type CacheWarmingHourlyReport = z.output<
+  typeof cacheWarmingHourlyReportSchema
 >;
 
 export const cacheWarmingSavingsRefillSchema = z

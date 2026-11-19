@@ -38,10 +38,11 @@ import {
   warmupTooLate,
   type ModelRequest,
 } from "./request";
+import { recordWarmupSkipped } from "./counters";
 import {
   idlePeriodSavings,
   recordIdlePeriodSavings,
-  recordWarmupCost,
+  recordWarmup,
 } from "./savings";
 
 const TOOL_WAIT_GAPS_KEY = `${KEY_PREFIX}:gaps:tool_wait`;
@@ -108,6 +109,8 @@ interface Waiting {
   prefixTokens: number;
   /** A warmup was scheduled for the wait. */
   warmed: boolean;
+  /** Warmups that refreshed the cache during the wait. */
+  warmupsSent: number;
 }
 
 /** Create the tool wait warmer of one agent run. */
@@ -164,23 +167,24 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             ...extra,
             "app.cache_warming.outcome": outcome,
           });
-        const skip = (reason: string) => {
+        const skip = async (reason: string) => {
           const skipReason = { "app.cache_warming.skip_reason": reason };
           logInfo("cache_warming.warmup.skipped", {
             ...attributes,
             ...skipReason,
           });
           setOutcome("skipped", skipReason);
+          await recordWarmupSkipped(reason);
         };
         // A long request can leave no time before the cache expires.
         if (warmupTooLate(cacheExpiresAtMs)) {
-          skip("cache_expired");
+          await skip("cache_expired");
           return;
         }
         try {
           const state = await connectedState();
           if (await breakerOpen(state, request.model.id)) {
-            skip("breaker_open");
+            await skip("breaker_open");
             return;
           }
           const decision = decideWarmup({
@@ -203,10 +207,11 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             setOutcome("skipped", {
               "app.cache_warming.skip_reason": "stopped",
             });
+            await recordWarmupSkipped("stopped");
             return;
           }
           if (!decision.warm) {
-            skip(decision.reason);
+            await skip(decision.reason);
             return;
           }
           const startedAtMs = Date.now();
@@ -223,6 +228,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           if (warmup.refreshed) {
             logInfo("cache_warming.warmup.completed", attributes);
             setOutcome("completed");
+            if (waiting?.request === request) waiting.warmupsSent += 1;
             if (current === generation) {
               schedule(cache, startedAtMs, cycle + 1);
             }
@@ -232,7 +238,11 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           }
           // A missed warmup costs as much as one that refreshed the cache.
           // Schedule first, so the write does not delay the next warmup.
-          await recordWarmupCost(request.model.id, warmup.costUsd);
+          await recordWarmup(request.model.id, {
+            costUsd: warmup.costUsd,
+            refreshed: warmup.refreshed,
+            sentAs: "tool_wait",
+          });
         } catch (error) {
           // Nothing awaits this timer, so the failure ends here.
           logWarn("cache_warming.warmup.failed", {
@@ -275,11 +285,13 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     return storedWaitSchema.parse(stored);
   };
 
-  // Count the savings of the tool wait that this request ends.
+  // Count the savings of the tool wait that this request ends. A stored wait
+  // does not keep its warmup count.
   const recordSavings = async (
     previous: StoredWait,
     request: ModelRequest,
     message: AssistantMessage,
+    warmupsSent = 0,
   ) => {
     const ttlMs = providerCacheTtlMs(previous.modelId);
     if (ttlMs === undefined) return;
@@ -293,7 +305,12 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       cacheWritePrice: request.model.cost.cacheWrite,
     });
     if (!savings) return;
-    await recordIdlePeriodSavings(previous.modelId, savings, previous.warmed);
+    await recordIdlePeriodSavings(
+      previous.modelId,
+      savings,
+      previous.warmed,
+      warmupsSent,
+    );
   };
 
   const storedWait = (open: Waiting): StoredWait => ({
@@ -317,14 +334,19 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
         prefixTokens >= MIN_WARMUP_PREFIX_TOKENS && ttlMs !== undefined;
       waiting =
         message.stopReason === "toolUse"
-          ? { request, prefixTokens, warmed }
+          ? { request, prefixTokens, warmed, warmupsSent: 0 }
           : undefined;
       if (waiting && ttlMs !== undefined && warmed) {
         schedule({ request, prefixTokens, ttlMs }, request.startedAtMs, 1);
       }
       if (previous) {
         await recordWait(request.startedAtMs - previous.request.startedAtMs);
-        await recordSavings(storedWait(previous), request, message);
+        await recordSavings(
+          storedWait(previous),
+          request,
+          message,
+          previous.warmupsSent,
+        );
       } else if (stored) {
         // The last run recorded this wait's gap when it ended.
         await recordSavings(stored, request, message);

@@ -6,11 +6,13 @@ import {
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
+import { pruneHourlyStats } from "@/stats";
 
 /**
  * Handle the authenticated internal retention cron. One request runs a single
- * bounded purge batch and returns its counts. Failures are contained here so
- * retention can never affect task execution, heartbeat recovery, or delivery.
+ * bounded purge batch, deletes old hourly counters, and returns the purge
+ * counts. Failures are contained here so retention can never affect task
+ * execution, heartbeat recovery, or delivery.
  */
 export async function GET(
   request: Request,
@@ -21,10 +23,12 @@ export async function GET(
   }
 
   try {
+    const nowMs = Date.now();
     const result = await runRetentionPurge(getSqlExecutor(), {
       attachmentStorage: options.attachmentStorage ?? getAttachmentStorage(),
-      nowMs: Date.now(),
+      nowMs,
     });
+    await pruneHourlyStats(nowMs);
     return Response.json(result, { status: 200 });
   } catch (error) {
     logException(error, "retention.run.failed");
