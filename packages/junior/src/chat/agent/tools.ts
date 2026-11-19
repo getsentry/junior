@@ -78,7 +78,7 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import {
   credentialAuditAttributes,
@@ -92,7 +92,11 @@ import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
-import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { guardianPluginFacts } from "@/chat/guardian/policy";
+import {
+  recordGuardianActionReviewed,
+  recordSkillLoaded,
+} from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -189,7 +193,6 @@ export function createPromptHookContext(args: {
 
 interface ToolWiringArgs {
   abortAgent: () => void;
-  activeSkills: Skill[];
   behavior: TurnBehavior;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
@@ -205,7 +208,9 @@ interface ToolWiringArgs {
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
-  invokedSkill: SkillMetadata | null;
+  invokedSkillNames: readonly string[];
+  /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
+  conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
@@ -532,21 +537,16 @@ export async function wireAgentTools(
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
-      destinationFacts: pluginCatalogRuntime
-        .getProviders()
-        .flatMap(({ manifest }) =>
-          manifest.reviewContext
-            ? [{ plugin: manifest.name, text: manifest.reviewContext }]
-            : [],
-        ),
+      destinationFacts: guardianPluginFacts(
+        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+      ),
       modelId: botConfig.guardianModelId,
     }),
   });
-  const skills = loadableSkills(
-    args.availableSkills,
-    args.invokedSkill?.name,
-    args.activeSkills,
-  );
+  const skills = loadableSkills(args.availableSkills, [
+    ...args.invokedSkillNames,
+    ...args.conversationSkillNames,
+  ]);
   const tools = createTools(
     skills,
     {
@@ -561,18 +561,12 @@ export async function wireAgentTools(
           loadedSkill.name,
         );
         const effective = resolvedSkill ?? loadedSkill;
-        upsertActiveSkill(args.activeSkills, effective);
-        // `loadSkill` reads `skills` on each call, so the manual-only skills
-        // that this skill references become loadable for the rest of the Turn.
-        skills.splice(
-          0,
-          skills.length,
-          ...loadableSkills(
-            args.availableSkills,
-            args.invokedSkill?.name,
-            args.activeSkills,
-          ),
-        );
+        if (effective.disableModelInvocation) {
+          await recordSkillLoaded({
+            conversationId: args.run.conversationId,
+            skillName: effective.name,
+          });
+        }
         await tryRecordSkillLoadStat(effective);
       },
     },

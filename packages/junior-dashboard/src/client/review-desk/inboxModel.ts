@@ -4,7 +4,9 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import {
+  inboxBundles,
   itemNeedsViewer,
+  itemUpForGrabs,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -65,12 +67,12 @@ export function inboxViewPath(
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: ReviewItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: ReviewItemPayload): boolean {
   return Boolean(item.request);
 }
 
@@ -82,9 +84,10 @@ export function itemsInView(
   return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
-function singleRow(item: ReviewItemPayload): InboxBundle {
+/** A row for one item, as a stack or an item view shows it. */
+export function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
-    conversationId: item.addedByConversationId,
+    conversationId: item.rootConversationId,
     items: [item],
     key: item.id,
     needsYou: itemNeedsViewer(item),
@@ -148,18 +151,18 @@ export function foldNotices(items: readonly ReviewItemPayload[]): {
 }
 
 /**
- * The FYI list: one row per open notice, newest first. Notices wait on no
- * one, so they are not in To do.
+ * The FYI list: the open notices, stacked by root Conversation, and the
+ * stack with the newest notice first. Notices wait on no one, so they are
+ * not in To do.
  */
 export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
-  return items
-    .filter((item) => item.status === "open" && item.kind === "notice")
-    .map(singleRow)
-    .sort(
-      (a, b) =>
-        Date.parse(b.waitingSince) - Date.parse(a.waitingSince) ||
-        a.key.localeCompare(b.key),
-    );
+  return inboxBundles(
+    items.filter((item) => item.status === "open" && item.kind === "notice"),
+  ).sort(
+    (a, b) =>
+      Date.parse(b.newest.createdAt) - Date.parse(a.newest.createdAt) ||
+      a.key.localeCompare(b.key),
+  );
 }
 
 /**
@@ -313,7 +316,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -330,6 +333,11 @@ export function sweepOf(
     );
 }
 
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
+}
+
 /**
  * The second line of a row for one item: what it is about, then its
  * Conversation. A part that repeats the item title drops out, and with no
@@ -343,4 +351,66 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The key of the Inbox row that shows a linked open item: its own row, in
+ * Up for grabs or To do. The Inbox lists no Conversations, so an item in
+ * neither has no row here.
+ */
+function linkedInboxRowKey(
+  item: ReviewItemPayload,
+  rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
+): string | undefined {
+  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
+    bundles.some((bundle) => bundle.conversationId === item.rootConversationId)
+      ? `${prefix}:${item.id}`
+      : undefined;
+  const grab = rowIn("grabs", rows.grabs);
+  return (
+    (itemUpForGrabs(item) ? grab : undefined) ??
+    rowIn("todo", rows.todo) ??
+    grab
+  );
+}
+
+/**
+ * The row that a link to one item opens in a list, and the open item that
+ * the row shows. A snoozed item opens its row in Snoozed. A notice folded
+ * into an ask opens the ask's row.
+ */
+export function linkedRowOf(
+  view: InboxView,
+  linkedId: string | undefined,
+  rows: {
+    awake: readonly ReviewItemPayload[];
+    done: readonly ReviewItemPayload[];
+    foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+    grabs: readonly InboxBundle[];
+    snoozed: readonly InboxBundle[];
+    todo: readonly InboxBundle[];
+  },
+): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {
+  if (!linkedId) return {};
+  const snoozedRow = rows.snoozed.find((row) =>
+    row.items.some((item) => item.id === linkedId),
+  );
+  const snoozedKey = snoozedRow ? linkedId : undefined;
+  const hostId = [...rows.foldedNotices].find(([, notices]) =>
+    notices.some((notice) => notice.id === linkedId),
+  )?.[0];
+  const open = rows.awake.find((item) => item.id === (hostId ?? linkedId));
+  const key = (() => {
+    if (view === "snoozed") return snoozedKey;
+    if (view === "done")
+      return rows.done.some((item) => item.id === linkedId)
+        ? linkedId
+        : undefined;
+    if (!open) return undefined;
+    if (view === "prs" || view === "decisions") return open.id;
+    if (view !== "inbox") return `conversation:${open.rootConversationId}`;
+    if (open.kind === "notice") return `fyi:${open.id}`;
+    return linkedInboxRowKey(open, rows);
+  })();
+  return { key, open, snoozedKey };
 }

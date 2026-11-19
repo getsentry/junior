@@ -8,14 +8,18 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
+import { useDashboardCoreData } from "../api";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
-import { foldNotices, fyiRows, type InboxView } from "./inboxModel";
+import { foldNotices, fyiRows, viewRows, type InboxView } from "./inboxModel";
+import { inboxCounts } from "./inboxCounts";
+import { waitingPullRequestCount } from "./InboxPullRequests";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
+  useClosingReviewItemIds,
   useLinkedConversationTitles,
   useReviewItemData,
   useReviewItemStates,
@@ -23,13 +27,13 @@ import {
 } from "./queries";
 import {
   useAutomationAttentionData,
-  useInboxTodoCount,
   useInboxCountData,
   scrollPages,
 } from "./inboxQueries";
 import {
   inboxBundles,
   itemUpForGrabs,
+  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -107,8 +111,9 @@ function useBuildInboxData(input: {
     [setLinkedItems],
   );
   // The items of the open Inbox row, as the list last showed them. When a
-  // read shows them closed, as when an agent or a Watch closes them, they
-  // stay until the row leaves as it does on Dismiss.
+  // read shows one closed, as when an agent or a Watch closes it, it stays
+  // until its card leaves as it does on Dismiss: the list then stops
+  // holding it.
   const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
   const holdOpenRow = useCallback(
     (items: readonly ReviewItemPayload[]) =>
@@ -120,48 +125,86 @@ function useBuildInboxData(input: {
       ),
     [],
   );
-  const read = useMemo(
-    () =>
-      linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
-        ? [...loaded, linked]
-        : loaded,
-    [linked, loaded],
+  // A card that left stops being held, so the list drops it.
+  const releaseHeld = useCallback(
+    (id: string) =>
+      setOpenRow((current) => current.filter((item) => item.id !== id)),
+    [],
   );
-  // Before the first read, no item has left it.
+  // The items of rows that leave, held until their motion ends, by id.
+  const [leaving, setLeaving] = useState<
+    ReadonlyMap<string, ReviewItemPayload>
+  >(() => new Map());
+  const holdLeaving = useCallback(
+    (items: readonly ReviewItemPayload[], held: boolean) =>
+      setLeaving((current) => {
+        const next = new Map(current);
+        for (const item of items) {
+          if (held) next.set(item.id, item);
+          else next.delete(item.id);
+        }
+        return next;
+      }),
+    [],
+  );
+  // The viewer's actions in flight already took their items out. A read
+  // that the server answered before an action lands has them still open.
+  const closing = useClosingReviewItemIds();
+  const read = useMemo(() => {
+    const open = loaded.filter((item) => !closing.has(item.id));
+    return linked?.status === "open" &&
+      !closing.has(linked.id) &&
+      !open.some((item) => item.id === linked.id)
+      ? [...open, linked]
+      : open;
+  }, [closing, linked, loaded]);
+  // Before the first read, no item has left it. The viewer's own actions
+  // did not close an item elsewhere.
   const missing = useMemo(
     () =>
       itemsQuery.data
-        ? openRow.filter((item) => !read.some((open) => open.id === item.id))
+        ? openRow.filter(
+            (item) =>
+              !read.some((open) => open.id === item.id) &&
+              !closing.has(item.id) &&
+              !leaving.has(item.id),
+          )
         : [],
-    [itemsQuery.data, openRow, read],
+    [closing, itemsQuery.data, leaving, openRow, read],
   );
   // An item can leave the loaded pages and still be open, so each one's
   // own read says whether it closed. Until then, it stays.
   const states = useReviewItemStates(missing.map((item) => item.id));
   const closedElsewhere = useMemo(
-    () =>
-      // A row with an item still open stays, without the closed ones.
-      missing.length === openRow.length &&
-      states.every((state) => state === "closed")
-        ? missing
-        : [],
-    [missing, openRow, states],
+    () => missing.filter((_item, index) => states[index] === "closed"),
+    [missing, states],
   );
   const list = useMemo(() => {
     const held = missing.flatMap((item, index) => {
       const state = states[index] ?? "pending";
-      if (state === "pending") return [item];
-      if (state !== "closed") return [state];
-      return closedElsewhere.length > 0 ? [item] : [];
+      return state === "pending" || state === "closed" ? [item] : [state];
     });
-    return held.length > 0 ? [...read, ...held] : read;
-  }, [closedElsewhere, missing, read, states]);
+    const shown = new Set([...read, ...held].map((item) => item.id));
+    const left = [...leaving.values()].filter((item) => !shown.has(item.id));
+    return held.length > 0 || left.length > 0
+      ? [...read, ...held, ...left]
+      : read;
+  }, [leaving, missing, read, states]);
+  // Closed items, newest closed first, as Done lists them. A Conversation
+  // row says what the viewer answered until the Conversation moves on.
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
+  const { items: closed } = useReviewItemsData({
+    closed: true,
+    enabled: signedIn,
+    forViewer: true,
+  });
+  const answerOf = (conversation: Conversation): string | undefined =>
+    conversationAnswerLine(closed, conversation, viewerEmail);
   const attention = useAutomationAttentionData(signedIn);
-  // The server counts what waits on the viewer for the tab badge. To do
+  // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
   // stop it.
   const serverCounts = useInboxCountData(signedIn).data;
-  const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
   const snoozes = useInboxSnoozes(nowMs);
@@ -178,7 +221,7 @@ function useBuildInboxData(input: {
     () => [
       ...new Set(
         list
-          .map((item) => item.addedByConversationId)
+          .map((item) => item.rootConversationId)
           .filter((id) => !conversationById.has(id)),
       ),
     ],
@@ -194,19 +237,7 @@ function useBuildInboxData(input: {
   const { folded: foldedNotices, shown } = foldNotices(
     list.filter((item) => !sweeper.isSwept(item.id)),
   );
-  // A Conversation sleeps when the row snoozed for it, in To do (its asks)
-  // or in Conversations (its items), still has the same newest item.
-  const sleepingConversations = new Set(
-    [
-      ...inboxBundles(shown),
-      ...inboxBundles(shown.filter((item) => item.kind === "action")),
-    ]
-      .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
-      .map((bundle) => bundle.conversationId),
-  );
-  const asleep = (item: ReviewItemPayload) =>
-    sleepingConversations.has(item.addedByConversationId) ||
-    snoozes.sleeps(item.id, item.id);
+  const asleep = snoozes.sleeps;
   const awake = shown.filter((item) => !asleep(item));
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
@@ -214,10 +245,12 @@ function useBuildInboxData(input: {
 
   // To do holds the asks that name the viewer. Asks for Everyone are up for
   // grabs, and notices are FYI.
+  const todoRowsOf = (items: readonly ReviewItemPayload[]) =>
+    inboxBundles(
+      items.filter((item) => item.kind === "action" && !itemUpForGrabs(item)),
+    ).filter((bundle) => bundle.needsYou);
   const asks = awake.filter((item) => item.kind === "action");
-  const todoRows = inboxBundles(
-    asks.filter((item) => !itemUpForGrabs(item)),
-  ).filter((bundle) => bundle.needsYou);
+  const todoRows = todoRowsOf(awake);
   const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
   const snoozedRows = inboxBundles(shown.filter(asleep));
 
@@ -245,8 +278,6 @@ function useBuildInboxData(input: {
     );
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
-  // The Inbox's own stream leaves notices to its FYI list.
-  const inboxStreamRows = rowsByTime(inboxBundles(asks));
 
   // In flight: every pin and every running Conversation. Running rows come
   // first, a running pin with them, then the other pins in the viewer's
@@ -265,22 +296,64 @@ function useBuildInboxData(input: {
     ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
 
-  // The server counts each entry, so items past the loaded pages count
-  // too. Done has no count: it would need every closed item.
+  const todoAutomations = automations.filter(
+    (automation) => !alerts.hidden(automation),
+  );
+  // Each badge counts its page's rows (`inboxCounts`). A row that leaves
+  // after a read shows its items closed counts no more.
+  const onPage = closedElsewhere.length
+    ? awake.filter((item) => !closedElsewhere.includes(item))
+    : awake;
+  const known = closedElsewhere.length
+    ? list.filter((item) => !closedElsewhere.includes(item))
+    : list;
+  const pageCounts = inboxCounts({
+    automationCards: automationCards(),
+    hasMore: itemsQuery.hasNextPage,
+    known,
+    loaded: itemsQuery.data ? loaded : undefined,
+    rows: {
+      decisions: viewRows(onPage, "decisions").length,
+      prs: waitingPullRequestCount(viewRows(onPage, "prs")),
+      // A stack shows a row for each of its items.
+      todo: todoRowsOf(onPage).reduce(
+        (rows, row) => rows + row.items.length,
+        0,
+      ),
+    },
+    server: serverCounts,
+  });
+  // Alerts put away in this browser leave To do. Only the attention list
+  // says which Automations they are. Until it loads, show no count: a count
+  // that drops after load marks a false update on a pinned tab. A failed
+  // list cannot say, so all count.
+  function automationCards(): number | undefined {
+    if (attention.data) return todoAutomations.length;
+    if (attention.error) return serverCounts?.automations;
+    if (!serverCounts) return undefined;
+    const counted = serverCounts.automations ?? 0;
+    return counted > 0 && alerts.anyPutAway ? undefined : counted;
+  }
+  // Snoozed and Automations count on the server. Done has no count: it
+  // would need every closed item.
   const counts: Partial<Record<InboxView | "automations", number>> = {
     automations: serverCounts?.automations,
-    decisions: serverCounts?.decisions,
-    inbox: todoCount,
-    prs: serverCounts?.codeChanges,
+    decisions: pageCounts.decisions,
+    inbox: pageCounts.todo,
+    prs: pageCounts.prs,
     snoozed: serverCounts?.snoozed,
   };
 
   return {
     alerts,
+    /** What the viewer answered last in a Conversation, while it is news. */
+    answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
+    /** The Automations that need attention are in, so To do is complete. */
+    automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
-    /** The open row's items, held after a read shows them all closed. */
+    /** The open row's items, held after a read shows them closed. */
     closedElsewhere,
     conversationById,
     conversationRows,
@@ -289,10 +362,11 @@ function useBuildInboxData(input: {
     /** The notices that fold into each ask's row, by the ask's id. */
     foldedNotices,
     fyiRows: fyiRows(awake),
+    /** Keep a row's items while it leaves, after a read drops them. */
+    holdLeaving,
     holdOpenRow,
     includedId: linkedId,
     includeItem,
-    inboxStreamRows,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(running),
     /** Collapsed In flight: every pin, and running rows up to the limit. */
@@ -308,16 +382,16 @@ function useBuildInboxData(input: {
     nowMs,
     /** Every pin, in the viewer's stored order. */
     pinned,
+    releaseHeld,
     signedIn,
     snoozedRows,
     /** Automation alerts for To do: those the viewer has not put away. */
-    todoAutomations: automations.filter(
-      (automation) => !alerts.hidden(automation),
-    ),
+    todoAutomations,
     snoozes,
     sweeper,
     titleOf,
-    todoCount,
+    /** To do's count, the same as its badge, or undefined until known. */
+    todoCount: pageCounts.todo,
     todoRows,
     grabRows,
   };

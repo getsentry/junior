@@ -84,7 +84,7 @@ test("opens a link that the cached latest page holds at its row", async ({
   mock.pagedDetail = true;
   const pageRequests = recordPageRequests(page);
   // A hover caches the latest page, which holds event 100.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -124,7 +124,7 @@ test("opens at the latest event when a link at open fails", async ({
   });
   mock.pagedDetail = true;
   // A hover caches the latest page, so it shows while the link loads.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -177,9 +177,8 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     .filter({ hasText: "Dashboard transcript events should remain" })
     .getByRole("button", { name: "Go to message" })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
+  // The capture has no row, so the message before it shows.
+  await expect(transcript.getByText("Transcript message 12 ")).toBeInViewport();
   expect(pageRequests).toEqual(["?event=13"]);
   await screenshot(page, "conversation-memory-opens-around-event");
 });

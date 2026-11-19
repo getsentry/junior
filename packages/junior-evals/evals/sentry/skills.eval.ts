@@ -6,7 +6,10 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  loadedSkillNames,
+} from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
 
 /** The connected Sentry account of the default Slack person. */
@@ -53,11 +56,7 @@ describe("Sentry Skill Workflows", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("loadSkill", conversation).map(
-        (call) => (call.input as { skill_name?: unknown }).skill_name,
-      ),
-    ).toContain("sentry");
+    expect(loadedSkillNames(conversation)).toContain("sentry");
     expect(issueListCommands(conversation)).not.toHaveLength(0);
   });
 

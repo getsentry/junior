@@ -27,7 +27,7 @@ const VERSIONS_POLL_MS = 5_000;
 
 /**
  * A reader with no input for this long is away: the tab can be visible on
- * another screen, but nobody acts on it. Hidden tabs do not poll at all.
+ * another screen, but nobody acts on it.
  */
 const AWAY_AFTER_MS = 5 * 60_000;
 
@@ -36,6 +36,12 @@ const AWAY_AFTER_MS = 5 * 60_000;
  * poll. Input checks at once.
  */
 const AWAY_POLL_MS = 10_000;
+
+/**
+ * Poll interval while the tab is hidden. It keeps the count in the tab title
+ * and on the tab icon about a minute fresh, at a low cost.
+ */
+const HIDDEN_POLL_MS = 60_000;
 
 const READER_INPUT_EVENTS = [
   "focus",
@@ -141,9 +147,14 @@ export function useVersionsPoll(
     },
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
     refetchInterval: () =>
-      readerIsAway(lastInputAtMs.current) ? AWAY_POLL_MS : VERSIONS_POLL_MS,
+      document.visibilityState !== "visible"
+        ? HIDDEN_POLL_MS
+        : readerIsAway(lastInputAtMs.current)
+          ? AWAY_POLL_MS
+          : VERSIONS_POLL_MS,
+    refetchIntervalInBackground: true,
     retry: false,
-    // Hidden tabs do not poll. Check at once when the tab shows again.
+    // Check at once when the tab shows again.
     staleTime: 0,
   });
   useEffect(() => {

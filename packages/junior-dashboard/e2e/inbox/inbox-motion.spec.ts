@@ -157,21 +157,41 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   for (const motion of ["no-preference", "reduce"] as const) {
-    test(`Dismiss opens the next row (${motion} motion)`, async ({
+    test(`Dismiss of a row's last ask opens the next row (${motion} motion)`, async ({
       dashboard,
       page,
     }) => {
       await page.emulateMedia({ reducedMotion: motion });
       await page.goto(`${dashboard.baseURL}/`);
-      const rows = todoRows(page);
-      const first = rows.first();
-      const nextKey = await rows.nth(1).getAttribute("data-inbox-row");
-      await expandRow(first.locator("a[data-inbox-head]").first());
-      // The row bar's Dismiss is the last one in the open row.
-      await first
-        .getByRole("button", { exact: true, name: "Dismiss" })
-        .last()
-        .click();
+      // Each To do entry is a row, or a stack of rows. When the first
+      // entry's last ask leaves, the next entry's first row opens.
+      const entryRow = (index: number) =>
+        page
+          .getByRole("region", { name: "To do" })
+          .locator(":scope > ul > li")
+          .nth(index)
+          .locator("xpath=descendant-or-self::li[@data-inbox-row][1]");
+      const first = entryRow(0);
+      const firstKey = await first.getAttribute("data-inbox-row");
+      const nextKey = await entryRow(1).getAttribute("data-inbox-row");
+      await expandRow(first.locator("[data-inbox-head]").first());
+      const open = page.locator(
+        `li[data-inbox-row="${firstKey}"][data-expanded]`,
+      );
+      const cards = open.locator("[data-inbox-card]");
+      while ((await open.count()) > 0) {
+        const left = await cards.count();
+        await cards
+          .first()
+          .getByRole("button", { exact: true, name: "Dismiss" })
+          .click();
+        await expect
+          .poll(
+            async () =>
+              (await open.count()) === 0 || (await cards.count()) < left,
+          )
+          .toBe(true);
+      }
       await expect(
         page.locator(`li[data-inbox-row="${nextKey}"]`),
       ).toHaveAttribute("data-expanded", "true");
@@ -188,11 +208,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       {
         ...license,
         addedByConversationId: "slack:CLICENSE:1770003600.000400",
+        rootConversationId: "slack:CLICENSE:1770003600.000400",
         createdAt: "2026-08-07T08:10:00.000Z",
       },
       {
         ...audit,
         addedByConversationId: "slack:CAUDIT:1770003600.000500",
+        rootConversationId: "slack:CAUDIT:1770003600.000500",
         createdAt: "2026-08-07T08:20:00.000Z",
       },
     ];
@@ -223,9 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await refocus();
       },
       row: (index: number) =>
-        page.locator(
-          `li[data-inbox-row="todo:${asks[index]!.addedByConversationId}"]`,
-        ),
+        page.locator(`li[data-inbox-row="todo:${asks[index]!.id}"]`),
     };
   }
 
@@ -294,12 +314,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const newer = {
       ...license,
       addedByConversationId: "slack:CNEWER:1770003600.000600",
+      rootConversationId: "slack:CNEWER:1770003600.000600",
       createdAt: "2026-08-07T08:30:00.000Z",
       id: "item-newer",
     };
     await asks.addAndRefocus(newer);
     await expect(
-      page.locator(`li[data-inbox-row="todo:${newer.addedByConversationId}"]`),
+      page.locator(`li[data-inbox-row="todo:${newer.id}"]`),
     ).toBeVisible();
     await page.evaluate(
       () =>
