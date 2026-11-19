@@ -57,7 +57,7 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   "pull_request.review.commented": PULL_REQUEST_FEEDBACK,
   "pull_request.comment.created": PULL_REQUEST_FEEDBACK,
   "pull_request.review_comment.created": `${PULL_REQUEST_FEEDBACK} Then resolve the thread with github_resolvePullRequestReviewThread.`,
-  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge.`,
+  "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. A conflict fix is your own work and gives nobody a next step, so when it lands, end the Turn with noReply. Post in the thread only when you cannot fix it and a person must act.`,
 };
 
 /** Combine provider defaults with app guidance for pull request events. */

@@ -193,7 +193,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName url }
       }
     }
   }

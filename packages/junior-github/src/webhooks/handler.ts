@@ -437,7 +437,6 @@ export function createGitHubWebhookRoute(args: {
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          reviewItems: args.reviewItems,
         })),
       );
       for (const event of events) {

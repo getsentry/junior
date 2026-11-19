@@ -44,6 +44,9 @@ also wake a Conversation or run an Event automation.
   matches it.
 - When a Junior PR is approved, merged, or closed, Junior posts nothing,
   but its later replies in that Conversation know it.
+- Junior fixes merge conflicts on its PRs itself and tells nobody. When it
+  stops fixing a PR that nobody works on, it tells nobody
+  ([Notifications](./notifications.md)).
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 

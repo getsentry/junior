@@ -634,17 +634,20 @@ A draft pull request never gets this event. Each event starts an agent turn,
 so for a pull request that Junior opened, the event publishes only while
 people work on it:
 
-- In the first 2 days after the latest push, review, or comment by a person,
+- In the first 3 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day
   and 3 times in total.
-- After that, or after the third event, Junior publishes no event. It adds
-  a review desk notice to the conversation that asked for the pull request.
-  The notice closes when the conflict is gone.
-- After 3 days without activity by a person, Junior does nothing.
+- After that, or after the third event, Junior does nothing and tells
+  nobody. A conflict is Junior's own work, so it never asks a person to fix
+  it. The next activity by a person starts the fixes again.
 - An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, until
+  gets the event after those 3 days too, and without the daily wait, until
   the total limit. The ready to merge notice needs a clean merge state, so it
   comes after the fix.
+
+The default guidance tells the agent to end the turn with no reply after the
+fix lands, and to post only when it cannot fix the conflict and a person must
+act.
 
 Junior stores none of this. For each conflict, it reads the pull request's
 timeline and review decision from GitHub. Merges and force pushes by a bot

@@ -1,15 +1,17 @@
 /**
- * When a merge conflict wakes Junior. A fix is a full agent turn, so only a
- * Junior pull request that people still work on gets one:
+ * When a merge conflict wakes Junior. A conflict on a Junior pull request is
+ * Junior's own work, so it goes to the agent and never to a person. A fix is
+ * a full agent turn, so only a pull request that people still work on gets
+ * one:
  *
  * - A draft gets nothing.
- * - In the first 2 days after the latest activity by a person, Junior fixes
+ * - In the first 3 days after the latest activity by a person, Junior fixes
  *   the conflict, at most once a day and 3 times in total.
- * - After that, or after the third fix, Junior adds a review desk notice to
- *   the Conversation that asked for the pull request.
- * - After 3 days without activity by a person, nothing.
+ * - After that, or after the third fix, nothing. Nobody is told: a stopped
+ *   fix gives a person nothing to do. The next activity by a person starts
+ *   the fixes again.
  * - An approved pull request would be ready to merge but for the conflict,
- *   so it gets a fix after the 2 days too, and without the daily wait. The
+ *   so it gets a fix after the 3 days too, and without the daily wait. The
  *   ready to merge notice needs a clean merge state, so it waits for the
  *   fix. The total limit still holds.
  *
@@ -34,10 +36,7 @@ import { juniorGitHubPullRequests } from "../db/schema.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
-import type {
-  GitHubMergeConflict,
-  GitHubPullRequestRef,
-} from "../webhooks/merge-conflict.js";
+import type { GitHubPullRequestRef } from "../webhooks/merge-conflict.js";
 
 // Notices that one change closes at once.
 const NOTICE_CLOSE_CONCURRENCY = 8;
@@ -45,15 +44,12 @@ const NOTICE_CLOSE_CONCURRENCY = 8;
 const DAY_MS = 24 * 60 * 60_000;
 
 /** Time after activity by a person in which Junior fixes conflicts. */
-const ACTIVE_MS = 2 * DAY_MS;
-
-/** Time after activity by a person after which conflicts do nothing. */
-const IDLE_MS = 3 * DAY_MS;
+const ACTIVE_MS = 3 * DAY_MS;
 
 /** Shortest time between two fixes of one pull request. */
 const FIX_INTERVAL_MS = DAY_MS;
 
-/** Fixes of one pull request before Junior only adds the notice. */
+/** Fixes of one pull request before Junior stops fixing it. */
 const MAX_FIXES = 3;
 
 const actorSchema = z.object({ __typename: z.string() }).nullable();
@@ -167,91 +163,40 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   };
 }
 
-type GitHubConflictAction = "fix" | "notice" | "skip";
-
-/** Decide what a conflict on one open Junior pull request does. */
-function gitHubConflictAction(
+/** Decide whether a conflict on one open Junior pull request gets a fix. */
+function gitHubConflictNeedsFix(
   history: GitHubConflictHistory,
   nowMs: number,
-): GitHubConflictAction {
+): boolean {
   const { approved, fixedAtMs } = history;
-  const idleMs = nowMs - history.activeAtMs;
-  if (idleMs > IDLE_MS && !approved) return "skip";
-  if ((idleMs <= ACTIVE_MS || approved) && history.fixes < MAX_FIXES) {
-    return !approved &&
-      fixedAtMs !== undefined &&
-      nowMs - fixedAtMs < FIX_INTERVAL_MS
-      ? "skip"
-      : "fix";
-  }
-  return "notice";
+  if (history.fixes >= MAX_FIXES) return false;
+  if (approved) return true;
+  if (nowMs - history.activeAtMs > ACTIVE_MS) return false;
+  return fixedAtMs === undefined || nowMs - fixedAtMs >= FIX_INTERVAL_MS;
 }
 
-/** The dedupe key of the merge conflict notice of one pull request. */
+/**
+ * The dedupe key of the merge conflict notice of one pull request. Junior
+ * adds no such notice, but open ones close when the conflict goes away, or
+ * when the pull request merges or closes.
+ */
 export function gitHubConflictNoticeKey(ref: GitHubPullRequestRef): string {
   return `merge-conflict:${ref.repositoryFullName.toLowerCase()}#${ref.number}`;
 }
 
-async function addNotice(
-  args: {
-    conflict: GitHubMergeConflict;
-    db: GitHubDb;
-    ref: GitHubPullRequestRef;
-    reviewItems: PluginConversationReviewItems;
-    title?: string;
-  },
-  fixes: number,
-): Promise<void> {
-  const { conflict, ref, title } = args;
-  const opener = (
-    await listGitHubPullRequestOpeners(args.db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-  // Only a pull request that a person asked for has a Conversation.
-  if (!opener?.conversationId) return;
-  const url =
-    conflict.url ??
-    `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const name = title ? `**${title}**` : "This pull request";
-  const reason =
-    fixes >= MAX_FIXES
-      ? `conflicts were already fixed ${fixes} times`
-      : "nobody worked on it in the last 2 days";
-  // An open notice with the key only gets new content, so a check of a
-  // conflict that has a notice adds no second one.
-  await args.reviewItems.forConversation(opener.conversationId).upsert({
-    assigneeIdentityIds: [opener.identityId],
-    body: `${name} has merge conflicts with \`${conflict.baseBranch}\`. Automatic fixes stopped, because ${reason}. If they are still there, ask in this thread to fix them: ${url}`,
-    dedupeKey: gitHubConflictNoticeKey(ref),
-    subject: {
-      id: url,
-      title: title ? `${title} (#${ref.number})` : url,
-      url,
-    },
-    title: `Merge conflict · #${ref.number}`,
-  });
-}
-
 /**
  * Return the merge conflict events to publish for one conflicted pull
- * request that a Watch or event automation wants. A fix returns `events`.
- * A notice goes to the review desk and returns no events. The notice is
- * optional, so a failure is logged, and the next check tries again.
+ * request that a Watch or event automation wants. A Junior pull request
+ * that gets no fix returns no events.
  */
 export async function applyGitHubConflictPolicy(args: {
-  conflict: GitHubMergeConflict;
   db: GitHubDb;
   draft: boolean;
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
-  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
-  title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const t = juniorGitHubPullRequests;
@@ -262,27 +207,7 @@ export async function applyGitHubConflictPolicy(args: {
     .limit(1);
   if (!row) return args.events;
   const history = parseGitHubConflictHistory(await args.loadHistory(args.ref));
-  const action = gitHubConflictAction(history, args.now.getTime());
-  // A fix keeps an open notice. Core delivers one fix per head commit, so
-  // a fix of a head that Junior failed to fix starts no turn, and the
-  // notice is the only ask left. It closes when the conflict is gone.
-  if (action === "fix") return args.events;
-  if (action === "notice") {
-    try {
-      await addNotice(args, history.fixes);
-    } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub merge conflict notice failed",
-        error,
-        {
-          number: args.ref.number,
-          repository: args.ref.repositoryFullName,
-        },
-      );
-    }
-  }
-  return [];
+  return gitHubConflictNeedsFix(history, args.now.getTime()) ? args.events : [];
 }
 
 /** Why a merge conflict notice closes when GitHub reports no conflict. */

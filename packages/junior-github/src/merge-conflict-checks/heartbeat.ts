@@ -58,7 +58,6 @@ const searchNodeSchema = z.union([
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
     state: z.string(),
-    title: z.string(),
     url: z.string().min(1),
   }),
   z.object({}).strict(),
@@ -89,7 +88,6 @@ async function checkConflict(
     conflict: GitHubMergeConflict;
     draft: boolean;
     ref: { number: number; repositoryFullName: string };
-    title: string;
   },
 ): Promise<void> {
   const events = gitHubMergeConflictEvents({
@@ -99,16 +97,12 @@ async function checkConflict(
   // Conflict events match only `repo` and `pullRequest`.
   if (!(await args.events.hasMatch?.(events))) return;
   for (const event of await applyGitHubConflictPolicy({
-    conflict: input.conflict,
     db: args.db,
     draft: input.draft,
     events,
     loadHistory: args.loadHistory,
-    log: args.log,
     now: args.now,
     ref: input.ref,
-    reviewItems: args.reviewItems,
-    title: input.title,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
     await args.events.publish(event);
@@ -143,7 +137,6 @@ async function checkRepository(
         conflict,
         draft: node.isDraft,
         ref,
-        title: node.title,
       });
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
