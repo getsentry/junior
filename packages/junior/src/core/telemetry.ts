@@ -19,8 +19,8 @@ export type Span = {
   setAttributes(attributes: SpanAttributes): void;
 };
 
-/** Trace propagation headers of one span, as sent with work to another host. */
-type TraceContext = { sentryTrace: string; baggage?: string };
+/** The `sentry-trace` header of one span, as sent with work to another host. */
+type TraceContext = { sentryTrace: string };
 
 type WithSpanOptions = {
   /**
@@ -46,11 +46,13 @@ function spanLink({ sentryTrace }: TraceContext) {
 
 /** Returns the trace context of the active span, so other work can link to it. */
 export function activeTraceContext(): TraceContext | undefined {
-  const { "sentry-trace": sentryTrace, baggage } = Sentry.getTraceData();
-  if (!sentryTrace) {
-    return undefined;
-  }
-  return baggage ? { sentryTrace, baggage } : { sentryTrace };
+  const sentryTrace = Sentry.getTraceData()["sentry-trace"];
+  return sentryTrace ? { sentryTrace } : undefined;
+}
+
+/** Sets attributes on the active span, such as ids that a step learns late. */
+export function setActiveSpanAttributes(attributes: SpanAttributes): void {
+  Sentry.getActiveSpan()?.setAttributes(attributes);
 }
 
 // OpenTelemetry status code for an error.

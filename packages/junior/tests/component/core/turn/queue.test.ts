@@ -14,6 +14,7 @@ import type {
 } from "@/chat/queue/provider";
 import { QUEUE_SIGNATURE_MAX_AGE_MS } from "@/chat/queue/sign";
 import * as Sentry from "@/chat/sentry";
+import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
   publishTurnStep,
   TURN_STEP_TOPIC,
@@ -103,6 +104,7 @@ describe("turn step queue", () => {
         topic: TURN_STEP_TOPIC,
         payload: expect.objectContaining({
           turnId: TURN_ID,
+          traceContext: { sentryTrace: expect.any(String) },
           signature: expect.any(String),
         }),
         options: {
@@ -128,8 +130,8 @@ describe("turn step queue", () => {
   it("runs a verified message in a new trace that links to the publisher", async () => {
     const payload = await publishFromRequest();
     const [publish] = byOp("queue.publish");
-    const run = vi.fn<RunTurnStep>(async (_message, _metadata, span) => {
-      span.setAttributes({
+    const run = vi.fn<RunTurnStep>(async () => {
+      setActiveSpanAttributes({
         "app.turn.step_seq": 3,
         "gen_ai.conversation.id": "slack:C123:1",
       });
@@ -138,11 +140,7 @@ describe("turn step queue", () => {
 
     await turnStepCallback(run).consumer.handler(payload, delivery);
 
-    expect(run).toHaveBeenCalledWith(
-      { turnId: TURN_ID },
-      delivery,
-      expect.anything(),
-    );
+    expect(run).toHaveBeenCalledWith({ turnId: TURN_ID }, delivery);
     const [processed] = byOp("queue.process");
     expect(processed?.trace_id).not.toBe(publish?.trace_id);
     expect(processed).toMatchObject({

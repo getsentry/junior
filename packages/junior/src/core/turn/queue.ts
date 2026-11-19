@@ -16,7 +16,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-import { activeTraceContext, withSpan, type Span } from "@/core/telemetry";
+import { activeTraceContext, withSpan } from "@/core/telemetry";
 
 /** Queue topic of Turn step messages. */
 export const TURN_STEP_TOPIC = "junior_turn_step";
@@ -31,10 +31,7 @@ const turnStepMessageSchema = z
   .object({
     turnId: z.string().min(1),
     traceContext: z
-      .object({
-        sentryTrace: z.string().min(1),
-        baggage: z.string().optional(),
-      })
+      .object({ sentryTrace: z.string().min(1) })
       .strict()
       .optional(),
   })
@@ -49,7 +46,6 @@ const turnStepSign = {
   parts: (message: TurnStepMessage) => [
     message.turnId,
     message.traceContext?.sentryTrace ?? "",
-    message.traceContext?.baggage ?? "",
   ],
 };
 
@@ -96,11 +92,13 @@ export async function publishTurnStep(
   );
 }
 
-/** Runs one Turn step message. `span` is the `queue.process` span. */
+/**
+ * Runs one Turn step message inside the `queue.process` span. Set ids that
+ * the claim returns on that span with `setActiveSpanAttributes`.
+ */
 export type RunTurnStep = (
   message: { turnId: string },
   metadata: QueueMessageMetadata,
-  span: Span,
 ) => Promise<void>;
 
 /**
@@ -133,7 +131,7 @@ export function turnStepCallback(run: RunTurnStep) {
             Date.now() - metadata.createdAt.getTime(),
           "messaging.message.retry.count": metadata.deliveryCount - 1,
         },
-        (span) => run({ turnId: message.turnId }, metadata, span),
+        () => run({ turnId: message.turnId }, metadata),
         {
           links: message.traceContext ? [message.traceContext] : [],
           newTrace: true,
