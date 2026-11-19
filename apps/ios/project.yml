@@ -14,6 +14,7 @@ fileGroups:
   - README.md
   - project.yml
   - Makefile
+  - Brewfile
   - Gemfile
   - Gemfile.lock
   - .ruby-version
