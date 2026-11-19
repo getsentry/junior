@@ -51,6 +51,11 @@ export interface ConversationMessageMeta {
   /** Quiet message from older history: stored, but not delivered. */
   quiet?: true;
   replied?: boolean;
+  /**
+   * The request words of an Event Message's inputs, such as a parent
+   * agent's task, so a resumed Turn recalls from them as the first did.
+   */
+  requestText?: string;
   /** Person changes to Review items that this Message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;

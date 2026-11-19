@@ -54,6 +54,7 @@ import {
 import {
   conversationIsActiveSql,
   conversationStatusSql,
+  conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
 import { conversationFeedSchema } from "../schema/conversation-feed";
@@ -385,6 +386,11 @@ export function conversationFeedVersionQuery(
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
       status: conversationStatusSql(juniorConversations).as("status"),
+      // The root's own wait on the viewer can start while its status
+      // already reads `needs_input` for someone else.
+      waitsOnViewer: conversationWaitsOnUserSql(juniorConversations, userId).as(
+        "waits_on_viewer",
+      ),
       title: juniorConversations.title,
       activity: shownActivityMinute(
         juniorConversations.executionStatus,
@@ -430,7 +436,7 @@ export function conversationFeedVersionQuery(
     order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
     pin: byRow(page.pinnedAt, page.pinPosition),
     title: byRow(page.title, page.channelName),
-    status: byRow(page.status),
+    status: byRow(page.status, page.waitsOnViewer),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
     threads: byRow(page.threads),

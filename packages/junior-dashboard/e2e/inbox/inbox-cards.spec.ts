@@ -135,12 +135,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await density("compact");
     await expect(qa.getByRole("group", { name: "Files" })).toHaveCount(0);
     await expect(qa.getByRole("group", { name: "Images" })).toHaveCount(0);
-    // Compact rows name each piece of work by its title and number, in its
-    // status color, on one line.
+    // Compact rows name each piece of work by its number, in its status
+    // color, on one line. Its title is its name and its tooltip.
     await expect(release.locator("[data-linked-work-card]")).toHaveCount(0);
     const chips = release.locator("[data-linked-work-chip]");
-    await expect(chips.first()).toHaveText(
-      "Return 429 before parsing oversized envelopes#44",
+    await expect(chips.first()).toHaveAccessibleName(
+      "Return 429 before parsing oversized envelopes #44",
     );
     await expect(chips.first().locator("[data-status-tone]")).toHaveAttribute(
       "data-status-tone",

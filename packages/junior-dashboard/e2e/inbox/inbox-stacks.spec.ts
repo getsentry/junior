@@ -105,6 +105,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a sub-thread's ask on its own names the sub-thread once, in its head", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [childLicense, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const row = rowOf(page, childLicense);
+    const child = row.getByRole("link", { name: /Read the agent logs/ });
+    // The head names the root and the sub-thread, in full: the line has
+    // room, so it does not fade.
+    await expect(child).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByText(/› Read the agent logs$/)).not.toHaveAttribute(
+      "data-overflow",
+    );
+    // The open row's detail does not name it again.
+    await child.click();
+    await expect(child).toHaveAttribute("aria-expanded", "true");
+    await expect(child).toHaveCount(1);
+  });
+
   for (const motion of ["no-preference", "reduce"] as const) {
     test(`a row click opens the row, each row dismisses by itself, and next stays in the stack (${motion} motion)`, async ({
       dashboard,

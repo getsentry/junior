@@ -6,7 +6,9 @@ import {
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@dashboard/lib/utils";
+import { codeChangeSize } from "../codeChangeSize";
 import { ActorAvatar } from "../components/ActorAvatar";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { Sparkline } from "../components/charts/Sparkline";
@@ -121,6 +123,8 @@ export function ObjectCard({
   );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
+  const size = card.facts?.type === "code_change" ? card.facts : undefined;
+  const sized = codeChangeSize(size) !== undefined;
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
@@ -211,7 +215,7 @@ export function ObjectCard({
             spans={card.facts.spans}
           />
         )}
-        {(card.status || fields.length > 0) && (
+        {(card.status || fields.length > 0 || sized) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
           <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
             {card.status && (
@@ -243,6 +247,17 @@ export function ObjectCard({
                 </dd>
               </div>
             ))}
+            {sized && (
+              <div className="min-w-0">
+                <dt className="text-xs text-dashboard-text-muted">Size</dt>
+                <dd className="m-0 mt-1">
+                  <ChangeSize
+                    className="text-sm text-dashboard-text"
+                    size={size}
+                  />
+                </dd>
+              </div>
+            )}
           </dl>
         )}
         {card.description && (

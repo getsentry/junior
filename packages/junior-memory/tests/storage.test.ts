@@ -33,8 +33,10 @@ import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
+import { reembedMemories } from "../src/reembed";
 import {
   memoryArchiveTool,
+  memoryRestoreTool,
   memoryCreateTool,
   memoryListTool,
   memorySearchTool,
@@ -712,6 +714,7 @@ describe("memory plugin storage", () => {
       archiveMemory: disabled,
       createMemory: disabled,
       listMemories: "enabled",
+      restoreMemory: disabled,
       searchMemories: "enabled",
     };
     expect(toolStates({ kind: "agent_invocation" })).toEqual(readOnly);
@@ -739,6 +742,7 @@ describe("memory plugin storage", () => {
       archiveMemory: "enabled",
       createMemory: "enabled",
       listMemories: "enabled",
+      restoreMemory: "enabled",
       searchMemories: "enabled",
     });
   });
@@ -2748,6 +2752,87 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(hiddenDeleteResponse.status).toBe(404);
+
+      // Archived public memory is listed apart, and deleting its archive
+      // restores it.
+      const archivedResponse = await api.fetch(
+        new Request("http://localhost/memories?archived=true"),
+        requestContext,
+      );
+      const archived = memoryListResponseSchema.parse(
+        await archivedResponse.json(),
+      ).memories;
+      expect(archived.map((memory) => memory.id).sort()).toEqual(
+        [publicMemory.memory.id, second.memory.id].sort(),
+      );
+      expect(archived).toContainEqual(
+        expect.objectContaining({
+          archiveReason: "user_removed",
+          archivedAt: new Date(TEST_NOW_MS).toISOString(),
+          id: publicMemory.memory.id,
+        }),
+      );
+      const archivedDetailResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories/${publicMemory.memory.id}?archived=true`,
+        ),
+        requestContext,
+      );
+      expect(
+        memoryApiSchema.parse(await archivedDetailResponse.json()),
+      ).toMatchObject({ archiveReason: "user_removed" });
+      const restorePatch = (id: string, body: unknown) =>
+        api.fetch(
+          new Request(`http://localhost/memories/${id}`, {
+            body: JSON.stringify(body),
+            headers: { "content-type": "application/json" },
+            method: "PATCH",
+          }),
+          requestContext,
+        );
+      const invalidPatch = await restorePatch(publicMemory.memory.id, {
+        archived: "no",
+      });
+      expect(invalidPatch.status).toBe(400);
+      const restoreResponse = await restorePatch(publicMemory.memory.id, {
+        archived: false,
+      });
+      expect(restoreResponse.status).toBe(200);
+      expect(memoryApiSchema.parse(await restoreResponse.json())).toEqual(
+        expect.not.objectContaining({ archivedAt: expect.anything() }),
+      );
+      // The heartbeat writes the vectors that archive deleted.
+      await reembedMemories({
+        batchSize: 10,
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+      });
+      await expect(
+        memoryDb(fixture)
+          .select({ memoryId: memorySqlSchema.juniorMemoryEmbeddings.memoryId })
+          .from(memorySqlSchema.juniorMemoryEmbeddings)
+          .where(
+            eq(
+              memorySqlSchema.juniorMemoryEmbeddings.memoryId,
+              publicMemory.memory.id,
+            ),
+          ),
+      ).resolves.toHaveLength(1);
+      for (const id of [publicMemory.memory.id, hiddenId]) {
+        const missingRestore = await restorePatch(id, { archived: false });
+        expect(missingRestore.status).toBe(404);
+      }
+
+      // A new memory that reused the archived one's write key keeps it.
+      await firstStore.createConversationMemory({
+        content: "Deploy runbooks live in Confluence.",
+        idempotencyKey: "session:api:second",
+        kind: "knowledge",
+      });
+      const conflictResponse = await restorePatch(second.memory.id, {
+        archived: false,
+      });
+      expect(conflictResponse.status).toBe(409);
     } finally {
       now.mockRestore();
       await fixture.close();
@@ -3825,6 +3910,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       const tools = {
         createMemory: bindPluginTool(memoryCreateTool, context),
         archiveMemory: bindPluginTool(memoryArchiveTool, context),
+        restoreMemory: bindPluginTool(memoryRestoreTool, context),
         listMemories: bindPluginTool(memoryListTool, context),
         searchMemories: bindPluginTool(memorySearchTool, context),
       };
@@ -3956,6 +4042,21 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       await expect(
         tools.searchMemories.execute({ query: "terse status" }, {}),
       ).resolves.toMatchObject({ memories: [] });
+      await expect(
+        tools.listMemories.execute({ archived: true }, {}),
+      ).resolves.toMatchObject({ memories: [{ id: personal!.id }] });
+      await expect(
+        tools.restoreMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+      ).resolves.toMatchObject({
+        memory: { content: "Prefers terse status updates.", id: personal!.id },
+      });
+      await expect(
+        tools.restoreMemory.execute({ id: personal!.id }, {}),
+      ).rejects.toBeInstanceOf(PluginToolInputError);
+      await expect(
+        tools.searchMemories.execute({ query: "terse status" }, {}),
+      ).resolves.toMatchObject({ memories: [{ id: personal!.id }] });
+      await tools.archiveMemory.execute({ id: personal!.id }, {});
 
       await expect(
         bindPluginTool(memoryCreateTool, {
@@ -4056,7 +4157,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
             content: "I prefer duplicate-safe retries.",
             expires_at: "never",
           },
-          { toolCallId: "tool-create-personal" },
+          { toolCallId: "tool-create-after-archive" },
         ),
       ).resolves.toMatchObject({
         created: true,
@@ -4317,6 +4418,122 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
+  it("skips memories that the replayed history already holds", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const context = slackContext();
+      const db = memoryDb(fixture);
+      const embedder = createTestEmbedder();
+      const otherStore = createMemoryStore(
+        db,
+        slackContext({ threadTs: "1718800999.000000" }),
+        { embedder, now: () => nowMs },
+      );
+      const thisStore = createMemoryStore(db, context, {
+        embedder,
+        now: () => nowMs,
+      });
+      const injected = await otherStore.createConversationMemory({
+        content: "Release notes live in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-injected",
+      });
+      const changed = await otherStore.createConversationMemory({
+        content: "Deploys go out on Tuesdays.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-changed",
+      });
+      const fresh = await otherStore.createConversationMemory({
+        content: "Runbooks live in the wiki.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-fresh",
+      });
+      const beforeCompaction = await thisStore.createConversationMemory({
+        content: "Staging resets every night.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-before-compaction",
+      });
+      const historyStartedAtMs = nowMs + 10;
+      nowMs += 20;
+      const capturedHere = await thisStore.createConversationMemory({
+        content: "The deploy freeze starts on Friday.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-captured-here",
+      });
+      const snapshot = (
+        memory: typeof injected.memory,
+        content = memory.content,
+      ) => ({
+        id: memory.id,
+        content,
+        kind: memory.kind,
+        observedAtMs: memory.observedAtMs,
+        scope: "conversation" as const,
+      });
+
+      const emitted: PluginConversationEventValue[] = [];
+      const result = await memoryPlugin().hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        users: memoryUsers(context.userId),
+        db,
+        embedder,
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
+        async loadHistory() {
+          return {
+            startedAtMs: historyStartedAtMs,
+            contexts: [
+              {
+                kind: "recall",
+                version: 1,
+                loadedAtMs: historyStartedAtMs + 5,
+                content: {
+                  memories: [
+                    snapshot(injected.memory),
+                    snapshot(changed.memory, "Deploys go out on Mondays."),
+                  ],
+                },
+              },
+            ],
+          };
+        },
+        log: noopLogger,
+        model: recallOnlyModel,
+        plugin: { name: "memory" },
+        reranker: testReranker(),
+        setSpanAttributes() {},
+        state: memoryState,
+        text: "What should I know before the deploy?",
+      });
+
+      // The history still holds the unchanged injected memory and the facts
+      // captured here after it started. A changed memory and a memory
+      // captured here before the History replacement come back.
+      const contribution = result?.[0];
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      const recalledIds = contribution.context.content["memories"].map(
+        (memory) => memory.id,
+      );
+      expect([...recalledIds].sort()).toEqual(
+        [changed.memory.id, fresh.memory.id, beforeCompaction.memory.id].sort(),
+      );
+      expect(recalledIds).not.toContain(capturedHere.memory.id);
+      expect(emitted).toEqual([
+        expect.objectContaining({ data: { memories: recalledIds } }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("admits only candidates whose rerank score clears the threshold", async () => {
     const fixture = await createMemoryFixture();
 
@@ -4516,7 +4733,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("skips user prompt memory recall when prompt text is blank", async () => {
+  it("skips recall when no person wrote text for the Turn", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -5221,7 +5438,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("recreates archived memories instead of resolving retries to hidden rows", async () => {
+  it("keeps an archived memory archived when a retry reuses its write key", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -5242,34 +5459,17 @@ INSERT INTO junior_memory_memories (
       await store.archiveMemory({ id: archived.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const recreated = await store.createMemory({
-        content: "Prefers short deployment summaries.",
-        kind: "preference",
-        idempotencyKey: "explicit-create-archived",
-      });
-      expect(recreated).toMatchObject({
-        created: true,
-        memory: { content: archived.memory.content },
-      });
-      expect(recreated.memory.id).not.toBe(archived.memory.id);
-
-      nowMs = TEST_NOW_MS + 3;
       await expect(
         store.createMemory({
-          content: "Changed content with the recreated retry key.",
+          content: "Prefers short deployment summaries.",
           kind: "preference",
           idempotencyKey: "explicit-create-archived",
         }),
       ).resolves.toMatchObject({
         created: false,
-        memory: {
-          id: recreated.memory.id,
-          content: recreated.memory.content,
-        },
+        memory: { id: archived.memory.id },
       });
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: recreated.memory.id }),
-      ]);
+      await expect(store.listMemories({})).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

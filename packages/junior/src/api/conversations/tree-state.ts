@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { ConversationTreeState } from "@/api/schema/conversation-tree-state";
 import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import {
@@ -62,6 +62,10 @@ function needsUserSql(userId: string) {
  * `watching` is set when a Conversation in the tree that is not stopped has
  * an active Watch or a pending Timer. It is not part of the shared status.
  *
+ * An archived child and its descendants count for nothing, since the feed
+ * hides them. Archive takes a child's descendants with it. The
+ * Conversation itself counts even when it is archived.
+ *
  * Children use the visibility of their root, so a viewer who can see the
  * row may see its tree state. It shows no child's content.
  *
@@ -99,6 +103,12 @@ export async function readConversationTreeStates(
       eq(
         conversationSubtreeColumns.conversationId,
         juniorConversations.conversationId,
+      ),
+    )
+    .where(
+      or(
+        eq(juniorConversations.conversationId, scopeId),
+        isNull(juniorConversations.archivedAt),
       ),
     )
     .groupBy(scopeId);

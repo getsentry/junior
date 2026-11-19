@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { AVATAR_WIDTH } from "@/chat/identities/avatar";
 import { getDb } from "@/chat/db";
 import { readImage } from "@/chat/images/read";
+import type { WaitUntilFn } from "@/handlers/types";
 import {
   readableSlackTeamId,
   readConversationAccessFromSql,
@@ -32,7 +33,9 @@ import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
-export function createPeopleRoutes(): Hono<JuniorApiEnv> {
+export function createPeopleRoutes(options: {
+  waitUntil: WaitUntilFn;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   // Profile photos keep this stable path. The shared image code fetches and
@@ -62,7 +65,10 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   });
 
   app.get("/", async () =>
-    jsonResponse(actorDirectoryReportSchema, await readPeopleList()),
+    jsonResponse(
+      actorDirectoryReportSchema,
+      await readPeopleList({ waitUntil: options.waitUntil }),
+    ),
   );
 
   // Before `/:email`, which would also match `/search`.
