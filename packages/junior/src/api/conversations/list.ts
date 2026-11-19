@@ -57,7 +57,6 @@ import {
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
-import { conversationFeedSchema } from "../schema/conversation-feed";
 import type {
   ConversationFeed,
   ConversationFeedInclude,
@@ -792,7 +791,8 @@ export async function readConversationFeed(
     viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
-  return conversationFeedSchema.parse(
-    await readConversationFeedFromSql(options),
-  );
+  // Not parsed here: each caller's edge validates what it sends. The HTTP
+  // route parses the feed in `jsonResponse`, and the MCP SDK checks
+  // `structuredContent` against the tool's output schema.
+  return readConversationFeedFromSql(options);
 }
