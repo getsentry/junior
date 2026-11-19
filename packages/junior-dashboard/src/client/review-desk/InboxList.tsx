@@ -200,8 +200,11 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
+  const { includedId, includeItem } = data;
   // In the Inbox, an ask that waits on someone else gets no row, so its
-  // link does not replace the item that an earlier link kept.
+  // link does not replace the item that an earlier link kept. It still
+  // joins a To do stack that another item keeps there; the kept item does
+  // not count, since the link replaces it.
   const linkedGetsRow =
     !linked.data ||
     view !== "inbox" ||
@@ -209,7 +212,11 @@ export function InboxList(props: {
     itemUpForGrabs(linked.data) ||
     itemNeedsViewer(linked.data) ||
     data.todoRows.some(
-      (row) => row.conversationId === linked.data?.rootConversationId,
+      (row) =>
+        row.conversationId === linked.data?.rootConversationId &&
+        row.items.some(
+          (item) => item.id !== includedId && itemNeedsViewer(item),
+        ),
     );
   // Stream rows show a page at a time, so a linked row can be past them.
   const linkedStreamIndex =
@@ -219,7 +226,6 @@ export function InboxList(props: {
         )
       : -1;
   const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
-  const { includedId, includeItem } = data;
   useEffect(() => {
     if (!linkedId) return;
     // The router moves the URL as soon as the reader leaves, before this
