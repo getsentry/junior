@@ -45,7 +45,10 @@ export type StepInput = {
  * can retry the step or end the Turn.
  */
 export type StepResult =
-  | { outcome: "continue" | "completed"; messages: Message[] }
+  | {
+      outcome: "continue" | "completed";
+      messages: Array<AssistantMessage | ToolResultMessage>;
+    }
   | { outcome: "failed"; error: string; reply: AssistantMessage };
 
 /** Runs one step of a Turn: the pending tool calls if there are any, else one model request. */

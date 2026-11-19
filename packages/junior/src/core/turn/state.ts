@@ -12,20 +12,22 @@
 // A Turn starts as queued. completed, failed and cancelled are final: no
 // function changes them.
 //
-// | Change                 | Turn must be      | lease_epoch | attempts | step_seq | Lease    |
-// | ---------------------- | ----------------- | ----------- | -------- | -------- | -------- |
-// | claimTurn              | queued            | +1          | +1       |          | set      |
-// | heartbeat              | running, fenced   |             |          |          | extended |
-// | commitStep (continue)  | running, fenced   |             | 0        | +1       | kept     |
-// | commitStep (completed) | running, fenced   |             | 0        | +1       | cleared  |
-// | completeTurn           | running, fenced   |             |          |          | cleared  |
-// | failTurn               | running, fenced   |             |          |          | cleared  |
-// | cancelTurn             | queued or running | +1          |          |          | cleared  |
-// | reclaimExpired         | running, expired  |             |          |          | cleared  |
+// | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
+// | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
+// | claimTurn              | queued                | +1          | +1       |          | set      |
+// | heartbeat              | running, fenced       |             |          |          | extended |
+// | commitStep (continue)  | running, fenced, step |             | 0        | +1       | kept     |
+// | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
+// | completeTurn           | running, fenced       |             |          |          | cleared  |
+// | failTurn               | running, fenced       |             |          |          | cleared  |
+// | cancelTurn             | queued or running     | +1          |          |          | cleared  |
+// | reclaimExpired         | running, expired      |             |          |          | cleared  |
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
-// `false`. Lease times use the database clock, so hosts agree on expiry.
+// `false`. Step: the write also matches only at the caller's claimed
+// `step_seq`, so a second commit of the same step changes nothing. Lease times
+// use the database clock, so hosts agree on expiry.
 //
 // commitStep takes the Conversation lock before it touches the Turn row. A
 // writer that needs both takes them in this order, so writers cannot deadlock.
@@ -111,12 +113,12 @@ export async function heartbeat(
 /**
  * Commits a step in one transaction: it appends the step's messages to the
  * Conversation history and moves the Turn to its next step, or ends it when
- * the step completed the Turn. False when the lease is lost, and then nothing
- * is written.
+ * the step completed the Turn. False when the lease is lost or the step is
+ * already committed, and then nothing is written.
  */
 export async function commitStep(
   executor: JuniorSqlDatabase,
-  turn: TurnLease & { conversationId: string },
+  turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
 ): Promise<boolean> {
   const nextStep = {
@@ -144,6 +146,7 @@ export async function commitStep(
           and(
             holdsLease(turn),
             eq(juniorTurns.conversationId, turn.conversationId),
+            eq(juniorTurns.stepSeq, turn.stepSeq),
           ),
         )
         .returning({ id: juniorTurns.id });

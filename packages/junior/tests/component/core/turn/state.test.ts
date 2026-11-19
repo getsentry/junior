@@ -313,6 +313,24 @@ describe("Turn state", () => {
     });
   });
 
+  it("rejects a second commit of the same step, and appends nothing", async () => {
+    const claimed = (await claim())!;
+    const messages = [toolCallReply(), toolResult()];
+    await commitStep(fixture.sql, claimed, { outcome: "continue", messages });
+    const committed = await readTurn();
+
+    await expect(
+      commitStep(fixture.sql, claimed, { outcome: "continue", messages }),
+    ).resolves.toBe(false);
+
+    expect(committed.stepSeq).toBe(1);
+    await expect(readTurn()).resolves.toEqual(committed);
+    await expect(loadHistory()).resolves.toEqual({
+      types: ["assistant_message", "tool_result"],
+      messages,
+    });
+  });
+
   it("rejects a commit after reclaim or with a stale lease_epoch, and appends nothing", async () => {
     const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
     await reclaimExpired(fixture.sql);
