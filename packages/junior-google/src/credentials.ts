@@ -161,6 +161,24 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/v4\/spreadsheets\/[A-Za-z0-9_-]+\/values:batchGet$/,
   },
+  "google.slides.page.get": {
+    access: "read",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+\/pages\/[A-Za-z0-9_:-]+$/,
+  },
+  "google.slides.page.thumbnail": {
+    access: "read",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+\/pages\/[A-Za-z0-9_:-]+\/thumbnail$/,
+  },
+  "google.slides.presentation.batchUpdate": {
+    access: "write",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+:batchUpdate$/,
+  },
   "google.slides.presentation.get": {
     access: "read",
     host: GOOGLE_SLIDES_API_DOMAIN,

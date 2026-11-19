@@ -2,8 +2,8 @@
 
 Proof of concept. Junior uses its own Google Workspace account, such as
 `junior@example.com`, to schedule meetings, read Meet transcripts, read
-Google Docs, Sheets, and Slides that are shared with that account, and create
-and edit Google Docs. Junior does
+Google Docs, Sheets, and Slides that are shared with that account, create
+and edit Google Docs, and edit Google Slides. Junior does
 not use the Google credentials of the people it helps.
 
 ## Setup
@@ -12,7 +12,8 @@ not use the Google credentials of the people it helps.
    Calendar, Docs, Drive, Sheets, and Slides APIs.
 2. Use an **Internal** consent screen. Add the scopes
    `calendar.events.freebusy`, `calendar.events.readonly`,
-   `calendar.events.owned`, `documents`, `drive.file`, and `drive.readonly`.
+   `calendar.events.owned`, `documents`, `drive.file`, `drive.readonly`, and
+   `presentations`.
    After you add a scope, reconnect the account in step 7.
 3. Add the redirect URIs
    `https://<junior host>/api/plugins/google/oauth/callback` and
@@ -63,5 +64,12 @@ organization as Junior's account.
 Each edit of an existing Doc needs the `revision_id` that `readGoogleFile` or
 the last edit returned. If someone changed the Doc after that, the edit is
 refused, so Junior never changes text that it did not read.
+
+Slides edits follow the same rules. Junior edits a presentation only for a
+requester who can edit it. `updateGoogleSlides` sends Slides API
+`batchUpdate` requests at the `revision_id` that `readGoogleSlidesLayout` or
+the last edit returned. `getGoogleSlideThumbnail` renders a slide so Junior
+can check its work. The sandbox downloads the rendered image, which needs no
+credential.
 
 Plugin setup: https://junior.sentry.dev/extend/
