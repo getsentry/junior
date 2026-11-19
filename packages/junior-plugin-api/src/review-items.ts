@@ -1,6 +1,7 @@
 import type { PluginContext } from "./context";
 import type { EventPublisher } from "./events";
 import type { PluginState } from "./state";
+import type { PluginEventToolContext } from "./tools";
 
 /**
  * An item that a plugin puts on the review desk: a notice for information,
@@ -79,4 +80,6 @@ export interface ReviewItemAnsweredHookContext extends PluginContext {
   /** Review desk items, as from a plugin route. */
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
+  /** Create or renew Watches for the item's Conversation, as a tool can. */
+  watches: PluginEventToolContext;
 }

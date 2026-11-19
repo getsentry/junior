@@ -13,6 +13,7 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import { listWatches } from "@/chat/events/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { getReviewItem } from "@/chat/review-items/store";
@@ -94,9 +95,29 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
           displayName: "Deploys",
           description: "Deploy test plugin",
         },
+        events: {
+          resourceTypes: [
+            { type: "service", supportedEvents: ["deploy.stopped"] },
+          ],
+          events: { "deploy.stopped": { reach: "resource" } },
+        },
         hooks: {
-          reviewItemAnswered({ choice, conversationId, dedupeKey, itemId }) {
+          async reviewItemAnswered(ctx) {
+            const { choice, conversationId, dedupeKey, itemId } = ctx;
             answers.push({ choice, conversationId, dedupeKey, itemId });
+            // The plugin can watch again for the item's Conversation, such
+            // as when the Watch that the work needs has expired.
+            await ctx.watches.subscribe({
+              events: ["deploy.stopped"],
+              intent: "Fix the deploys of api when they stop.",
+              resource: {
+                identifier: "api",
+                label: "Service api",
+                namespace: "deploys",
+                supported_events: ["deploy.stopped"],
+                type: "service",
+              },
+            });
           },
         },
       }),
@@ -159,6 +180,13 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     closedBy: { userId: ana.user.id },
     status: "done",
   });
+  expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([
+    expect.objectContaining({
+      events: ["deploy.stopped"],
+      identifier: "api",
+      namespace: "deploys",
+    }),
+  ]);
   // The plugin does the work, so the Conversation only records the answer.
   const conversation = await getConversation({
     conversationId: CONVERSATION_ID,

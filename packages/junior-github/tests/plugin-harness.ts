@@ -87,7 +87,14 @@ export function createPluginHarness(fixture: GitHubFixture) {
       notice: PluginReviewNotice;
     }>,
     published: [] as EventInput[],
+    /** Watches that the plugin made, with the events published before. */
+    subscribed: [] as Array<{
+      events: string[];
+      identifier: string;
+      publishedBefore: number;
+    }>,
   };
+  /** Whether the Conversation watches comments and conflicts on 946. */
   const watches = { comments: true, conflicts: true };
   /** Review desk calls that fail before one succeeds. */
   const failures = { upsert: 0 };
@@ -232,6 +239,20 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       reviewItems,
       state,
+      watches: {
+        canSubscribe: true,
+        async subscribe({ events: watched, resource }) {
+          recorded.subscribed.push({
+            events: watched,
+            identifier: resource.identifier,
+            publishedBefore: recorded.published.length,
+          });
+          if (watched.includes("pull_request.merge_conflict")) {
+            watches.conflicts = true;
+          }
+          return { events: watched, id: "watch-1" };
+        },
+      },
     });
   }
 

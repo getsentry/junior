@@ -370,6 +370,10 @@ export function githubPlugin(
             await loadPullRequest(installationEnv, pullRequest),
           nowMs: ctx.nowMs,
           ref,
+          subscription: gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          watches: ctx.watches,
         });
       },
       async heartbeat(ctx) {

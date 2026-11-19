@@ -4,10 +4,18 @@
  * at once, through the same `pull_request.merge_conflict` event as a fix
  * that the policy allows.
  */
-import type { EventPublisher } from "@sentry/junior-plugin-api";
+import type {
+  EventPublisher,
+  PluginEventToolContext,
+} from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequests } from "../db/schema.js";
+import {
+  gitHubPullRequestCreateWatch,
+  gitHubPullRequestSubscribable,
+  type GitHubPullRequestSubscriptionConfig,
+} from "../events/pull-request.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
 import {
   gitHubMergeConflictEvents,
@@ -28,6 +36,10 @@ export async function resumeGitHubConflictFixes(args: {
   loadPullRequest(ref: GitHubPullRequestRef): Promise<unknown>;
   nowMs: number;
   ref: GitHubPullRequestRef;
+  /** The Watch that Junior makes for its pull requests, if the app has one. */
+  subscription: GitHubPullRequestSubscriptionConfig | undefined;
+  /** Watches of the item's Conversation. */
+  watches: PluginEventToolContext;
 }): Promise<void> {
   const t = juniorGitHubPullRequests;
   const resumed = await args.db
@@ -40,6 +52,21 @@ export async function resumeGitHubConflictFixes(args: {
     await args.loadPullRequest(args.ref),
   );
   if (loaded.state !== "open" || loaded.mergeable === true) return;
+  // The pull request's Watch can expire while fixes are stopped. Renew it
+  // first, so the fix event reaches the Conversation.
+  const resource = gitHubPullRequestSubscribable({
+    canSubscribe: args.watches.canSubscribe,
+    number: args.ref.number,
+    repo: args.ref.repositoryFullName,
+  });
+  if (args.subscription && resource) {
+    await args.watches.subscribe({
+      ...gitHubPullRequestCreateWatch(args.subscription, {
+        draft: loaded.draft === true,
+      }),
+      resource,
+    });
+  }
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {

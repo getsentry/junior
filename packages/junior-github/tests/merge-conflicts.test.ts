@@ -609,7 +609,18 @@ describe("merge conflict check on webhook events", () => {
         itemId: "item-1",
         nowMs: pushedAt + 4 * hour,
       };
+      // The Watch expired while fixes were stopped. Resume renews it before
+      // it starts the fix, so the fix event reaches the Conversation.
+      h.watches.conflicts = false;
+      const publishedBefore = h.published.length;
       await h.answer(resume);
+      expect(h.subscribed).toEqual([
+        {
+          events: expect.arrayContaining(["pull_request.merge_conflict"]),
+          identifier: "getsentry/junior#946",
+          publishedBefore,
+        },
+      ]);
       const resumed = conflicts().filter((event) =>
         event.eventKey.endsWith(":resume:item-1"),
       );
