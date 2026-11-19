@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mentionsTag } from "@sentry/junior-plugin-api";
 import { pathToFileURL } from "node:url";
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
 import {
@@ -217,22 +220,25 @@ async function collectPackageWarnings(
     return warnings;
   }
 
-  for (const declaredPackage of packages) {
-    if (!declaredPackage.name.startsWith("@sentry/junior-")) {
-      continue;
-    }
-    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-    if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
-      continue;
-    }
-    const pluginVersion = comparableVersion(
-      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-      (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
-        declaredPackage.spec,
-    );
-    if (pluginVersion && pluginVersion !== coreVersion) {
+  const pluginVersions = await mapBounded(
+    packages.filter((declaredPackage) =>
+      declaredPackage.name.startsWith("@sentry/junior-"),
+    ),
+    async (declaredPackage) => {
+      if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
+        return undefined;
+      }
+      const version = comparableVersion(
+        (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
+          declaredPackage.spec,
+      );
+      return { name: declaredPackage.name, version };
+    },
+  );
+  for (const plugin of pluginVersions) {
+    if (plugin?.version && plugin.version !== coreVersion) {
       warnings.push(
-        `${path.join(rootDir, "package.json")}: ${declaredPackage.name} version ${pluginVersion} does not match @sentry/junior version ${coreVersion}`,
+        `${path.join(rootDir, "package.json")}: ${plugin.name} version ${plugin.version} does not match @sentry/junior version ${coreVersion}`,
       );
     }
   }
@@ -276,9 +282,10 @@ async function validateSkillDirectory(
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
   if (
-    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b/.test(
       parsed.skill.body,
-    )
+    ) ||
+    mentionsTag(parsed.skill.body, ["active-mcp-tools", "active-mcp-catalogs"])
   ) {
     errors.push(
       `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,
@@ -510,17 +517,15 @@ async function collectPluginDirectories(rootDir: string): Promise<string[]> {
     return pluginDirs;
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
-    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-    if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
-      pluginDirs.push(pluginDir);
-    }
-  }
+  await mapBounded(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
+      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+        pluginDirs.push(pluginDir);
+      }
+    },
+  );
 
   return pluginDirs.sort((left, right) => left.localeCompare(right));
 }
@@ -535,68 +540,70 @@ async function collectPackagedContent(
   const pluginSources: PluginSource[] = [];
   const skillRoots: PackagedSkillRoot[] = [];
 
-  for (const declaredPackage of packages) {
-    const packageDir = packageInstallDir(rootDir, declaredPackage.name);
-    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-    if (!(await pathIsDirectory(packageDir))) {
-      continue;
-    }
-
-    const rootManifestPath = path.join(packageDir, "plugin.yaml");
-    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-    const hasRootManifest = await pathIsFile(rootManifestPath);
-    const packageSkillsRoot = path.join(packageDir, "skills");
-    // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-    const hasPackageSkills = await pathIsDirectory(packageSkillsRoot);
-
-    if (hasRootManifest) {
-      pluginSources.push({
-        pluginDir: packageDir,
-        manifestPath: rootManifestPath,
-        packageName: declaredPackage.name,
-      });
-    } else if (hasPackageSkills) {
-      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-      const jsPluginSources = await collectPackageJsPluginSources(
-        packageDir,
-        declaredPackage.name,
-      );
-      if (jsPluginSources.length > 0) {
-        pluginSources.push(...jsPluginSources);
-      } else {
-        skillRoots.push({
-          root: packageSkillsRoot,
-          packageName: declaredPackage.name,
-        });
+  // Each file system call takes a limiter slot. A package's work does not
+  // hold one, so its nested calls cannot wait on each other.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    packages.map(async (declaredPackage) => {
+      const packageDir = packageInstallDir(rootDir, declaredPackage.name);
+      if (!(await limit(() => pathIsDirectory(packageDir)))) {
+        return;
       }
-    }
 
-    const nestedPluginsRoot = path.join(packageDir, "plugins");
-    let nestedEntries;
-    try {
-      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-      nestedEntries = await fs.readdir(nestedPluginsRoot, {
-        withFileTypes: true,
-      });
-    } catch {
-      continue;
-    }
+      const rootManifestPath = path.join(packageDir, "plugin.yaml");
+      const packageSkillsRoot = path.join(packageDir, "skills");
+      const [hasRootManifest, hasPackageSkills] = await Promise.all([
+        limit(() => pathIsFile(rootManifestPath)),
+        limit(() => pathIsDirectory(packageSkillsRoot)),
+      ]);
 
-    for (const entry of nestedEntries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const pluginDir = path.join(nestedPluginsRoot, entry.name);
-      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+      if (hasRootManifest) {
         pluginSources.push({
-          pluginDir,
-          manifestPath: path.join(pluginDir, "plugin.yaml"),
+          pluginDir: packageDir,
+          manifestPath: rootManifestPath,
           packageName: declaredPackage.name,
         });
+      } else if (hasPackageSkills) {
+        const jsPluginSources = await limit(() =>
+          collectPackageJsPluginSources(packageDir, declaredPackage.name),
+        );
+        if (jsPluginSources.length > 0) {
+          pluginSources.push(...jsPluginSources);
+        } else {
+          skillRoots.push({
+            root: packageSkillsRoot,
+            packageName: declaredPackage.name,
+          });
+        }
       }
-    }
-  }
+
+      const nestedPluginsRoot = path.join(packageDir, "plugins");
+      let nestedEntries;
+      try {
+        nestedEntries = await limit(() =>
+          fs.readdir(nestedPluginsRoot, { withFileTypes: true }),
+        );
+      } catch {
+        return;
+      }
+
+      await Promise.all(
+        nestedEntries
+          .filter((entry) => entry.isDirectory())
+          .map(async (entry) => {
+            const pluginDir = path.join(nestedPluginsRoot, entry.name);
+            const manifestPath = path.join(pluginDir, "plugin.yaml");
+            if (await limit(() => pathIsFile(manifestPath))) {
+              pluginSources.push({
+                pluginDir,
+                manifestPath,
+                packageName: declaredPackage.name,
+              });
+            }
+          }),
+      );
+    }),
+  );
 
   return {
     pluginSources: pluginSources.sort((left, right) =>
@@ -888,15 +895,21 @@ async function validateAppSourceFiles(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  for (const fileName of ["server.ts", "server.js", "nitro.config.ts"]) {
-    const sourcePath = path.join(rootDir, fileName);
-    let source: string;
-    try {
-      // oxlint-disable-next-line no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time.
-      source = await fs.readFile(sourcePath, "utf8");
-    } catch {
+  const sources = await Promise.all(
+    ["server.ts", "server.js", "nitro.config.ts"].map(async (fileName) => {
+      const sourcePath = path.join(rootDir, fileName);
+      try {
+        return { sourcePath, source: await fs.readFile(sourcePath, "utf8") };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  for (const file of sources) {
+    if (!file) {
       continue;
     }
+    const { source, sourcePath } = file;
 
     if (/\bpluginPackages\s*:/.test(source)) {
       errors.push(
@@ -995,22 +1008,25 @@ export async function runCheck(
   ];
   const appSkillsRoot = contentRoot(resolvedRoot, "skills");
   const appSkillDirs = await collectSkillDirectories(appSkillsRoot);
-  /* oxlint-disable no-await-in-loop -- A local CLI check reads few files, so it reads them one at a time. */
-  const pluginSkillDirs = new Map<string, string[]>();
-  for (const { pluginDir } of pluginSources) {
-    pluginSkillDirs.set(
-      pluginDir,
-      await collectSkillDirectories(path.join(pluginDir, "skills")),
-    );
-  }
-  const packagedSkillDirsByPackage = new Map<string, string[]>();
-  for (const skillRoot of packagedContent.skillRoots) {
-    packagedSkillDirsByPackage.set(
-      skillRoot.packageName,
-      await collectSkillDirectories(skillRoot.root),
-    );
-  }
-  /* oxlint-enable no-await-in-loop */
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const [pluginSkillDirs, packagedSkillDirsByPackage] = await Promise.all([
+    Promise.all(
+      pluginSources.map(({ pluginDir }) =>
+        limit(async (): Promise<[string, string[]]> => [
+          pluginDir,
+          await collectSkillDirectories(path.join(pluginDir, "skills")),
+        ]),
+      ),
+    ).then((entries) => new Map(entries)),
+    Promise.all(
+      packagedContent.skillRoots.map((skillRoot) =>
+        limit(async (): Promise<[string, string[]]> => [
+          skillRoot.packageName,
+          await collectSkillDirectories(skillRoot.root),
+        ]),
+      ),
+    ).then((entries) => new Map(entries)),
+  ]);
   const packagedStandaloneSkillDirs = [
     ...packagedSkillDirsByPackage.values(),
   ].flat();

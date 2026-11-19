@@ -6,6 +6,8 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -19,7 +21,13 @@ import {
   insertReviewItem,
   takeReviewItem,
 } from "@/chat/review-items/store";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorAgentInvocations,
+  juniorConversationParticipants,
+  juniorIdentities,
+} from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -217,6 +225,63 @@ describe("review item actions API", () => {
         },
       ],
     });
+  });
+
+  it("names the people that an item mentions, with their photos", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "bea@example.com",
+        fullName: "Bea Owner",
+        platform: "slack",
+        slackUserId: "UBEA1",
+        teamId: "T123",
+      },
+      conversationId: "slack:CPUB:1.000001",
+      destination: { platform: "slack", teamId: "T123", channelId: "CPUB" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    const [bea] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/bea_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UBEA1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
+    await addItem({
+      kind: "action",
+      title: "Ask <@UBEA1> about acme",
+      body: "<@UBEA1> owns the acme entry.",
+      assignees: ["ana@example.com"],
+      request: { ...REQUEST, question: "Did <@UBEA1> approve it?" },
+    });
+
+    // The names and photos come with the items, in one more statement.
+    const { items } = await (
+      await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+        statements: 5,
+        serialRounds: 4,
+      })
+    ).json();
+    expect(items).toMatchObject([
+      {
+        mentions: [
+          {
+            avatarUrl: avatarPath(bea!.id),
+            email: "bea@example.com",
+            fullName: "Bea Owner",
+            slackUserId: "UBEA1",
+          },
+        ],
+        title: "Ask <@UBEA1> about acme",
+      },
+    ]);
   });
 
   it("shows a Conversation's items to the people in it", async () => {
@@ -463,6 +528,126 @@ describe("review item actions API", () => {
       codeChanges: 0,
       snoozed: 0,
     });
+  });
+
+  it("names the root and the child that added an item the viewer can see", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    const nowMs = Date.parse("2026-10-01T12:00:00.000Z");
+    // A public root with a Thread, and a Task under the Thread.
+    await slackConversation("slack:CPUB:1.000005");
+    await getConversationStore().createChild({
+      childConversationId: "agent:thread-of-5",
+      kind: "thread",
+      nowMs,
+      parentConversationId: "slack:CPUB:1.000005",
+      title: "Check the release notes",
+    });
+    await getConversationStore().createChild({
+      childConversationId: "agent:task-of-thread-of-5",
+      kind: "task",
+      nowMs,
+      parentConversationId: "agent:thread-of-5",
+    });
+    // The Agent invocation's title names the Task.
+    await getDb()
+      .insert(juniorAgentInvocations)
+      .values({
+        actor: { name: "junior", platform: "system" },
+        childConversationId: "agent:task-of-thread-of-5",
+        createdAt: new Date(nowMs),
+        destination: { platform: "slack", teamId: "T123", channelId: "CPUB" },
+        input: "Read the canary logs.",
+        invocationId: "agent-invocation:task-of-thread-of-5",
+        mailboxStatus: "pending",
+        parentConversationId: "agent:thread-of-5",
+        source: { kind: "agent_invocation" },
+        status: "completed",
+        title: "Read the canary logs",
+        updatedAt: new Date(nowMs),
+      });
+    // A private root where Ana takes no part, with a Thread.
+    await getConversationStore().recordActivity({
+      conversationId: "slack:CPRIV:1.000006",
+      destination: { platform: "slack", teamId: "T123", channelId: "CPRIV" },
+      nowMs,
+      source: "slack",
+      visibility: "private",
+    });
+    await getConversationStore().createChild({
+      childConversationId: "agent:thread-of-6",
+      kind: "thread",
+      nowMs,
+      parentConversationId: "slack:CPRIV:1.000006",
+      title: "Rotate the private key",
+    });
+    const add = async (conversationId: string, title: string) => {
+      const created = await insertReviewItem(getDb(), {
+        addedByConversationId: conversationId,
+        assignedToEveryone: false,
+        assigneeUserIds: [ana.id],
+        body: `${title}.`,
+        conversationIds: [conversationId],
+        dedupeKey: `roll-up:${conversationId}`,
+        kind: "notice",
+        nowMs,
+        title,
+        visibility: conversationId.includes("6") ? "private" : "public",
+      });
+      if (!created) throw new Error(`${title} was not added`);
+      return created.id;
+    };
+    const rootItem = await add("slack:CPUB:1.000005", "Root notice");
+    const threadItem = await add("agent:thread-of-5", "Thread notice");
+    const taskItem = await add("agent:task-of-thread-of-5", "Task notice");
+    // Ana sees this item as its assignee, but not the tree that added it.
+    const hiddenItem = await add("agent:thread-of-6", "Private notice");
+
+    const list = await (
+      await expectSqlBudget(
+        () => api(fixture, ana).get("?for=viewer&sort=waiting"),
+        { statements: 8, serialRounds: 6 },
+      )
+    ).json();
+    const byId = new Map<string, Record<string, unknown>>(
+      list.items.map((item: { id: string }) => [item.id, item]),
+    );
+    const root = (id: string) => ({
+      addedByLabel: byId.get(id)?.["addedByLabel"],
+      rootConversationId: byId.get(id)?.["rootConversationId"],
+    });
+    // Every item names its root, a root item its own Conversation.
+    expect(root(rootItem)).toEqual({
+      addedByLabel: undefined,
+      rootConversationId: "slack:CPUB:1.000005",
+    });
+    expect(root(threadItem)).toEqual({
+      addedByLabel: "Check the release notes",
+      rootConversationId: "slack:CPUB:1.000005",
+    });
+    // A child at any depth rolls up to its root.
+    expect(root(taskItem)).toEqual({
+      addedByLabel: "Read the canary logs",
+      rootConversationId: "slack:CPUB:1.000005",
+    });
+    // Ana cannot see that root, so the item's own Conversation stands in.
+    expect(root(hiddenItem)).toEqual({
+      addedByLabel: undefined,
+      rootConversationId: "agent:thread-of-6",
+    });
+    // One item's own read names its root too, as does an action's result.
+    expect(
+      (await (await api(fixture, ana).get(`/${taskItem}`)).json())[
+        "rootConversationId"
+      ],
+    ).toBe("slack:CPUB:1.000005");
+    expect(
+      (
+        await (
+          await api(fixture, ana).act(threadItem, { action: "dismiss" })
+        ).json()
+      )["rootConversationId"],
+    ).toBe("slack:CPUB:1.000005");
   });
 
   it("pages what waits on the viewer first with the waiting sort", async () => {
@@ -784,6 +969,27 @@ describe("review item actions API", () => {
           reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],
         }),
       }),
+    ]);
+    // The next Turn gets the dismiss as a note, so the agent does not keep
+    // treating the item as open.
+    await getTurnLifecycle().start({
+      conversationId: "slack:CPUB:1.000001",
+      createdAtMs: Date.now(),
+      inputMessageIds: ["after-dismiss-message"],
+      surface: "internal",
+      turnId: "after-dismiss",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: "slack:CPUB:1.000001",
+        turnId: "after-dismiss",
+      }),
+    ).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^cal@example\\.com dismissed review item .*\\(${id}\\)\\. It is closed with no answer\\.`,
+        ),
+      ),
     ]);
   });
 });

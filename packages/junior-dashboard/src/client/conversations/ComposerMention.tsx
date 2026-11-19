@@ -1,21 +1,15 @@
 import { createContext, useContext, useState } from "react";
-import { Link } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   conversationInviteResponseSchema,
   type MentionablePerson,
 } from "@sentry/junior/api/schema";
-import { ActorAvatar } from "../components/ActorAvatar";
-import { Button, buttonVariants } from "../components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTitle,
-  PopoverTrigger,
-} from "../components/ui/popover";
-import { peoplePath } from "../format";
+import { PersonCard } from "../components/PersonCard";
+import { Button } from "../components/ui/button";
+import { HoverPreview } from "../components/ui/hover-preview";
 import { post } from "../http";
+import { personFromActor } from "../person";
 import { mentionName } from "./composerMentionToken";
 import { conversationDetailQueryKey } from "./queries";
 
@@ -34,48 +28,45 @@ export const ComposerInviteContext = createContext<
 >(undefined);
 
 /**
- * A person mentioned in the composer: their photo and name, with a card that
- * links their profile and can Invite them. A person whose name the composer
- * does not know shows their Slack id.
+ * A person mentioned in the composer: their photo and name. Hover, focus,
+ * or a tap shows their person card, which can Invite them. A person whose
+ * name the composer does not know shows their Slack id and no card.
  */
 export function ComposerMention(props: {
   person: Partial<MentionablePerson> & { slackUserId: string };
 }) {
   const { person } = props;
-  const name = mentionName(person);
+  const target = useContext(ComposerInviteContext);
+  const card = person.email ? personFromActor(person) : undefined;
+  const chip = (
+    <>
+      {person.avatarUrl ? <MentionPhoto src={person.avatarUrl} /> : null}@
+      {mentionName(person)}
+    </>
+  );
+  const chipProps = {
+    className:
+      "cursor-pointer rounded-sm font-medium whitespace-nowrap text-dashboard-accent-text hover:bg-dashboard-accent/15",
+    "data-mention": person.slackUserId,
+  };
+  if (!card) return <span {...chipProps}>{chip}</span>;
   return (
-    <Popover>
-      <PopoverTrigger
-        className="cursor-pointer rounded-sm font-medium whitespace-nowrap text-dashboard-accent-text hover:bg-dashboard-accent/15"
-        data-mention={person.slackUserId}
-        nativeButton={false}
-        render={<span role="button" tabIndex={-1} />}
-      >
-        {person.avatarUrl ? <MentionPhoto src={person.avatarUrl} /> : null}@
-        {name}
-      </PopoverTrigger>
-      {/* The shared person card replaces this content when it lands, with
-          InviteAction in its actions slot. */}
-      <PopoverContent align="start" className="w-64" side="top">
-        <div className="flex items-center gap-3">
-          <ActorAvatar imageUrl={person.avatarUrl} name={name} size="detail" />
-          <PopoverTitle className="min-w-0 truncate">{name}</PopoverTitle>
-        </div>
-        <div className="mt-3 flex items-center justify-end gap-2 text-xs">
-          {person.email ? (
-            <Link
-              className={buttonVariants({ variant: "ghost" })}
-              to={peoplePath(person.email)}
-            >
-              Profile
-            </Link>
-          ) : null}
-          {person.email ? (
-            <InviteAction slackUserId={person.slackUserId} />
-          ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <HoverPreview
+      content={
+        <PersonCard
+          actions={
+            target ? (
+              <InviteAction slackUserId={person.slackUserId} target={target} />
+            ) : undefined
+          }
+          person={card}
+        />
+      }
+      tapToOpen
+      trigger={<span {...chipProps} role="button" tabIndex={-1} />}
+    >
+      {chip}
+    </HoverPreview>
   );
 }
 
@@ -99,8 +90,11 @@ function MentionPhoto(props: { src: string }) {
  * of an object card adds the object. The API checks again that the
  * Conversation is public and that the viewer can act on it.
  */
-function InviteAction(props: { slackUserId: string }) {
-  const target = useContext(ComposerInviteContext);
+function InviteAction(props: {
+  slackUserId: string;
+  target: ComposerInviteTarget;
+}) {
+  const { target } = props;
   const queryClient = useQueryClient();
   const invite = useMutation({
     mutationFn: (conversationId: string) =>
@@ -114,7 +108,6 @@ function InviteAction(props: { slackUserId: string }) {
         queryKey: conversationDetailQueryKey(conversationId),
       }),
   });
-  if (!target) return null;
   if (
     target.participantSlackUserIds.has(props.slackUserId) ||
     invite.isSuccess

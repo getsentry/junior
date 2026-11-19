@@ -76,7 +76,6 @@ Data that must not be stored:
 - `references/cli-commands.md` contains command selection, flags, use cases, and troubleshooting.
 - `references/deep-link-patterns.md` contains URL templates and link-generation rules.
 - `references/sandbox-runtime.md` contains harness runtime and credential injection guidance.
-- `references/evidence/`, `scripts/`, and `assets/` are currently unused.
 
 ## Evaluation
 
@@ -97,6 +96,5 @@ Data that must not be stored:
 
 - When to update `SKILL.md`: trigger language, workflow order, or global guardrails change.
 - When to update `SOURCES.md`: command surfaces, docs, issue evidence, or runtime dependency behavior changes.
-- When to update `README.md` and this `SPEC.md`: verified Sentry CLI version, canonical command groups, or migration/fallback rules change.
+- When to update this `SPEC.md`: verified Sentry CLI version, canonical command groups, or migration/fallback rules change.
 - When to update `references/cli-commands.md`: any Sentry CLI command, flag, target syntax, or fallback behavior changes.
-- When to update `references/evidence/`: store durable examples of repeated false positives, false blocks, or corrected investigations.

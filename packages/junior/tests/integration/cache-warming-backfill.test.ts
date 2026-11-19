@@ -15,8 +15,16 @@ import {
   scanIdlePeriods,
 } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
-import { recordWarmupCost } from "@/chat/cache-warming/savings";
-import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import {
+  addHistoryPeriod,
+  recordWarmupCost,
+  replaceHistorySavings,
+  type HistorySavings,
+} from "@/chat/cache-warming/savings";
+import {
+  runSavingsRefillSlice,
+  startSavingsRefill,
+} from "@/chat/cache-warming/savings-refill";
 import { GLOBAL_GAPS_TTL_MS } from "@/chat/cache-warming/warmup";
 import {
   agentInstructionProvenance,
@@ -46,7 +54,7 @@ const MINUTE = 60_000;
 const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // Older releases wrote `done` here with no TTL.
 const LEGACY_BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
-const REFILL_KEY = "junior:cache_warming:savings_refill:v1";
+const REFILL_KEY = "junior:cache_warming:savings_refill:v3";
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 const SEGMENTS = [
   "user:1:none",
@@ -396,6 +404,27 @@ describe("cache warming savings re-fill", () => {
     );
   }
 
+  // Store the cost event that each warmup call appends to its Conversation.
+  async function storeWarmups(
+    conversationId: string,
+    warmups: Array<{ atMs: number; costUsd: number }>,
+  ) {
+    await getConversationEventStore().append(
+      conversationId,
+      warmups.map(({ atMs, costUsd }) => ({
+        createdAtMs: atMs,
+        data: {
+          type: "structured_event" as const,
+          namespace: "junior",
+          name: "cache_warmup",
+          version: 1,
+          content: { costUsd },
+        },
+      })),
+      { activity: "preserve" },
+    );
+  }
+
   async function savings(nowMs: number) {
     vi.setSystemTime(nowMs);
     const response = await createJuniorApi().request(
@@ -457,12 +486,20 @@ describe("cache warming savings re-fill", () => {
           "local:test:savings-refill-idle",
         ),
       );
-    // Two 7 minute tool waits: the first reads the cache, the second writes.
+    // A warmup keeps the cache of the first idle period.
+    await storeWarmups("local:test:savings-refill-idle", [
+      { atMs: DAY_1 + 4 * MINUTE + 15_000, costUsd: 0.01 },
+    ]);
+    // Two 7 minute tool waits: the first reads the warmed cache, the second
+    // writes.
     const RUN = DAY_1 + 2 * 60 * MINUTE;
     await storeCalls("local:test:savings-refill-tools", [
       { atMs: RUN, cacheRead: 60_000, stopReason: "toolUse" },
       { atMs: RUN + 7 * MINUTE, cacheRead: 60_000, stopReason: "toolUse" },
       { atMs: RUN + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
+    ]);
+    await storeWarmups("local:test:savings-refill-tools", [
+      { atMs: RUN + 4 * MINUTE + 15_000, costUsd: 0.01 },
     ]);
     // Live recording already wrote the next day, so its history is left out.
     await storeCalls("local:test:savings-refill-live-day", [
@@ -518,28 +555,31 @@ describe("cache warming savings re-fill", () => {
     const read = (60_000 * cost.cacheRead) / 1_000_000;
     const write = (60_000 * cost.cacheWrite) / 1_000_000;
     const close = (usd: number) => expect.closeTo(usd, 3);
-    // Two idle periods and two tool waits, each with one hit.
+    // Two idle periods and two tool waits, each with one warmed hit.
+    const saved = 2 * (write - read);
+    const oracle = 4 * (write - 2 * read);
     expect(report.days.at(-3)).toMatchObject({
       date: "2031-07-01",
+      history: true,
       idlePeriods: 4,
       hits: 2,
-      savedUsd: close(2 * (write - read)),
-      // History has no warmup calls, so the cost is unknown.
-      warmupCostUsd: 0,
-      netSavingsUsd: null,
-      oracleSavingsUsd: close(4 * (write - 2 * read)),
+      savedUsd: close(saved),
+      warmupCostUsd: close(0.02),
+      netSavingsUsd: close(saved - 0.02),
+      oracleSavingsUsd: close(oracle),
       unwarmedIdlePeriods: 0,
     });
     expect(report.days.at(-2)).toMatchObject({
       date: "2031-07-02",
+      history: false,
       idlePeriods: 0,
       warmupCostUsd: close(0.05),
       netSavingsUsd: close(-0.05),
     });
     expect(report.totals).toMatchObject({
-      netSavingsUsd: close(-0.05),
-      effectiveness: null,
-      unknownCostDays: 1,
+      netSavingsUsd: close(saved - 0.07),
+      effectiveness: close((saved - 0.07) / oracle),
+      historyDays: 1,
     });
 
     // A second re-fill replaces the days, so it adds nothing.
@@ -561,6 +601,72 @@ describe("cache warming savings re-fill", () => {
       status: "done",
     });
     expect(await savings(nowMs + 18 * MINUTE)).toEqual(report);
+  });
+
+  it("counts no warming before the first warmup and no hit that no warmup reached", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const DAY_0 = DAY_1 - 24 * 60 * MINUTE;
+    // An older re-fill credited a hit on a day before warming.
+    const old: HistorySavings = {};
+    addHistoryPeriod(old, DAY_0 + 7 * MINUTE, MODEL_ID, {
+      hit: true,
+      oracleUsd: 1,
+      savedUsd: 1,
+    });
+    await replaceHistorySavings(old, {
+      start: "2031-06-30",
+      end: "2031-07-01",
+    });
+    // The cache lived through the gap before any warmup ran.
+    await storeCalls("local:test:history-before-warming", [
+      { atMs: DAY_0, cacheRead: 60_000 },
+      { atMs: DAY_0 + 7 * MINUTE, cacheRead: 60_000 },
+    ]);
+    // The cache of the warmup expired before the return, so the hit read a
+    // cache that lived without warming.
+    await storeCalls("local:test:history-late-return", [
+      { atMs: DAY_1, cacheRead: 60_000 },
+      { atMs: DAY_1 + 12 * MINUTE, cacheRead: 60_000 },
+    ]);
+    await storeWarmups("local:test:history-late-return", [
+      { atMs: DAY_1 + 4 * MINUTE + 15_000, costUsd: 0.01 },
+    ]);
+    // Nobody returned, but each warmup still cost.
+    const IDLE = DAY_1 + 60 * MINUTE;
+    await storeCalls("local:test:history-no-return", [
+      { atMs: IDLE, cacheRead: 60_000 },
+    ]);
+    await storeWarmups(
+      "local:test:history-no-return",
+      [1, 2, 3].map((cycle) => ({
+        atMs: IDLE + cycle * (4 * MINUTE + 15_000),
+        costUsd: 0.01,
+      })),
+    );
+    const nowMs = DAY_1 + 26 * 60 * MINUTE;
+
+    vi.setSystemTime(nowMs);
+    expect((await startSavingsRefill(nowMs)).started).toBe(true);
+    await runSavingsRefillSlice({ nowMs });
+    const report = await savings(nowMs);
+    expect(report.days.at(-3)).toMatchObject({
+      date: "2031-06-30",
+      history: false,
+      idlePeriods: 0,
+      hits: 0,
+      savedUsd: 0,
+      oracleSavingsUsd: 0,
+    });
+    expect(report.days.at(-2)).toMatchObject({
+      date: "2031-07-01",
+      history: true,
+      idlePeriods: 1,
+      hits: 0,
+      savedUsd: 0,
+      warmupCostUsd: expect.closeTo(0.04, 6),
+      netSavingsUsd: expect.closeTo(-0.04, 6),
+    });
+    expect(report.totals.historyDays).toBe(1);
   });
 
   it("finishes a re-fill with no day before live recording", async () => {

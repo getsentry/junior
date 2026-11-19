@@ -10,7 +10,7 @@ import {
   type MentionablePerson,
   type PeopleSearchReport,
 } from "@sentry/junior/api/schema";
-import { errorResponse } from "./error-response";
+import { errorResponse } from "./errors";
 import { readMockConversationDetail } from "./fixtures";
 
 // The API returns at most this many people per search.

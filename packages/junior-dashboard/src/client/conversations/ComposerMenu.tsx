@@ -5,7 +5,7 @@ import type { MentionablePerson } from "@sentry/junior/api/schema";
 import { cn } from "../styles";
 
 /** A key that the open menu can take from the editor. */
-export type ComposerMenuKey = "down" | "up" | "select" | "close";
+export type ComposerMenuKey = "down" | "up" | "select" | "close" | "view";
 
 /** What a menu row puts in place of the `$` or `@` reference. */
 export type ComposerInsertion =
@@ -20,12 +20,20 @@ export type ComposerInsertion =
 export type ComposerTypeahead = {
   /** Characters after the trigger, up to the caret. Undefined when closed. */
   query: string | undefined;
+  /** The whole name after the trigger, also after the caret. */
+  name: string | undefined;
+  /** True when text changed since the caret came to this reference. */
+  edited: boolean;
+  /** What the last insert put in, until the next edit or caret move. */
+  inserted: string | undefined;
   /** The text box. The menu opens beside its form. */
   textbox: HTMLElement | null;
   /** Replace the reference, then put the caret after a space. */
   insert(insertion: ComposerInsertion): void;
   /** Close the menu until the caret leaves this reference. */
   dismiss(): void;
+  /** Put focus back in the text box, at its caret. */
+  focus(): void;
   /**
    * Keep the menu open when the text box loses focus, while a press in the
    * menu runs. A tap blurs the text box before its click lands.
@@ -92,6 +100,8 @@ export function ComposerMenu<Row>(props: {
         case "close":
           typeahead.dismiss();
           return true;
+        default:
+          return false;
       }
     });
   }, [active, onSelect, open, rows, typeahead]);
@@ -169,7 +179,8 @@ export function ComposerMenu<Row>(props: {
   );
 }
 
-type MenuPlacement = {
+/** Where a composer popup sits: beside the composer form. */
+export type MenuPlacement = {
   left: number;
   width: number;
   maxHeight: number;
@@ -185,7 +196,7 @@ const MENU_GAP_REM = 0.5;
  * Open the menu on the side of the composer with more room, so the home
  * composer near the top of the page opens it downward.
  */
-function menuPlacement(textbox: HTMLElement): MenuPlacement {
+export function menuPlacement(textbox: HTMLElement): MenuPlacement {
   const rem = Number.parseFloat(
     getComputedStyle(document.documentElement).fontSize,
   );

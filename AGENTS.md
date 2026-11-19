@@ -4,8 +4,8 @@ Read the reference files at the end when your work touches their area.
 
 ## Rules
 
-- Don't state the obvious. In UI copy, agent replies, Slack messages, docs,
-  and PR text, cut what the context already shows.
+- Don't state the obvious. Minimize visual noise in UI. In UI copy, agent
+  replies, Slack messages, docs, and PR text, cut what the context already shows.
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
 - Build the smallest design that solves the proven problem. No speculative
   abstractions, configuration, or wrappers.
@@ -20,14 +20,17 @@ Read the reference files at the end when your work touches their area.
 - No mutable runtime globals. No test-only singleton mutation APIs.
 - Query tables with the Drizzle query builder. Use `sql` only for
   expressions inside a builder query, or for statements without a table.
+- Store money in Postgres as whole micro-USD: a `bigint` column or an integer
+  metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`.
+  Check: `pnpm money-units:check`.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
 - This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
   a code comment next to the code that it governs.
 - Change this file or a `README.md` only when intent, an invariant, or a
-  boundary changes. Delete completed plans. Plans in `openspec/changes/`
-  cannot override policy.
+  boundary changes. Do not commit implementation plans. Track planned work
+  in GitHub issues.
 
 ## Enforcement
 
@@ -67,6 +70,21 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | File length            | `pnpm file-length:check` (code max 1,000 lines, core docs max 120)               |
 
 Split long files at a feature boundary. Do not compress formatting to pass.
+
+## iOS app
+
+`apps/ios` is the native client. Read `apps/ios/README.md` first. It uses
+only the public MCP server (`/api/mcp`), never dashboard `/api/*` routes.
+One simulator can use about 10 GB of memory, so:
+
+- Test logic with `swift test` in `apps/ios/Packages/JuniorKit`. It needs no
+  simulator.
+- Build and run only with `apps/ios/scripts/xcbuild.sh` and `sim.sh`.
+- Do not shut down a simulator that you did not boot. Shut down one that you
+  boot, and check `xcrun simctl list devices booted` before you finish.
+- Run only the UI tests that the change needs.
+- Do not clean-build or delete DerivedData or the shared cache to fix a build
+  until you know the cause.
 
 ## Reference
 

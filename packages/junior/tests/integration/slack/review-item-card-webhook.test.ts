@@ -245,6 +245,7 @@ describe("Slack webhook: Review item cards", () => {
         createConversationRoutes({
           attachmentStorage: createMemoryAttachmentStorage(),
           queue,
+          waitUntil: () => undefined,
         }),
       );
       return await app.request(

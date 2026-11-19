@@ -8,9 +8,10 @@ export type ComposerToken = {
   query: string;
 };
 
-// The runtime reads `$name` only after a non-word character, so `US$5` is
-// not a reference. Keep this boundary the same as `parseSkillInvocation`.
-const TOKEN_BEFORE_CARET = /(?<![\w$])\$([a-z0-9-]*)$/i;
+// The runtime reads `$name` only after a character that is not a letter,
+// digit, or `$`, so `US$5` is not a reference. Keep this boundary the same as
+// `skillReferences`.
+const TOKEN_BEFORE_CARET = /(?<![a-z0-9$])\$([a-z0-9-]*)$/i;
 const NAME_AFTER_CARET = /^[a-z0-9-]*/i;
 
 /** Find the skill reference that a caret at `caret` is in, if any. */

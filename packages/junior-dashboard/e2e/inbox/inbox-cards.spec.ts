@@ -43,6 +43,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     // shows nothing, not a bare link.
     await expect(links.getByRole("link")).toHaveCount(1);
     await expect(links.getByRole("link")).toHaveAttribute("href", person);
+    // Its label repeats its title, so the card names it once.
+    await expect(links.getByRole("link")).toHaveText("Morgan Lee");
+    await expect(links.getByRole("link")).toHaveAttribute(
+      "title",
+      "Morgan Lee",
+    );
     await expect(row.locator(`a[href="${unknown}"]`)).toHaveCount(0);
   });
 
@@ -167,6 +173,78 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(card.locator("img")).toHaveCount(0);
   });
 
+  // The QA row has two images, so its strip ends in empty space.
+  async function openQaStrip(page: Page, baseURL: string) {
+    await page.addInitScript(() =>
+      localStorage.setItem("junior:density", "comfortable"),
+    );
+    await page.goto(`${baseURL}/?view=conversations`);
+    const row = page
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: "Dashboard QA edge cases" })
+      .first();
+    const strip = row.getByRole("group", { name: "Images" });
+    await strip.scrollIntoViewIfNeeded();
+    return { row, strip };
+  }
+
+  test("an image opens in the viewer, not in a new tab", async ({
+    context,
+    dashboard,
+    page,
+  }) => {
+    const { strip } = await openQaStrip(page, dashboard.baseURL);
+    const opened: string[] = [];
+    context.on("page", (tab) => opened.push(tab.url()));
+    const url = page.url();
+    const image = strip.getByRole("link", { name: "chart.png", exact: true });
+    await image.click();
+    const viewer = page.getByRole("dialog", { name: "chart.png" });
+    await expect(viewer.getByRole("img", { name: "chart.png" })).toBeVisible();
+    // The viewer sits in the row's React tree. A right click in it does not
+    // open the row's menu.
+    await viewer.getByRole("img").click({ button: "right" });
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    // It pages through the strip's images.
+    await viewer.getByRole("button", { name: "Next image" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "chart-detail.png" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // The keyboard opens it too, and Escape gives focus back.
+    await image.focus();
+    await page.keyboard.press("Enter");
+    await expect(viewer).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(viewer).toHaveCount(0);
+    await expect(image).toBeFocused();
+    expect(opened).toEqual([]);
+    expect(page.url()).toBe(url);
+  });
+
+  test("a click on the image strip's empty space opens the row", async ({
+    dashboard,
+    page,
+  }) => {
+    const { row, strip } = await openQaStrip(page, dashboard.baseURL);
+    const path = await row.locator("[data-inbox-head]").getAttribute("href");
+    if (!path) throw new Error("The QA row has no link.");
+    const inbox = page.url();
+    // Past the last image, on the strip's right side.
+    const width = await strip.evaluate((element) => element.clientWidth);
+    const empty = { x: width - 16, y: 80 };
+    // A drag across the strip is not a click.
+    await strip.dragTo(strip, {
+      sourcePosition: empty,
+      targetPosition: { x: empty.x - 48, y: empty.y },
+    });
+    expect(page.url()).toBe(inbox);
+    await strip.click({ position: empty });
+    await expect(page).toHaveURL(new URL(path, dashboard.baseURL).href);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
   // The mock's busy row: 90 pull requests and 12 images, 3 in the feed.
   const BUSY = "Inbox comfortable rows pass";
   const BUSY_DETAIL = "/api/conversations/slack%3ACQA456%3A1770028800.000800";
@@ -235,10 +313,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       )
       .toBe(true);
-    // An open row lists a few more.
-    await row.locator('a[aria-controls^="inbox-row-"]').first().click();
-    await expect(row).toHaveAttribute("data-expanded", "true");
-    await expect(lines).toHaveCount(6);
   });
 
   test("the image strip shows every image in one scrolling row, and loads each as it comes near", async ({

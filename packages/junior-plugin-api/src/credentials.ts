@@ -262,6 +262,12 @@ export interface PluginEgressRequest {
   /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
   operation?: string;
   url: string;
+  /**
+   * Set when Junior adds no credential, because the Sandbox request carries
+   * its own or asks for none. The returned grant is not used. Throw
+   * `EgressPolicyDenied` here only for rules that hold for any credential.
+   */
+  withoutCredential?: true;
 }
 
 export interface EgressHookContext extends PluginContext {

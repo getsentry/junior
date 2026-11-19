@@ -1,8 +1,10 @@
 import * as z from "zod";
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import {
   actorIdentitySchema,
   conversationSummaryReportSchema,
 } from "./conversation";
+import { codeChangeSummaryReportSchema } from "./code";
 import { conversationStatsItemSchema } from "./conversation-stats";
 
 export const personParamsSchema = z
@@ -91,8 +93,12 @@ export const identifiedActorSchema = actorIdentitySchema
   .extend({ email: z.string().min(1) })
   .strict();
 
-export const actorSummaryReportSchema = actorTotalsReportSchema
-  .extend({
+/**
+ * One person in the People list. Counts and spend are per range; the Turn
+ * range is all-time. Profile totals live on the profile read.
+ */
+export const actorSummaryReportSchema = z
+  .object({
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
     actor: identifiedActorSchema,
@@ -164,3 +170,41 @@ export type PersonalSpendReport = z.infer<typeof personalSpendReportSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
 export type MentionablePerson = z.infer<typeof mentionablePersonSchema>;
 export type PeopleSearchReport = z.infer<typeof peopleSearchReportSchema>;
+
+/** The most recent merged code changes and Conversations a person card lists. */
+export const PERSON_CARD_RECENT_LIMIT = 3;
+
+/**
+ * The person card that opens on a reference to a person: their object card,
+ * when Junior knows them, the code changes they merged most recently, and
+ * their recent Junior activity. The activity names only Conversations that
+ * the viewer may read.
+ */
+export const personCardReportSchema = z
+  .object({
+    activity: z
+      .object({
+        /** The last Turn of the person in the last 30 days. */
+        lastActiveAt: z.string().optional(),
+        recentConversations: z
+          .array(
+            z
+              .object({
+                conversationId: z.string(),
+                lastTurnAt: z.string(),
+                title: z.string(),
+              })
+              .strict(),
+          )
+          .max(PERSON_CARD_RECENT_LIMIT),
+      })
+      .strict(),
+    card: ownedObjectAnnotationSchema.optional(),
+    /** The same code changes as the People profile, newest merge first. */
+    mergedChanges: z
+      .array(codeChangeSummaryReportSchema)
+      .max(PERSON_CARD_RECENT_LIMIT),
+  })
+  .strict();
+
+export type PersonCardReport = z.output<typeof personCardReportSchema>;

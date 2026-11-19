@@ -36,6 +36,11 @@ import {
   formatAutomationRunTime,
 } from "../../../pages/automations/automationFormat";
 import { formatRuntime } from "../../../time";
+import {
+  fadeOverflowClass,
+  fadeTextClass,
+  fadeWhenOverflowing,
+} from "../../../textFade";
 
 const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;
@@ -305,15 +310,27 @@ function AutomationRunRow(props: {
           onClick={props.onSelect}
           type="button"
         >
-          <span className="block truncate text-sm font-medium leading-snug text-dashboard-text">
+          <span
+            className={cn(
+              fadeOverflowClass,
+              "block text-sm font-medium leading-snug text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {automationRunTitle(run, run.automationTitle)}
           </span>
-          <span className="mt-1 block truncate text-xs text-dashboard-text-muted">
+          <span
+            className={cn(
+              fadeOverflowClass,
+              "mt-1 block text-xs text-dashboard-text-muted",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {formatAutomationRunTime(run.executedAt)}
           </span>
         </button>
         <div className="min-w-0 overflow-hidden">
-          <div className="truncate text-sm text-dashboard-text">
+          <div className={cn(fadeTextClass, "text-sm text-dashboard-text")}>
             {run.automationTitle}
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-dashboard-text-muted">
@@ -322,7 +339,13 @@ function AutomationRunRow(props: {
               label={run.status}
               tone={automationRunStatusTone(run.status)}
             />
-            <span className="truncate text-xs text-dashboard-text-muted">
+            <span
+              className={cn(
+                fadeOverflowClass,
+                "text-xs text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {run.status}
             </span>
           </div>
@@ -343,11 +366,17 @@ function MetricCell(props: { label: string; value: string }) {
     <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
       <div
         aria-hidden="true"
-        className="mb-1 hidden font-sans font-medium text-2xs text-dashboard-text-muted max-md:mb-0 max-md:block"
+        className="mb-1 hidden font-sans font-medium text-xs text-dashboard-text-muted max-md:mb-0 max-md:block"
       >
         {props.label}
       </div>
-      <div className="truncate whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
+      <div
+        className={cn(
+          fadeOverflowClass,
+          "font-sans text-xs tabular-nums text-dashboard-text-muted md:text-sm md:text-dashboard-text",
+        )}
+        ref={fadeWhenOverflowing}
+      >
         <span className="sr-only">{props.label}: </span>
         {props.value}
       </div>
@@ -362,7 +391,7 @@ function AutomationKindIcon(props: { kind: AutomationRun["kind"] }) {
   return (
     <span
       aria-label={label}
-      className="inline-flex size-3.5 shrink-0 items-center justify-center text-dashboard-accent/80"
+      className="inline-flex size-3.5 shrink-0 items-center justify-center text-dashboard-text-muted"
       role="img"
       title={label}
     >

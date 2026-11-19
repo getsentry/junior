@@ -4,7 +4,9 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import {
+  inboxBundles,
   itemNeedsViewer,
+  itemUpForGrabs,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
@@ -65,12 +67,12 @@ export function inboxViewPath(
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: ReviewItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: ReviewItemPayload): boolean {
   return Boolean(item.request);
 }
 
@@ -82,9 +84,10 @@ export function itemsInView(
   return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
-function singleRow(item: ReviewItemPayload): InboxBundle {
+/** A row for one item, as a stack or an item view shows it. */
+export function singleRow(item: ReviewItemPayload): InboxBundle {
   return {
-    conversationId: item.addedByConversationId,
+    conversationId: item.rootConversationId,
     items: [item],
     key: item.id,
     needsYou: itemNeedsViewer(item),
@@ -108,6 +111,67 @@ export function viewRows(
   view: "decisions" | "prs",
 ): InboxBundle[] {
   return itemsInView(items, view).map(singleRow).sort(queueOrder);
+}
+
+/**
+ * Fold each open notice about the subject of an open action item into that
+ * item, matched by subject id or URL, so the item's row shows it as a status
+ * line. The notice stays open on its own: closing the action item does not
+ * close it, and it then shows on its own again.
+ */
+export function foldNotices(items: readonly ReviewItemPayload[]): {
+  /** The notices that fold into each action item, by the item's id. */
+  folded: ReadonlyMap<string, ReviewItemPayload[]>;
+  /** Every other item, in the same order. */
+  shown: ReviewItemPayload[];
+} {
+  const subjectKeys = (item: ReviewItemPayload) =>
+    [item.subject?.id, item.subject?.url].filter(
+      (key): key is string => key !== undefined,
+    );
+  const hosts = new Map<string, ReviewItemPayload>();
+  for (const item of [...items].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+  )) {
+    if (item.status !== "open" || item.kind !== "action") continue;
+    for (const key of subjectKeys(item))
+      if (!hosts.has(key)) hosts.set(key, item);
+  }
+  const folded = new Map<string, ReviewItemPayload[]>();
+  const shown = items.filter((item) => {
+    if (item.status !== "open" || item.kind !== "notice") return true;
+    const host = subjectKeys(item)
+      .map((key) => hosts.get(key))
+      .find(Boolean);
+    if (!host) return true;
+    folded.set(host.id, [...(folded.get(host.id) ?? []), item]);
+    return false;
+  });
+  return { folded, shown };
+}
+
+/**
+ * The FYI list: the open notices, stacked by root Conversation, and the
+ * stack with the newest notice first. Notices wait on no one, so they are
+ * not in To do.
+ */
+export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
+  return inboxBundles(
+    items.filter((item) => item.status === "open" && item.kind === "notice"),
+  ).sort(
+    (a, b) =>
+      Date.parse(b.newest.createdAt) - Date.parse(a.newest.createdAt) ||
+      a.key.localeCompare(b.key),
+  );
+}
+
+/**
+ * The status line of a notice folded into an item, such as "Merge conflict".
+ * The item's card already names the subject, so the reference that plugin
+ * titles add after ` · ` drops out.
+ */
+export function foldedNoticeLabel(notice: ReviewItemPayload): string {
+  return notice.title.split(" · ")[0] || notice.title;
 }
 
 /** One labelled group of rows in the stream. */
@@ -252,7 +316,7 @@ export function automationAttentionGroup(
 }
 
 /**
- * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
  * item of a pinned Conversation. Automations are not Review items, so a
  * sweep never sees them.
@@ -269,6 +333,11 @@ export function sweepOf(
     );
 }
 
+/** Count FYIs in words, such as "1 FYI" or "4 FYIs". */
+export function fyiCount(count: number): string {
+  return `${count} FYI${count === 1 ? "" : "s"}`;
+}
+
 /**
  * The second line of a row for one item: what it is about, then its
  * Conversation. A part that repeats the item title drops out, and with no
@@ -282,4 +351,66 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The key of the Inbox row that shows a linked open item: its own row, in
+ * Up for grabs or To do. The Inbox lists no Conversations, so an item in
+ * neither has no row here.
+ */
+function linkedInboxRowKey(
+  item: ReviewItemPayload,
+  rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
+): string | undefined {
+  const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
+    bundles.some((bundle) => bundle.conversationId === item.rootConversationId)
+      ? `${prefix}:${item.id}`
+      : undefined;
+  const grab = rowIn("grabs", rows.grabs);
+  return (
+    (itemUpForGrabs(item) ? grab : undefined) ??
+    rowIn("todo", rows.todo) ??
+    grab
+  );
+}
+
+/**
+ * The row that a link to one item opens in a list, and the open item that
+ * the row shows. A snoozed item opens its row in Snoozed. A notice folded
+ * into an ask opens the ask's row.
+ */
+export function linkedRowOf(
+  view: InboxView,
+  linkedId: string | undefined,
+  rows: {
+    awake: readonly ReviewItemPayload[];
+    done: readonly ReviewItemPayload[];
+    foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+    grabs: readonly InboxBundle[];
+    snoozed: readonly InboxBundle[];
+    todo: readonly InboxBundle[];
+  },
+): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {
+  if (!linkedId) return {};
+  const snoozedRow = rows.snoozed.find((row) =>
+    row.items.some((item) => item.id === linkedId),
+  );
+  const snoozedKey = snoozedRow ? linkedId : undefined;
+  const hostId = [...rows.foldedNotices].find(([, notices]) =>
+    notices.some((notice) => notice.id === linkedId),
+  )?.[0];
+  const open = rows.awake.find((item) => item.id === (hostId ?? linkedId));
+  const key = (() => {
+    if (view === "snoozed") return snoozedKey;
+    if (view === "done")
+      return rows.done.some((item) => item.id === linkedId)
+        ? linkedId
+        : undefined;
+    if (!open) return undefined;
+    if (view === "prs" || view === "decisions") return open.id;
+    if (view !== "inbox") return `conversation:${open.rootConversationId}`;
+    if (open.kind === "notice") return `fyi:${open.id}`;
+    return linkedInboxRowKey(open, rows);
+  })();
+  return { key, open, snoozedKey };
 }

@@ -8,6 +8,7 @@ const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
 const question = {
   addedByConversationId: CLOSED_ISSUE_ID,
+  rootConversationId: CLOSED_ISSUE_ID,
   assignedToEveryone: false,
   assignees: [
     {

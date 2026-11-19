@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
@@ -66,10 +67,8 @@ export async function resolveAssignees(
   if (values.length === 0) {
     throw new ToolInputError("A review item needs at least one assignee.");
   }
-  const resolved = await Promise.all(
-    values.map((value) =>
-      resolveAssignee(db, value, tenant, findMentionedUserId),
-    ),
+  const resolved = await mapBounded(values, (value) =>
+    resolveAssignee(db, value, tenant, findMentionedUserId),
   );
   return {
     everyone: resolved.some((assignee) => "everyone" in assignee),
@@ -86,7 +85,7 @@ export async function resolveAssignees(
 // Participant rows belong to the root, so a child id reads its root's rows.
 async function participantUserIds(
   db: JuniorDatabase,
-  conversationId: string,
+  conversationIds: readonly string[],
   condition: SQL,
 ): Promise<string[]> {
   const rows = await db
@@ -100,22 +99,25 @@ async function participantUserIds(
       ),
     )
     .where(
-      and(eq(juniorConversations.conversationId, conversationId), condition),
+      and(
+        inArray(juniorConversations.conversationId, [...conversationIds]),
+        condition,
+      ),
     );
   return rows.map((row) => row.userId);
 }
 
-/** Return which of the Users are Participants of a Conversation. */
+/** Return which of the Users are Participants of any of the Conversations. */
 export async function conversationParticipantUserIds(
   db: JuniorDatabase,
-  conversationId: string,
+  conversationIds: readonly string[],
   userIds: readonly string[],
 ): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
+  if (conversationIds.length === 0 || userIds.length === 0) return new Set();
   return new Set(
     await participantUserIds(
       db,
-      conversationId,
+      conversationIds,
       inArray(juniorConversationParticipants.userId, [...userIds]),
     ),
   );
@@ -131,7 +133,7 @@ export async function activeParticipantUserIds(
 ): Promise<string[]> {
   return await participantUserIds(
     db,
-    conversationId,
+    [conversationId],
     isNull(juniorConversationParticipants.unsubscribedAt),
   );
 }

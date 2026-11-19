@@ -11,8 +11,10 @@ on:
       - releases/**
       - release-*
       - auto-release/**
+      # Integration branch for the rewritten core agent loop.
+      - core-next
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,6 +36,7 @@ jobs:
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -46,6 +49,8 @@ jobs:
             ci:
               - .github/workflows/**
               - .github/actions/**
+              - "!.github/workflows/ios.yml"
+              - "!.github/workflows/ios-beta.yml"
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
@@ -67,6 +72,10 @@ jobs:
               - packages/junior/**
               - packages/junior-plugin-api/**
               - packages/junior-search/**
+            ios:
+              - apps/ios/**
+              - .github/workflows/ios.yml
+              - .github/workflows/ios-beta.yml
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -116,6 +125,9 @@ jobs:
               - scripts/publish-github-release*.mjs
               - packages/*/package.json
               - packages/docs/**
+            workflows:
+              - .github/workflows/**
+              - .github/actions/**
 
   release-check:
     name: check / release config
@@ -404,6 +416,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter "@sentry/junior-dashboard..." run build
+      # Reads the client build above, so it does not build again.
+      - run: pnpm dashboard-bundle-size:check
       - run: pnpm --filter @sentry/junior-dashboard test:coverage
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}
@@ -634,7 +648,7 @@ jobs:
     name: lint / workflows
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       contents: read
     steps:

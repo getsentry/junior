@@ -1,6 +1,7 @@
 import {
   $createTextNode,
   $getNodeByKey,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
@@ -10,6 +11,7 @@ import {
   FOCUS_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
@@ -20,6 +22,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { MentionablePerson } from "@sentry/junior/api/schema";
+import { isPlatformShortcut } from "../../keyboard";
 import type {
   ComposerInsertion,
   ComposerMenuKey,
@@ -28,8 +31,17 @@ import type {
 import type { ComposerToken } from "../composerSkillToken";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
 
-type CaretToken = ComposerToken & { nodeKey: NodeKey };
+type CaretToken = ComposerToken & {
+  edited: boolean;
+  name: string;
+  nodeKey: NodeKey;
+};
 type TokenFinder = (text: string, caret: number) => ComposerToken | undefined;
+// The text and a collapsed caret that the last sync read.
+type Synced = { text: string; caret: string };
+
+// Tags the update of an insert, so its sync keeps `inserted`.
+const INSERT_TAG = "composer-typeahead-insert";
 
 /**
  * Follow the `$` or `@` reference at the caret of a Lexical editor, and
@@ -42,6 +54,7 @@ export function useLexicalTypeahead(
   onMention?: (person: MentionablePerson) => void,
 ): ComposerTypeahead {
   const [token, setToken] = useState<CaretToken>();
+  const [inserted, setInserted] = useState<string>();
   const [textbox, setTextbox] = useState<HTMLElement | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
@@ -52,15 +65,35 @@ export function useLexicalTypeahead(
   const onMentionRef = useRef(onMention);
   onMentionRef.current = onMention;
 
+  // A sync that reads the same text and caret changes nothing. Focus and
+  // a repeat selection event must not turn an edit into a caret move.
+  const syncedRef = useRef<Synced>(undefined);
+
   useEffect(() => {
     const sync = () => {
       const root = editor.getRootElement();
       const focused = Boolean(root?.contains(document.activeElement));
       if (!focused && heldRef.current) return;
-      const next =
+      const read =
         focused && editor.isEditable()
-          ? editor.getEditorState().read(() => $tokenAtCaret(tokenAt))
+          ? editor.getEditorState().read($readCaret)
           : undefined;
+      if (!read) {
+        // A collapse back to the same caret, or a focus, reads it again.
+        syncedRef.current = undefined;
+        setToken(undefined);
+        setInserted(undefined);
+        return;
+      }
+      const last = syncedRef.current;
+      if (last?.text === read.text && last.caret === read.caret) return;
+      syncedRef.current = read;
+      setInserted(undefined);
+      const found = editor.getEditorState().read(() => $tokenAtCaret(tokenAt));
+      const next = found && {
+        ...found,
+        edited: last !== undefined && last.text !== read.text,
+      };
       const dismissed = dismissedRef.current;
       if (
         dismissed &&
@@ -78,12 +111,24 @@ export function useLexicalTypeahead(
     };
     return mergeRegister(
       editor.registerRootListener((root) => setTextbox(root)),
-      editor.registerUpdateListener(sync),
-      editor.registerEditableListener(sync),
+      editor.registerUpdateListener(({ editorState, tags }) => {
+        if (!tags.has(INSERT_TAG)) {
+          sync();
+          return;
+        }
+        // An insert keeps `inserted`, also when a tap in the menu blurred
+        // the text box. The caret is now after the reference.
+        syncedRef.current = editorState.read($readCaret);
+        setToken(undefined);
+      }),
+      editor.registerEditableListener(() => sync()),
       editor.registerCommand(
         BLUR_COMMAND,
         () => {
-          if (!heldRef.current) setToken(undefined);
+          if (heldRef.current) return false;
+          syncedRef.current = undefined;
+          setToken(undefined);
+          setInserted(undefined);
           return false;
         },
         COMMAND_PRIORITY_LOW,
@@ -91,7 +136,7 @@ export function useLexicalTypeahead(
       editor.registerCommand(
         FOCUS_COMMAND,
         () => {
-          queueMicrotask(sync);
+          queueMicrotask(() => sync());
           return false;
         },
         COMMAND_PRIORITY_LOW,
@@ -100,8 +145,13 @@ export function useLexicalTypeahead(
   }, [editor, tokenAt]);
 
   const query = token?.query;
+  const name = token?.name;
+  const edited = token?.edited ?? false;
   return useMemo<ComposerTypeahead>(
     () => ({
+      edited,
+      inserted,
+      name,
       query,
       textbox,
       dismiss: () => {
@@ -113,16 +163,20 @@ export function useLexicalTypeahead(
           };
         }
         setToken(undefined);
+        setInserted(undefined);
       },
+      focus: () => editor.focus(),
       holdOpen: (held) => {
         heldRef.current = held;
       },
       insert: (insertion) => {
         const current = tokenRef.current;
         if (!current) return;
-        editor.update(() => $insertAtToken(current, insertion));
+        setInserted("text" in insertion ? insertion.text : undefined);
+        editor.update(() => $insertAtToken(current, insertion), {
+          tag: INSERT_TAG,
+        });
         if ("person" in insertion) onMentionRef.current?.(insertion.person);
-        setToken(undefined);
       },
       registerKeys: (handler) => {
         const take = (event: KeyboardEvent | null, key: ComposerMenuKey) => {
@@ -134,6 +188,11 @@ export function useLexicalTypeahead(
         const select = (event: KeyboardEvent | null) =>
           !event?.shiftKey && take(event, "select");
         return mergeRegister(
+          editor.registerCommand(
+            KEY_DOWN_COMMAND,
+            (event) => isPlatformShortcut(event, "i") && take(event, "view"),
+            COMMAND_PRIORITY_HIGH,
+          ),
           editor.registerCommand(
             KEY_ARROW_DOWN_COMMAND,
             (event) => take(event, "down"),
@@ -162,19 +221,39 @@ export function useLexicalTypeahead(
         );
       },
     }),
-    [editor, query, textbox],
+    [edited, editor, inserted, name, query, textbox],
   );
 }
 
-function $tokenAtCaret(tokenAt: TokenFinder): CaretToken | undefined {
+/** The text and the collapsed caret, or nothing for a range selection. */
+function $readCaret(): Synced | undefined {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
+  const { anchor } = selection;
+  return {
+    text: $getRoot().getTextContent(),
+    caret: `${anchor.key}:${anchor.offset}`,
+  };
+}
+
+function $tokenAtCaret(
+  tokenAt: TokenFinder,
+): Omit<CaretToken, "edited"> | undefined {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
   const { anchor } = selection;
   if (anchor.type !== "text") return;
   const node = anchor.getNode();
   if (!$isTextNode(node)) return;
-  const found = tokenAt(node.getTextContent(), anchor.offset);
-  return found && { ...found, nodeKey: node.getKey() };
+  const text = node.getTextContent();
+  const found = tokenAt(text, anchor.offset);
+  return (
+    found && {
+      ...found,
+      name: text.slice(found.start + 1, found.end),
+      nodeKey: node.getKey(),
+    }
+  );
 }
 
 function sameToken(left: CaretToken, right: CaretToken): boolean {
@@ -182,7 +261,8 @@ function sameToken(left: CaretToken, right: CaretToken): boolean {
     left.nodeKey === right.nodeKey &&
     left.start === right.start &&
     left.end === right.end &&
-    left.query === right.query
+    left.query === right.query &&
+    left.edited === right.edited
   );
 }
 

@@ -1,5 +1,5 @@
 {
-  "id": "74c10382-ae5b-4f42-8590-06c1d986ec36",
+  "id": "890f514c-0de9-418a-a418-88361ad62df2",
   "prevId": "df594e91-f0ca-4906-8457-ba52f197ea1d",
   "version": "7",
   "dialect": "postgresql",
@@ -2028,6 +2028,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "cost_micro_usd": {
+          "name": "cost_micro_usd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cost_usd": {
           "name": "cost_usd",
           "type": "double precision",
@@ -3932,22 +3938,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "junior_identities_slack_person_search_idx": {
-          "name": "junior_identities_slack_person_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -5160,6 +5150,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "count": {
           "name": "count",

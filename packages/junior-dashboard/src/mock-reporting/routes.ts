@@ -11,8 +11,6 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   webMessageId,
-  actorDirectoryReportSchema,
-  actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   pinConversationBodySchema,
@@ -47,15 +45,12 @@ import {
   conversationPlanReportSchema,
   planItemStatusBodySchema,
   codeOverviewReportSchema,
-  codePersonReportSchema,
   codeRepositoryParamsSchema,
   codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
-  personalSpendReportSchema,
-  personParamsSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemActionSchema,
@@ -83,6 +78,8 @@ import {
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import { errorResponse } from "./errors";
+import { mountMockPeopleRoutes } from "./people-routes";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -90,9 +87,7 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
-import { errorResponse } from "./error-response";
 import { readMockConversationOutline } from "./outline";
-import { registerMockPeopleSearchRoutes } from "./people-search";
 import {
   actOnMockReviewItem,
   answerMockReviewItemByReply,
@@ -100,6 +95,7 @@ import {
   readMockReviewItemCounts,
   readMockReviewItems,
   readMockWaitingConversations,
+  withMockViewerAnswers,
 } from "./review-items";
 import {
   markMockConversationRead,
@@ -122,12 +118,7 @@ import {
   readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
-  readMockPeopleCode,
-  readMockPeopleDirectory,
-  readMockPeoplePluginReports,
-  readMockPeopleProfile,
   readMockPluginReports,
-  readMockPersonalSpend,
   readMockAutomationExecutions,
   readMockAutomationList,
   setMockConversationArchived,
@@ -274,28 +265,7 @@ export function createMockReportingApi(): Hono<{
         },
       }),
   );
-  app.get("/people", () =>
-    jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
-  );
-  // Before `/people/:email`, which would take `search` as an email.
-  registerMockPeopleSearchRoutes(app);
-  app.get("/people/me/spend", (context) => {
-    const email = context.get("viewer")?.email;
-    const report = email ? readMockPersonalSpend(email) : undefined;
-    return report
-      ? jsonResponse(personalSpendReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email/plugin-reports", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    return jsonResponse(
-      pluginOperationalReportFeedSchema,
-      readMockPeoplePluginReports(params.data.email),
-    );
-  });
+  mountMockPeopleRoutes(app);
   app.get("/cache-warming/savings", (c) => {
     const days = Number(c.req.query("days") ?? 30);
     if (![1, 7, 30, 90].includes(days)) {
@@ -305,27 +275,6 @@ export function createMockReportingApi(): Hono<{
       cacheWarmingSavingsReportSchema,
       readMockCacheWarmingSavings(days),
     );
-  });
-  app.get("/people/:email/code", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const report = readMockPeopleCode(params.data.email);
-    return report
-      ? jsonResponse(codePersonReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const { email } = params.data;
-    const report = readMockPeopleProfile(email);
-    return report
-      ? jsonResponse(actorProfileReportSchema, report)
-      : errorResponse("Person not found.", 404);
   });
   app.get("/locations", () =>
     jsonResponse(locationDirectoryReportSchema, readMockLocationDirectory()),
@@ -349,9 +298,10 @@ export function createMockReportingApi(): Hono<{
     const repositoryId = query.data.codeRepositoryId;
     const readFeed = (status: "active" | "archived") => {
       const feed = readMockConversationFeed(query.data.actorEmail, status);
-      return repositoryId
-        ? filterMockConversationsByRepository(feed, repositoryId)
-        : feed;
+      // Like the API, only the viewer's own feed says what they answered.
+      if (repositoryId)
+        return filterMockConversationsByRepository(feed, repositoryId);
+      return query.data.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
     };
     const report = readFeed(query.data.status);
     const respond = (feed: ConversationFeed) => {
@@ -489,18 +439,26 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
-    if ("event" in query.data || "turn" in query.data) {
+    if (
+      "event" in query.data ||
+      "message" in query.data ||
+      "turn" in query.data
+    ) {
       const around = readMockConversationEventsAround(
         params.data.conversationId,
         "event" in query.data
           ? { event: query.data.event }
-          : { turn: query.data.turn },
+          : "message" in query.data
+            ? { message: query.data.message }
+            : { turn: query.data.turn },
       );
       return around === "turn-not-found"
         ? errorResponse("Turn not found.", 404)
-        : around
-          ? jsonResponse(conversationEventPageSchema, around)
-          : errorResponse("Conversation not found.", 404);
+        : around === "message-not-found"
+          ? errorResponse("Message not found.", 404)
+          : around
+            ? jsonResponse(conversationEventPageSchema, around)
+            : errorResponse("Conversation not found.", 404);
     }
     // Mock details fit one page and have no unread cursor, so mock history
     // pages only backward from cursors.

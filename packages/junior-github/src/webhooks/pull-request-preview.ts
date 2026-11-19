@@ -9,10 +9,8 @@ import {
   githubPreviewImageUrls,
   withGitHubPreviewImages,
 } from "../object-facts.js";
+import { ANNOTATION_UPDATE_CONCURRENCY } from "../annotations.js";
 import { readGitHubPullRequestConversationIds } from "../pull-request-outcomes/store.js";
-
-// Conversations whose annotation one delivery updates at once.
-const ANNOTATION_UPDATE_CONCURRENCY = 8;
 
 // These actions carry the current body. `edited` can add or remove an image.
 const previewWebhookSchema = z.object({

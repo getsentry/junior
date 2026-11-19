@@ -1,12 +1,15 @@
 import {
   BrowserClient,
-  browserTracingIntegration,
+  browserTracingCoreIntegration,
   captureFeedback,
   defaultStackParser,
+  fetchTracingIntegration,
   getActiveSpan,
   getClient,
   getIsolationScope,
   getRootSpan,
+  linkedTracesIntegration,
+  longTasksIntegration,
   makeFetchTransport,
   setCurrentClient,
   spanToJSON,
@@ -42,12 +45,13 @@ const QUERY_ATTRIBUTE_KEYS = [
   "url.fragment",
   "url.query",
 ];
-// Element selectors in interaction and web vital attributes include these
-// attribute values, such as a conversation title in an `aria-label`. The SDK
-// does not escape quotes in values, so a value can contain `"]` and fake
-// selector parts. Cutting from the first marker to the last `"]` removes every
-// value, at the cost of the selector parts between them.
-const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt)="/;
+// Element selectors in interaction, web vital, and long animation frame
+// invoker attributes include these attribute values, such as a conversation
+// title in an `aria-label` or an image URL in a `src`. The SDK does not escape
+// quotes in values, so a value can contain `"]` and fake selector parts.
+// Cutting from the first marker to the last `"]` removes every value, at the
+// cost of the selector parts between them.
+const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt|src)="/;
 
 function scrubSelector(value: string): string {
   const start = value.search(ELEMENT_ATTRIBUTE_START);
@@ -289,14 +293,16 @@ export function initDashboardSentry(ui: UiShell): void {
   scope.setAttribute("app.dashboard.ui", ui);
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
-  // A client built directly bundles only browser tracing.
+  // A client built directly bundles only the integrations listed here.
+  // `browserTracingIntegration` would also bundle web vitals, XHR, and
+  // resource spans.
   const client = new BrowserClient({
     ...config,
     beforeSendSpan: scrubSpan,
     stackParser: defaultStackParser,
     transport: makeFetchTransport,
     integrations: [
-      browserTracingIntegration({
+      browserTracingCoreIntegration({
         beforeStartSpan: (options) =>
           options.op === "pageload"
             ? {
@@ -308,6 +314,9 @@ export function initDashboardSentry(ui: UiShell): void {
               }
             : options,
       }),
+      fetchTracingIntegration(),
+      linkedTracesIntegration(),
+      longTasksIntegration(),
     ],
   });
   setCurrentClient(client);

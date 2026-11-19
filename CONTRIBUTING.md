@@ -47,27 +47,10 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-`contribute/development.md` explains what `pnpm dev` starts, local Docker sandboxes,
-dashboard mock data, and the `pnpm worktree` helper for isolated branches.
-
-## Checks
-
-Run from the repo root. `pnpm install` does not build workspace packages.
-Typecheck and lint read the built declarations, so run `pnpm build` first.
-
-```bash
-pnpm build
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm skills:check
-pnpm docs:check
-pnpm release:check
-pnpm package-types:check
-```
-
-`AGENTS.md` lists file-scoped test and eval commands. `contribute/testing.md` and
-`policies/testing.md` say which test layer to use.
+[Development](packages/docs/src/content/docs/contribute/development.md)
+explains what `pnpm dev` starts, how to run checks, local Docker sandboxes,
+dashboard mock data, Slack tunnels, and the `pnpm worktree` helper. Sentry
+staff use `junior-dev.sentry.cool` as the stable tunnel hostname.
 
 ## Documentation
 
@@ -76,29 +59,6 @@ Write docs in ASD-STE100 English and use the words in `TERMINOLOGY.md`.
 - Internal docs: follow `policies/documentation.md`.
 - Public docs: follow `contribute/documentation-guidelines.md` and the `public-docs`
   skill.
-- `openspec/changes/` holds temporary plans. Plans cannot override policy.
-  Delete a plan when its work is complete.
-
-## Slack Tunnel
-
-Install `cloudflared` (`brew install cloudflared`). For a random hostname, run
-`cloudflared tunnel --url http://localhost:3000`.
-
-For a stable hostname:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create junior-dev
-cloudflared tunnel route dns junior-dev junior-dev.sentry.cool
-pnpm cloudflare:token   # writes the tunnel token to .env.local
-pnpm dev
-```
-
-Run `pnpm cloudflare:token` again after `vercel env pull` rewrites
-`.env.local`. Set `CLOUDFLARE_TUNNEL_URL` to use a port other than 3000.
-
-Set the Slack Event Subscriptions and Interactivity request URL to
-`https://junior-dev.sentry.cool/api/webhooks/slack`.
 
 ## Releasing
 
@@ -132,8 +92,5 @@ Run `pnpm release:check` after you change this list. It keeps CI, the bump
 script, and the release docs aligned. Craft publishes every public workspace
 package, so `.craft.yml` has no package list.
 
-To release, open **Actions → Release** and run it with a `bump` (`auto`,
-`pre`, `patch`, `minor`, or `major`). `auto` picks the bump from the commit
-titles, and `pre` releases a prerelease of that version.
-Set `force=true` only to bypass release blockers on purpose. `contribute/releasing.md` has the full process and the required repository
-configuration.
+[Releasing](packages/docs/src/content/docs/contribute/releasing.md) has the
+release steps and the required repository configuration.

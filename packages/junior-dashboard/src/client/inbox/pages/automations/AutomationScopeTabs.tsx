@@ -31,7 +31,7 @@ export function AutomationScopeTabs(props: {
   return (
     <nav
       aria-label="Automations to show"
-      className="flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5"
+      className="flex min-w-0 gap-0.5 rounded-lg bg-dashboard-fill-soft p-0.5"
     >
       {SCOPES.map((scope) => {
         const Icon = scope.icon;
@@ -43,9 +43,9 @@ export function AutomationScopeTabs(props: {
           <Link
             aria-current={on ? "page" : undefined}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-[0.625rem] px-3 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              "flex h-8 items-center gap-1.5 rounded-md px-3 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
               on
-                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                ? "bg-dashboard-surface-active text-dashboard-text"
                 : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
             )}
             key={scope.key}

@@ -50,7 +50,15 @@ export function SkillLink(props: {
   );
 }
 
-function SkillDrawer(props: { name: string; onClose(): void }) {
+/** Say where a skill comes from: its plugin, or the app itself. */
+export function skillSource(skill: { pluginProvider?: string }): string {
+  return skill.pluginProvider
+    ? `From the ${skill.pluginProvider} plugin`
+    : "App or local skill";
+}
+
+/** Show a skill's SKILL.md in a side drawer. */
+export function SkillDrawer(props: { name: string; onClose(): void }) {
   const titleId = useId();
   const [view, setView] = useState<MarkdownView>("formatted");
   const skill = useSkillDetail(props.name);
@@ -75,9 +83,7 @@ function SkillDrawer(props: { name: string; onClose(): void }) {
           </h2>
           {skill.data ? (
             <div className="font-sans text-xs text-dashboard-text-muted">
-              {skill.data.pluginProvider
-                ? `From the ${skill.data.pluginProvider} plugin`
-                : "App or local skill"}
+              {skillSource(skill.data)}
               {skill.data.disableModelInvocation ? " · Manual only" : ""}
             </div>
           ) : null}

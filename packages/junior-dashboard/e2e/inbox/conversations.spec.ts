@@ -1,11 +1,23 @@
+import type { Page } from "@playwright/test";
 import { withRequestedMailbox } from "../harness";
 import { expect, test } from "../test";
-import { desktop, mobile, screenshot } from "../screenshot";
+import { screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-  const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+
+  async function openActiveConversation(page: Page, baseURL: string) {
+    await page.goto(
+      `${baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+    await expect(
+      page.getByRole("heading", {
+        name: "Investigate checkout latency",
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
 
   test("records loaded conversation views", async ({ page, dashboard }) => {
     let releaseFeed: (() => void) | undefined;
@@ -19,12 +31,17 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       },
     );
-    await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-    const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
-    await expect(inbox.getByText("Loading", { exact: true })).toBeAttached();
+    await page.goto(`${dashboard.baseURL}/?view=conversations`, {
+      waitUntil: "domcontentloaded",
+    });
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await expect(list.getByText("Loading", { exact: true })).toBeAttached();
     releaseFeed?.();
     await expect(
-      inbox.getByRole("link", { name: /Checkout latency triage/ }).first(),
+      list.getByRole("link", { name: /Checkout latency triage/ }).first(),
     ).toBeVisible();
     await screenshot(page, "conversations");
 
@@ -36,17 +53,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toBeFocused();
     await screenshot(page, "conversation-create-focused");
+  });
 
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-      { waitUntil: "networkidle" },
-    );
-    await expect(
-      page.getByRole("heading", {
-        name: "Investigate checkout latency",
-        exact: true,
-      }),
-    ).toBeVisible();
+  test("keeps the sidebar choice and width after a reload", async ({
+    page,
+    dashboard,
+  }) => {
+    await openActiveConversation(page, dashboard.baseURL);
     const conversationList = page.getByRole("navigation", { name: "Primary" });
     const hideList = page.getByRole("button", { name: "Hide sidebar" });
     await expect(conversationList).toBeVisible();
@@ -83,7 +96,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(conversationList).toBeVisible();
     // The saved width rounds to whole pixels.
     await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+  });
 
+  test("keeps the details panel width and usage after a reload", async ({
+    page,
+    dashboard,
+  }) => {
+    await openActiveConversation(page, dashboard.baseURL);
     await page
       .getByRole("button", { name: "Conversation details", exact: true })
       .click();
@@ -116,7 +135,21 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(modelBreakdown).toBeVisible();
     await usage.click();
     await expect(modelBreakdown).toBeHidden();
-    // Turn context takes the details panel and gives it back on close.
+  });
+
+  test("turn context takes the details panel and gives it back", async ({
+    page,
+    dashboard,
+  }) => {
+    await openActiveConversation(page, dashboard.baseURL);
+    await page
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    const details = page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    });
+    await expect(details).toBeVisible();
     const contextAction = page.getByRole("button", {
       name: "View turn context",
     });
@@ -171,105 +204,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(contextSheet).toBeHidden();
     await expect(contextAction).toBeFocused();
     await screenshot(page, "conversation-detail");
-
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-      { waitUntil: "networkidle" },
-    );
-    await expect(
-      page.getByRole("heading", {
-        name: "Dashboard QA edge cases",
-        exact: true,
-      }),
-    ).toBeVisible();
-    const inputImage = page.getByRole("img", { name: "input-chart.png" });
-    await inputImage.scrollIntoViewIfNeeded();
-    await expect(inputImage).toBeVisible();
-    await inputImage.click();
-    const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
-    await expect(inputPreview).toBeVisible();
-    // The sent image is not part of the response, so it has no pager.
-    await expect(
-      inputPreview.getByRole("button", { name: "Next image" }),
-    ).toHaveCount(0);
-    await inputPreview
-      .getByRole("button", { name: "Close", exact: true })
-      .click();
-    const image = page
-      .locator('a[href*="/attachments/qa-chart-png"]')
-      .filter({ has: page.locator('img[alt="chart.png"]') })
-      .first();
-    await image.waitFor({ state: "visible" });
-    // A resize keeps another scroll position, so center the image in each view.
-    for (const view of [desktop, mobile]) {
-      await page.setViewportSize(view);
-      await image.evaluate((element) =>
-        element.scrollIntoView({ block: "center", inline: "nearest" }),
-      );
-      await screenshot(page, "conversation-attachment", { view: view.name });
-    }
-
-    await image.click();
-    const preview = page.getByRole("dialog", { name: "chart.png" });
-    await expect(preview).toBeVisible();
-    await expect(preview.getByText("1 of 2")).toBeVisible();
-    await screenshot(page, "conversation-attachment-modal");
-    // The preview pages through the images of one response.
-    await preview.getByRole("button", { name: "Next image" }).click();
-    const detailPreview = page.getByRole("dialog", {
-      name: "chart-detail.png",
-    });
-    await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-    await page.keyboard.press("ArrowRight");
-    await expect(preview.getByText("1 of 2")).toBeVisible();
-
-    // Touch readers swipe to page and dismiss, and pinch to zoom. Real touch
-    // input checks that the frame keeps a gesture after a finger leaves it.
-    await page.setViewportSize(mobile);
-    const touch = await page.context().newCDPSession(page);
-    const pinch = (
-      type: "touchStart" | "touchMove" | "touchEnd",
-      points: { id: number; x: number; y: number }[],
-    ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
-    const swipe = async (
-      from: { x: number; y: number },
-      dx: number,
-      dy: number,
-    ) => {
-      await pinch("touchStart", [{ id: 1, ...from }]);
-      for (const step of [0.25, 0.5, 0.75, 1]) {
-        await pinch("touchMove", [
-          { id: 1, x: from.x + dx * step, y: from.y + dy * step },
-        ]);
-      }
-      await pinch("touchEnd", []);
-    };
-    await swipe({ x: 300, y: 450 }, -200, 0);
-    await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-    await swipe({ x: 100, y: 450 }, 200, 0);
-    await expect(preview.getByText("1 of 2")).toBeVisible();
-    // A short swipe springs back, so the preview still pages.
-    await swipe({ x: 200, y: 300 }, 0, 30);
-    await page.keyboard.press("ArrowRight");
-    await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-    await swipe({ x: 200, y: 300 }, 0, 250);
-    await expect(detailPreview).toBeHidden();
-
-    await image.click();
-    await expect(preview.getByText("1 of 2")).toBeVisible();
-    await pinch("touchStart", [
-      { id: 1, x: 180, y: 450 },
-      { id: 2, x: 210, y: 450 },
-    ]);
-    await pinch("touchMove", [
-      { id: 1, x: 120, y: 450 },
-      { id: 2, x: 300, y: 700 },
-    ]);
-    await pinch("touchEnd", []);
-    await touch.detach();
-    await screenshot(page, "conversation-attachment-zoom");
-    await page.keyboard.press("Escape");
-    await expect(preview).toBeHidden();
   });
 
   test("reuses the fresh conversation feed after window focus", async ({
@@ -294,10 +228,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(
       page
-        .getByRole("region", { exact: true, name: "Inbox" })
+        .getByRole("region", { exact: true, name: "Conversations" })
         .getByRole("link", { name: /Checkout latency triage/ })
         .first(),
     ).toBeVisible();
@@ -527,9 +461,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     // The list scrolls in its own pane too.
-    await page.getByRole("link", { name: /^Back to/ }).click();
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     const conversationList = page
-      .getByRole("region", { exact: true, name: "Inbox" })
+      .getByRole("region", { exact: true, name: "Conversations" })
       .locator(".overflow-y-auto")
       .first();
     await expect

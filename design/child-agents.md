@@ -51,7 +51,8 @@ child chooses to report reaches the parent.
   or still has no answer after one reminder, tells its parent `failed`. A
   Thread keeps its failure.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
-  levels of child agents can start their own. With 0, only a root can.
+  levels of child agents can start their own. The default is 1, so a
+  root's child can start children. With 0, only a root can.
 - A message id is an opaque key. Who sent a message, and what it means,
   come from its stored fields.
 - People decide when a Thread is done. An agent cannot archive a Thread
@@ -61,20 +62,15 @@ child chooses to report reaches the parent.
 
 ## Gaps
 
-- By default, each child gets an Agent invocation, with its own worker and
-  status. Spawn and message without one
-  (getsentry/junior#3435) is in review behind the
-  `child-agents-without-agent-invocations` flag. Some branches on `kind`
-  are outside the one switch. This breaks "its `kind` is the only
-  switch". getsentry/junior#3060 and getsentry/junior#2567 track it.
+- Some behavior of a child agent branches on `kind` outside the one switch.
+  This breaks "its `kind` is the only switch". getsentry/junior#3435,
+  getsentry/junior#3060, and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
-- A parent does not archive its child agents when their work is done. Only
-  `archiveAgent` can do it, for a Thread only, and no instruction tells the
-  agent to use it. This breaks "a parent manages the lifecycle of its child
-  agents".
+- A parent does not archive its child agents when their work is done. This
+  breaks "a parent manages the lifecycle of its child agents".
 - For some child messages, Junior reads the sender from the message id.
   This breaks "a message id is an opaque key".

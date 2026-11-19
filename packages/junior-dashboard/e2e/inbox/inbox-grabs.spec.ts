@@ -1,4 +1,5 @@
 import {
+  expandRow,
   grab,
   license,
   mockReviewItems,
@@ -31,7 +32,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page, { automations: () => 0, open: [shared, grab] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    await rowHead(todo, shared.title).click();
+    await expandRow(rowHead(todo, shared.title));
     const asks = todo.getByRole("region", { name: /: asks$/ });
     await expect(asks.getByRole("radio").first()).toBeVisible();
     await expect(asks.getByRole("button", { name: /take/i })).toHaveCount(0);
@@ -52,7 +53,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const grabs = page.getByRole("region", { name: "Up for grabs" });
-    await rowHead(grabs, grab.title).click();
+    await expandRow(rowHead(grabs, grab.title));
     await grabs.getByRole("button", { name: "I'll take it" }).click();
     await expect
       .poll(() => actions)

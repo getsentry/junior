@@ -2,7 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
-import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -12,6 +12,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   const question = {
     addedByConversationId: CLOSED_ISSUE_ID,
+    rootConversationId: CLOSED_ISSUE_ID,
     assignedToEveryone: false,
     assignees: [
       {
@@ -278,8 +279,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await match.click();
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
+      // In its stack, the item's own row opens, under its question.
       page.getByRole("region", { name: /: asks$/ }).filter({
-        hasText: rollout.title,
+        hasText: rollout.request.question,
       }),
     ).toBeVisible();
   });
@@ -291,7 +293,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ height: 800, width: 1280 });
     await mockReviewItems(page, { open: [rollout] });
     await page.goto(dashboard.baseURL);
-    await rowHead(page, "Investigate checkout latency").click();
+    await expandRow(rowHead(page, "Investigate checkout latency"));
     await page.getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(
@@ -309,7 +311,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     const asks = page.getByRole("region", { name: /: asks$/ });
-    await expect(asks).toContainText(rollout.title);
+    await expect(
+      page.locator(`li[data-inbox-row="${rollout.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
     // It wakes from the open row.
     await asks.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();

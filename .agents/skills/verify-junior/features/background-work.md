@@ -1,37 +1,37 @@
 # Background work
 
-Junior runs Turns, child agents, and Automation runs in short serverless slices. Users never see a slice, but they rely on the result: each request gets its reply even when a host limit, a retry, or a killed worker interrupts the work. Policy: `policies/serverless-background-work.md`.
+Junior runs each Turn in a queue worker, in slices that a time limit or a killed worker can end. Users never see a slice, but they rely on the result: each message gets exactly one reply, also when the Turn runs past its time limit or its worker dies, and the Conversation is then free for the next message. Policy: `policies/serverless-background-work.md`.
 
-## Claims
+## Sub-features
 
-- `one-reply` A user mentions Junior once. The user gets one reply, and the Conversation is free for the next message. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/durable-queue.test.ts -t "runs one mention to one reply and leaves the conversation free"`.
-- `host-limit` A user's request runs past the host time limit. The Turn parks and continues in a new slice, and the user still gets the reply. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/durable-queue.test.ts -t "re-parks when a later attempt times out before any new work is saved"`.
-- `lost-wake` The wake of a paused Turn is lost. The heartbeat finds the stale Turn and schedules it again, so the user is not left waiting. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/heartbeat.test.ts -t "reschedules stale paused turn records|reschedules stale cooperative yield continuation records"`.
-- `worker-killed` The worker of a child agent is killed. The child resumes from its last save. When every try is killed, the parent hears about it instead of waiting forever. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/agent-invocation-worker-crash.test.ts -t "resumes a killed child from its last save|tells the parent when every try of a child worker is killed"`.
-- `run-once` A Schedule is due, or an Event arrives twice. Each due occurrence or Event starts one Automation run. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/scheduled-automation-tools.test.ts tests/integration/event-automations.test.ts -t "claims due runs idempotently|fans one event out to every matching task and deduplicates retries"`.
-- `signed-wake` A wake carries only a signed, small envelope with a delay and an idempotency key. The work payload stays in durable state. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/conversation-queue.test.ts -t "sends a signed wake with delay and idempotency"`.
+- `one-reply` A user sends a message. The user gets one reply, and the next message gets its own reply.
+- `host-limit` A Turn runs past its time limit. It continues in a new slice, and the user still gets one complete reply.
+- `worker-killed` The worker of a running Turn dies. A new worker finishes the Turn, and the user gets one complete reply.
 
-## How to get to it
+## How to get to it (user POV)
 
-- A Slack mention, a dashboard message, or an Event queues a Conversation wake.
-- `/api/internal/heartbeat` runs each minute. `pnpm dev` calls it with the local scheduler secret.
-- A host time limit, a deploy, or a killed worker interrupts a slice.
+- Send a message from the dashboard composer, or mention Junior in Slack.
+- An operator sets a short Turn time limit with `AGENT_TURN_TIMEOUT_MS` (minimum `10000`).
+- A deploy or a crash kills the worker. Locally, `node $S/instance.mjs crash-worker $RUN_DIR` does that and starts a new worker.
 
-## Driving it with proofs.mjs
+## Driving it with browse.mjs and instance.mjs
 
 Preconditions:
 
-- Compose Postgres is healthy. `instance.mjs launch` starts it, or run `docker compose up -d --wait postgres redis`.
-- The run directory is `$RUN_DIR`.
+- `instance.mjs launch` (no `--mock`) started a new instance, and `instance.mjs doctor` passes. For `host-limit`, launch with `AGENT_TURN_TIMEOUT_MS=10000 node $S/instance.mjs launch`.
+- `E=$RUN_DIR/evidence/background-work`.
+- `R='article:has-text("junior-example")'` matches a reply from Junior in the transcript.
 
-- **`one-reply`, `host-limit`, `lost-wake`, `worker-killed`, `run-once`, `signed-wake`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/background-work .agents/skills/verify-junior/features/background-work.md`. Each command exits `0`.
+- **One reply (`one-reply`).** Send two messages in one Conversation. Run `node $S/browse.mjs --out $E/one-reply --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Reply with exactly: pong' --press Enter --idle --expect "$R:has-text(\"pong\")" --absent "$R >> nth=1" --snap first --fill 'role=textbox[name="Continue this conversation"]=Reply with exactly: ping' --press Enter --idle --expect "$R:has-text(\"ping\")" --absent "$R >> nth=2" --snap second`. Each message gets one reply, and the second message is not held behind the first.
+- **Time limit (`host-limit`).** On the instance with `AGENT_TURN_TIMEOUT_MS=10000`, ask for work with several tool steps, as the first drive on that instance. Run `node $S/browse.mjs --out $E/host-limit --timeout 600000 --goto / --fill 'role=textbox[name="Start a conversation"]=Add five review desk notices for me, titled Slice 1 to Slice 5. Use one separate tool call per notice, never a batch or a script. They need no answer. Then reply with exactly: DONE' --press Enter --idle --expect "$R:has-text(\"DONE\")" --absent "$R >> nth=1" --snap reply --goto /review --fill 'role=searchbox[name="Search review items"]=Slice' --expect 'role=list[name="Search results"] >> role=link[name=/^Slice 5/]' --absent 'role=list[name="Search results"] >> role=link >> nth=5' --snap search`. The Turn outlives several 10-second slices. One reply says `DONE`, and search finds exactly five notices, so no step ran twice.
+- **Killed worker (`worker-killed`).** Start a long Turn, and kill its worker while Junior is thinking. Run `mkdir -p $E/killed; node $S/browse.mjs --out $E/killed --timeout 600000 --goto / --fill 'role=textbox[name="Start a conversation"]=Write the numbers from 1 to 300 in words, one per line, and end with the line DONE.' --press Enter --expect 'text=is thinking…' --snap thinking --idle --expect "$R:has-text(\"DONE\")" --absent "$R >> nth=1" --snap reply & node $S/instance.mjs crash-worker $RUN_DIR --when $E/killed/thinking.url.txt > $E/killed/crash.log; wait`. `crash.log` names the killed and the new worker. One reply ends with `DONE`.
 
 ## Gotchas
 
-- These faults need injected time limits and killed workers, so no claim here has a `drive` proof. Do not kill a dev server process to fake one: `pnpm dev` restarts Nitro, and the run proves nothing.
-- The dev server logs `Local heartbeat failed: fetch failed` once at startup, before Nitro listens. It is not a `lost-wake` failure.
-- The tests fake only Slack and the model, as `AGENTS.md` requires. A failure here is a runtime failure, not a fixture problem.
-
-## Gaps
-
-None.
+- A Turn can finish inside the limit, and then the drive proves nothing about `host-limit`. Check `$RUN_DIR/telemetry.ndjson` for `agent.turn.timed_out` and `conversation.work.yielded` logs of the Conversation. Without them, report the drive as not reached.
+- One model call that takes longer than the time limit cannot finish in any slice. With `AGENT_TURN_TIMEOUT_MS=10000`, a prompt for one long answer restarts every 10 seconds and never replies. Use a prompt with short steps, as the recipe does.
+- A killed Turn waits for its work lease to expire before a new worker takes it. Expect 2 to 3 minutes of "is thinking…".
+- A kill after the reply shows but before the Turn ends tests a different window. `--when` kills as soon as `thinking.url.txt` exists, so `$E/killed` must not hold one from an earlier attempt. Note in the report whether the first reply had shown.
+- `crash-worker` starts the new worker by setting a new mtime on `apps/example/server.ts`, as an edit does. It leaves no diff. Do not kill the dev server or Nitro instead: `pnpm dev` exits, and the drive proves nothing.
+- `pnpm dev` logs `Local heartbeat failed: fetch failed` once at startup, before Nitro listens. It is not a failure.
+- `$R >> nth=1` is the second reply. `--absent` passes when it does not exist, so run it after the `--expect` of the first reply.

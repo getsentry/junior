@@ -8,14 +8,13 @@ bundle-only plugin, and the installed plugin packages in `plugins.ts`.
 
 ```bash
 pnpm install
-cp apps/example/.env.example apps/example/.env
-docker compose up -d --wait
-pnpm cli -- upgrade
 pnpm dev
 ```
 
-- `DATABASE_URL` points at the repo Docker Postgres. Run `pnpm cli -- upgrade`
-  after the services start, so Junior and plugins have their SQL schemas.
+- `pnpm dev` loads `apps/example/.env.example` as defaults. `.env` and
+  `.env.local` files in the repo root or `apps/example/` override them.
+- `pnpm dev` starts the `compose.yaml` services and runs `junior upgrade`
+  before the app starts.
 - Attachments and published images use the compose `s3` service. Without it,
   `sendFiles`, `publishImage`, and web messages with images fail. To use the
   dev Vercel Blob store, set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=vercel-blob`.

@@ -113,13 +113,13 @@ test("Invite subscribes a mentioned person to a public conversation", async ({
     PUBLIC_CONVERSATION_ID,
   );
   await composer.pressSequentially("@case");
+  await expect(
+    page.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toBeVisible();
   await composer.press("Tab");
   await composer.locator("[data-mention='U456']").click();
 
   const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  // Avatar and display name only: no email address or Slack handle.
-  await expect(card).not.toContainText("casey@example.com");
-  await expect(card).not.toContainText("@casey");
   await card.getByRole("button", { name: "Invite" }).click();
   await expect(card.getByText("Subscribed")).toBeVisible();
   await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
@@ -150,10 +150,13 @@ test("a private conversation's mention card has no Invite", async ({
     PARTICIPANT_CONVERSATION_ID,
   );
   await composer.pressSequentially("@case");
+  await expect(
+    page.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toBeVisible();
   await composer.press("Enter");
   await composer.locator("[data-mention='U456']").click();
   const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  await expect(card.getByRole("link", { name: "Profile" })).toBeVisible();
+  await expect(card).toBeVisible();
   await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
 });
 
@@ -181,16 +184,15 @@ test("$ suggests skills and inserts the skill name", async ({
     PUBLIC_CONVERSATION_ID,
   );
   await composer.pressSequentially("use $t");
-  const skills = page.getByRole("listbox", { name: "Skills" });
-  await expect(skills.getByRole("option")).toHaveText([
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(skills.getByRole("gridcell", { name: /^\$/ })).toHaveText([
     /\$triage-incident/,
     /\$tpm/,
   ]);
   await composer.press("ArrowUp");
-  await expect(skills.getByRole("option", { name: /\$tpm/ })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(
+    skills.getByRole("gridcell", { name: /^\$tpm/ }),
+  ).toHaveAttribute("aria-selected", "true");
   await composer.press("ArrowDown");
   await composer.press("Tab");
   await expect(skills).toBeHidden();

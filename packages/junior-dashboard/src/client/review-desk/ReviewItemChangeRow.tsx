@@ -16,7 +16,7 @@ import type {
 
 import { HoverPreview } from "../components/ui/hover-preview";
 import { FOCUS_REPLY_STATE } from "../conversations/conversationRoutes";
-import { cn } from "../styles";
+import { cn, dashboardMessageCardClass } from "../styles";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
@@ -27,10 +27,15 @@ import { useConversationReviewItemData } from "./queries";
 import { AnswerSummary } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
+  ReviewItemAssignees,
+  ReviewItemCloser,
+  ReviewItemTitle,
+} from "./ReviewItemPeople";
+import {
   answerLine,
   answerRows,
-  assigneeLabel,
   reviewItemPath,
+  reviewItemTitleText,
   reviewItemWaitsForAnswer,
 } from "./reviewItemFormat";
 
@@ -61,11 +66,14 @@ function ReviewItemPreview(props: {
         <>
           {/* A quote line can truncate the title, so the card repeats it. */}
           <p className="m-0 break-words text-base font-semibold leading-snug">
-            {props.item.title}
+            <ReviewItemTitle item={props.item} links />
           </p>
           {/* A notice or a plugin item has no question: its text is the ask. */}
           <ReviewItemObjects conversationId={props.item.addedByConversationId}>
-            <DisplayText text={request?.question ?? props.item.body} />
+            <DisplayText
+              mentions={props.item.mentions}
+              text={request?.question ?? props.item.body}
+            />
           </ReviewItemObjects>
           {request && answer ? (
             <AnswerSummary answer={answer} request={request} />
@@ -106,7 +114,7 @@ function ChangeRow(props: {
     (askLinked || item.addedByTurnId !== undefined);
   return (
     <section
-      aria-label={`${verb} ${item.title}`}
+      aria-label={`${verb} ${reviewItemTitleText(item)}`}
       className="grid min-w-0 gap-1.5"
     >
       <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
@@ -128,11 +136,16 @@ function ChangeRow(props: {
             )
           }
         >
-          {item.title}
+          <ReviewItemTitle item={item} />
         </ReviewItemPreview>
       </p>
       {rows.length ? (
-        <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
+        <dl
+          className={cn(
+            "m-0 grid w-fit max-w-full gap-1.5 px-3.5 py-2 font-sans text-base leading-relaxed",
+            dashboardMessageCardClass,
+          )}
+        >
           {rows.map((row) => (
             <div key={row.label}>
               {/* One answer needs no label: a quote or the question names it. */}
@@ -200,7 +213,9 @@ export function ReviewItemChangeLabel(props: {
   return (
     <>
       {CHANGE_VERBS[props.record.kind]}{" "}
-      <span className="font-medium text-dashboard-text">{data.title}</span>
+      <span className="font-medium text-dashboard-text">
+        <ReviewItemTitle item={data} />
+      </span>
     </>
   );
 }
@@ -208,7 +223,7 @@ export function ReviewItemChangeLabel(props: {
 type AskStatus = {
   icon: LucideIcon;
   iconClassName: string;
-  label: string;
+  label: ReactNode;
   /** The answer, while the reader cannot see its answer row. */
   answer?: string;
   waitingOnYou?: boolean;
@@ -221,7 +236,11 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
       return {
         icon: Info,
         iconClassName: "text-dashboard-text-muted",
-        label: `Added for ${assigneeLabel(item)}`,
+        label: (
+          <>
+            Added for <ReviewItemAssignees item={item} />
+          </>
+        ),
       };
     }
     return item.canAct
@@ -234,17 +253,24 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
       : {
           icon: Clock3,
           iconClassName: "text-amber-400",
-          label: `Waiting on ${assigneeLabel(item)}`,
+          label: (
+            <>
+              Waiting on <ReviewItemAssignees item={item} />
+            </>
+          ),
         };
   }
-  const by = item.closedBy
-    ? ` by ${item.closedBy.displayName ?? item.closedBy.email}`
-    : "";
+  const by = item.closedBy ? (
+    <>
+      {" "}
+      by <ReviewItemCloser item={item} />
+    </>
+  ) : null;
   if (item.status === "dismissed") {
     return {
       icon: CircleSlash,
       iconClassName: "text-dashboard-text-faint",
-      label: `Dismissed${by}`,
+      label: <>Dismissed{by}</>,
     };
   }
   return {
@@ -254,7 +280,12 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
         : undefined,
     icon: CircleCheck,
     iconClassName: "text-emerald-500",
-    label: `${item.answer ? "Answered" : "Done"}${by}`,
+    label: (
+      <>
+        {item.answer ? "Answered" : "Done"}
+        {by}
+      </>
+    ),
   };
 }
 
@@ -315,7 +346,7 @@ export function ReviewItemAskRow(props: {
   return (
     // The transcript marks the row for a moment when its question docks.
     <section
-      aria-label={`${verb} ${item.title}`}
+      aria-label={`${verb} ${reviewItemTitleText(item)}`}
       className={cn(
         "flex w-full min-w-0 max-w-[37.5rem] items-center gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
         status.waitingOnYou
@@ -350,7 +381,7 @@ export function ReviewItemAskRow(props: {
             />
           }
         >
-          {item.title}
+          <ReviewItemTitle item={item} />
         </ReviewItemPreview>
         <p className="m-0 flex min-w-0 gap-1 text-xs">
           <span

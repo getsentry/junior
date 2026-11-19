@@ -13,6 +13,7 @@ export {
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
+  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -122,6 +123,7 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -273,6 +275,8 @@ export {
   mentionablePersonSchema,
   peopleSearchQuerySchema,
   peopleSearchReportSchema,
+  PERSON_CARD_RECENT_LIMIT,
+  personCardReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -302,6 +306,7 @@ export type {
   PeopleActivityDayReport,
   PeopleSearchReport,
   PersonalSpendReport,
+  PersonCardReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";

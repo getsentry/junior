@@ -2,8 +2,6 @@ import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
-import type { SnoozeChoice } from "./inboxSnooze";
-
 // Kept apart from the item snoozes: the server will own both later, and
 // Automation alerts are not Review items, so the server count never sees
 // these keys.
@@ -75,7 +73,7 @@ export function useAutomationAlerts(nowMs: number) {
     ),
     dismiss: (automation: AutomationListItem) => putAway(automation),
     hidden,
-    snooze: (automation: AutomationListItem, choice: SnoozeChoice) =>
-      putAway(automation, choice.untilMs(nowMs)),
+    snooze: (automation: AutomationListItem, untilMs: number) =>
+      putAway(automation, untilMs),
   };
 }

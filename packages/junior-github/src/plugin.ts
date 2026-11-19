@@ -244,6 +244,9 @@ export function githubPlugin(
         "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
+      // Git sends no credential, so a request without one gets the GitHub
+      // credential. `gh` sends the placeholder in `GITHUB_TOKEN`.
+      toolsSendNoCredential: true,
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},

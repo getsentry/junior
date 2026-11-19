@@ -24,14 +24,15 @@ import {
 
 /**
  * Where one page starts. Cursors come from earlier pages. A link target
- * (`event` seq or `turn` id) asks for the page around it, so the dashboard
- * opens a linked row with one request.
+ * (`event` seq, `turn` id, or `message` id) asks for the page around it, so
+ * the dashboard opens a linked row with one request.
  */
 type ConversationEventsBoundary =
   | { after: string }
   | { around: string }
   | { before: string }
   | { event: number }
+  | { message: string }
   | { turn: string };
 
 /** Read one bounded page of reporting events before, after, or around a boundary. */
@@ -102,6 +103,11 @@ async function boundaryPosition(
     if (seq === undefined) throwApiError(404, "Turn not found.");
     return { direction: "around", seq };
   }
+  if ("message" in boundary) {
+    const seq = await readMessageSeq(conversationId, boundary.message);
+    if (seq === undefined) throwApiError(404, "Message not found.");
+    return { direction: "around", seq };
+  }
   const [direction, value] =
     "after" in boundary
       ? (["after", boundary.after] as const)
@@ -129,6 +135,28 @@ async function readTurnStartedSeq(
         eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "turn_started"),
         sql`${juniorConversationEvents.payload}->>'turnId' = ${turnId}`,
+      ),
+    )
+    .limit(1);
+  return row?.seq;
+}
+
+/**
+ * Find the event that stored a Message. A fork copies its events with their
+ * seq and payload, so the same id names one row in each Conversation.
+ */
+async function readMessageSeq(
+  conversationId: string,
+  messageId: string,
+): Promise<number | undefined> {
+  const [row] = await getDb()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        sql`${juniorConversationEvents.payload}->>'messageId' = ${messageId}`,
       ),
     )
     .limit(1);

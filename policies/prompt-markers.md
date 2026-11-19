@@ -80,8 +80,8 @@ runtime, not the markers, enforces approval.
   milliseconds in model-read text.
 - An answer to a question that the model asked uses the ID the ask tool
   returned. Send the question again, at most 512 characters, then one
-  `Label (field_id): value` line for each field. A dismiss sends nothing: it
-  starts no Turn.
+  `Label (field_id): value` line for each field. A dismiss starts no Turn. The
+  next Turn gets it as a Conversation note.
 
 ### Escaping
 
@@ -91,8 +91,8 @@ runtime, not the markers, enforces approval.
 - Bodies of person and untrusted text: escape `&`, `<`, and `>`. This also turns
   imitations of our tags into plain text. Do not escape quotes.
 - JSON bodies: write `<`, `>`, and `&` as `\u003c`, `\u003e`, and `\u0026`.
-- System prompt, skill, and `AGENTS.md` text goes in raw. Escape only a copy
-  of the closing tag of its own wrapper.
+- Raw text (system prompt, skills, `AGENTS.md`): escape only its closing tag.
+- `prompt-tags.ts` writes, escapes, and reads every tag. Oxlint enforces it.
 
 ### Example
 

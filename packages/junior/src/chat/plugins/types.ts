@@ -78,6 +78,8 @@ export interface PluginManifest {
     configKey: string;
     commandFlags?: string[];
   };
+  /** See `toolsSendNoCredential` in the plugin API manifest. */
+  toolsSendNoCredential?: boolean;
 }
 
 type PluginRuntimeDependencyConfig =
@@ -147,6 +149,7 @@ export interface PluginManifestConfig {
     configKey?: string;
     commandFlags?: string[] | null;
   } | null;
+  toolsSendNoCredential?: boolean | null;
 }
 
 /** Install-level plugin package list and manifest override catalog. */

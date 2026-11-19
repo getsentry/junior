@@ -14,9 +14,10 @@ import {
 } from "../../conversations/DetailsList";
 import { cn, dashboardDisclosureChevronClass } from "../../styles";
 import { ReviewItemCard } from "./ReviewItemCard";
-import { AskKindIcon, askLook } from "../../review-desk/askKind";
+import { AskKindIcon, askIcon } from "../../review-desk/askKind";
 import { inboxItemKind } from "../../review-desk/inboxModel";
 import { useReviewItemsData } from "../../review-desk/queries";
+import { reviewItemTitleText } from "../../review-desk/reviewItemFormat";
 
 /**
  * Show the open Review items linked to a Conversation in its details. Each
@@ -42,7 +43,7 @@ export function ConversationReviewItems(props: {
     <div
       className={cn(
         "rounded-lg",
-        props.highlight && "ring-2 ring-violet-300/50",
+        props.highlight && "ring-2 ring-dashboard-focus/50",
       )}
       ref={sectionRef}
     >
@@ -86,7 +87,7 @@ function ReviewItemRow(props: {
         disclosure
         icon={
           // The kind's icon, as the Inbox pills show it.
-          askLook(kind) ? (
+          askIcon(kind) ? (
             <AskKindIcon kind={kind} />
           ) : (
             <Inbox aria-hidden="true" className="size-3.5" />
@@ -100,7 +101,7 @@ function ReviewItemRow(props: {
             />
           </span>
         }
-        title={props.item.title}
+        title={reviewItemTitleText(props.item)}
       />
       <CollapsibleContent className="px-1.5 pb-1">
         <ReviewItemCard item={props.item} />

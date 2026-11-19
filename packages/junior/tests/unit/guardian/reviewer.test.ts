@@ -7,6 +7,7 @@ import {
 } from "@/chat/guardian/reviewer";
 import {
   GUARDIAN_ACTION_POLICY,
+  guardianPluginFacts,
   guardianSystemPrompt,
 } from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
@@ -108,6 +109,39 @@ describe("Guardian action review", () => {
     expect(system.indexOf("`linear`: Team PY syncs to GitHub.")).toBeLessThan(
       system.indexOf("`notion`: The Docs space is public."),
     );
+  });
+
+  it("states which domains get each plugin's Sandbox credential", () => {
+    const facts = guardianPluginFacts([
+      {
+        name: "acme",
+        displayName: "Acme",
+        description: "Acme API",
+        configKeys: [],
+        reviewContext: "The Docs space is public.",
+        credentials: {
+          type: "oauth-bearer",
+          domains: ["api.acme.test", "uploads.acme.test"],
+          authTokenEnv: "ACME_TOKEN",
+        },
+      },
+      {
+        name: "plain",
+        displayName: "Plain",
+        description: "No credential",
+        configKeys: [],
+      },
+    ]);
+
+    expect(facts).toEqual([
+      { plugin: "acme", text: "The Docs space is public." },
+      {
+        plugin: "acme",
+        text: expect.stringContaining(
+          "`$ACME_TOKEN` in the Sandbox holds a placeholder. The runtime adds the real credential only to Sandbox requests to `api.acme.test`, `uploads.acme.test`",
+        ),
+      },
+    ]);
   });
 
   it("retries one invalid structured response", async () => {

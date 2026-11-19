@@ -13,7 +13,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
 import type { PaneRow } from "../components/layout/paneRows";
-import { cn } from "../styles";
+import { cn, dashboardCountClass } from "../styles";
 import { useInboxData } from "./inboxData";
 import {
   INBOX_VIEW_LABELS,
@@ -21,6 +21,7 @@ import {
   parseInboxView,
   type InboxView,
 } from "./inboxModel";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 const ICONS: Record<InboxView, LucideIcon> = {
   conversations: MessagesSquare,
@@ -58,7 +59,7 @@ function Entry(props: {
    * Conversation.
    */
   phoneSelected: boolean;
-  /** The count waits on the viewer, so it shows in the accent. */
+  /** The count waits on the viewer, so it shows in the row's text color. */
   strong?: boolean;
 }) {
   const link = usePaneRowLink(props.row);
@@ -85,14 +86,19 @@ function Entry(props: {
           )}
           strokeWidth={1.9}
         />
-        <span className="truncate font-medium">{props.label}</span>
+        <span
+          className={cn(fadeOverflowClass, "font-medium")}
+          ref={fadeWhenOverflowing}
+        >
+          {props.label}
+        </span>
         {props.count ? (
           props.strong ? (
-            <span className="rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+            <span className="text-xs font-semibold tabular-nums">
               {props.count > 99 ? "99+" : props.count}
             </span>
           ) : (
-            <span className="text-xs tabular-nums text-dashboard-text-faint">
+            <span className={cn("text-xs", dashboardCountClass)}>
               {props.count}
             </span>
           )

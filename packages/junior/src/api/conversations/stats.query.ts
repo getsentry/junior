@@ -2,13 +2,8 @@ import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversationEvents,
-  juniorConversations,
-  juniorDestinations,
-  juniorIdentities,
-  juniorUsers,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { microUsdToUsd } from "@/db/micro-usd";
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
@@ -17,7 +12,6 @@ import {
 import { readOutcomeBuckets, type OutcomeBucket } from "./outcome-buckets";
 import type {
   ConversationMetricDay,
-  ConversationStatsItem,
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
@@ -26,7 +20,6 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   sumUtcHoursIntoSixHours,
   startOfUtcHour,
-  trailingUtcHourWindow,
   utcHourKey,
 } from "../reporting-window";
 
@@ -37,107 +30,9 @@ const treeAggregateColumns = conversationAggregateColumns({
   roots: juniorConversations,
 });
 
-function emptyStatsItem(label: string): ConversationStatsItem {
-  return {
-    active: 0,
-    conversations: 0,
-    durationMs: 0,
-    failed: 0,
-    label,
-  };
-}
-
+// Usage and event JSON keep provider USD floats, so their sums need rounding.
 function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
-}
-
-function actorLabel(row: {
-  identityDisplayName: string | null;
-  identityEmail: string | null;
-  identityHandle: string | null;
-  identitySubjectId: string | null;
-  userDisplayName: string | null;
-  userEmail: string | null;
-}): string {
-  return (
-    row.userEmail?.trim() ||
-    row.identityEmail?.trim() ||
-    row.userDisplayName?.trim() ||
-    row.identityDisplayName?.trim() ||
-    row.identityHandle?.trim() ||
-    row.identitySubjectId?.trim() ||
-    "Unknown"
-  );
-}
-
-function surfaceLabel(source: string | null): string {
-  if (source === "scheduler") return "Scheduler";
-  if (source === "api" || source === "web") return "Web";
-  if (source === "internal" || source === "local") return "Internal";
-  return "Conversation";
-}
-
-/** Collapse private Slack destinations before any stored name reaches stats. */
-function locationLabel(row: {
-  channelName: string | null;
-  destinationDisplayName: string | null;
-  destinationKind: string | null;
-  destinationProvider: string | null;
-  destinationVisibility: string | null;
-  source: string | null;
-}): string {
-  if (row.destinationProvider !== "slack") {
-    return surfaceLabel(row.source);
-  }
-  if (row.destinationKind === "dm") {
-    return "Direct Message";
-  }
-  if (row.destinationVisibility !== "public") {
-    return "Private Conversation";
-  }
-  const name = (row.channelName ?? row.destinationDisplayName)
-    ?.trim()
-    .replace(/^#/, "");
-  return name ? `#${name}` : "Public Channel";
-}
-
-type AggregateRow = {
-  active: number;
-  cachedInputTokens: number | null;
-  cacheCreationTokens: number | null;
-  conversations: number;
-  costUsd: number | null;
-  durationMs: number;
-  failed: number;
-  inputTokens: number | null;
-  tokens: number | null;
-};
-
-function addAggregate(
-  map: Map<string, ConversationStatsItem>,
-  label: string,
-  row: AggregateRow,
-): void {
-  const item = map.get(label) ?? emptyStatsItem(label);
-  item.active += row.active;
-  item.conversations += row.conversations;
-  item.durationMs += row.durationMs;
-  item.failed += row.failed;
-  if (row.tokens !== null) {
-    item.tokens = (item.tokens ?? 0) + row.tokens;
-  }
-  if (row.costUsd !== null) {
-    item.costUsd = addUsd(item.costUsd, row.costUsd);
-  }
-  map.set(label, item);
-}
-
-function statsItems(map: Map<string, ConversationStatsItem>) {
-  return [...map.values()].sort(
-    (left, right) =>
-      right.conversations - left.conversations ||
-      left.label.localeCompare(right.label),
-  );
 }
 
 function statsWhere(start: Date, end: Date) {
@@ -217,8 +112,8 @@ function applyMetricBuckets(
       row.cachedInputTokens = metric.value;
     } else if (metric.metric === "cache_creation_tokens") {
       row.cacheCreationTokens = metric.value;
-    } else if (metric.metric === "cost_usd") {
-      row.costUsd = metric.value;
+    } else if (metric.metric === "cost_micro_usd") {
+      row.costUsd = microUsdToUsd(metric.value);
     } else if (metric.metric === "duration_ms") {
       row.durationMs = metric.value;
     } else if (metric.metric === "input_tokens") {
@@ -270,7 +165,7 @@ function metricPoint(
       ? { cacheCreationTokens: row.cacheCreationTokens }
       : undefined),
     ...(row?.costUsd !== null && row?.costUsd !== undefined
-      ? { costUsd: addUsd(undefined, row.costUsd) }
+      ? { costUsd: row.costUsd }
       : undefined),
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
@@ -370,7 +265,7 @@ function guardianPoint(
     deny: row?.deny ?? 0,
     requests: row?.requests ?? 0,
     ...(row?.costUsd !== null && row?.costUsd !== undefined
-      ? { costUsd: row.costUsd }
+      ? { costUsd: addUsd(undefined, row.costUsd) }
       : undefined),
   };
 }
@@ -434,164 +329,50 @@ function guardianStats(
   };
 }
 
-async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
-  const where = statsWhere(start, end);
-  const hourStart = trailingUtcHourWindow(end.getTime(), WINDOW_HOURS).start;
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
+/** Sum hour rows into UTC day rows, one per day and `key`. */
+function sumHoursIntoDays<T extends { date: string }>(
+  hours: readonly T[],
+  add: (day: T, hour: T) => void,
+  key: (hour: T) => string = () => "",
+): T[] {
+  const days = new Map<string, T>();
+  for (const hour of hours) {
+    const date = hour.date.slice(0, 10);
+    const dayKey = `${date}:${key(hour)}`;
+    const day = days.get(dayKey);
+    if (day) add(day, hour);
+    else days.set(dayKey, { ...hour, date });
+  }
+  return [...days.values()];
+}
+
+async function readActivityHours(db: JuniorDatabase, start: Date, end: Date) {
   const activityHour = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD"T"HH24'
   )`;
-  const [
-    totalsRows,
-    actorRows,
-    locationRows,
-    metricRows,
-    metricHourRows,
-    dayMetrics,
-    hourMetrics,
-    dayOutcomes,
-    hourOutcomes,
-  ] = await Promise.all([
-    db
-      .select(treeAggregateColumns)
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(where),
-    db
-      .select({
-        identityDisplayName: juniorIdentities.displayName,
-        identityEmail: juniorIdentities.emailNormalized,
-        identityHandle: juniorIdentities.handle,
-        identitySubjectId: juniorIdentities.providerSubjectId,
-        userDisplayName: juniorUsers.displayName,
-        userEmail: juniorUsers.primaryEmailNormalized,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .leftJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(
-        juniorIdentities.displayName,
-        juniorIdentities.emailNormalized,
-        juniorIdentities.handle,
-        juniorIdentities.providerSubjectId,
-        juniorUsers.displayName,
-        juniorUsers.primaryEmailNormalized,
+  return await db
+    .select({
+      conversations: treeAggregateColumns.conversations,
+      date: activityHour,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      treeConversation,
+      eq(
+        treeConversation.rootConversationId,
+        juniorConversations.conversationId,
       ),
-    db
-      .select({
-        channelName: juniorConversations.channelName,
-        destinationDisplayName: juniorDestinations.displayName,
-        destinationKind: juniorDestinations.kind,
-        destinationProvider: juniorDestinations.provider,
-        destinationVisibility: juniorDestinations.visibility,
-        source: juniorConversations.source,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(where)
-      .groupBy(
-        juniorConversations.channelName,
-        juniorConversations.source,
-        juniorDestinations.displayName,
-        juniorDestinations.kind,
-        juniorDestinations.provider,
-        juniorDestinations.visibility,
-      ),
-    db
-      .select({
-        conversations: treeAggregateColumns.conversations,
-        date: activityDate,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(where)
-      .groupBy(activityDate),
-    db
-      .select({
-        conversations: treeAggregateColumns.conversations,
-        date: activityHour,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(statsWhere(hourStart, end))
-      .groupBy(activityHour),
-    readConversationMetricBuckets(db, { bucket: "day", start, end }),
-    readConversationMetricBuckets(db, {
-      bucket: "hour",
-      start: hourStart,
-      end,
-    }),
-    readOutcomeBuckets(db, { bucket: "day", start, end }),
-    readOutcomeBuckets(db, { bucket: "hour", start: hourStart, end }),
-  ]);
-  return {
-    actorRows,
-    locationRows,
-    metricHourRows: applyMetricBuckets(
-      metricHourRows,
-      hourMetrics,
-      hourOutcomes,
-    ),
-    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayOutcomes),
-    totals: totalsRows[0],
-  };
+    )
+    .where(statsWhere(start, end))
+    .groupBy(activityHour);
 }
 
-async function aggregateGuardianStats(
+async function readGuardianHours(
   db: JuniorDatabase,
   start: Date,
   end: Date,
-) {
-  const hourStart = trailingUtcHourWindow(end.getTime(), WINDOW_HOURS).start;
-  const day = sql<string>`TO_CHAR(
-    ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
+): Promise<GuardianRow[]> {
   const hour = sql<string>`TO_CHAR(
     ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD"T"HH24'
@@ -602,32 +383,24 @@ async function aggregateGuardianStats(
       THEN (${juniorConversationEvents.payload}->>'costUsd')::double precision
     ELSE NULL
   END`;
-  const selectColumns = {
-    allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
-    ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
-    costUsd: sql<number | null>`SUM(${cost})::double precision`,
-    deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
-    requests: sql<number>`COUNT(*)::integer`,
-  };
-  const where = (windowStart: Date) =>
-    and(
-      eq(juniorConversationEvents.type, "guardian_action_reviewed"),
-      gte(juniorConversationEvents.createdAt, windowStart),
-      lte(juniorConversationEvents.createdAt, end),
-    );
-  const [dayRows, hourRows] = await Promise.all([
-    db
-      .select({ ...selectColumns, date: day })
-      .from(juniorConversationEvents)
-      .where(where(start))
-      .groupBy(day),
-    db
-      .select({ ...selectColumns, date: hour })
-      .from(juniorConversationEvents)
-      .where(where(hourStart))
-      .groupBy(hour),
-  ]);
-  return { dayRows, hourRows };
+  return await db
+    .select({
+      allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
+      ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
+      costUsd: sql<number | null>`SUM(${cost})::double precision`,
+      date: hour,
+      deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
+      requests: sql<number>`COUNT(*)::integer`,
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+        gte(juniorConversationEvents.createdAt, start),
+        lte(juniorConversationEvents.createdAt, end),
+      ),
+    )
+    .groupBy(hour);
 }
 
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
@@ -635,58 +408,57 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
   const nowMs = Date.now();
   const { end, start } = statsWindow(nowMs);
   const db = getDb();
-  const [
-    { actorRows, locationRows, metricHourRows, metricRows, totals },
-    guardian,
-  ] = await Promise.all([
-    aggregateStats(db, start, end),
-    aggregateGuardianStats(db, start, end),
+  // One hour-grained read per aggregate. Days and six-hour buckets are sums
+  // of these hours.
+  const [activity, metrics, outcomes, guardian] = await Promise.all([
+    readActivityHours(db, start, end),
+    readConversationMetricBuckets(db, { start, end }),
+    readOutcomeBuckets(db, { start, end }),
+    readGuardianHours(db, start, end),
   ]);
-  const actors = new Map<string, ConversationStatsItem>();
-  const locations = new Map<string, ConversationStatsItem>();
-
-  for (const row of actorRows) {
-    addAggregate(actors, actorLabel(row), row);
-  }
-  for (const row of locationRows) {
-    addAggregate(locations, locationLabel(row), row);
-  }
-
+  const hours = metricHours(
+    applyMetricBuckets(activity, metrics, outcomes),
+    nowMs,
+  );
   return {
-    active: totals?.active ?? 0,
-    ...(totals?.cachedInputTokens !== null &&
-    totals?.cachedInputTokens !== undefined
-      ? { cachedInputTokens: totals.cachedInputTokens }
-      : undefined),
-    ...(totals?.cacheCreationTokens !== null &&
-    totals?.cacheCreationTokens !== undefined
-      ? { cacheCreationTokens: totals.cacheCreationTokens }
-      : undefined),
-    conversations: totals?.conversations ?? 0,
-    durationMs: totals?.durationMs ?? 0,
-    failed: totals?.failed ?? 0,
     generatedAt: new Date(nowMs).toISOString(),
-    guardian: guardianStats(guardian.dayRows, guardian.hourRows, nowMs),
-    metricDays: metricDays(metricRows, nowMs),
-    ...(() => {
-      const hours = metricHours(metricHourRows, nowMs);
-      return {
-        metricHours: hours,
-        metricSixHours: sumMetricHoursIntoSixHours(hours, nowMs),
-      };
-    })(),
-    locations: statsItems(locations),
-    actors: statsItems(actors),
+    guardian: guardianStats(
+      sumHoursIntoDays(guardian, (day, hour) => {
+        day.allow += hour.allow;
+        day.ask += hour.ask;
+        day.deny += hour.deny;
+        day.requests += hour.requests;
+        if (hour.costUsd !== null)
+          day.costUsd = (day.costUsd ?? 0) + hour.costUsd;
+      }),
+      guardian,
+      nowMs,
+    ),
+    metricDays: metricDays(
+      applyMetricBuckets(
+        sumHoursIntoDays(activity, (day, hour) => {
+          day.conversations += hour.conversations;
+        }),
+        // Sum whole units before `applyMetricBuckets` converts micro-USD.
+        sumHoursIntoDays(
+          metrics,
+          (day, hour) => {
+            day.value += hour.value;
+          },
+          (bucket) => bucket.metric,
+        ),
+        sumHoursIntoDays(outcomes, (day, hour) => {
+          day.mergedCodeChangeCostUsd += hour.mergedCodeChangeCostUsd;
+          day.mergedCodeChanges += hour.mergedCodeChanges;
+          day.outcomeCostUsd += hour.outcomeCostUsd;
+          day.outcomes += hour.outcomes;
+        }),
+      ),
+      nowMs,
+    ),
+    metricHours: hours,
+    metricSixHours: sumMetricHoursIntoSixHours(hours, nowMs),
     source: "conversation_index",
-    ...(totals?.costUsd !== null && totals?.costUsd !== undefined
-      ? { costUsd: addUsd(undefined, totals.costUsd) }
-      : undefined),
-    ...(totals?.inputTokens !== null && totals?.inputTokens !== undefined
-      ? { inputTokens: totals.inputTokens }
-      : undefined),
-    ...(totals?.tokens !== null && totals?.tokens !== undefined
-      ? { tokens: totals.tokens }
-      : undefined),
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),
   };

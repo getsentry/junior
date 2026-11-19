@@ -16,19 +16,22 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  hasUserPhoto,
+  userAvatarUrlsFromIdentities,
+} from "@/chat/identities/avatar";
+import {
   juniorConversations,
+  juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -39,6 +42,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -60,6 +64,8 @@ interface ReviewItemSubject {
 
 /** One assigned User of a Review item. */
 export interface ReviewItemAssignee {
+  /** Junior API path of the profile photo. */
+  avatarUrl?: string;
   displayName?: string;
   email: string;
   userId: string;
@@ -80,9 +86,14 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  /**
+   * The stored root of the Conversation that added the item. Only a search
+   * sets it; unset means unknown.
+   */
+  addedByRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -100,7 +111,7 @@ export interface ReviewItemContent {
   body: string;
   conversationIds: string[];
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
@@ -108,29 +119,51 @@ export interface ReviewItemContent {
 
 type ItemRow = typeof juniorReviewItems.$inferSelect;
 
+const userPhotos = alias(juniorIdentities, "review_item_user_photos");
+
 async function readUsers(
   db: JuniorDatabase,
   userIds: readonly string[],
 ): Promise<Map<string, ReviewItemAssignee>> {
   if (userIds.length === 0) return new Map();
+  // One read returns each User with their photo Identities.
   const rows = await db
     .select({
       displayName: juniorUsers.displayName,
       email: juniorUsers.primaryEmail,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       userId: juniorUsers.id,
     })
     .from(juniorUsers)
+    .leftJoin(
+      userPhotos,
+      and(eq(userPhotos.userId, juniorUsers.id), hasUserPhoto(userPhotos)),
+    )
     .where(inArray(juniorUsers.id, [...new Set(userIds)]));
-  return new Map(
-    rows.map((row) => [
-      row.userId,
-      {
-        email: row.email,
-        userId: row.userId,
-        ...(row.displayName ? { displayName: row.displayName } : undefined),
-      },
-    ]),
+  const avatars = userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [{ ...photo, identityId: photo.identityId, userId }]
+        : [],
+    ),
   );
+  const users = new Map<string, ReviewItemAssignee>();
+  for (const row of rows) {
+    if (users.has(row.userId)) continue;
+    const avatarUrl = avatars.get(row.userId);
+    users.set(row.userId, {
+      email: row.email,
+      userId: row.userId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    });
+  }
+  return users;
 }
 
 async function hydrate(
@@ -729,8 +762,18 @@ export async function searchReviewItems(
   filters: ReviewItemFilters,
 ): Promise<ReviewItem[]> {
   const rows = await db
-    .select()
+    .select({
+      item: juniorReviewItems,
+      addedByRootConversationId: juniorConversations.rootConversationId,
+    })
     .from(juniorReviewItems)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItems.addedByConversationId,
+      ),
+    )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
@@ -747,7 +790,14 @@ export async function searchReviewItems(
             : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
-  return await hydrate(db, rows);
+  const items = await hydrate(
+    db,
+    rows.map((row) => row.item),
+  );
+  return items.map((item, index) => ({
+    ...item,
+    addedByRootConversationId: rows[index]!.addedByRootConversationId,
+  }));
 }
 
 /** One open Review item that a Conversation waits on a User for. */

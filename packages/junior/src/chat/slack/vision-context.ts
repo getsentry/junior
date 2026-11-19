@@ -1,3 +1,6 @@
+import pLimit from "p-limit";
+import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
@@ -10,6 +13,7 @@ import {
   isVisionImageMediaType,
 } from "@/chat/attachments/media";
 import {
+  attachmentFactLines,
   buildStoredAttachmentPromptText,
   MAX_MODEL_ATTACHMENT_BYTES,
   MAX_MODEL_ATTACHMENTS,
@@ -156,21 +160,18 @@ function buildImageAttachmentPromptText(args: {
   mediaType: string;
   summary: string;
 }): string {
-  return [
-    "<image-attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
+  return renderTag("image-attachment", {}, [
+    ...attachmentFactLines(args),
     ...(args.attachmentId
       ? [
           `attachment_id: ${args.attachmentId}`,
           "Use loadAttachment with this id when the task needs the original file.",
         ]
       : []),
-    "<summary>",
-    args.summary,
-    "</summary>",
-    "</image-attachment>",
-  ].join("\n");
+    // A vision model wrote the summary from the image, which can hold text
+    // that imitates our tags.
+    renderTag("summary", {}, [escapeTagText(args.summary)]),
+  ]);
 }
 
 function buildImageAttachmentFailurePromptText(args: {
@@ -179,21 +180,16 @@ function buildImageAttachmentFailurePromptText(args: {
   mediaType: string;
   message: string;
 }): string {
-  return [
-    "<image-attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
+  return renderTag("image-attachment", {}, [
+    ...attachmentFactLines(args),
     ...(args.attachmentId
       ? [
           `attachment_id: ${args.attachmentId}`,
           "Use loadAttachment with this id to access the original file.",
         ]
       : []),
-    "<analysis-error>",
-    args.message,
-    "</analysis-error>",
-    "</image-attachment>",
-  ].join("\n");
+    renderTag("analysis-error", {}, [escapeTagText(args.message)]),
+  ]);
 }
 
 function buildAttachmentResolutionFailurePromptText(args: {
@@ -201,16 +197,15 @@ function buildAttachmentResolutionFailurePromptText(args: {
   mediaType: string;
   problem: string;
 }): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
-    "<resolution-error>",
-    `The user attached this file, but ${args.problem}. Tell the user the ` +
-      "attachment could not be read; do not say no attachment was sent.",
-    "</resolution-error>",
-    "</attachment>",
-  ].join("\n");
+  return renderTag("attachment", {}, [
+    ...attachmentFactLines(args),
+    renderTag("resolution-error", {}, [
+      escapeTagText(
+        `The user attached this file, but ${args.problem}. Tell the user the ` +
+          "attachment could not be read; do not say no attachment was sent.",
+      ),
+    ]),
+  ]);
 }
 
 /** Point the model at a stored file, or say that the file could not be stored. */
@@ -363,6 +358,7 @@ async function resolveUserAttachmentsWithDeps(
   });
   let nextCachedImageSummaryIndex = 0;
 
+  /* oxlint-disable no-await-in-loop -- The image cap and the cached summary index follow attachment order. */
   for (const attachment of attachments) {
     const mediaType = attachment.mimeType ?? "application/octet-stream";
     const isImageAttachment = isVisionImageMediaType(mediaType);
@@ -629,6 +625,7 @@ async function resolveUserAttachmentsWithDeps(
     }
     results.push(resolvedAttachment);
   }
+  /* oxlint-enable no-await-in-loop */
 
   return results;
 }
@@ -757,6 +754,11 @@ async function hydrateConversationVisionContextWithDeps(
   let cacheMisses = 0;
   let analyzed = 0;
   const hydratedMessageIds = new Set<string>();
+  // Download and summarize images at once. `started` keeps a file that two
+  // replies share from being summarized twice.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const started = new Set<string>();
+  const hydrations: Promise<void>[] = [];
 
   for (const reply of replies) {
     const ts = toOptionalString(reply.ts);
@@ -801,79 +803,85 @@ async function hydrateConversationVisionContextWithDeps(
     };
 
     for (const file of imageFiles) {
-      const fileId = toOptionalString(file.id);
-      if (!fileId) continue;
+      hydrations.push(
+        limit(async () => {
+          const fileId = toOptionalString(file.id);
+          if (!fileId) return;
 
-      if (conversation.vision.byFileId[fileId]) {
-        cacheHits += 1;
-        continue;
-      }
-      cacheMisses += 1;
+          if (conversation.vision.byFileId[fileId] || started.has(fileId)) {
+            cacheHits += 1;
+            return;
+          }
+          started.add(fileId);
+          cacheMisses += 1;
 
-      const mimeType =
-        toOptionalString(file.mimetype) ?? "application/octet-stream";
-      const fileSize =
-        typeof file.size === "number" && Number.isFinite(file.size)
-          ? file.size
-          : undefined;
-      if (fileSize && fileSize > MAX_MODEL_ATTACHMENT_BYTES) {
-        logWarn("conversation.image.size_limit.skipped", {
-          "app.file.id": fileId,
-          "file.size": fileSize,
-          "app.file.mime_type": mimeType,
-        });
-        continue;
-      }
+          const mimeType =
+            toOptionalString(file.mimetype) ?? "application/octet-stream";
+          const fileSize =
+            typeof file.size === "number" && Number.isFinite(file.size)
+              ? file.size
+              : undefined;
+          if (fileSize && fileSize > MAX_MODEL_ATTACHMENT_BYTES) {
+            logWarn("conversation.image.size_limit.skipped", {
+              "app.file.id": fileId,
+              "file.size": fileSize,
+              "app.file.mime_type": mimeType,
+            });
+            return;
+          }
 
-      const downloadUrl =
-        toOptionalString(file.url_private_download) ??
-        toOptionalString(file.url_private);
-      if (!downloadUrl) {
-        continue;
-      }
+          const downloadUrl =
+            toOptionalString(file.url_private_download) ??
+            toOptionalString(file.url_private);
+          if (!downloadUrl) {
+            return;
+          }
 
-      let imageData: Buffer;
-      try {
-        imageData = await deps.downloadFile(downloadUrl);
-      } catch (error) {
-        logWarn("conversation.image.download.failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-          "app.file.id": fileId,
-          "app.file.mime_type": mimeType,
-        });
-        continue;
-      }
+          let imageData: Buffer;
+          try {
+            imageData = await deps.downloadFile(downloadUrl);
+          } catch (error) {
+            logWarn("conversation.image.download.failed", {
+              "exception.message":
+                error instanceof Error ? error.message : String(error),
+              "app.file.id": fileId,
+              "app.file.mime_type": mimeType,
+            });
+            return;
+          }
 
-      if (imageData.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
-        logWarn("conversation.image.size_limit.skipped", {
-          "app.file.id": fileId,
-          "file.size": imageData.byteLength,
-          "app.file.mime_type": mimeType,
-        });
-        continue;
-      }
+          if (imageData.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
+            logWarn("conversation.image.size_limit.skipped", {
+              "app.file.id": fileId,
+              "file.size": imageData.byteLength,
+              "app.file.mime_type": mimeType,
+            });
+            return;
+          }
 
-      const summary = await summarizeConversationImage(
-        {
-          imageData,
-          mimeType,
-          fileId,
-          context,
-        },
-        deps,
+          const summary = await summarizeConversationImage(
+            {
+              imageData,
+              mimeType,
+              fileId,
+              context,
+            },
+            deps,
+          );
+          if (!summary) {
+            return;
+          }
+
+          conversation.vision.byFileId[fileId] = {
+            summary,
+            analyzedAtMs: Date.now(),
+          };
+          analyzed += 1;
+        }),
       );
-      if (!summary) {
-        continue;
-      }
-
-      conversation.vision.byFileId[fileId] = {
-        summary,
-        analyzedAtMs: Date.now(),
-      };
-      analyzed += 1;
     }
   }
+  await Promise.all(hydrations);
 
   if (
     cacheHits > 0 ||

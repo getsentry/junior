@@ -5,15 +5,19 @@
  * `tests/unit/chat/task-input.test.ts` own the exact text. Event data stays in
  * its own child tags, and the outcome rule is always last.
  */
-import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
 import {
-  authorAttrs,
+  agentEventKeys,
   escapeClosingTags,
   escapeTagText,
-  renderChildTag,
+  findTag,
+  renderInlineTag,
   renderTag,
+  startsWithTag,
   tagJson,
-} from "@/chat/input-tags";
+  unescapeClosingTags,
+  type TaskOutcome,
+} from "@sentry/junior-plugin-api";
+import { authorAttrs } from "@/chat/input-tags";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -109,11 +113,13 @@ function peopleTags(
   });
   return [
     ...(involved.length > 0
-      ? [renderChildTag("people", escapeClosingTags(involved.join(", ")))]
+      ? [renderInlineTag("people", escapeClosingTags(involved.join(", ")))]
       : []),
     ...doers
       .filter((doer) => !people.includes(doer.mention))
-      .map((doer) => renderChildTag("done-by", escapeClosingTags(label(doer)))),
+      .map((doer) =>
+        renderInlineTag("done-by", escapeClosingTags(label(doer))),
+      ),
     ...doers.map((doer) =>
       escapeClosingTags(
         `If your reply is to ${doer.mention}, write to them as "you".${
@@ -165,7 +171,7 @@ function verifiedDetailsTag(
   details: Record<string, unknown> | undefined,
 ): string[] {
   return details && Object.keys(details).length > 0
-    ? [renderChildTag("verified-details", tagJson(agentEventKeys(details)))]
+    ? [renderInlineTag("verified-details", tagJson(agentEventKeys(details)))]
     : [];
 }
 
@@ -205,6 +211,19 @@ function authorMessageLines(
       [escapeTagText(clip(author.text, maxLength))],
     ),
   ];
+}
+
+/**
+ * Return the `<instructions>` text of a `renderTaskInput` task, without its
+ * tag. Event text comes after the instructions and has its `<` escaped, so
+ * it cannot add or end this tag.
+ */
+export function readTaskInstructions(text: string): string | undefined {
+  if (!startsWithTag(text, ["task"])) {
+    return undefined;
+  }
+  const block = findTag(text, "instructions");
+  return block ? unescapeClosingTags(block.body) : undefined;
 }
 
 /**
@@ -267,7 +286,7 @@ export function renderTaskInput(args: {
       // Say what to write, or the model drops the mention.
       ...(creator
         ? [
-            renderChildTag(
+            renderInlineTag(
               "created-by",
               escapeClosingTags(
                 `${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.`,
@@ -292,13 +311,13 @@ export function renderTaskInput(args: {
       ...(args.skill
         ? [
             instructions
-              ? `Run the ${args.skill} skill. The instructions below add context for this run.`
-              : `Run the ${args.skill} skill.`,
+              ? `Run the $${args.skill} skill. The instructions below add context for this run.`
+              : `Run the $${args.skill} skill.`,
           ]
         : []),
       ...(instructions
         ? [
-            renderChildTag(
+            renderInlineTag(
               "instructions",
               escapeClosingTags(
                 creator
@@ -311,7 +330,7 @@ export function renderTaskInput(args: {
       ...(guidance ? [guidanceTag(guidance)] : []),
       ...(trustedSummary
         ? [
-            renderChildTag(
+            renderInlineTag(
               "summary",
               escapeClosingTags(
                 clip(trustedSummary, args.trustedSummaryMaxLength),
@@ -364,7 +383,7 @@ function eventTag(event: TaskBatchEvent, index: number): string {
   const trustedSummary = event.trustedSummary?.trim();
   return renderTag("event", { index, type: event.eventType }, [
     ...(trustedSummary
-      ? [renderChildTag("summary", escapeClosingTags(trustedSummary))]
+      ? [renderInlineTag("summary", escapeClosingTags(trustedSummary))]
       : []),
     ...verifiedDetailsTag(event.verifiedDetails),
     ...authorMessageLines(event.authorText, event.source),
@@ -418,7 +437,7 @@ export function renderTaskBatchInput(args: {
     body.push(
       renderTag("watch", { about: about ? oneLine(about) : undefined }, [
         ...peopleTags(people, batchDoers(numbered)),
-        renderChildTag("instructions", escapeClosingTags(instructions)),
+        renderInlineTag("instructions", escapeClosingTags(instructions)),
         ...(guidance.size > 0
           ? [
               guidanceTag(

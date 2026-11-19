@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
 
-import { noBroadQueryInvalidationRule } from "./query-invalidation.ts";
+import {
+  noBroadQueryInvalidationRule,
+  noRefetchIntervalRule,
+} from "./query-invalidation.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -59,6 +62,29 @@ new RuleTester({
     {
       code: 'queryClient.invalidateQueries({ type: "active" });',
       errors: noKey,
+    },
+  ],
+});
+
+const poll = [{ messageId: "poll" }];
+
+new RuleTester({
+  languageOptions: { parserOptions: { lang: "tsx" } },
+}).run("no-refetch-interval", noRefetchIntervalRule, {
+  valid: [
+    "useQuery({ queryKey, queryFn, staleTime: 30_000 });",
+    "const refetchInterval = 1_000;",
+    "options[refetchInterval] = 1_000;",
+  ],
+  invalid: [
+    {
+      code: "useQuery({ queryKey, queryFn, refetchInterval: 5_000 });",
+      errors: poll,
+    },
+    { code: "useQuery({ queryKey, queryFn, refetchInterval });", errors: poll },
+    {
+      code: `const options = { "refetchInterval": () => 1_000 };`,
+      errors: poll,
     },
   ],
 });

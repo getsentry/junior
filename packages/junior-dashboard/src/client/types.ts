@@ -11,7 +11,6 @@ import type {
   ActorIdentity,
   ConversationReportMessageEvent,
   ConversationFeedItem,
-  ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -210,6 +209,8 @@ export type Conversation = {
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The viewer's newest answer here. The viewer's own feed rows only. */
+  viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };
 
 export type Identity = DashboardIdentity;
@@ -220,10 +221,7 @@ export type DashboardCoreData = {
   me: Identity;
 };
 
-export type SystemData = DashboardCoreData & {
-  conversationStats?: ConversationStatsReport;
-  conversationStatsError: boolean;
-  conversationStatsLoading: boolean;
+export type SystemPluginsData = {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;

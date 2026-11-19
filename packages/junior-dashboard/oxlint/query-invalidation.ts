@@ -159,8 +159,42 @@ export const noBroadQueryInvalidationRule = defineRule({
   },
 });
 
-/** Dashboard Oxlint rule that keeps query refreshes narrow. */
+/**
+ * Keep queries off timers. A poll refetches whether its data changed or not,
+ * and `/api/versions` already tells the client which reads changed. A read
+ * that must poll disables this rule on its line with the reason.
+ */
+export const noRefetchIntervalRule = defineRule({
+  meta: {
+    type: "problem",
+    docs: {
+      description: "Refresh dashboard queries from versions, not a poll.",
+    },
+    messages: {
+      poll: "Do not poll with `refetchInterval`. Refresh the query from `/api/versions` or a mutation. If this read must poll, disable this rule on this line with the reason. See policies/performance.md.",
+    },
+  },
+  create(context) {
+    return {
+      Property(node) {
+        const key = node.key;
+        if (
+          !node.computed &&
+          ((key.type === "Identifier" && key.name === "refetchInterval") ||
+            (key.type === "Literal" && key.value === "refetchInterval"))
+        ) {
+          context.report({ node: key, messageId: "poll" });
+        }
+      },
+    };
+  },
+});
+
+/** Dashboard Oxlint rules that keep query refreshes narrow. */
 export default eslintCompatPlugin({
   meta: { name: "query-invalidation" },
-  rules: { "no-broad-query-invalidation": noBroadQueryInvalidationRule },
+  rules: {
+    "no-broad-query-invalidation": noBroadQueryInvalidationRule,
+    "no-refetch-interval": noRefetchIntervalRule,
+  },
 });

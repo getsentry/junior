@@ -59,6 +59,7 @@ export async function supersedeTurns(args: {
     if (args.isStopped?.()) {
       return false;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Check for a stop before each Turn ends.
     await abandonTurnRecord({
       conversationId: args.conversationId,
       turnId: stale.turnId,
@@ -66,6 +67,7 @@ export async function supersedeTurns(args: {
     });
     // The Turn ends without a reply, like a stopped Turn, so the
     // Conversation report does not show it as running.
+    // oxlint-disable-next-line no-await-in-loop -- Check for a stop before each Turn ends.
     await new ConversationTurnLifecycleService(
       getConversationEventStore(),
     ).complete({

@@ -408,7 +408,7 @@ describe("Slack tool registration", () => {
 
 describe("agent tool binding", () => {
   afterEach(async () => {
-    // Restore the default maxAgentDepth, 0.
+    // Restore the default maxAgentDepth, 1.
     await createApp();
   });
 

@@ -165,7 +165,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   for (const outcome of ["success", "error"] as const) {
-    test(`returns home at once when a conversation archives itself (${outcome})`, async ({
+    test(`returns to its list at once when a conversation archives itself (${outcome})`, async ({
       page,
       dashboard,
     }) => {
@@ -182,7 +182,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             : { json: { error: "Archive failed" }, status: 500 },
         );
       });
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
       await openRow(
         page.getByRole("link", { name: /Dashboard QA edge cases/ }),
       );
@@ -190,15 +190,15 @@ test.describe("new UI", { tag: "@new" }, () => {
         page.getByRole("heading", { name: "Dashboard QA edge cases" }),
       ).toBeVisible();
 
-      // Home must report the result even with the list hidden.
+      // The list must report the result even while it is hidden.
       await page.getByRole("button", { name: "Hide sidebar" }).click();
       await page.getByRole("button", { name: "Conversation menu" }).click();
       await page
         .getByRole("menuitem", { name: "Archive", exact: true })
         .click();
 
-      // Home shows before the archive request finishes.
-      await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+      // The list shows before the archive request finishes.
+      await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
       const conversationLink = page.getByRole("link", {
         name: /Dashboard QA edge cases/,
       });
@@ -248,7 +248,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       applyToChildren: true,
       archived: true,
     });
-    await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+    // A direct link has no origin, so the archive returns to Conversations.
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   });
 
   test("shows why a child restore is refused", async ({ page, dashboard }) => {
@@ -273,7 +274,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           json: { archivedAt: "2026-08-21T16:45:00.000Z" },
         });
       });
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
       const conversationLink = page.getByRole("link", {
         name: /Dashboard QA edge cases/,
@@ -324,7 +325,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         }
         await route.fulfill({ json: { archivedAt: null } });
       });
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
       await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
       await page
@@ -365,7 +366,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           json: { archivedAt: "2026-08-21T16:45:00.000Z" },
         });
       });
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
       await restOnRow(
         page.getByRole("link", { name: /Dashboard QA edge cases/ }),
@@ -423,7 +424,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { archivedAt: "2026-08-21T16:45:00.000Z" },
       });
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
     const conversationLink = page.getByRole("link", {
       name: /Dashboard QA edge cases/,
@@ -474,7 +475,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         status: 500,
       });
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
     const firstConversation = page.getByRole("link", {
       name: /Dashboard QA edge cases/,

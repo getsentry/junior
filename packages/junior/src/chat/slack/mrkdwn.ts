@@ -13,7 +13,7 @@ export function escapeSlackMrkdwnText(text: string): string {
 }
 
 /** Escape a URL for Slack explicit link syntax while preserving query semantics. */
-export function escapeSlackLinkUrl(url: string): string {
+function escapeSlackLinkUrl(url: string): string {
   return url
     .replaceAll("&", "&amp;")
     .replaceAll("<", "%3C")
@@ -285,6 +285,14 @@ export function wrapBareSlackUserIds(text: string): string {
 const LIST_ITEM_PATTERN = /^[-*•]\s|^\d+\.\s/;
 
 /**
+ * Report whether a line is a Markdown pipe-table row. Slack's `markdown`
+ * block renders a table only when its rows are on consecutive lines.
+ */
+export function isTableRow(line: string): boolean {
+  return line.trimStart().startsWith("|");
+}
+
+/**
  * Turn a follow-up paragraph inside a list item into a bullet at the same
  * indent.
  *
@@ -309,7 +317,8 @@ function bulletListFollowUpParagraphs(text: string): string {
       trimmed &&
       !isFence &&
       lines[i - 1]?.trim() === "" &&
-      !LIST_ITEM_PATTERN.test(trimmed)
+      !LIST_ITEM_PATTERN.test(trimmed) &&
+      !isTableRow(trimmed)
     ) {
       lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
     }
@@ -361,7 +370,8 @@ export function ensureBlockSpacing(text: string): string {
       prev.trim() !== "" &&
       line.trim() !== "" &&
       !isListContinuation &&
-      !(LIST_ITEM_PATTERN.test(prev.trimStart()) && isListItem)
+      !(LIST_ITEM_PATTERN.test(prev.trimStart()) && isListItem) &&
+      !(isTableRow(prev) && isTableRow(line))
     ) {
       result.push("");
     }

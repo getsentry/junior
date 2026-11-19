@@ -58,6 +58,8 @@ Mention `@jr` when you want Junior to join a channel thread. After Junior has re
 
 In DMs, send the request directly. In shared channels, prefer a thread over a top-level back-and-forth so the work stays grouped with the original context.
 
+Junior does not answer in a channel that is shared with another organization through Slack Connect. A mention, reply, or new message there starts no Turn and runs no automation. Junior can still be a member of the channel, and a conversation elsewhere can read its public messages.
+
 ## Steering Junior
 
 Junior reads every message in the thread, so you can course-correct at any point without starting over. Reply with plain language to redirect, narrow scope, stop the current task, or adjust how much detail you want:
