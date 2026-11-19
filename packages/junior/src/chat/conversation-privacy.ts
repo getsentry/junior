@@ -190,9 +190,7 @@ function toCanonicalPart(
 function toCanonicalParts(
   parts: Array<TextContent | ThinkingContent | ImageContent | ToolCall>,
 ): Record<string, unknown>[] {
-  return parts
-    .map(toCanonicalPart)
-    .filter((part): part is Record<string, unknown> => part !== undefined);
+  return parts.map(toCanonicalPart).filter((part) => part !== undefined);
 }
 
 /**

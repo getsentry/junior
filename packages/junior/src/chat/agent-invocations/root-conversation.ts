@@ -18,6 +18,7 @@
  * person's message does. Each other message keeps its real author as a label
  * and is only context. Nothing is copied into the Run.
  */
+import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -50,9 +51,10 @@ type MessageData = Extract<
   { type: "message" | "message_updated" }
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+const messageAuthorSchema = z.object({
+  isBot: z.unknown().optional(),
+  userId: z.string(),
+});
 
 /**
  * Build the Actor that wrote one root message, from the runtime-recorded
@@ -62,14 +64,9 @@ function messageAuthor(
   root: Conversation,
   data: MessageData,
 ): Actor | undefined {
-  const author = isRecord(data.meta?.["author"])
-    ? data.meta["author"]
-    : undefined;
-  const userId =
-    typeof author?.["userId"] === "string"
-      ? author["userId"].trim()
-      : undefined;
-  if (!userId || author?.["isBot"] === true) {
+  const author = messageAuthorSchema.safeParse(data.meta?.["author"]).data;
+  const userId = author?.userId.trim();
+  if (!userId || author?.isBot === true) {
     return undefined;
   }
   const session = root.sessionSource;
