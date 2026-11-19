@@ -25,7 +25,11 @@ test.describe("snooze times", { tag: "@new" }, () => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(todo(page), checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    // The open row's Snooze; the other row has its own quick one.
+    await todo(page)
+      .locator("li[data-expanded]")
+      .getByRole("button", { name: "Snooze" })
+      .click();
   });
 
   test("the menu shows each choice with its time, and number keys pick them", async ({

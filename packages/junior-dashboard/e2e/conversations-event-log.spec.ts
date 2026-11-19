@@ -761,6 +761,7 @@ for (const view of [desktop, mobile]) {
     ).json();
     const item = {
       addedByConversationId: conversationId,
+      rootConversationId: conversationId,
       assignedToEveryone: false,
       assignees: [
         {

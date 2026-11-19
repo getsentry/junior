@@ -795,6 +795,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).json();
       const item = {
         addedByConversationId: conversationId,
+        rootConversationId: conversationId,
         assignedToEveryone: false,
         assignees: [
           {

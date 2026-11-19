@@ -12,6 +12,7 @@ const viewer = {
 
 const base = {
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
@@ -31,6 +32,7 @@ const conversationId = "slack:CQA123:1770003600.000200";
 const rollout = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
@@ -106,6 +108,7 @@ const answered = {
 const migration = {
   ...license,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T10:20:00.000Z",

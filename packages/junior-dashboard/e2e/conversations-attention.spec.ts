@@ -78,6 +78,7 @@ async function mockWaitingConversation(
                   {
                     ...reviewItem,
                     addedByConversationId: waitingId,
+                    rootConversationId: waitingId,
                     conversationIds: [waitingId],
                   },
                 ]
