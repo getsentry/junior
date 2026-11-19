@@ -39,6 +39,8 @@ Do not list behaviors. The verification map in
   to do work for it.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Guardian](./guardian.md): review of each tool action before it runs.
+- [Inbox](./inbox.md): the dashboard view of the Review desk, one stack of
+  cards for each root Conversation.
 - [Review desk](./review-desk.md): work that waits for a person, labeled
   "Inbox" in the dashboard.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for

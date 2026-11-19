@@ -28,9 +28,9 @@ type ShownRows = {
  * page, the way the page shows it, and nothing else.
  *
  * - To do (the Inbox entry, the header, the tab, and the To do heading):
- *   each card in To do. That is one card per row that waits on the viewer,
- *   however many items the row holds, and one per Automation alert that the
- *   viewer did not put away.
+ *   each row in To do. That is one row per ask that waits on the viewer, as
+ *   a stack shows a row for each of its asks, and one per Automation alert
+ *   that the viewer did not put away.
  * - Decisions: each question row that Decisions lists, also a question for
  *   Everyone.
  * - Pull requests: each entry under Waiting on you, one per pull request.

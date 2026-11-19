@@ -84,7 +84,7 @@ test("opens a link that the cached latest page holds at its row", async ({
   mock.pagedDetail = true;
   const pageRequests = recordPageRequests(page);
   // A hover caches the latest page, which holds event 100.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -124,7 +124,7 @@ test("opens at the latest event when a link at open fails", async ({
   });
   mock.pagedDetail = true;
   // A hover caches the latest page, so it shows while the link loads.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===

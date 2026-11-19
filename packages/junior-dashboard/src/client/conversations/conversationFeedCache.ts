@@ -21,14 +21,10 @@ function isPagedFeed(
 /**
  * Join loaded pages into one feed. New activity moves a row to an earlier
  * page, so a row can be in two pages; the earlier page is newer and wins.
- * `readThrough` is the oldest activity on the last page, once it is not the
- * first: the first page also holds every pin and each Conversation that
- * waits on the viewer, at any age, so only a later page says how far back
- * the feed has read.
  */
 export function joinConversationFeedPages(
   data: InfiniteData<ConversationFeed, string | undefined>,
-): ConversationFeed & { readThrough?: string } {
+): ConversationFeed {
   const seen = new Set<string>();
   const conversations = data.pages.flatMap((page) =>
     page.conversations.filter((conversation) => {
@@ -38,19 +34,9 @@ export function joinConversationFeedPages(
     }),
   );
   const first = data.pages[0]!;
-  const last = data.pages.length > 1 ? data.pages.at(-1) : undefined;
-  const readThrough = last?.conversations.reduce<string | undefined>(
-    (oldest, conversation) =>
-      oldest === undefined ||
-      Date.parse(conversation.lastSeenAt) < Date.parse(oldest)
-        ? conversation.lastSeenAt
-        : oldest,
-    undefined,
-  );
   return {
     conversations,
     generatedAt: first.generatedAt,
-    ...(readThrough ? { readThrough } : undefined),
     source: first.source,
   };
 }
