@@ -7,6 +7,8 @@ import { formatTime } from "../../time";
 
 const memoryRecordSchema = z
   .object({
+    archivedAt: z.iso.datetime().optional(),
+    archiveReason: z.string().min(1).optional(),
     content: z.string().min(1),
     createdAt: z.iso.datetime(),
     expiresAt: z.iso.datetime().optional(),
@@ -19,6 +21,14 @@ const memoryRecordSchema = z
   .strict();
 
 type MemoryRecord = z.output<typeof memoryRecordSchema>;
+
+// Why a memory left recall, by `archive_reason`, as the plugin page labels it.
+const ARCHIVE_REASON_LABELS: Record<string, string> = {
+  contradicted: "Contradicted",
+  superseded: "Replaced",
+  tool_removed: "Forgotten",
+  user_removed: "Forgotten",
+};
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -40,15 +50,23 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
       : memory.origin === "explicit"
         ? "Explicit"
         : "Other";
+  const href = `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`;
   return {
     actions: [
-      {
-        confirmation: "Forget this memory for everyone?",
-        href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
-        label: "Forget",
-        method: "DELETE",
-        tone: "danger",
-      },
+      memory.archivedAt
+        ? {
+            href: `${href}/archive`,
+            label: "Restore",
+            method: "DELETE",
+            tone: "neutral",
+          }
+        : {
+            confirmation: "Forget this memory for everyone?",
+            href,
+            label: "Forget",
+            method: "DELETE",
+            tone: "danger",
+          },
     ],
     id: memory.id,
     metadata: [
@@ -61,24 +79,47 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
         label: "Expires",
         value: memory.expiresAt ? formattedDate(memory.expiresAt) : "Never",
       },
+      ...(memory.archivedAt
+        ? [
+            { label: "Archived", value: formattedDate(memory.archivedAt) },
+            {
+              label: "Reason",
+              value:
+                ARCHIVE_REASON_LABELS[memory.archiveReason ?? ""] ?? "Archived",
+            },
+          ]
+        : []),
     ],
     title: memory.content,
   };
 }
 
-/** Load one memory directly so its permalink does not depend on list pagination. */
-export function useMemoryRecord(memoryId: string | undefined) {
+/**
+ * Load one active or archived memory directly so its permalink does not
+ * depend on list pagination.
+ */
+export function useMemoryRecord(
+  memoryId: string | undefined,
+  archived: boolean,
+) {
   return useQuery({
     enabled: Boolean(memoryId),
     queryFn: async ({ signal }) =>
       memoryPageRecord(
         await fetchDashboardJson(
           memoryRecordSchema,
-          `/api/plugins/memory/memories/${encodeURIComponent(memoryId!)}`,
+          `/api/plugins/memory/memories/${encodeURIComponent(memoryId!)}${archived ? "?archived=true" : ""}`,
           signal,
         ),
       ),
-    queryKey: ["dashboard", "plugin-user-page", "memory", "record", memoryId],
+    queryKey: [
+      "dashboard",
+      "plugin-user-page",
+      "memory",
+      "record",
+      memoryId,
+      archived,
+    ],
     retry: false,
   });
 }

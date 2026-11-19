@@ -401,6 +401,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           const memory = await getMemory(
             options.db,
             decodeURIComponent(memoryPath[1]!),
+            { archived: url.searchParams.get("archived") === "true" },
           );
           const body = memoryApiSchema.parse(apiMemory(memory));
           return request.method === "HEAD"

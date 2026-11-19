@@ -317,13 +317,15 @@ test("lists archived memories and restores one", async ({
   dashboard,
 }) => {
   let restoreMethod: string | undefined;
-  let detailReads = 0;
+  let activeReads = 0;
+  // Off when the permalink opens, as if the memory were past the first page.
+  let listed = true;
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const archived =
       new URL(route.request().url()).searchParams.get("filter") === "archived";
     const records = !archived
       ? [{ id: "memory-1", title: "First page memory." }]
-      : restoreMethod
+      : restoreMethod || !listed
         ? []
         : [
             {
@@ -364,11 +366,23 @@ test("lists archived memories and restores one", async ({
         await route.fulfill({ status: 204 });
         return;
       }
-      // Only active memories have a detail read.
-      detailReads += 1;
+      if (
+        new URL(route.request().url()).searchParams.get("archived") !== "true"
+      ) {
+        activeReads += 1;
+      }
       await route.fulfill({
-        json: { error: "Memory was not found for this user." },
-        status: 404,
+        json: {
+          archiveReason: "contradicted",
+          archivedAt: "2026-07-30T12:00:00.000Z",
+          content: "Junior's updatePlan tool does not persist plan steps.",
+          createdAt: "2026-07-01T12:00:00.000Z",
+          id: "memory-archived",
+          kind: "knowledge",
+          observedAt: "2026-07-01T12:00:00.000Z",
+          origin: "automatic",
+          sourcePlatform: "slack",
+        },
       });
     },
   );
@@ -395,13 +409,14 @@ test("lists archived memories and restores one", async ({
   ).toHaveCount(0);
   await screenshot(page, "memories-archived-details");
 
-  // A permalink opens from the archived list, not the active detail read.
+  // A permalink opens without the list, through the archived detail read.
+  listed = false;
   await page.goto(
     `${dashboard.baseURL}/memories/memory-archived?filter=archived`,
   );
   await details.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("No archived memories.")).toBeVisible();
   expect(restoreMethod).toBe("DELETE");
-  expect(detailReads).toBe(0);
+  expect(activeReads).toBe(0);
   await screenshot(page, "memories-archived-empty");
 });

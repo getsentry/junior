@@ -2726,6 +2726,15 @@ describe("memory plugin storage", () => {
           id: publicMemory.memory.id,
         }),
       );
+      const archivedDetailResponse = await api.fetch(
+        new Request(
+          `http://localhost/memories/${publicMemory.memory.id}?archived=true`,
+        ),
+        requestContext,
+      );
+      expect(
+        memoryApiSchema.parse(await archivedDetailResponse.json()),
+      ).toMatchObject({ archiveReason: "user_removed" });
       const restoreResponse = await api.fetch(
         new Request(
           `http://localhost/memories/${publicMemory.memory.id}/archive`,

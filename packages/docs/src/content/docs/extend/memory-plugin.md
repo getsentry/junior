@@ -176,7 +176,7 @@ The plugin also exposes authenticated REST resources:
 | -------- | ------------------------------------------ | --------------------------------------------------------------------------- |
 | `GET`    | `/api/plugins/memory/dashboard`            | Read memory totals and timeline                                             |
 | `GET`    | `/api/plugins/memory/memories`             | List memories with `q`, `cursor`, `limit`, and `archived=true` for archived |
-| `GET`    | `/api/plugins/memory/memories/:id`         | Read one active memory                                                      |
+| `GET`    | `/api/plugins/memory/memories/:id`         | Read one memory, or one archived memory with `archived=true`                |
 | `DELETE` | `/api/plugins/memory/memories/:id`         | Forget one memory                                                           |
 | `DELETE` | `/api/plugins/memory/memories/:id/archive` | Restore one archived memory                                                 |
 

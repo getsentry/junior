@@ -225,16 +225,21 @@ export async function archiveMemory(db: MemoryDb, id: string) {
   return parseMemoryRow(updated[0]);
 }
 
-/** Read one active memory visible to the authenticated User. */
-export async function getMemory(db: MemoryDb, id: string): Promise<MemoryView> {
+/** Read one active or archived memory visible to the authenticated User. */
+export async function getMemory(
+  db: MemoryDb,
+  id: string,
+  options: { archived?: boolean } = {},
+): Promise<MemoryView> {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
+  const state = options.archived
+    ? archivedMemoryPredicate(nowMs)
+    : activeMemoryPredicate(nowMs);
   const rows = await db
     .select()
     .from(juniorMemoryMemories)
-    .where(
-      and(activeMemoryPredicate(nowMs), eq(juniorMemoryMemories.id, memoryId)),
-    )
+    .where(and(state, eq(juniorMemoryMemories.id, memoryId)))
     .limit(1);
   if (!rows[0]) throw new MemoryNotFoundError();
   return toMemoryView(rows[0]);

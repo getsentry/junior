@@ -165,13 +165,10 @@ function MemoryLibrary(props: {
   const location = useLocation();
   const { memoryId } = useParams();
   const listRef = useRef<HTMLDivElement>(null);
-  // The detail read returns only active memories. An archived memory's
-  // details, with its Restore action, come from the archived list.
   const archived = filter === ARCHIVED_FILTER;
-  const memoryQuery = useMemoryRecord(archived ? undefined : memoryId);
+  const memoryQuery = useMemoryRecord(memoryId, archived);
   const selectedRecord =
-    (archived ? undefined : memoryQuery.data) ??
-    records.find((record) => record.id === memoryId);
+    memoryQuery.data ?? records.find((record) => record.id === memoryId);
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
   const closeDetails = () => {
@@ -199,18 +196,21 @@ function MemoryLibrary(props: {
 
   useEffect(() => {
     // Drop stale permalinks after a forget/archive or unknown id once the
-    // read that owns the record has settled without it.
-    const settled = archived
-      ? Boolean(query.data) && !query.isFetching
-      : !memoryQuery.isFetching &&
-        !memoryQuery.isPending &&
-        (memoryQuery.isError || memoryQuery.isFetched);
-    if (!memoryId || selectedRecord || !settled) return;
-    void navigate(pathWithSearch(props.libraryPath, location.search), {
-      replace: true,
-    });
+    // direct memory read has settled without a record.
+    if (
+      !memoryId ||
+      selectedRecord ||
+      memoryQuery.isFetching ||
+      memoryQuery.isPending
+    ) {
+      return;
+    }
+    if (memoryQuery.isError || memoryQuery.isFetched) {
+      void navigate(pathWithSearch(props.libraryPath, location.search), {
+        replace: true,
+      });
+    }
   }, [
-    archived,
     location.search,
     memoryId,
     memoryQuery.isError,
@@ -219,8 +219,6 @@ function MemoryLibrary(props: {
     memoryQuery.isPending,
     navigate,
     props.libraryPath,
-    query.data,
-    query.isFetching,
     selectedRecord,
   ]);
 
