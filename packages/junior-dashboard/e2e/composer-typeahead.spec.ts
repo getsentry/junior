@@ -83,7 +83,7 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   expect(new Set(searches)).toEqual(new Set([PUBLIC_CONVERSATION_ID]));
 });
 
-test("a row that no longer matches cannot be inserted while search loads", async ({
+test("an earlier row cannot be inserted while the next search loads", async ({
   page,
   dashboard,
 }) => {
@@ -96,9 +96,10 @@ test("a row that no longer matches cannot be inserted while search loads", async
   const people = page.getByRole("listbox", { name: "People" });
   await expect(people.getByRole("option")).toHaveText([/Avery Chen/]);
 
-  // The next search does not answer yet.
+  // The next search does not answer yet. Only the API knows whether it
+  // matches Avery, by a name the menu may not show.
   await page.route("**/api/people/search?*", () => {});
-  await composer.pressSequentially("x");
+  await composer.pressSequentially("e");
   await expect(people).toBeHidden();
   await composer.press("Tab");
   await expect(composer.locator("[data-mention]")).toHaveCount(0);

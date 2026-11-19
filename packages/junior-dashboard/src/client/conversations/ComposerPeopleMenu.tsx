@@ -1,17 +1,12 @@
 import { useContext } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
-import {
-  peopleSearchReportSchema,
-  type MentionablePerson,
-} from "@sentry/junior/api/schema";
+import { peopleSearchReportSchema } from "@sentry/junior/api/schema";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { fetchDashboardJson } from "../http";
 import { ComposerMenu, type ComposerTypeahead } from "./ComposerMenu";
 import { ComposerConversationContext } from "./ComposerMention";
 import { mentionName } from "./composerMentionToken";
-
-const WORD = /[\p{L}\p{N}]+/gu;
 
 // A person who types a name waits for the next keystroke, not for fresh data.
 const PEOPLE_SEARCH_STALE_MS = 60_000;
@@ -28,7 +23,6 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
   )?.conversationId;
   const search = useQuery({
     enabled: query.length > 0,
-    placeholderData: keepPreviousData,
     queryKey: ["dashboard", "people", "search", conversationId, query],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -41,12 +35,10 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
       ),
     staleTime: PEOPLE_SEARCH_STALE_MS,
   });
-  const people = query ? (search.data?.people ?? []) : [];
-  // While the next search loads, keep only the earlier rows that still
-  // match, so Enter cannot insert a person the text no longer names.
-  const rows = search.isPlaceholderData
-    ? people.filter((person) => matchesQuery(person, query))
-    : people;
+  // No rows from an earlier query while the next one loads, so Enter
+  // cannot insert a person the text no longer names. Only the API knows
+  // which names it matched.
+  const rows = query ? (search.data?.people ?? []) : [];
   return (
     <ComposerMenu
       label="People"
@@ -66,17 +58,5 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
         </>
       )}
     </ComposerMenu>
-  );
-}
-
-// The API match: each word of the query starts a word of the name or the
-// handle. A row that the API matched by another name hides only until the
-// search returns.
-function matchesQuery(person: MentionablePerson, query: string): boolean {
-  const words = `${person.fullName ?? ""} ${person.slackUserName ?? ""}`
-    .toLowerCase()
-    .match(WORD);
-  return (query.toLowerCase().match(WORD) ?? []).every((term) =>
-    words?.some((word) => word.startsWith(term)),
   );
 }
