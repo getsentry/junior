@@ -1,6 +1,6 @@
 {
-  "id": "89c49970-0c7c-4087-82ad-dc67189cbb7a",
-  "prevId": "8cc6084f-a9ce-414e-b233-9c2b1b44bc1f",
+  "id": "28fab4f2-3c7b-4509-bfb6-4861744d2e84",
+  "prevId": "34948016-a9a1-442a-b126-dbc8ada7eda7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4043,6 +4043,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "junior_identities_slack_person_search_idx": {
+          "name": "junior_identities_slack_person_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5942,34 +5958,6 @@
           ],
           "isUnique": true,
           "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_memory_memories_archived_idempotency_idx": {
-          "name": "junior_memory_memories_archived_idempotency_idx",
-          "columns": [
-            {
-              "expression": "scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "scope_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "idempotency_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NOT NULL AND \"junior_memory_memories\".\"archive_reason\" <> 'expired'",
           "concurrently": false,
           "method": "btree",
           "with": {}
