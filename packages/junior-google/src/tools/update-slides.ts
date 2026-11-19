@@ -1,10 +1,13 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import { revisionAfterUpdate } from "./doc-edits";
 import { requireEditableFile } from "./editable-file";
+import { readRequesterFile } from "./file-access";
 import { googleFileRequest } from "./files";
 import type { GoogleToolContext } from "./shared";
 import { presentationReferenceSchema, presentationUrl } from "./slides";
@@ -56,6 +59,60 @@ const outputSchema = pluginToolOutputSchema.extend({
   url: z.string(),
 });
 
+// Request kinds that copy content from another file into the deck.
+const sheetsSourceSchema = z.object({ spreadsheetId: z.string().optional() });
+const sourceSchema = z.object({
+  createSheetsChart: sheetsSourceSchema.optional(),
+  createVideo: z.object({ source: z.string().optional() }).optional(),
+  // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Slides API request kind.
+  replaceAllShapesWithSheetsChart: sheetsSourceSchema.optional(),
+});
+const SOURCE_CHECK_CONCURRENCY = 4;
+
+/**
+ * Check every other file that the requests copy into the deck. A Sheets
+ * chart shows data from its Sheet, so the requester must be able to open that
+ * Sheet. Junior cannot check a Drive video, so only YouTube videos are
+ * allowed.
+ */
+async function requireReadableSources(
+  ctx: GoogleToolContext,
+  requests: Array<Record<string, unknown>>,
+): Promise<void> {
+  const sources = requests.map((request) => {
+    const parsed = sourceSchema.safeParse(request);
+    if (!parsed.success) {
+      throw new PluginToolInputError(
+        `Malformed ${Object.keys(request)[0]} request: ${parsed.error.issues[0]?.message ?? "invalid"}.`,
+      );
+    }
+    return parsed.data;
+  });
+  if (
+    sources.some(
+      (source) =>
+        source.createVideo !== undefined &&
+        source.createVideo.source !== "YOUTUBE",
+    )
+  ) {
+    throw new PluginToolInputError(
+      "Only YouTube videos can be added. You cannot check who can open a Drive video.",
+    );
+  }
+  const spreadsheetIds = new Set(
+    sources.flatMap((source) =>
+      [
+        source.createSheetsChart?.spreadsheetId,
+        // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Slides API request kind.
+        source.replaceAllShapesWithSheetsChart?.spreadsheetId,
+      ].filter((id) => id !== undefined),
+    ),
+  );
+  await pLimit(SOURCE_CHECK_CONCURRENCY).map([...spreadsheetIds], (fileId) =>
+    readRequesterFile(ctx, { fileId }, ["spreadsheet"]),
+  );
+}
+
 const replySchema = z.object({ replies: z.array(z.unknown()).default([]) });
 
 /** Count request kinds for the action review proposal, such as `insertText ×2`. */
@@ -82,7 +139,7 @@ export const updateGoogleSlidesTool = definePluginTool({
     return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.`;
   },
   description:
-    "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation.",
+    "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
   inputSchema,
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
@@ -91,6 +148,7 @@ export const updateGoogleSlidesTool = definePluginTool({
       input.presentation,
       "presentation",
     );
+    await requireReadableSources(ctx, input.requests);
     const response = await googleFileRequest(ctx, file.ref, {
       body: {
         requests: input.requests,

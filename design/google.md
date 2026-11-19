@@ -50,9 +50,3 @@ Workspace account, so the user connects nothing.
   the event.
 - Only an admin connects Junior's account. A requester cannot connect it or
   use their own account instead.
-
-## Gaps
-
-- A Slides edit can add a Sheets chart or a Drive video from a file that the
-  requester cannot open. This breaks "never reads a file for a person who
-  could not read it".

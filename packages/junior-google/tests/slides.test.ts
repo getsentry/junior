@@ -10,7 +10,11 @@ const REQUESTER = "alice@example.com";
 const SANDBOX_ROOT = "/sandbox";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
-function slidesTools(responses: Response[], curlExitCode = 0) {
+function slidesTools(
+  responses: Response[],
+  curlExitCode = 0,
+  readableIds: readonly string[] = [DECK_ID],
+) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const run = vi.fn(async ({ cmd }: { cmd: string }) => ({
@@ -20,7 +24,7 @@ function slidesTools(responses: Response[], curlExitCode = 0) {
   }));
   const readFile = vi.fn(async () => PNG);
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
-    egress: { fetch: withReadCheck(fetch, [DECK_ID]) },
+    egress: { fetch: withReadCheck(fetch, readableIds) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
     users: {
       resolveActor: async () => ({
@@ -136,6 +140,62 @@ describe("Google Slides tools", () => {
         requests: [{ deleteObject: {}, insertText: {} }],
       }),
     ).toThrow(PluginToolInputError);
+  });
+
+  it("adds a Sheets chart only from a Sheet the requester can open, and only YouTube videos", async () => {
+    const SHEET_ID = "1ShEeTiDaBcDeFgHiJkLmNoP";
+    const sheetFile = () =>
+      Response.json({
+        id: SHEET_ID,
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        name: "Numbers",
+      });
+    const editor = () =>
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER });
+    const chart = {
+      presentation: DECK_LINK,
+      requests: [
+        {
+          createSheetsChart: {
+            chartId: 1,
+            linkingMode: "LINKED",
+            spreadsheetId: SHEET_ID,
+          },
+        },
+      ],
+      revision_id: "rev-1",
+    };
+
+    const shared = slidesTools(
+      [deckFile(), editor(), sheetFile(), Response.json({ replies: [{}] })],
+      0,
+      [DECK_ID, SHEET_ID],
+    );
+    await expect(
+      shared.call("updateGoogleSlides", chart),
+    ).resolves.toMatchObject({ presentation_id: DECK_ID });
+    const sent = await shared.calls();
+    expect(sent[2]?.url.pathname).toBe(`/drive/v3/files/${SHEET_ID}`);
+    expect(sent[3]?.operation).toBe("google.slides.presentation.batchUpdate");
+
+    const hidden = slidesTools([deckFile(), editor(), sheetFile()]);
+    await expect(hidden.call("updateGoogleSlides", chart)).rejects.toThrow(
+      `Only people who can open "Numbers" can ask you to read it, and ${REQUESTER} cannot.`,
+    );
+    expect((await hidden.calls()).map((item) => item.operation)).not.toContain(
+      "google.slides.presentation.batchUpdate",
+    );
+
+    const video = slidesTools([deckFile(), editor()]);
+    await expect(
+      video.call("updateGoogleSlides", {
+        ...chart,
+        requests: [{ createVideo: { id: SHEET_ID, source: "DRIVE" } }],
+      }),
+    ).rejects.toThrow("Only YouTube videos can be added.");
+    expect((await video.calls()).map((item) => item.operation)).not.toContain(
+      "google.slides.presentation.batchUpdate",
+    );
   });
 
   it("reads a deck outline or one full slide, always with the revision", async () => {
