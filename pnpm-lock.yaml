@@ -14996,6 +14996,7 @@ snapshots:
       '@lexical/markdown': 0.53.0(typescript@7.0.2)
       '@lexical/react': 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
       '@lexical/rich-text': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
       '@sentry/browser': 11.14.0
       '@sentry/junior': file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
