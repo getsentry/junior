@@ -99,8 +99,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
    * Conversation that asked for 946 has its own conflict Watch.
    */
   const watches = { comments: true, conflicts: true, ownConflicts: true };
-  /** Review desk calls that fail before one succeeds. */
-  const failures = { upsert: 0 };
+  /** Review desk and publish calls that fail before one succeeds. */
+  const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   /** Dedupe keys of the open review items. */
   const openNotices = new Set<string>();
@@ -115,6 +115,10 @@ export function createPluginHarness(fixture: GitHubFixture) {
       );
     },
     async publish(event) {
+      if (failures.publish > 0) {
+        failures.publish -= 1;
+        throw new Error("The event queue is down");
+      }
       recorded.published.push(event);
     },
   };

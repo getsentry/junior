@@ -618,6 +618,40 @@ describe("merge conflict check on webhook events", () => {
       ]);
     });
 
+    it("publishes a fix again when its publish failed", async () => {
+      await askedInSlack();
+      h.failures.publish = 1;
+      await checkAt(pushedAt, "1").catch(() => undefined);
+      expect(fixedShas()).toEqual([]);
+      // The next check of the same head commit publishes the same event key,
+      // which core delivers once.
+      await checkAt(pushedAt + 10 * minute, "1");
+      expect(fixedShas()).toEqual(["1"]);
+    });
+
+    it("asks again at once when the fix that Resume publishes fails", async () => {
+      await askedInSlack();
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + hour, "2");
+      await checkAt(pushedAt + 2 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "4");
+      expect(h.notices).toHaveLength(1);
+      pullRequest.head.sha = "4".repeat(40);
+      h.failures.publish = 1;
+      await expect(
+        h.answer({
+          choice: "Resume",
+          conversationId: "slack:C1:1.0",
+          dedupeKey: "merge-conflict:getsentry/junior#946",
+          itemId: "item-1",
+          nowMs: pushedAt + 4 * hour,
+        }),
+      ).rejects.toThrow("The event queue is down");
+      await checkAt(pushedAt + 4 * hour + 10 * minute, "4");
+      expect(h.notices).toHaveLength(2);
+    });
+
     it("stops after 3 fixes in a row, and Resume starts a fix and the count again", async () => {
       await askedInSlack();
       approvals.add(946);
@@ -684,9 +718,9 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt, "1");
       await checkAt(pushedAt + hour, "2");
       await checkAt(pushedAt + 2 * hour, "3");
-      await checkAt(pushedAt + 3 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "4");
       expect(h.notices).toHaveLength(1);
-      duringPullRequestRead = () => checkAt(pushedAt + 4 * hour, "3");
+      duringPullRequestRead = () => checkAt(pushedAt + 4 * hour, "4");
       await h.answer({
         choice: "Resume",
         conversationId: "slack:C1:1.0",
@@ -704,7 +738,7 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt, "1");
       await checkAt(pushedAt + hour, "2");
       await checkAt(pushedAt + 2 * hour, "3");
-      await checkAt(pushedAt + 3 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "4");
       expect(h.notices).toHaveLength(1);
       const resume = {
         choice: "Resume",
@@ -734,9 +768,9 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt, "1");
       await checkAt(pushedAt + hour, "2");
       await checkAt(pushedAt + 2 * hour, "3");
-      await checkAt(pushedAt + 3 * hour, "3");
+      await checkAt(pushedAt + 3 * hour, "4");
       expect(h.notices).toHaveLength(1);
-      pullRequest.head.sha = "3".repeat(40);
+      pullRequest.head.sha = "4".repeat(40);
       const resume = {
         choice: "Resume",
         conversationId: "slack:C1:1.0",
@@ -751,9 +785,9 @@ describe("merge conflict check on webhook events", () => {
       // Core already delivered a fix of this head commit, and Resume closed
       // the item. So when no fix lands, the next check a day later asks
       // again, and Resume on the new item starts another fix.
-      await checkAt(pushedAt + 4 * hour + 10 * minute, "3");
+      await checkAt(pushedAt + 4 * hour + 10 * minute, "4");
       expect(h.notices).toHaveLength(1);
-      await checkAt(pushedAt + 4 * hour + day, "3");
+      await checkAt(pushedAt + 4 * hour + day, "4");
       expect(h.notices.map(({ notice }) => notice.body)).toEqual([
         expect.stringContaining("after 3 in a row"),
         "#946 conflicts with `main`. Fixes stopped because the last fix did not land. Resume fixes it now and on later conflicts.",

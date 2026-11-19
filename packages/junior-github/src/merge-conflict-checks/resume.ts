@@ -60,6 +60,13 @@ export async function resumeGitHubConflictFixes(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .returning({ pullRequestId: t.pullRequestId });
   if (resumed.length === 0) return;
+  const undo = () =>
+    args.db
+      .update(t)
+      .set({ conflictFixesResumedAt: row.resumedAt })
+      .where(
+        and(pullRequestRow(args.ref), eq(t.conflictFixesResumedAt, resumedAt)),
+      );
   const loaded = gitHubPullRequestMergeSchema.parse(
     await args.loadPullRequest(args.ref),
   );
@@ -70,25 +77,9 @@ export async function resumeGitHubConflictFixes(args: {
     loaded.mergeable === true ||
     loaded.draft === true
   ) {
-    await args.db
-      .update(t)
-      .set({ conflictFixesResumedAt: row.resumedAt })
-      .where(
-        and(pullRequestRow(args.ref), eq(t.conflictFixesResumedAt, resumedAt)),
-      );
+    await undo();
     return;
   }
-  // The fix counts as the first in a row, and the policy starts no second
-  // fix of this head commit.
-  await args.db
-    .update(t)
-    .set({
-      conflictFixes: withGitHubConflictFix(row.fixes, {
-        atMs: args.nowMs,
-        headSha: loaded.head.sha,
-      }),
-    })
-    .where(pullRequestRow(args.ref));
   const events = gitHubMergeConflictEvents({
     ...args.ref,
     conflict: {
@@ -127,8 +118,26 @@ export async function resumeGitHubConflictFixes(args: {
       resource,
     });
   }
-  for (const event of events) {
-    // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
-    await args.events.publish(event);
+  try {
+    for (const event of events) {
+      // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+      await args.events.publish(event);
+    }
+  } catch (error) {
+    // No fix started, so the next conflict check asks again at once.
+    await undo();
+    throw error;
   }
+  // Save the fix after it publishes. Until then, the saved Resume keeps
+  // the policy from starting a second fix. The fix counts as the first in
+  // a row, and the policy starts no second fix of this head commit.
+  await args.db
+    .update(t)
+    .set({
+      conflictFixes: withGitHubConflictFix(row.fixes, {
+        atMs: args.nowMs,
+        headSha: loaded.head.sha,
+      }),
+    })
+    .where(pullRequestRow(args.ref));
 }

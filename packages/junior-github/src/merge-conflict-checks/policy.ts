@@ -176,7 +176,12 @@ export function withGitHubConflictFix(
 /** Why Junior stopped fixing the conflicts of one pull request. */
 type GitHubConflictStop = "idle" | "limit" | "unlanded";
 
-type GitHubConflictAction = "fix" | "skip" | { stop: GitHubConflictStop };
+/** `retry` publishes a fix that started already again. */
+type GitHubConflictAction =
+  | "fix"
+  | "retry"
+  | "skip"
+  | { stop: GitHubConflictStop };
 
 /** Decide what a conflict on one open Junior pull request does. */
 function gitHubConflictAction(input: {
@@ -192,24 +197,26 @@ function gitHubConflictAction(input: {
   const activeAtMs = Math.max(input.history.activeAtMs, resumedAtMs ?? 0);
   const idleMs = nowMs - activeAtMs;
   if (idleMs > IDLE_MS && !approved) return "skip";
+  // A Resume that has not saved its fix yet is starting one.
+  const resuming =
+    resumedAtMs === activeAtMs && fixes.every(({ atMs }) => atMs < resumedAtMs);
+  const started = resuming
+    ? resumedAtMs
+    : fixes.find(({ headSha }) => headSha === input.headSha)?.atMs;
+  if (started !== undefined) {
+    // A fix changes the head commit. So with the same head a day later, the
+    // fix did not land.
+    if (nowMs - started >= FIX_INTERVAL_MS) return { stop: "unlanded" };
+    // The policy's event key names the head commit, and core delivers each
+    // key once, so its event publishes again: a publish that failed gets
+    // another try. A Resume's event has its own key.
+    return resuming || started === resumedAtMs ? "skip" : "retry";
+  }
   // The fix that Resume started counts as the first in a row.
   if (fixes.filter(({ atMs }) => atMs >= activeAtMs).length >= MAX_FIXES) {
     return { stop: "limit" };
   }
   if (idleMs > ACTIVE_MS && !approved) return { stop: "idle" };
-  // A Resume that has not saved its fix yet is starting one.
-  const resuming =
-    resumedAtMs === activeAtMs && fixes.every(({ atMs }) => atMs < resumedAtMs);
-  const pendingAtMs = resuming
-    ? resumedAtMs
-    : fixes.find(({ headSha }) => headSha === input.headSha)?.atMs;
-  // Core delivers one fix per head commit, and a fix changes the head
-  // commit. So with the same head a day later, the fix did not land.
-  if (pendingAtMs !== undefined) {
-    return nowMs - pendingAtMs < FIX_INTERVAL_MS
-      ? "skip"
-      : { stop: "unlanded" };
-  }
   // Only a pull request that is not approved waits a day between fixes.
   const fixedAtMs = Math.max(
     resumedAtMs ?? 0,
@@ -321,6 +328,7 @@ export async function applyGitHubConflictPolicy(args: {
     resumedAtMs: row.resumedAt?.getTime(),
   });
   if (action === "skip") return [];
+  if (action === "retry") return args.events;
   if (action === "fix") {
     await args.db
       .update(t)
