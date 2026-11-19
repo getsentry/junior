@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { pluginOperationalReportFeedSchema } from "@/api/schema";
@@ -127,6 +128,39 @@ describe("plugin reports API route", () => {
       ).toMatchObject({
         values: { briefs: 1, costUsd: 0.0042 },
       });
+
+      // The totals follow a later version and a purge of a Conversation.
+      const [outside, inside] = reports;
+      await getDb().insert(juniorConversationBriefs).values({
+        conversationId: inside!.conversationId,
+        version: 2,
+        turnId: "inside-turn-2",
+        throughSeq: 1,
+        content: conversationBriefFixture(),
+        searchText: "stored brief",
+        modelId: "test-model",
+        createdAt: windowStart,
+      });
+      await getDb()
+        .delete(juniorConversationBriefs)
+        .where(
+          eq(juniorConversationBriefs.conversationId, outside!.conversationId),
+        );
+      const updated = pluginOperationalReportFeedSchema.parse(
+        await (
+          await createJuniorApi().request("http://localhost/api/plugin-reports")
+        ).json(),
+      );
+      expect(
+        updated.reports.find((candidate) => candidate.pluginName === "briefs")
+          ?.metrics,
+      ).toEqual(
+        expect.arrayContaining([
+          { label: "briefs stored", tone: "good", value: "2" },
+          { label: "conversations with a brief", value: "1" },
+          { label: "briefs · 30d", value: "2" },
+        ]),
+      );
     } finally {
       setBriefsConfig(previousBriefsConfig);
       await fixture.close();

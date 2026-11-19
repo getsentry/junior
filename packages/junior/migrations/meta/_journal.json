@@ -918,6 +918,20 @@
       "when": 1795082429315,
       "tag": "0130_review_item_status_index",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1795107130499,
+      "tag": "0131_brief_totals",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1795107160267,
+      "tag": "0132_brief_created_at_index",
+      "breakpoints": true
     }
   ]
 }

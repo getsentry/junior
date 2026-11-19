@@ -2,9 +2,12 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { and, gte, lt, sql } from "drizzle-orm";
+import { and, count, gte, lt, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationBriefs } from "@/db/schema";
+import {
+  juniorConversationBriefTotals,
+  juniorConversationBriefs,
+} from "@/db/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
@@ -42,24 +45,30 @@ export async function buildBriefsOperationalReport(args: {
   const newestDay = startOfUtcDay(args.nowMs);
   const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
   const windowEnd = new Date(newestDay.getTime() + DAY_MS);
-  const inWindow = and(
-    gte(juniorConversationBriefs.createdAt, windowStart),
-    lt(juniorConversationBriefs.createdAt, windowEnd),
-  );
+  const totals = juniorConversationBriefTotals;
   const [[counts], briefDays] = await Promise.all([
-    // One scan serves the total and the window count.
+    // The window count reads the `created_at` index. The all-time totals
+    // come from the one row that a trigger keeps, so no read covers every
+    // Brief. Until the first Brief, the row can be missing.
     args.db
       .select({
         conversations:
-          sql<number>`count(distinct ${juniorConversationBriefs.conversationId})`.mapWith(
+          sql<number>`coalesce((${args.db.select({ value: totals.conversations }).from(totals)}), 0)`.mapWith(
             Number,
           ),
-        recent: sql<number>`count(*) filter (where ${inWindow})`.mapWith(
-          Number,
-        ),
-        stored: sql<number>`count(*)`.mapWith(Number),
+        recent: count(),
+        stored:
+          sql<number>`coalesce((${args.db.select({ value: totals.stored }).from(totals)}), 0)`.mapWith(
+            Number,
+          ),
       })
-      .from(juniorConversationBriefs),
+      .from(juniorConversationBriefs)
+      .where(
+        and(
+          gte(juniorConversationBriefs.createdAt, windowStart),
+          lt(juniorConversationBriefs.createdAt, windowEnd),
+        ),
+      ),
     args.briefDays,
   ]);
   const recentDays = briefDays.filter((day) => {
