@@ -33,6 +33,8 @@ export function MemoryDetails(props: {
   actionPending: boolean;
   onAction(action: PluginUserPageRecordAction): void;
   onClose(): void;
+  /** Set for an archived memory, which offers Restore instead of Forget. */
+  onRestore?: (() => void) | undefined;
   record: PluginUserPageRecord | undefined;
 }) {
   const { record } = props;
@@ -40,10 +42,6 @@ export function MemoryDetails(props: {
   const heading = record ? memoryHeading(record) : "Memory details";
   const forgetAction = record?.actions?.find(
     (recordAction) => recordAction.tone === "danger",
-  );
-  // An archived memory offers Restore instead of Forget.
-  const restoreAction = record?.actions?.find(
-    (recordAction) => recordAction.tone === "neutral",
   );
 
   return (
@@ -80,7 +78,7 @@ export function MemoryDetails(props: {
             <PageContentSkeleton label="Loading memory" variant="panel" />
           )}
         </div>
-        {record && restoreAction ? (
+        {record && props.onRestore ? (
           <footer
             aria-label="Memory actions"
             className="flex items-center gap-2 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
@@ -88,11 +86,11 @@ export function MemoryDetails(props: {
             <Button
               className="min-h-11"
               disabled={props.actionPending}
-              onClick={() => props.onAction(restoreAction)}
+              onClick={props.onRestore}
               variant="outline"
             >
               <RotateCcw aria-hidden="true" size={16} />
-              {restoreAction.label}
+              Restore
             </Button>
           </footer>
         ) : record && forgetAction ? (

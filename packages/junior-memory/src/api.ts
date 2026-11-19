@@ -134,6 +134,9 @@ export type MemoryDashboardResponse = z.output<
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
 
+// `archived: false` restores an archived memory; `true` forgets it.
+const memoryPatchSchema = z.object({ archived: z.boolean() }).strict();
+
 const memoryListQuerySchema = z
   .object({
     archived: z.literal("true").optional(),
@@ -289,30 +292,17 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
-      // Deleting a memory's archive restores the memory.
-      const archivePath = /^\/memories\/([^/]+)\/archive$/.exec(url.pathname);
       const conversationPath = /^\/conversations\/([^/]+)\/memories$/.exec(
         url.pathname,
       );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (
-        !isCollection &&
-        !isDashboard &&
-        !memoryPath &&
-        !archivePath &&
-        !conversationPath
-      ) {
+      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (archivePath && request.method !== "DELETE") {
-        return json({ error: "Method not allowed." }, 405);
-      }
-      if (
-        !isRead &&
-        !((memoryPath || archivePath) && request.method === "DELETE")
-      ) {
+      const isWrite = request.method === "DELETE" || request.method === "PATCH";
+      if (!isRead && !(memoryPath && isWrite)) {
         return json({ error: "Method not allowed." }, 405);
       }
 
@@ -412,15 +402,20 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (archivePath) {
-          await restoreMemory(options.db, {
-            id: decodeURIComponent(archivePath[1]!),
-            nowMs: Date.now(),
-          });
-          return new Response(null, {
-            headers: { "cache-control": "no-store" },
-            status: 204,
-          });
+        if (memoryPath && request.method === "PATCH") {
+          const id = decodeURIComponent(memoryPath[1]!);
+          const { archived } = memoryPatchSchema.parse(
+            await request.json().catch(() => undefined),
+          );
+          if (archived) await archiveMemory(options.db, id);
+          const memoryId = archived
+            ? id
+            : (await restoreMemory(options.db, { id, nowMs: Date.now() })).id;
+          return json(
+            memoryApiSchema.parse(
+              apiMemory(await getMemory(options.db, memoryId, { archived })),
+            ),
+          );
         }
 
         if (memoryPath && request.method === "DELETE") {

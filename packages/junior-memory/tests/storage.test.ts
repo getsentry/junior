@@ -2735,19 +2735,24 @@ describe("memory plugin storage", () => {
       expect(
         memoryApiSchema.parse(await archivedDetailResponse.json()),
       ).toMatchObject({ archiveReason: "user_removed" });
-      const restoreResponse = await api.fetch(
-        new Request(
-          `http://localhost/memories/${publicMemory.memory.id}/archive`,
-          { method: "DELETE" },
-        ),
-        requestContext,
-      );
-      expect(restoreResponse.status).toBe(204);
-      const restoredResponse = await api.fetch(
-        new Request(`http://localhost/memories/${publicMemory.memory.id}`),
-        requestContext,
-      );
-      expect(memoryApiSchema.parse(await restoredResponse.json())).toEqual(
+      const restorePatch = (id: string, body: unknown) =>
+        api.fetch(
+          new Request(`http://localhost/memories/${id}`, {
+            body: JSON.stringify(body),
+            headers: { "content-type": "application/json" },
+            method: "PATCH",
+          }),
+          requestContext,
+        );
+      const invalidPatch = await restorePatch(publicMemory.memory.id, {
+        archived: "no",
+      });
+      expect(invalidPatch.status).toBe(400);
+      const restoreResponse = await restorePatch(publicMemory.memory.id, {
+        archived: false,
+      });
+      expect(restoreResponse.status).toBe(200);
+      expect(memoryApiSchema.parse(await restoreResponse.json())).toEqual(
         expect.not.objectContaining({ archivedAt: expect.anything() }),
       );
       // The heartbeat writes the vectors that archive deleted.
@@ -2768,12 +2773,7 @@ describe("memory plugin storage", () => {
           ),
       ).resolves.toHaveLength(1);
       for (const id of [publicMemory.memory.id, hiddenId]) {
-        const missingRestore = await api.fetch(
-          new Request(`http://localhost/memories/${id}/archive`, {
-            method: "DELETE",
-          }),
-          requestContext,
-        );
+        const missingRestore = await restorePatch(id, { archived: false });
         expect(missingRestore.status).toBe(404);
       }
 
@@ -2783,12 +2783,9 @@ describe("memory plugin storage", () => {
         idempotencyKey: "session:api:second",
         kind: "knowledge",
       });
-      const conflictResponse = await api.fetch(
-        new Request(`http://localhost/memories/${second.memory.id}/archive`, {
-          method: "DELETE",
-        }),
-        requestContext,
-      );
+      const conflictResponse = await restorePatch(second.memory.id, {
+        archived: false,
+      });
       expect(conflictResponse.status).toBe(409);
     } finally {
       now.mockRestore();

@@ -317,6 +317,7 @@ test("lists archived memories and restores one", async ({
   dashboard,
 }) => {
   let restoreMethod: string | undefined;
+  let restoreBody: unknown;
   let activeReads = 0;
   // Off when the permalink opens, as if the memory were past the first page.
   let listed = true;
@@ -329,14 +330,6 @@ test("lists archived memories and restores one", async ({
         ? []
         : [
             {
-              actions: [
-                {
-                  href: "/api/plugins/memory/memories/memory-archived/archive",
-                  label: "Restore",
-                  method: "DELETE",
-                  tone: "neutral",
-                },
-              ],
               id: "memory-archived",
               metadata: [
                 { label: "Type", value: "Knowledge" },
@@ -361,9 +354,20 @@ test("lists archived memories and restores one", async ({
   await page.route(
     "**/api/plugins/memory/memories/memory-archived**",
     async (route) => {
-      if (new URL(route.request().url()).pathname.endsWith("/archive")) {
+      if (route.request().method() === "PATCH") {
         restoreMethod = route.request().method();
-        await route.fulfill({ status: 204 });
+        restoreBody = route.request().postDataJSON();
+        await route.fulfill({
+          json: {
+            content: "Junior's updatePlan tool does not persist plan steps.",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: "memory-archived",
+            kind: "knowledge",
+            observedAt: "2026-07-01T12:00:00.000Z",
+            origin: "automatic",
+            sourcePlatform: "slack",
+          },
+        });
         return;
       }
       if (
@@ -416,7 +420,8 @@ test("lists archived memories and restores one", async ({
   );
   await details.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("No archived memories.")).toBeVisible();
-  expect(restoreMethod).toBe("DELETE");
+  expect(restoreMethod).toBe("PATCH");
+  expect(restoreBody).toEqual({ archived: false });
   expect(activeReads).toBe(0);
   await screenshot(page, "memories-archived-empty");
 });

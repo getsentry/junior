@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 
-import { fetchDashboardJson } from "../../http";
+import { fetchDashboardJson, patch } from "../../http";
 import type { PluginUserPageRecord } from "../user/pluginUserPageData";
 import { formatTime } from "../../time";
 
@@ -42,6 +42,10 @@ function formattedDate(value: string): string {
   });
 }
 
+function memoryHref(memoryId: string): string {
+  return `/api/plugins/memory/memories/${encodeURIComponent(memoryId)}`;
+}
+
 /** Project one viewer-visible memory API record into the dashboard details model. */
 export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
   const learned =
@@ -50,24 +54,21 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
       : memory.origin === "explicit"
         ? "Explicit"
         : "Other";
-  const href = `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`;
   return {
-    actions: [
-      memory.archivedAt
-        ? {
-            href: `${href}/archive`,
-            label: "Restore",
-            method: "DELETE",
-            tone: "neutral",
-          }
-        : {
-            confirmation: "Forget this memory for everyone?",
-            href,
-            label: "Forget",
-            method: "DELETE",
-            tone: "danger",
-          },
-    ],
+    // An archived memory has no Forget action; useRestoreMemory restores it.
+    ...(memory.archivedAt
+      ? undefined
+      : {
+          actions: [
+            {
+              confirmation: "Forget this memory for everyone?",
+              href: memoryHref(memory.id),
+              label: "Forget",
+              method: "DELETE" as const,
+              tone: "danger" as const,
+            },
+          ],
+        }),
     id: memory.id,
     metadata: [
       { label: "Type", value: titleCase(memory.kind) },
@@ -108,7 +109,7 @@ export function useMemoryRecord(
       memoryPageRecord(
         await fetchDashboardJson(
           memoryRecordSchema,
-          `/api/plugins/memory/memories/${encodeURIComponent(memoryId!)}${archived ? "?archived=true" : ""}`,
+          `${memoryHref(memoryId!)}${archived ? "?archived=true" : ""}`,
           signal,
         ),
       ),
@@ -121,5 +122,23 @@ export function useMemoryRecord(
       archived,
     ],
     retry: false,
+  });
+}
+
+/** Make one archived memory active again, then refresh memory pages. */
+export function useRestoreMemory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (memoryId: string) =>
+      patch(memoryRecordSchema, memoryHref(memoryId), { archived: false }),
+    onSuccess: async () => {
+      // As after a forget, drop detail caches before lists refresh.
+      queryClient.removeQueries({
+        queryKey: ["dashboard", "plugin-user-page", "memory", "record"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "plugin-user-page", "memory"],
+      });
+    },
   });
 }

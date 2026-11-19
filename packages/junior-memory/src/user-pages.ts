@@ -73,18 +73,6 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
-          ...(archived
-            ? {
-                actions: [
-                  {
-                    href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}/archive`,
-                    label: "Restore",
-                    method: "DELETE" as const,
-                    tone: "neutral" as const,
-                  },
-                ],
-              }
-            : undefined),
           id: memory.id,
           title: memory.content,
           metadata: [

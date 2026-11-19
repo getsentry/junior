@@ -41,7 +41,7 @@ import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
-import { useMemoryRecord } from "./memoryRecord";
+import { useMemoryRecord, useRestoreMemory } from "./memoryRecord";
 import { getDashboardAgentName } from "../../agentName";
 
 /**
@@ -167,6 +167,7 @@ function MemoryLibrary(props: {
   const listRef = useRef<HTMLDivElement>(null);
   const archived = filter === ARCHIVED_FILTER;
   const memoryQuery = useMemoryRecord(memoryId, archived);
+  const restore = useRestoreMemory();
   const selectedRecord =
     memoryQuery.data ?? records.find((record) => record.id === memoryId);
   const memoryPath = (pathname: string) =>
@@ -186,11 +187,19 @@ function MemoryLibrary(props: {
     listRef.current?.focus();
     runAction(recordAction);
   };
+  const restoreSelected = (id: string) => {
+    void navigate(memoryPath(props.libraryPath));
+    listRef.current?.focus();
+    restore.mutate(id);
+  };
 
   useEffect(() => {
     // An action leaves the shared mutation in success or error. Clear it when
     // another memory opens, so old action feedback does not stay visible.
-    if (memoryId) action.reset();
+    if (memoryId) {
+      action.reset();
+      restore.reset();
+    }
     // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
   }, [memoryId]);
 
@@ -330,7 +339,7 @@ function MemoryLibrary(props: {
                   loading={query.isFetchingNextPage}
                   onLoadMore={() => void query.fetchNextPage()}
                 />
-                {action.error ? (
+                {action.error || restore.error ? (
                   <InlineError className="text-center">
                     Could not complete this action. Try again.
                   </InlineError>
@@ -342,10 +351,13 @@ function MemoryLibrary(props: {
       </div>
       {memoryId ? (
         <MemoryDetails
-          actionPending={action.isPending}
+          actionPending={action.isPending || restore.isPending}
           key={memoryId}
           onAction={runRecordAction}
           onClose={closeDetails}
+          onRestore={
+            archived && memoryId ? () => restoreSelected(memoryId) : undefined
+          }
           record={selectedRecord}
         />
       ) : null}

@@ -178,7 +178,7 @@ The plugin also exposes authenticated REST resources:
 | `GET`    | `/api/plugins/memory/memories`             | List memories with `q`, `cursor`, `limit`, and `archived=true` for archived |
 | `GET`    | `/api/plugins/memory/memories/:id`         | Read one memory, or one archived memory with `archived=true`                |
 | `DELETE` | `/api/plugins/memory/memories/:id`         | Forget one memory                                                           |
-| `DELETE` | `/api/plugins/memory/memories/:id/archive` | Restore one archived memory                                                 |
+| `PATCH`  | `/api/plugins/memory/memories/:id`         | Set `archived`: `false` restores an archived memory, `true` forgets it     |
 
 Personal API tokens can use the read endpoints. Forget and restore require an
 authenticated dashboard browser session.
