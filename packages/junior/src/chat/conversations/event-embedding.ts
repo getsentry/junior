@@ -36,6 +36,8 @@ const MAX_EVENTS_PER_RUN = 256;
 const EMBEDDING_BATCH_SIZE = 32;
 /** How long the event search index of one Conversation stays locked. */
 export const EVENT_INDEX_LOCK_TTL_MS = 10 * 60 * 1_000;
+// Longer than the 10 s budget of a heartbeat backfill run.
+const EVENT_INDEX_LOCK_WAIT_MS = 30_000;
 
 /**
  * Lock of the event search index of one Conversation. The task and the
@@ -134,7 +136,7 @@ export function eventSearchTaskRegistration(options: {
       indexEvents: {
         async run(context: PluginTaskContext) {
           const run = await context.run.load();
-          await context.state.withLock(
+          const attempt = await context.state.withLock(
             eventIndexLockKey(run.conversationId),
             EVENT_INDEX_LOCK_TTL_MS,
             async () => {
@@ -167,7 +169,16 @@ export function eventSearchTaskRegistration(options: {
                 lexemes: lexemeResult.value,
               });
             },
+            // The heartbeat backfill holds the lock for at most its run
+            // budget. Waiting indexes this Turn's events now instead of after
+            // the backfill marks the index done.
+            { waitMs: EVENT_INDEX_LOCK_WAIT_MS },
           );
+          if (!attempt.acquired) {
+            context.log.info("Conversation event index busy", {
+              conversationId: run.conversationId,
+            });
+          }
         },
       },
     },
