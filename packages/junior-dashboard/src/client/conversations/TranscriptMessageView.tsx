@@ -13,9 +13,11 @@ import { memo, type ReactNode } from "react";
 import { useHref } from "react-router";
 import { Link } from "lucide-react";
 
+import { PersonReference } from "../components/PersonReference";
 import {
   transcriptMessageActor,
   transcriptMessageActorLabel,
+  transcriptMessagePerson,
   transcriptRoleKind,
 } from "../format";
 import { cn } from "../styles";
@@ -249,11 +251,21 @@ function TranscriptMessageHeader(props: {
     props.conversation,
     props.message,
   );
+  const person = transcriptMessagePerson(props.conversation, props.message);
 
   return (
     <TranscriptMessageHeading action={props.action}>
       <span className={transcriptRoleLabelClass(props.message.role)}>
-        {roleLabel}
+        {person ? (
+          // The large photo beside the message already shows who wrote it.
+          <PersonReference
+            avatar={false}
+            className="text-inherit no-underline hover:underline"
+            person={person}
+          />
+        ) : (
+          roleLabel
+        )}
       </span>
       {source || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">

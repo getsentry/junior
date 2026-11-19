@@ -53,6 +53,8 @@ export function RowSnoozeButton(props: {
   look?: ButtonLook;
   /** "Snooze" by default. */
   label?: string;
+  /** The accessible name, when the label alone does not say what it acts on. */
+  name?: string;
   onOpenChange(open: boolean): void;
   /** Called with the wake time that the picked row shows. */
   onSnooze(untilMs: number): void;
@@ -91,6 +93,7 @@ export function RowSnoozeButton(props: {
         render={
           props.trigger ?? (
             <Button
+              aria-label={props.name}
               className={props.look && LOOK_CLASSES[props.look]}
               title={
                 props.look === "icon" ? (props.label ?? "Snooze") : undefined
@@ -220,11 +223,14 @@ export function RowDismissButton(props: {
   look?: ButtonLook;
   /** "Dismiss" by default. */
   label?: string;
+  /** The accessible name, when the label alone does not say what it acts on. */
+  name?: string;
   onClick(): void;
 }) {
   const label = props.label ?? "Dismiss";
   return (
     <Button
+      aria-label={props.name}
       className={props.look && LOOK_CLASSES[props.look]}
       onClick={props.onClick}
       title={props.look === "icon" ? label : undefined}

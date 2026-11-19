@@ -221,7 +221,7 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   expect(saved).toContain("Check the deployment.");
   expect(saved).toContain("Check much later.");
   expect(saved).toContain("Check after the stop.");
-  await expect(fixture.status(conversationId)).resolves.toBe("stopped");
+  await expect(fixture.status(conversationId)).resolves.toBe("done");
 
   // A person's message ends the stop, so the next timer starts a Turn.
   await fixture.continue({
@@ -229,10 +229,11 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
     idempotencyKey: "after-stop",
     message: "Keep watching.",
   });
-  await expect(fixture.status(conversationId)).resolves.toBe("active");
+  await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
   expect(agentRuns).toHaveLength(1);
-  await expect(fixture.status(conversationId)).resolves.toBe("completed");
+  // The starter has not read the reply yet.
+  await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   await expect(
     getConversationStoppedAtMs(conversationId),
   ).resolves.toBeUndefined();

@@ -262,7 +262,6 @@ describe("retention purge job", () => {
       const [id] = await snoozeInboxItems(fixture.sql.db(), {
         nowMs,
         reviewItemIds: [item!.id],
-        rootConversationId: "snoozed",
         timerId: `inbox-snooze:${nowMs}`,
         userId: "user:snoozer",
       });

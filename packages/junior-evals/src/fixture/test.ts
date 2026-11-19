@@ -17,14 +17,10 @@ import { test as baseTest } from "vitest";
 import "vitest-evals";
 import type { JuniorAppOptions } from "@/app";
 import { runEvalWork } from "../eval-work";
-import { createFixtureAgent, type FixtureAgent, type RunAgent } from "./agent";
+import { createFixtureAgent, type FixtureAgent } from "./agent";
+import type { RunAgent } from "./call";
 
-export type {
-  CallOptions,
-  Conversation,
-  RunAgent,
-  TurnProgress,
-} from "./agent";
+export type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
 export type { Reply, ToolCall, Turn, TurnStatus } from "./results";
 
 declare module "vitest" {

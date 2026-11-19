@@ -5,6 +5,7 @@ import { expect, test } from "../test";
 import {
   audit,
   conversationId,
+  grab,
   license,
   mockReviewItems,
   prReview,
@@ -97,6 +98,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await lone.locator("[data-inbox-head]").click();
     await expect(lone).toHaveAttribute("data-expanded", "true");
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    // Open, it has its answer and its own actions, but no Pin.
+    await expect(dismissIn(lone)).toBeVisible();
+    await expect(lone.getByRole("button", { name: /^(Un)?pin/i })).toHaveCount(
+      0,
+    );
   });
 
   for (const motion of ["no-preference", "reduce"] as const) {
@@ -280,7 +286,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
   });
 
-  test("Dismiss all closes every ask of the stack, and the next row opens", async ({
+  test("the stack Dismiss closes every ask of the stack, and the next row opens", async ({
     dashboard,
     page,
   }) => {
@@ -288,13 +294,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, childReview, childLicense, other],
     });
     await page.goto(`${dashboard.baseURL}/`);
+    // The header names the stack's count once, not in each button.
+    await expect(
+      stackOf(page).getByText("3 items", { exact: true }),
+    ).toHaveCount(1);
     await rowOf(page, childReview).locator("[data-inbox-head]").click();
     await expect(rowOf(page, childReview)).toHaveAttribute(
       "data-expanded",
       "true",
     );
     await stackOf(page)
-      .getByRole("button", { exact: true, name: "Dismiss all" })
+      .getByRole("button", {
+        exact: true,
+        name: "Dismiss 3 items in this stack",
+      })
       .click();
     await expect(stackOf(page)).toHaveCount(0);
     await expect(rowOf(page, other)).toHaveAttribute("data-expanded", "true");
@@ -303,7 +316,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .toEqual([childLicense.id, childReview.id, rollout.id].sort());
   });
 
-  test("Snooze all snoozes the stack, and Wake wakes one row", async ({
+  test("the stack Snooze snoozes the stack, and Wake wakes one row", async ({
     dashboard,
     page,
   }) => {
@@ -312,7 +325,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     await stackOf(page)
-      .getByRole("button", { exact: true, name: "Snooze all" })
+      .getByRole("button", {
+        exact: true,
+        name: "Snooze 3 items in this stack",
+      })
       .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(stackOf(page)).toHaveCount(0);
@@ -332,7 +348,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(actions).toEqual([]);
   });
 
-  test("Snooze all puts away a stack whose newest ask snoozed by itself", async ({
+  test("the stack Snooze puts away a stack whose newest ask snoozed by itself", async ({
     dashboard,
     page,
   }) => {
@@ -347,7 +363,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(row).toHaveCount(0);
     await stackOf(page)
-      .getByRole("button", { exact: true, name: "Snooze all" })
+      .getByRole("button", {
+        exact: true,
+        name: "Snooze 3 items in this stack",
+      })
       .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(stackOf(page)).toHaveCount(0);
@@ -358,7 +377,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
-  test("Snooze all puts the stack away, and a later ask shows by itself", async ({
+  test("the stack Snooze puts the stack away, and a later ask shows by itself", async ({
     dashboard,
     page,
   }) => {
@@ -367,7 +386,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await rowOf(page, childReview).locator("[data-inbox-head]").click();
     await stackOf(page)
-      .getByRole("button", { exact: true, name: "Snooze all" })
+      .getByRole("button", {
+        exact: true,
+        name: "Snooze 3 items in this stack",
+      })
       .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(stackOf(page)).toHaveCount(0);
@@ -428,5 +450,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(stackOf(page).locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(rowOf(page, rollout)).toHaveAttribute("data-expanded", "true");
     expect(actions).toEqual([]);
+  });
+
+  test("a section counts its rows, not its stacks", async ({
+    dashboard,
+    page,
+  }) => {
+    const grabs = [
+      grab,
+      { ...grab, id: "item-grab-2", title: "Cover the release" },
+    ];
+    await mockReviewItems(page, { automations: () => 0, open: grabs });
+    await page.goto(`${dashboard.baseURL}/`);
+    const section = page.getByRole("region", { name: "Up for grabs" });
+    await expect(section.locator("li[data-inbox-row]")).toHaveCount(2);
+    // A collapsed section shows its count.
+    const heading = section.getByRole("button", { name: /^Up for grabs/ });
+    await heading.click();
+    await expect(heading).toHaveText("Up for grabs2");
   });
 });

@@ -99,9 +99,9 @@ async function visibleRowItems(
 }
 
 /**
- * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
- * or until a new item in the row. Each item gets its own snooze, which
- * replaces the viewer's earlier one. Returns the snoozed items.
+ * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`.
+ * Each item gets its own snooze, which replaces the viewer's earlier one;
+ * a later item in the row shows by itself. Returns the snoozed items.
  */
 export async function createViewerSnooze(
   user: User,
@@ -122,7 +122,6 @@ export async function createViewerSnooze(
   const snoozeIds = await snoozeInboxItems(getDb(), {
     nowMs,
     reviewItemIds,
-    rootConversationId: root,
     timerId,
     userId: user.id,
   });

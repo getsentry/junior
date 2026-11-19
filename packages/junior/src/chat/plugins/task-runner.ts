@@ -21,6 +21,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginTurnEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
@@ -459,6 +460,11 @@ function taskPluginContext(
       },
     },
     state: createPluginState(pluginName),
+    turnEvents: createPluginTurnEventReader({
+      conversationId: sessionParams.conversationId,
+      plugin,
+      turnId: sessionParams.sessionId,
+    }),
   };
 }
 

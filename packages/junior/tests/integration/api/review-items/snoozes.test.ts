@@ -198,10 +198,9 @@ describe("snoozes", () => {
     ).toBe(400);
   });
 
-  it("wakes on a new item in the row, whoever it is for", async () => {
+  it("shows a new item in a snoozed row alone, and the rest stay snoozed", async () => {
     const ana = await user("ana@example.com");
-    const bob = await user("bob@example.com");
-    // A notice waits on nobody, so the Inbox list shows the wake.
+    // A notice waits on nobody, so the Inbox list would show it awake.
     await addNotice(ROOT, [ana], "Acme entry merged");
     const asAna = api(fixture, ana);
     expect(
@@ -209,9 +208,9 @@ describe("snoozes", () => {
     ).toBe(201);
     expect((await asAna.inbox()).inbox).toEqual([]);
 
-    await addItem(ROOT, [bob], "Review globex entry");
-    expect((await asAna.inbox()).inbox).toEqual(["Acme entry merged"]);
-    expect(await storedStates()).toEqual(["woken"]);
+    await addItem(ROOT, [ana], "Review globex entry");
+    expect((await asAna.inbox()).inbox).toEqual(["Review globex entry"]);
+    expect(await storedStates()).toEqual(["snoozed"]);
   });
 
   it("wakes on a published Event that a trigger names", async () => {

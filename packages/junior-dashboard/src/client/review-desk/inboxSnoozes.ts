@@ -28,7 +28,7 @@ interface SnoozedRead {
 
 /**
  * Snooze Inbox items on the server, so a snooze holds in every browser. A
- * row snoozes its item, and a stack's Snooze all its root's items. An item
+ * row snoozes its item, and a stack's Snooze its root's items. An item
  * wakes at its time, or when its root Conversation adds an item; the
  * versions poll then refreshes the lists. The server hides snoozed rows
  * from the Inbox lists and counts; until the Inbox list reads the server
@@ -112,7 +112,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
   };
   /**
    * Snooze a row until `untilMs`. A root Conversation's row, such as a
-   * stack's Snooze all, snoozes each of its open items; a row of one item,
+   * stack's Snooze, snoozes each of its open items; a row of one item,
    * such as an FYI notice, only that item.
    */
   const snooze = (bundle: InboxBundle, untilMs: number) =>

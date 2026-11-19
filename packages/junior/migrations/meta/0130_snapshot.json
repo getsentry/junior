@@ -1,5 +1,5 @@
 {
-  "id": "4e06e872-8da4-46e3-be3e-afbe97b81b36",
+  "id": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "prevId": "496d0c67-2a83-4e91-b5bd-e848b6fc81d1",
   "version": "7",
   "dialect": "postgresql",
@@ -4039,246 +4039,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_inbox_snooze_triggers": {
-      "name": "junior_inbox_snooze_triggers",
-      "schema": "",
-      "columns": {
-        "snooze_id": {
-          "name": "snooze_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "namespace": {
-          "name": "namespace",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "identifier": {
-          "name": "identifier",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_type": {
-          "name": "event_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "match": {
-          "name": "match",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "junior_inbox_snooze_triggers_event_idx": {
-          "name": "junior_inbox_snooze_triggers_event_idx",
-          "columns": [
-            {
-              "expression": "namespace",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "identifier",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_inbox_snooze_triggers_snooze_idx": {
-          "name": "junior_inbox_snooze_triggers_snooze_idx",
-          "columns": [
-            {
-              "expression": "snooze_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk": {
-          "name": "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk",
-          "tableFrom": "junior_inbox_snooze_triggers",
-          "tableTo": "junior_inbox_snoozes",
-          "columnsFrom": [
-            "snooze_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_inbox_snooze_triggers_outcome_check": {
-          "name": "junior_inbox_snooze_triggers_outcome_check",
-          "value": "\"junior_inbox_snooze_triggers\".\"outcome\" in ('wake', 'resolve')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.junior_inbox_snoozes": {
-      "name": "junior_inbox_snoozes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "review_item_id": {
-          "name": "review_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "junior_inbox_snoozes_snoozed_uidx": {
-          "name": "junior_inbox_snoozes_snoozed_uidx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_inbox_snoozes_settled_idx": {
-          "name": "junior_inbox_snoozes_settled_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_inbox_snoozes_review_item_idx": {
-          "name": "junior_inbox_snoozes_review_item_idx",
-          "columns": [
-            {
-              "expression": "review_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_inbox_snoozes_user_id_junior_users_id_fk": {
-          "name": "junior_inbox_snoozes_user_id_junior_users_id_fk",
-          "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk": {
-          "name": "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
-          "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_review_items",
-          "columnsFrom": [
-            "review_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_inbox_snoozes_state_check": {
-          "name": "junior_inbox_snoozes_state_check",
-          "value": "\"junior_inbox_snoozes\".\"state\" in ('snoozed', 'woken', 'cancelled')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.junior_location_configurations": {
       "name": "junior_location_configurations",
       "schema": "",
@@ -5108,6 +4868,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_review_items_open_action_added_by_idx": {
+          "name": "junior_review_items_open_action_added_by_idx",
+          "columns": [
+            {
+              "expression": "added_by_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}

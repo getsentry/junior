@@ -61,7 +61,12 @@ import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
-import { conversationAnswerLine, type InboxBundle } from "./reviewItemFormat";
+import {
+  conversationAnswerLine,
+  itemNeedsViewer,
+  itemUpForGrabs,
+  type InboxBundle,
+} from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -198,6 +203,24 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
+  const { includedId, includeItem } = data;
+  // In the Inbox, an ask that waits on someone else gets no row, so its
+  // link does not replace the item that an earlier link kept. It still
+  // joins a To do stack that another item keeps there; the kept item does
+  // not count, since the link replaces it.
+  const linkedGetsRow =
+    !linked.data ||
+    view !== "inbox" ||
+    linked.data.kind === "notice" ||
+    itemUpForGrabs(linked.data) ||
+    itemNeedsViewer(linked.data) ||
+    data.todoRows.some(
+      (row) =>
+        row.conversationId === linked.data?.rootConversationId &&
+        row.items.some(
+          (item) => item.id !== includedId && itemNeedsViewer(item),
+        ),
+    );
   // Stream rows show a page at a time, so a linked row can be past them.
   const linkedStreamIndex =
     linkedOpen && linkedRowKey?.startsWith("conversation:")
@@ -206,7 +229,6 @@ export function InboxList(props: {
         )
       : -1;
   const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
-  const { includedId, includeItem } = data;
   useEffect(() => {
     if (!linkedId) return;
     // The router moves the URL as soon as the reader leaves, before this
@@ -274,7 +296,7 @@ export function InboxList(props: {
       }
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
-      if (includedId !== linkedId) includeItem(linkedId);
+      if (linkedGetsRow && includedId !== linkedId) includeItem(linkedId);
       else void navigate(listPath, { replace: true });
     } else if (view === "done") {
       const closedId = linked.data.id;
@@ -291,6 +313,7 @@ export function InboxList(props: {
     includedId,
     linked.data,
     linked.error,
+    linkedGetsRow,
     linkedId,
     linkedLoaded,
     linkedRowKey,
@@ -364,8 +387,9 @@ export function InboxList(props: {
         // Conversations rows keep their Pin and Archive.
         itemActions={view !== "conversations"}
         conversation={
-          // The stack's title names its Conversation.
-          options.stacked
+          // An item row is one item, with no Conversation actions. A
+          // stack's title names its Conversation.
+          options.stacked || options.itemRow
             ? undefined
             : (options.conversation ??
               data.conversationById.get(row.conversationId))
@@ -426,6 +450,16 @@ export function InboxList(props: {
   };
   // Each item shows its own row. A root Conversation with more than one
   // item shows them as a stack, under the root's title.
+  // A section counts its item rows, not its stacks.
+  const rowCount = (
+    bundles: readonly InboxBundle[],
+    keyOf: (id: string) => string,
+    todo?: boolean,
+  ) =>
+    bundles.reduce(
+      (sum, bundle) => sum + stackRows(bundle, keyOf, todo).length,
+      0,
+    );
   const stackRow = (
     row: InboxBundle,
     keyOf: (id: string) => string,
@@ -711,7 +745,8 @@ export function InboxList(props: {
             // or have failed.
             count={
               data.todoCount ||
-              data.todoRows.length + data.todoAutomations.length
+              rowCount(data.todoRows, STACK_ROW_KEYS.todo, true) +
+                data.todoAutomations.length
             }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
@@ -727,7 +762,7 @@ export function InboxList(props: {
         ) : null}
         <InboxSection
           collapsed={collapsed.has("grabs")}
-          count={data.grabRows.length}
+          count={rowCount(data.grabRows, STACK_ROW_KEYS.grabs)}
           label="Up for grabs"
           onToggle={() => toggleSection("grabs")}
         >
@@ -739,7 +774,7 @@ export function InboxList(props: {
         <InboxSection
           action={sweepControl(data.fyiRows, "FYI")}
           collapsed={collapsed.has("fyi")}
-          count={data.fyiRows.reduce((sum, row) => sum + row.items.length, 0)}
+          count={rowCount(data.fyiRows, STACK_ROW_KEYS.fyi)}
           label="FYI"
           onToggle={() => toggleSection("fyi")}
         >

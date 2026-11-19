@@ -168,7 +168,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-linked-release",
       title: "Approve the release window",
     };
-    // A second ask makes the release Conversation a stack, with Snooze all.
+    // A second ask makes the release Conversation a stack, with its own Snooze.
     const checklist = {
       ...pinReview,
       createdAt: "2026-08-07T09:50:00.000Z",
@@ -195,7 +195,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator(
         `li[data-inbox-stack][data-dock-key$=":${pinReview.rootConversationId}"]`,
       )
-      .getByRole("button", { name: "Snooze all" })
+      .getByRole("button", { name: /^Snooze \d+ items in this stack$/ })
       .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(linkedRow).toHaveCount(0);
