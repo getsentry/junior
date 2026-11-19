@@ -257,7 +257,8 @@ export function useComposerSkillMenu(
     if (!card || !cardSkill) return false;
     if (event.key === "Escape") {
       setDismissedStart(card.start);
-      setCard(undefined);
+      // Also drop a token kept while the skill list loaded.
+      close();
     } else if (isPlatformShortcut(event.nativeEvent, "i")) {
       setViewing(cardSkill.name);
     } else {

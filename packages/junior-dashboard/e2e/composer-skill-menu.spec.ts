@@ -158,10 +158,14 @@ test("a caret move before the skill list loads shows the card @classic", async (
   await composer.fill("Run $release-check now");
   for (let step = 0; step < 4; step++) await composer.press("ArrowLeft");
   release();
-  await expect(
-    page.getByRole("group", { name: "$release-check" }),
-  ).toBeVisible();
-  await expect(page.getByRole("grid", { name: "Skills" })).toHaveCount(0);
+  const card = page.getByRole("group", { name: "$release-check" });
+  const skills = page.getByRole("grid", { name: "Skills" });
+  await expect(card).toBeVisible();
+  await expect(skills).toHaveCount(0);
+  // Esc closes the card, and the menu does not open in its place.
+  await composer.press("Escape");
+  await expect(card).toHaveCount(0);
+  await expect(skills).toHaveCount(0);
 });
 
 test.describe("on a touch screen", () => {
