@@ -46,7 +46,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Composer](./composer.md) covers the message box under the transcript: sending, the queue (edit, delete, steer), `Stop`, drafts, files, quoting a reply, and who sees the box.
+- [Composer](./composer.md) covers the message box under the transcript: sending, the queue (edit, delete, steer), `Stop`, drafts, files, quoting a reply, the `$` skill menu, and who sees the box.
 - [Review desk](./review-desk.md) covers asking a person, answering on the desk or in the composer, notices, taking, dedupe, and closing with a reason.
 - [Guardian](./guardian.md) covers action review: ordinary work that runs, risky actions that ask or stop, the recorded decision, and the System card.
 - [Background work](./background-work.md) covers one reply per message, a Turn that outlives its time limit, and a Turn whose worker is killed.
