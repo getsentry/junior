@@ -1,5 +1,9 @@
 import { createWebSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  getAgentInvocationId,
+  getUnnamedAgentConversationId,
+} from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
@@ -239,11 +243,21 @@ describe("Lead", () => {
     ).resolves.toMatchObject({ subscription_status: "active" });
     await watch(lead.conversationId, started.conversation_id);
     await watch(boWork.conversationId, started.conversation_id);
-    // A private Conversation in another tree and Destination is not, and
-    // a missing one gets the same error.
+    // A private Conversation in another tree and Destination is not. A
+    // child agent and a missing Conversation get the same error.
+    const child = getUnnamedAgentConversationId(
+      getAgentInvocationId(started.conversation_id, "lead-watch-child"),
+    );
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "task",
+      parentConversationId: started.conversation_id,
+      source: "internal",
+    });
     for (const [watcher, target] of [
       [lead.conversationId, boLead.conversationId],
       [boWork.conversationId, lead.conversationId],
+      [lead.conversationId, child],
       [lead.conversationId, "local:web:missing"],
     ] as const) {
       await expect(watch(watcher, target)).rejects.toThrow(

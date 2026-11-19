@@ -12,6 +12,8 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/chat/conversations/event-access";
+import { acceptsConversationWatch } from "@/chat/conversations/kind-behavior";
+import { getConversationStore } from "@/chat/db";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
@@ -112,6 +114,26 @@ function ttlMs(input: Input): number {
   return input.ttl_ms;
 }
 
+/**
+ * A Watch on a Conversation reads its status, so the target must be a
+ * top-level Conversation that the watcher may read. "Not found", "no
+ * access", and "not top-level" get the same error.
+ */
+async function requireWatchableConversation(
+  watcherConversationId: string,
+  conversationId: string,
+): Promise<void> {
+  const [readable, target] = await Promise.all([
+    canReadConversation(watcherConversationId, conversationId),
+    getConversationStore().get({ conversationId }),
+  ]);
+  if (!readable || !target || !acceptsConversationWatch(target.kind)) {
+    throw new ToolInputError(
+      `Conversation is not accessible: ${conversationId}`,
+    );
+  }
+}
+
 /** Static definition of `watchEvents` for the deployment event catalog. */
 export function watchEventsToolDefinition(catalog: EventCatalog) {
   return zodToolDefinition({
@@ -159,16 +181,11 @@ export function createWatchEventsTool(
         ...input,
         resourceType: input.resource_type,
       });
-      // A Watch on a Conversation reads its status, so it needs read access.
-      // "Not found" and "no access" get the same error.
       if (
         input.namespace === CORE_EVENT_NAMESPACE &&
-        input.resource_type === CONVERSATION_RESOURCE_TYPE &&
-        !(await canReadConversation(context.conversationId, identifier))
+        input.resource_type === CONVERSATION_RESOURCE_TYPE
       ) {
-        throw new ToolInputError(
-          `Conversation is not accessible: ${identifier}`,
-        );
+        await requireWatchableConversation(context.conversationId, identifier);
       }
       const nowMs = Date.now();
       const subscription = await createWatch({

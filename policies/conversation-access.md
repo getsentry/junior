@@ -86,7 +86,8 @@ never lets one Conversation read another.
 ## Surfaces
 
 - `messageAgent`, `searchConversationEvents`, `readConversationEvent`, and
-  `watchEvents` on a `conversation` resource use `canAccessConversation`.
+  `watchEvents` on a top-level `conversation` resource use
+  `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed. Its
   Events hold only status, not content.
 - `searchConversations` finds Conversations whose root is public or is at
