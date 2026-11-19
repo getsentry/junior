@@ -332,6 +332,28 @@ describe("advanceTurn", () => {
     await expect(deliveredStepMessages()).resolves.toBe(0);
   });
 
+  it("writes nothing when the model request throws its own error after a cancel", async () => {
+    const complete = createModelComplete([
+      { type: "text", text: "Too late.", waitFor: "abort" },
+    ]);
+    const prepare = () =>
+      Promise.resolve({
+        systemPrompt: "You are Junior.",
+        tools: [],
+        complete: async (context: Context, signal: AbortSignal) => {
+          await cancelTurn(fixture.sql, turnId);
+          await complete(context, signal);
+          throw new Error("The connection closed");
+        },
+      });
+
+    await advance(prepare);
+
+    await expect(readTurn()).resolves.toMatchObject({ state: "cancelled" });
+    await expect(loadHistory()).resolves.toEqual([]);
+    await expect(deliveredStepMessages()).resolves.toBe(0);
+  });
+
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
     // The lease of this invocation has expired, so a redelivery claims it.
     const { prepare } = prepareInterrupted(() =>
