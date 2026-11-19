@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-invocations/create";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+import { turnRequestText } from "@/chat/agent/prompt";
 import { getAgentInvocationIdForMessage } from "@/chat/agent-invocations/ids";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
@@ -445,6 +446,9 @@ describe("child agents that no Agent invocation names", () => {
       const run = harness.runs.at(-1)!;
       expect(JSON.stringify(run.history)).toContain("Parent context.");
       expect(run.instruction.text).toContain(FORK_INSTRUCTIONS);
+      // Context such as memory recall follows the parent's task, without
+      // the tag and the fork instructions around it.
+      expect(turnRequestText(run)).toBe("Check the deploy.");
     } finally {
       await harness.close();
     }
@@ -699,6 +703,8 @@ describe("child agents that no Agent invocation names", () => {
         instruction: { provenance: { authority: "instruction" } },
         turnId: first!.turnId,
       });
+      // The resumed Turn recalls from the same task words as the first.
+      expect(turnRequestText(resumed!)).toBe("Check the deploy.");
       await expect(
         readRootConversation({ actor: undefined, conversationId: childId }),
       ).resolves.toMatchObject({

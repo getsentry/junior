@@ -55,7 +55,7 @@ import {
   type MemoryRuntimeContext,
   type MemorySourcePlatform,
 } from "./types";
-import { retireMemoryRows } from "./lifecycle";
+import { findArchivedWriteKeyMemory, retireMemoryRows } from "./lifecycle";
 import {
   deriveMemorySubject,
   publicMemoryScope,
@@ -1386,6 +1386,13 @@ export function createMemoryStore(
           ? { created: false, idempotent: true, memory: idempotent.memory }
           : { created: false, memory: idempotent.memory };
       }
+      const archivedWrite = await findArchivedWriteKeyMemory(db, {
+        idempotencyKey: input.idempotencyKey,
+        scope,
+      });
+      if (archivedWrite) {
+        return { created: false, memory: parseMemoryRow(archivedWrite) };
+      }
     }
 
     const exactDuplicate = await findExactDuplicateMemory({
@@ -1497,6 +1504,8 @@ export function createMemoryStore(
       if (replacesChangedFact) {
         // Archive, so the old fact can be restored and shows why it went.
         const archived = await retireMemoryRows(tx, {
+          auditKey: input.idempotencyKey ?? insertedMemory.id,
+          conversationId: runtimeContext.conversationId,
           filters: [
             eq(juniorMemoryMemories.kind, input.kind),
             eq(juniorMemoryMemories.subjectType, "conversation"),

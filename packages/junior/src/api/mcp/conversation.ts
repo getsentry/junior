@@ -13,6 +13,7 @@ import { logException } from "@/chat/logging";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
 import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
+import { conversationTreeStateSchema } from "@/api/schema/conversation-tree-state";
 
 /** MCP view of one Conversation. It omits dashboard-only fields. */
 export const mcpConversationSchema = z
@@ -26,6 +27,17 @@ export const mcpConversationSchema = z
       .boolean()
       .describe(
         "True while a Turn runs or waits to start, whatever `status` is. To follow a Conversation, wait until it is false.",
+      ),
+    treeState: conversationTreeStateSchema
+      .optional()
+      .describe(
+        "Your viewer state, over this Conversation and all its child agents. `needs_you` when one of them waits on you or on everyone. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
+      ),
+    watching: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when one of them has an active Watch or a pending Timer. It is not work.",
       ),
     surface: conversationSurfaceSchema.describe(
       "Where it started: `slack`, `api` (the dashboard or MCP), `scheduler` (an automation), or `internal`.",
@@ -58,6 +70,8 @@ export function mcpConversation(
     title: summary.displayTitle,
     status: summary.status,
     turnActive: summary.turnActive,
+    treeState: summary.treeState,
+    watching: summary.watching,
     surface: summary.surface,
     channelName: summary.channelNameRedacted ? undefined : summary.channelName,
     locationUrl: summary.locationUrl,
