@@ -31,7 +31,6 @@ import {
   type ConversationSnapshot,
 } from "../conversations/queries";
 import { clearAnswerDraft } from "../components/answerDrafts";
-import { patchFeedConversation } from "../conversations/conversationArchive";
 import {
   mapConversationFeedCache,
   type ConversationFeedCache,
@@ -448,7 +447,8 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
 
 /**
  * Put the viewer's answer on its Conversation's feed rows, as the next feed
- * read sends it, so a row says "You answered Hold" at once.
+ * read sends it, so a row says "You answered Hold" at once. The feed sends
+ * the answer on root rows only, so a Thread row keeps none.
  */
 async function showAnswerOnFeedRows(
   queryClient: QueryClient,
@@ -469,9 +469,11 @@ async function showAnswerOnFeedRows(
   queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
     feed
       ? mapConversationFeedCache(feed, (conversations) =>
-          patchFeedConversation(conversations, item.addedByConversationId, {
-            viewerAnswer,
-          }),
+          conversations.map((conversation) =>
+            conversation.conversationId === item.addedByConversationId
+              ? { ...conversation, viewerAnswer }
+              : conversation,
+          ),
         )
       : feed,
   );
