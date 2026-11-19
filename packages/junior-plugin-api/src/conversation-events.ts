@@ -144,6 +144,14 @@ export interface PluginConversationEventReader {
 }
 
 /**
+ * Read events that the current plugin emitted in one Turn. The Turn is bound,
+ * so no Conversation access check is needed.
+ */
+export interface PluginTurnEventReader {
+  list(input: { eventName: string }): Promise<PluginConversationEventRecord[]>;
+}
+
+/**
  * Events that Junior writes in a plugin's namespace for the cost of each
  * priced `model`, `decider`, `embedder`, or `reranker` call in a
  * Conversation, by the context that made the call. Junior counts them in

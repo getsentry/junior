@@ -22,6 +22,7 @@ import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
 import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
@@ -89,6 +90,7 @@ export function createMemoryRegistration(
       : { structuredModel: "default" },
     conversationEvents: [
       memoriesCapturedEventV1,
+      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],

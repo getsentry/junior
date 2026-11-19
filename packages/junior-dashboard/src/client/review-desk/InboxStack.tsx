@@ -3,8 +3,9 @@ import { Link } from "react-router";
 
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { conversationPath } from "../conversations/conversationRoutes";
-import { cn, dashboardSurfaceRadiusClass } from "../styles";
+import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 
@@ -51,10 +52,7 @@ export function InboxStack(props: {
   return (
     <li
       aria-label={props.title}
-      className={cn(
-        dashboardSurfaceRadiusClass,
-        "grid min-w-0 list-none gap-1.5 border border-dashboard-border p-1.5",
-      )}
+      className={INBOX_STACK_CLASS}
       data-dock-key={`stack:${props.stackKey}`}
       // An open row keeps the dock still, as an open row does.
       data-expanded={openIndex >= 0 || undefined}

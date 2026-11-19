@@ -38,7 +38,8 @@ describe("linked work short names", () => {
         ]}
       />,
     );
-    expect(text(chips)).toBe("1#1");
+    // The chip shows the number; its title is its accessible name.
+    expect(text(chips)).toBe("1 #1");
   });
 
   it("names a web page once when its label repeats its title", () => {

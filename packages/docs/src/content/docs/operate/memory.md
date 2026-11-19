@@ -12,6 +12,8 @@ Memory uses the Junior Postgres database with the pgvector extension to store an
 
 All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
+Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason.
+
 ## Prerequisites
 
 Provision a Postgres database with pgvector support before running migrations. The Memory migrations create the `vector` and `btree_gin` extensions, store 1024- or 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on 1024-dimensional embeddings for hybrid recall. Vector search on 1536-dimensional embeddings scans the matching rows without an index. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.

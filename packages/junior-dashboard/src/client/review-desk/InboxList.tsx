@@ -40,6 +40,7 @@ import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
   inboxViewPath,
+  childOf,
   itemRowSubtitle,
   linkedRowOf,
   singleRow,
@@ -200,11 +201,11 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
-  const { includedId, includeItem } = data;
+  const { includedExtra, includedId, includeItem } = data;
   // In the Inbox, an ask that waits on someone else gets no row, so its
   // link does not replace the item that an earlier link kept. It still
-  // joins a To do stack that another item keeps there; the kept item does
-  // not count, since the link replaces it.
+  // joins a To do stack that another item keeps there. The kept item counts
+  // only when a loaded page holds it too, since the link replaces it.
   const linkedGetsRow =
     !linked.data ||
     view !== "inbox" ||
@@ -215,7 +216,8 @@ export function InboxList(props: {
       (row) =>
         row.conversationId === linked.data?.rootConversationId &&
         row.items.some(
-          (item) => item.id !== includedId && itemNeedsViewer(item),
+          (item) =>
+            !(includedExtra && item.id === includedId) && itemNeedsViewer(item),
         ),
     );
   // Stream rows show a page at a time, so a linked row can be past them.
@@ -388,10 +390,11 @@ export function InboxList(props: {
                 options.subjectShown
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
-                // In a stack, a child's item names its sub-thread.
+                // A child's item names its sub-thread: under the stack's
+                // title, or after its root's title on its own.
                 options.stacked
                   ? row.newest.addedByLabel
-                  : titleOf(row.conversationId),
+                  : childOf(titleOf(row.conversationId), row.newest),
               )
             : undefined
         }

@@ -320,7 +320,13 @@ function extractionModel(
     expiresAtMs?: number | null;
     kind: "preference" | "procedure" | "knowledge";
     evidenceMessageIndices?: number[];
+    statesChange?: boolean;
   }>,
+  contradictedMemories: Array<{
+    evidenceMessageIndices: number[];
+    memoryRef: string;
+    replacementIndex: number | null;
+  }> = [],
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
   const model: PluginModel = {
@@ -331,9 +337,11 @@ function extractionModel(
         expiresAtMs: memory.expiresAtMs ?? null,
         kind: memory.kind,
         evidenceMessageIndices: memory.evidenceMessageIndices ?? [0],
+        statesChange: memory.statesChange ?? false,
       });
       return {
         object: {
+          contradictedMemories,
           memories: memories.map(toResponseMemory),
         },
       };
@@ -554,7 +562,26 @@ function processSessionContext(
     plugin: { name: "memory" },
     run,
     state: memoryState,
+    turnEvents: overrides.turnEvents ?? recalledTurnEvents([]),
     ...overrides,
+  };
+}
+
+/** Turn events that hold one automatic recall of `ids`. */
+function recalledTurnEvents(ids: string[]): MemoryTaskContext["turnEvents"] {
+  return {
+    async list({ eventName }) {
+      if (eventName !== "memories_recalled") return [];
+      return [
+        {
+          content: { memories: ids },
+          createdAt: new Date(TEST_NOW_MS).toISOString(),
+          seq: 1,
+          turnId: "slack-turn-1",
+          version: 1,
+        },
+      ];
+    },
   };
 }
 
@@ -726,6 +753,7 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
+            contradictedMemories: [],
             memories: [
               {
                 canonicalFact:
@@ -733,6 +761,7 @@ describe("memory plugin storage", () => {
                 expiresAtMs: null,
                 kind: "preference",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
             ],
           },
@@ -759,12 +788,14 @@ describe("memory plugin storage", () => {
         runtimeContext: localContext(),
       }),
     ).resolves.toEqual({
+      contradicted: [],
       memories: [
         {
           content: "Prefers causes before mitigations in incident writeups.",
           expiresAtMs: null,
           kind: "preference",
           evidenceMessageIndices: [0],
+          statesChange: false,
         },
       ],
     });
@@ -775,36 +806,42 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
+            contradictedMemories: [],
             memories: [
               {
                 canonicalFact: "Fact one.",
                 expiresAtMs: null,
                 kind: "knowledge",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
               {
                 canonicalFact: "Fact two.",
                 expiresAtMs: null,
                 kind: "knowledge",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
               {
                 canonicalFact: "Prefers one.",
                 expiresAtMs: null,
                 kind: "preference",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
               {
                 canonicalFact: "Prefers two.",
                 expiresAtMs: null,
                 kind: "preference",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
               {
                 canonicalFact: "Procedure one.",
                 expiresAtMs: null,
                 kind: "procedure",
                 evidenceMessageIndices: [0],
+                statesChange: false,
               },
             ],
           },
@@ -838,6 +875,7 @@ describe("memory plugin storage", () => {
               expiresAtMs: null,
               kind: "knowledge",
               evidenceMessageIndices: [0],
+              statesChange: false,
             })),
           },
         };
@@ -976,6 +1014,7 @@ describe("memory plugin storage", () => {
       expect(rows).toHaveLength(2);
       expect(emitted).toHaveLength(1);
       expect(emitted[0]?.data).toEqual({
+        archived: [],
         memories: expect.arrayContaining([
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
@@ -1030,7 +1069,7 @@ describe("memory plugin storage", () => {
       );
 
       expect(emitted).toHaveLength(1);
-      expect(emitted[0]?.data).toEqual({ memories: [] });
+      expect(emitted[0]?.data).toEqual({ archived: [], memories: [] });
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
@@ -1098,12 +1137,14 @@ describe("memory plugin storage", () => {
           }
           return {
             object: {
+              contradictedMemories: [],
               memories: [
                 {
                   canonicalFact: "Prefers TypeScript for automation scripts.",
                   expiresAtMs: null,
                   kind: "preference",
                   evidenceMessageIndices: [0],
+                  statesChange: false,
                 },
               ],
             },
@@ -1182,6 +1223,7 @@ describe("memory plugin storage", () => {
           }
           return {
             object: {
+              contradictedMemories: [],
               memories: [
                 {
                   canonicalFact:
@@ -1189,6 +1231,7 @@ describe("memory plugin storage", () => {
                   expiresAtMs: null,
                   kind: "procedure",
                   evidenceMessageIndices: [1],
+                  statesChange: false,
                 },
               ],
             },
@@ -1607,18 +1650,21 @@ describe("memory plugin storage", () => {
           }
           return {
             object: {
+              contradictedMemories: [],
               memories: [
                 {
                   canonicalFact: firstContent,
                   expiresAtMs: null,
                   kind: "preference",
                   evidenceMessageIndices: [0],
+                  statesChange: false,
                 },
                 {
                   canonicalFact: finalContent,
                   expiresAtMs: null,
                   kind: "preference",
                   evidenceMessageIndices: [0],
+                  statesChange: false,
                 },
               ],
             },
