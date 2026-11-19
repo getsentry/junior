@@ -75,7 +75,8 @@ function stripVolatile(value: unknown): unknown {
  * message. Runtime context and capability sections belong to the run, not
  * the history: a Turn after loaded history sends the sections. Model cost
  * events record what a call spent, such as the title, and loaded history
- * spent nothing.
+ * spent nothing. Memory recall events record what one run recalled, and
+ * loaded history recalled nothing.
  */
 async function comparableRows(conversationId: string): Promise<unknown[]> {
   const rows = await getConversationEventStore().loadHistory(conversationId);
@@ -95,6 +96,13 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
       data["type"] === "structured_event" &&
       typeof (data["content"] as { costUsd?: unknown } | undefined)?.costUsd ===
         "number"
+    ) {
+      continue;
+    }
+    if (
+      data["type"] === "structured_event" &&
+      data["namespace"] === "memory" &&
+      data["name"] === "memories_recalled"
     ) {
       continue;
     }
