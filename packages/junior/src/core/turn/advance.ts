@@ -163,8 +163,15 @@ async function runStepWhileLeased(
   try {
     return await runStep({ ...input, signal: abort.signal });
   } catch (error) {
-    // runStep throws when its signal aborts.
+    // runStep throws the abort reason when its signal aborts. Another error
+    // after an abort may be a bug, but the lease is lost, so it is only
+    // logged.
     if (abort.signal.aborted) {
+      if (error !== abort.signal.reason) {
+        logException(error, "turn.step.error_after_abort", {
+          "app.turn.id": lease.turnId,
+        });
+      }
       return undefined;
     }
     throw error;
