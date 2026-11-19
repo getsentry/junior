@@ -24,6 +24,7 @@ import {
   cardPlacement,
   composerRect,
   menuPlacement,
+  type ComposerMenuKey,
   type ComposerTypeahead,
   type MenuPlacement,
 } from "./ComposerMenu";
@@ -186,24 +187,18 @@ export function ComposerSkillMenu(props: { typeahead: ComposerTypeahead }) {
         cancelHover();
         setActiveIndex((active + delta + rows.length) % rows.length);
       };
-      switch (key) {
-        case "down":
-          move(1);
-          return true;
-        case "up":
-          move(-1);
-          return true;
-        case "select":
-          insert(rows[active]!.skill.name);
-          return true;
-        case "close":
+      const actions = {
+        down: () => move(1),
+        up: () => move(-1),
+        select: () => insert(rows[active]!.skill.name),
+        close: () => {
           cancelHover();
           typeahead.dismiss();
-          return true;
-        case "view":
-          view(rows[active]!.skill.name);
-          return true;
-      }
+        },
+        view: () => view(rows[active]!.skill.name),
+      } satisfies Record<ComposerMenuKey, () => void>;
+      actions[key]();
+      return true;
     });
   });
 

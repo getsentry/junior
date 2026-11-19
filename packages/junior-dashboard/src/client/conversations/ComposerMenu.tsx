@@ -94,23 +94,18 @@ export function ComposerMenu<Row>(props: {
 
   useEffect(() => {
     if (!open) return;
+    const actions: Partial<Record<ComposerMenuKey, () => void>> = {
+      down: () => setActiveIndex((active + 1) % rows.length),
+      up: () => setActiveIndex((active - 1 + rows.length) % rows.length),
+      select: () => {
+        if (!pending) onSelect(rows[active]!);
+      },
+      close: () => typeahead.dismiss(),
+    };
     return typeahead.registerKeys((key) => {
-      switch (key) {
-        case "down":
-          setActiveIndex((active + 1) % rows.length);
-          return true;
-        case "up":
-          setActiveIndex((active - 1 + rows.length) % rows.length);
-          return true;
-        case "select":
-          if (!pending) onSelect(rows[active]!);
-          return true;
-        case "close":
-          typeahead.dismiss();
-          return true;
-        default:
-          return false;
-      }
+      const action = actions[key];
+      action?.();
+      return action !== undefined;
     });
   }, [active, onSelect, open, pending, rows, typeahead]);
 

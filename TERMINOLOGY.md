@@ -77,7 +77,9 @@ Canonical words for Junior code and docs. One concept, one word.
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
 - **Invite**: a person subscribes someone they mention in the composer to a
-  public Conversation. It gives no access. A private Conversation refuses it.
+  public Conversation's feed. Access stays the same, because anyone can
+  already read a public Conversation and join it by posting. A private
+  Conversation refuses it.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.
