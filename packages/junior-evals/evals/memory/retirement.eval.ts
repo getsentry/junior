@@ -79,7 +79,7 @@ describe("Memory Retirement", () => {
 
     await run(
       slackMention(
-        "Does getsentry/junior CI still run package tests with pnpm? I'm about to add a new package.",
+        "Before I add a new package: you remember getsentry/junior CI running package tests with pnpm, right? Just answer from memory, no need to look it up.",
       ),
     );
 
