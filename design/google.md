@@ -43,6 +43,8 @@ Workspace account, so the user connects nothing.
   through their own email, their domain when that domain owns the file, or
   a link that anyone can open.
   Access through a Google group does not count.
+- Junior tells a requester who cannot open a file nothing about it, not even
+  its title or type.
 - Search finds only files that any employee could find in Drive, or that are
   shared with the requester by name. It hides files that nobody in the
   allowed domains owns, and it finds nothing for a requester outside them.

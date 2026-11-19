@@ -210,19 +210,30 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       "carol@example.com": "visibility = 'domainWithLink'",
       "eve@other.com": "visibility = 'domainWithLink'",
       "link@other.com": "visibility = 'anyoneWithLink'",
+      "page@other.com": "visibility = 'anyoneWithLink'",
     };
-    const readAs = (email: string | undefined) => {
+    const readAs = (email: string | undefined, metadata = SEARCH_DOC) => {
       const fetch = vi.fn(
         async (call: { operation: string; request: Request }) => {
-          const query = new URL(call.request.url).searchParams.get("q");
+          const url = new URL(call.request.url);
+          const query = url.searchParams.get("q");
           if (query !== null) {
             const share = email ? shares[email] : undefined;
-            return Response.json({
-              files: share && query.includes(share) ? [{ id: DOC_ID }] : [],
-            });
+            const found = !!share && query.includes(share);
+            // Many files share a common name, so Drive can list this one
+            // on a later page.
+            if (found && email === "page@other.com") {
+              return url.searchParams.get("pageToken") === "p2"
+                ? Response.json({ files: [{ id: DOC_ID }] })
+                : Response.json({
+                    files: [{ id: "1OtHeRfIlEiDxyz" }],
+                    nextPageToken: "p2",
+                  });
+            }
+            return Response.json({ files: found ? [{ id: DOC_ID }] : [] });
           }
           if (call.operation === "google.drive.file.get") {
-            return Response.json(SEARCH_DOC);
+            return Response.json(metadata);
           }
           if (call.operation === "google.docs.document.get") {
             return Response.json({ revisionId: "rev-1" });
@@ -249,6 +260,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       "alice@example.com",
       "carol@example.com",
       "link@other.com",
+      "page@other.com",
     ]) {
       await expect(readAs(email).read()).resolves.toMatchObject({
         content: "# Q4 plan",
@@ -275,7 +287,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     for (const email of ["eve@other.com", "eng-member@example.com"]) {
       const { fetch, read } = readAs(email);
       await expect(read()).rejects.toThrow(
-        `Only people who can open "Q4 plan" can ask you to read it, and ${email} cannot.`,
+        `Only people who can open this file can ask you to read it, and ${email} cannot.`,
       );
       expect(fetch.mock.calls.map(([call]) => call.operation)).not.toContain(
         "google.drive.file.export",
@@ -284,6 +296,15 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     await expect(readAs(undefined).read()).rejects.toThrow(
       "The requester's email is unknown",
     );
+    // Errors before the requester check say nothing about the file, not
+    // even its type.
+    const pdf = { ...SEARCH_DOC, mimeType: "application/pdf" };
+    for (const email of ["eve@other.com", undefined]) {
+      const error: Error = await readAs(email, pdf)
+        .read()
+        .catch((caught: Error) => caught);
+      expect(error.message).not.toMatch(/Q4 plan|application\/pdf/);
+    }
   });
 
   it("searches only with the requester's terms", async () => {

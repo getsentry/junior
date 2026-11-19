@@ -61,6 +61,17 @@ const outputSchema = pluginToolOutputSchema.extend({
   url: z.string(),
 });
 
+/** Return whether a field mask names revisionId outside any nested selection. */
+function namesTopLevelRevision(fields: string): boolean {
+  let topLevel = fields;
+  while (/\([^()]*\)/.test(topLevel)) {
+    topLevel = topLevel.replaceAll(/\([^()]*\)/g, "");
+  }
+  return topLevel
+    .split(",")
+    .some((field) => ["*", "revisionId"].includes(field.trim()));
+}
+
 const revisionSchema = z.object({ revisionId: z.string().optional() }).loose();
 
 /** Read the Slides API JSON of a presentation or one slide, for edits. */
@@ -79,7 +90,7 @@ export const readGoogleSlidesLayoutTool = definePluginTool({
     const ref = parseFileReference(input.presentation);
     const file = await readRequesterFile(ctx, ref, ["presentation"]);
     const fields =
-      input.fields && !/\brevisionId\b/.test(input.fields)
+      input.fields && !namesTopLevelRevision(input.fields)
         ? `revisionId,${input.fields}`
         : input.fields;
     const response = input.slide_object_id

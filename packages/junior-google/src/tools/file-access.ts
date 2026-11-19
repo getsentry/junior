@@ -10,6 +10,7 @@ import * as z from "zod";
 import { emailDomain } from "../config";
 import {
   readGoogleFileMetadata,
+  requireFileType,
   resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
@@ -36,39 +37,50 @@ type DriveContext = Pick<GoogleToolContext, "egress">;
 
 const fileIdsSchema = z.object({
   files: z.array(z.object({ id: z.string() })).default([]),
+  nextPageToken: z.string().optional(),
 });
+// Many files can share a common name, such as "Untitled document". Stop
+// after this many pages.
+const MAX_LIST_PAGES = 5;
 
 /**
  * Return whether one Drive query, limited to files with this name, finds
- * the file. A rejected query or a file past the first page counts as no.
+ * the file. A rejected query or a file past the last page read counts as no.
  */
 async function queryFindsFile(
   ctx: DriveContext,
   file: CheckedFile,
   terms: string,
 ): Promise<boolean> {
-  const response = await googleApiRequest(ctx, {
-    headers: file.resourceKey
-      ? resourceKeyHeaders({ fileId: file.id, resourceKey: file.resourceKey })
-      : {},
-    operation: "google.drive.files.list",
-    path: "/drive/v3/files",
-    query: {
-      corpora: "allDrives",
-      fields: "files(id)",
-      includeItemsFromAllDrives: "true",
-      pageSize: "100",
-      q: `name = ${driveQueryString(file.name)} and trashed = false and ${terms}`,
-      supportsAllDrives: "true",
-    },
-  });
-  if (response.status === 400) return false;
-  if (response.status !== 200) {
-    throw googleApiError("google.drive.files.list", response);
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Each page needs the page token from the page before.
+    const response = await googleApiRequest(ctx, {
+      headers: file.resourceKey
+        ? resourceKeyHeaders({ fileId: file.id, resourceKey: file.resourceKey })
+        : {},
+      operation: "google.drive.files.list",
+      path: "/drive/v3/files",
+      query: {
+        corpora: "allDrives",
+        fields: "nextPageToken,files(id)",
+        includeItemsFromAllDrives: "true",
+        pageSize: "100",
+        q: `name = ${driveQueryString(file.name)} and trashed = false and ${terms}`,
+        supportsAllDrives: "true",
+        ...(pageToken ? { pageToken } : undefined),
+      },
+    });
+    if (response.status === 400) return false;
+    if (response.status !== 200) {
+      throw googleApiError("google.drive.files.list", response);
+    }
+    const body = fileIdsSchema.parse(response.body);
+    if (body.files.some((item) => item.id === file.id)) return true;
+    pageToken = body.nextPageToken;
+    if (!pageToken) return false;
   }
-  return fileIdsSchema
-    .parse(response.body)
-    .files.some((item) => item.id === file.id);
+  return false;
 }
 
 /**
@@ -115,14 +127,15 @@ export async function personCanOpenFile(
 /**
  * Read the Drive metadata of a file that the requester can open, and
  * require one of the given types. Every tool that reads a file's content or
- * comments starts here.
+ * comments starts here. Errors say nothing about the file, such as its
+ * title or type, until the requester check passes.
  */
 export async function readRequesterFile(
   ctx: GoogleToolContext,
   ref: FileReference,
   types: readonly GoogleFileType[],
 ) {
-  const metadata = await readGoogleFileMetadata(ctx, ref, types);
+  const metadata = await readGoogleFileMetadata(ctx, ref);
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
@@ -138,8 +151,8 @@ export async function readRequesterFile(
     ))
   ) {
     throw new PluginToolInputError(
-      `Only people who can open "${metadata.name}" can ask you to read it, and ${requester} cannot. Access through a Google group is not checked: the owner must share it with ${requester}, with their domain, or with anyone who has the link.`,
+      `Only people who can open this file can ask you to read it, and ${requester} cannot. Access through a Google group is not checked: the owner must share it with ${requester}, with their domain, or with anyone who has the link.`,
     );
   }
-  return metadata;
+  return requireFileType(metadata, types);
 }

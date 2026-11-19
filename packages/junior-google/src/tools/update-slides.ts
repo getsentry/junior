@@ -8,7 +8,7 @@ import * as z from "zod";
 import { revisionAfterUpdate } from "./doc-edits";
 import { requireEditableFile } from "./editable-file";
 import { readRequesterFile } from "./file-access";
-import { googleFileRequest } from "./files";
+import { FILE_ID_PATTERN, googleFileRequest } from "./files";
 import type { GoogleToolContext } from "./shared";
 import { presentationReferenceSchema, presentationUrl } from "./slides";
 
@@ -60,7 +60,12 @@ const outputSchema = pluginToolOutputSchema.extend({
 });
 
 // Request kinds that copy content from another file into the deck.
-const sheetsSourceSchema = z.object({ spreadsheetId: z.string().optional() });
+const sheetsSourceSchema = z.object({
+  spreadsheetId: z
+    .string()
+    .regex(FILE_ID_PATTERN, "spreadsheetId must be a Drive file id")
+    .optional(),
+});
 const sourceSchema = z.object({
   createSheetsChart: sheetsSourceSchema.optional(),
   createVideo: z.object({ source: z.string().optional() }).optional(),
@@ -68,6 +73,24 @@ const sourceSchema = z.object({
   replaceAllShapesWithSheetsChart: sheetsSourceSchema.optional(),
 });
 const SOURCE_CHECK_CONCURRENCY = 4;
+
+/** Return the first object key in a value that is not camelCase. */
+function snakeCaseKey(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const key = snakeCaseKey(item);
+      if (key) return key;
+    }
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null) return undefined;
+  for (const [key, item] of Object.entries(value)) {
+    if (key.includes("_")) return key;
+    const nested = snakeCaseKey(item);
+    if (nested) return nested;
+  }
+  return undefined;
+}
 
 /**
  * Check every other file that the requests copy into the deck. A Sheets
@@ -79,6 +102,20 @@ async function requireReadableSources(
   ctx: GoogleToolContext,
   requests: Array<Record<string, unknown>>,
 ): Promise<void> {
+  // Google also reads snake_case names, such as spreadsheet_id, but the
+  // checks below read only camelCase.
+  const snakeCase = snakeCaseKey(requests);
+  if (snakeCase) {
+    throw new PluginToolInputError(
+      `Write Slides API field names in camelCase, not ${snakeCase}.`,
+    );
+  }
+  // A refresh reads the chart's Sheet, which the request does not name.
+  if (requests.some((request) => "refreshSheetsChart" in request)) {
+    throw new PluginToolInputError(
+      "refreshSheetsChart is not supported: you cannot check who can open the chart's Sheet.",
+    );
+  }
   const sources = requests.map((request) => {
     const parsed = sourceSchema.safeParse(request);
     if (!parsed.success) {

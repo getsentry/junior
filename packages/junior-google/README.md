@@ -75,7 +75,8 @@ requester who can edit it. `updateGoogleSlides` sends Slides API
 `batchUpdate` requests at the `revision_id` that `readGoogleSlidesLayout` or
 the last edit returned. A Sheets chart needs a Sheet that the requester can
 open too, and only YouTube videos can be added, because Junior cannot check
-who can open a Drive video. `getGoogleSlideThumbnail` renders a slide so Junior
+who can open a Drive video. Junior does not refresh a Sheets chart, because
+the request does not name the chart's Sheet. `getGoogleSlideThumbnail` renders a slide so Junior
 can check its work. The sandbox downloads the rendered image, which needs no
 credential.
 

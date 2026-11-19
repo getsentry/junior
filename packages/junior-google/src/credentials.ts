@@ -40,9 +40,10 @@ const LEASE_SAFETY_MS = 60_000;
 /**
  * How a write operation checks that the requester may make the change.
  *
- * - `file-editor`: changes an existing Drive file. `googleApiRequest` refuses
- *   it unless the tool passes the file from `requireEditableFile`, which
- *   checks that the requester could edit the file themselves.
+ * - `file-editor`: changes an existing Drive file. Its path captures the
+ *   file id. `googleApiRequest` refuses it unless the tool passes the file
+ *   from `requireEditableFile`, for that same id. That function checks that
+ *   the requester could edit the file themselves.
  * - `own-calendar`: changes Junior's own calendar. The event tools check that
  *   Junior organizes the event and that the requester is invited.
  * - `creates`: creates a file that Junior's account owns.
@@ -100,7 +101,7 @@ export const GOOGLE_OPERATIONS = {
     writeCheck: "file-editor",
     host: GOOGLE_DOCS_API_DOMAIN,
     method: "POST",
-    path: /^\/v1\/documents\/[A-Za-z0-9_-]+:batchUpdate$/,
+    path: /^\/v1\/documents\/([A-Za-z0-9_-]+):batchUpdate$/,
   },
   "google.docs.document.create": {
     access: "write",
@@ -152,21 +153,21 @@ export const GOOGLE_OPERATIONS = {
     writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)\/permissions$/,
   },
   "google.drive.file.delete": {
     access: "write",
     writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)$/,
   },
   "google.drive.permission.delete": {
     access: "write",
     writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions\/[A-Za-z0-9_-]+$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)\/permissions\/[A-Za-z0-9_-]+$/,
   },
   "google.drive.permissions.list": {
     access: "read",
@@ -203,7 +204,7 @@ export const GOOGLE_OPERATIONS = {
     writeCheck: "file-editor",
     host: GOOGLE_SLIDES_API_DOMAIN,
     method: "POST",
-    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+:batchUpdate$/,
+    path: /^\/v1\/presentations\/([A-Za-z0-9_-]+):batchUpdate$/,
   },
   "google.slides.presentation.get": {
     access: "read",

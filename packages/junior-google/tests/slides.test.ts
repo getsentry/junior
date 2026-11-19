@@ -119,8 +119,9 @@ describe("Google Slides tools", () => {
       revision_id: "rev-1",
     };
     const readOnly = slidesTools([deckFile(false)]);
+    // Errors before the requester check say nothing about the file.
     await expect(readOnly.call("updateGoogleSlides", input)).rejects.toThrow(
-      `Your Google account (${ACCOUNT_EMAIL}) cannot edit "Roadmap"`,
+      `Your Google account (${ACCOUNT_EMAIL}) cannot edit this file.`,
     );
 
     const viewer = slidesTools([
@@ -180,7 +181,7 @@ describe("Google Slides tools", () => {
 
     const hidden = slidesTools([deckFile(), editor(), sheetFile()]);
     await expect(hidden.call("updateGoogleSlides", chart)).rejects.toThrow(
-      `Only people who can open "Numbers" can ask you to read it, and ${REQUESTER} cannot.`,
+      `Only people who can open this file can ask you to read it, and ${REQUESTER} cannot.`,
     );
     expect((await hidden.calls()).map((item) => item.operation)).not.toContain(
       "google.slides.presentation.batchUpdate",
@@ -196,6 +197,43 @@ describe("Google Slides tools", () => {
     expect((await video.calls()).map((item) => item.operation)).not.toContain(
       "google.slides.presentation.batchUpdate",
     );
+
+    // Google also reads snake_case names, which the checks do not read. A
+    // refresh reads a Sheet that the request does not name.
+    const refused: Array<[Array<Record<string, unknown>>, string]> = [
+      [
+        [{ create_video: { id: SHEET_ID, source: "DRIVE" } }],
+        "Write Slides API field names in camelCase, not create_video.",
+      ],
+      [
+        [{ createSheetsChart: { chartId: 1, spreadsheet_id: SHEET_ID } }],
+        "Write Slides API field names in camelCase, not spreadsheet_id.",
+      ],
+      [
+        [{ refreshSheetsChart: { objectId: "chart1" } }],
+        "refreshSheetsChart is not supported",
+      ],
+      [
+        [
+          {
+            createSheetsChart: {
+              chartId: 1,
+              spreadsheetId: `${SHEET_ID}/../${DECK_ID}`,
+            },
+          },
+        ],
+        "spreadsheetId must be a Drive file id",
+      ],
+    ];
+    for (const [requests, message] of refused) {
+      const tools = slidesTools([deckFile(), editor()], 0, [DECK_ID, SHEET_ID]);
+      await expect(
+        tools.call("updateGoogleSlides", { ...chart, requests }),
+      ).rejects.toThrow(message);
+      expect((await tools.calls()).map((item) => item.operation)).not.toContain(
+        "google.slides.presentation.batchUpdate",
+      );
+    }
   });
 
   it("reads a deck outline or one full slide, with the revision when the account can edit", async () => {
@@ -231,6 +269,22 @@ describe("Google Slides tools", () => {
     expect(page?.url.pathname).toBe(`/v1/presentations/${DECK_ID}/pages/g1:2`);
     expect(page?.url.searchParams.get("fields")).toBe(
       "revisionId,pageElements(objectId)",
+    );
+
+    // A revisionId inside a nested selection is not the deck's revision.
+    const nested = slidesTools([
+      deckFile(),
+      Response.json({ revisionId: "rev-1", slides: [{ objectId: "s1" }] }),
+    ]);
+    await expect(
+      nested.call("readGoogleSlidesLayout", {
+        fields: "slides(objectId,revisionId)",
+        presentation: DECK_ID,
+      }),
+    ).resolves.toMatchObject({ revision_id: "rev-1" });
+    const [, nestedDeck] = await nested.calls();
+    expect(nestedDeck?.url.searchParams.get("fields")).toBe(
+      "revisionId,slides(objectId,revisionId)",
     );
 
     // Google returns no revision to an account that can only view the deck.

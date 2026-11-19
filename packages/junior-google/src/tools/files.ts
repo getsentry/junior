@@ -156,15 +156,12 @@ const driveFileSchema = z.object({
 });
 
 /**
- * Read the Drive metadata of one file, and require one of the given types.
- *
- * `drive.readonly` can read any Drive file, so each tool checks the type
- * before it reads content or comments.
+ * Read the Drive metadata of one file. Use `readRequesterFile` or
+ * `requireEditableFile`, which check the requester first.
  */
 export async function readGoogleFileMetadata(
   ctx: GoogleToolContext,
   file: FileReference,
-  types: readonly GoogleFileType[],
 ) {
   const response = await googleFileRequest(ctx, file, {
     operation: "google.drive.file.get",
@@ -175,7 +172,17 @@ export async function readGoogleFileMetadata(
       supportsAllDrives: "true",
     },
   });
-  const metadata = driveFileSchema.parse(response.body);
+  return driveFileSchema.parse(response.body);
+}
+
+/**
+ * Require one of the given file types. Call it only after the requester
+ * check: the error names the file.
+ */
+export function requireFileType<T extends { mimeType: string; name: string }>(
+  metadata: T,
+  types: readonly GoogleFileType[],
+): T & { type: GoogleFileType } {
   const type = googleFileType(metadata.mimeType);
   if (!type || !types.includes(type)) {
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");

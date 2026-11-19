@@ -12,6 +12,7 @@ import {
   googleFileRequest,
   parseFileReference,
   readGoogleFileMetadata,
+  requireFileType,
   type FileReference,
 } from "./files";
 import { requesterEmail, type GoogleToolContext } from "./shared";
@@ -88,15 +89,33 @@ async function requireRequesterCanEdit(
   );
 }
 
+// Only this module sets it, so a hand-made object is not an EditableFile.
+const CHECKED = Symbol("google.editable-file");
+
 /**
  * A file that the requester may change through Junior's account. Write
  * operations on existing files need one; see `writeCheck` in
- * `credentials.ts`.
+ * `credentials.ts`. Only `requireEditableFile` and `newEditableFile` make
+ * one.
  */
 export interface EditableFile {
   ref: FileReference;
   title: string;
   webViewLink: string | undefined;
+}
+
+function checkedFile(file: EditableFile): EditableFile {
+  return Object.freeze({ ...file, [CHECKED]: true });
+}
+
+/** Return whether a value came from `requireEditableFile` or `newEditableFile`. */
+export function isEditableFile(value: unknown): value is EditableFile {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    CHECKED in value &&
+    value[CHECKED] === true
+  );
 }
 
 /** Check that Junior's account and the requester can both edit a file. */
@@ -106,14 +125,21 @@ export async function requireEditableFile(
   type: EditableFileType,
 ): Promise<EditableFile> {
   const ref = parseFileReference(file);
-  const metadata = await readGoogleFileMetadata(ctx, ref, [type]);
+  const metadata = await readGoogleFileMetadata(ctx, ref);
+  // Say nothing about the file, such as its title or type, until the
+  // requester check passes.
   if (metadata.capabilities?.canEdit !== true) {
     throw new PluginToolInputError(
-      `Your Google account (${ctx.accountEmail}) cannot edit "${metadata.name}". Ask the owner to share it with that account as an editor.`,
+      `Your Google account (${ctx.accountEmail}) cannot edit this file. Ask the owner to share it with that account as an editor.`,
     );
   }
   await requireRequesterCanEdit(ctx, ref, FILE_NOUNS[type]);
-  return { ref, title: metadata.name, webViewLink: metadata.webViewLink };
+  requireFileType(metadata, [type]);
+  return checkedFile({
+    ref,
+    title: metadata.name,
+    webViewLink: metadata.webViewLink,
+  });
 }
 
 /**
@@ -125,5 +151,5 @@ export function newEditableFile(
   ref: FileReference,
   title: string,
 ): EditableFile {
-  return { ref, title, webViewLink: undefined };
+  return checkedFile({ ref, title, webViewLink: undefined });
 }
