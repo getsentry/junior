@@ -85,8 +85,9 @@ never lets one Conversation read another.
 
 ## Surfaces
 
-- `messageAgent`, `searchConversationEvents`, and `readConversationEvent`
-  use `canAccessConversation`.
+- `messageAgent`, `searchConversationEvents`, `readConversationEvent`, and
+  `watchEvents` on a `conversation` resource use `canAccessConversation`.
+  A Watch Event of a Conversation holds only its status, not its content.
 - `searchConversations` finds Conversations whose root is public or is at
   the Destination of the requester's root. It finds child agents only when
   asked. It never finds the requester's own tree. Its results include the

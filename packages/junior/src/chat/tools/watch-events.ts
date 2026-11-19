@@ -1,6 +1,7 @@
 import { agentEventKeys, declaredEventKeys } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  CORE_EVENT_NAMESPACE,
   eventNamespaceSchema,
   eventWatchUnavailable,
   requireEventIdentifier,
@@ -10,6 +11,8 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
+import { assertCanReadConversationEvents } from "@/chat/conversations/event-access";
+import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -152,6 +155,17 @@ export function createWatchEventsTool(
         },
         "watch",
       );
+      const identifier = requireEventIdentifier(catalog, {
+        ...input,
+        resourceType: input.resource_type,
+      });
+      // A Watch on a Conversation reads its status, so it needs read access.
+      if (
+        input.namespace === CORE_EVENT_NAMESPACE &&
+        input.resource_type === CONVERSATION_RESOURCE_TYPE
+      ) {
+        await assertCanReadConversationEvents(context, identifier);
+      }
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
@@ -161,10 +175,7 @@ export function createWatchEventsTool(
         label: input.label.trim(),
         ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
-        identifier: requireEventIdentifier(catalog, {
-          ...input,
-          resourceType: input.resource_type,
-        }),
+        identifier,
         resourceType: input.resource_type.trim(),
       });
       const details = {

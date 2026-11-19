@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
   deliverReviewItemChange,
@@ -148,7 +150,11 @@ const bodySchema = z
 
 type ReviewItemToolContext = Pick<
   ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
+  | "conversationId"
+  | "conversationWorkQueue"
+  | "resolveActorIdentity"
+  | "source"
+  | "turnId"
 >;
 
 /**
@@ -538,6 +544,17 @@ export function createAddReviewItemTool(
         item,
         nowMs: Date.now(),
       });
+      // An action item means the Conversation now waits on a person.
+      if (item.kind === "action") {
+        await publishConversationStatus(
+          context.conversationId,
+          { type: "review_item_opened", reviewItemId: item.id },
+          {
+            queue:
+              context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+          },
+        );
+      }
       return { created: true, item: itemResult(item) };
     },
   });

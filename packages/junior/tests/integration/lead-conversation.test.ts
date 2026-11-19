@@ -7,14 +7,24 @@ import {
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getDb } from "@/chat/db";
+import { stopConversation } from "@/chat/conversations/stop";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { getLeadConversation } from "@/chat/lead/conversation";
 import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorConversationParticipants } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
 
@@ -165,5 +175,90 @@ describe("Lead", () => {
     await expect(send(boWork.conversationId, "call-bo")).rejects.toThrow(
       "is a public conversation and this conversation is private",
     );
+  });
+
+  it("watches the Conversations that it may read and hears every status", async () => {
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-watch@example.com");
+    const bo = await signedInViewer("lead-watch-other@example.com");
+    const lead = await getLeadConversation(ana);
+    const started = (await createStartConversationTool({
+      conversationId: lead.conversationId,
+      conversationWorkQueue: harness.queue,
+      turnId: "lead-watch-turn",
+    }).execute!(
+      { task: "Check the deploy.", title: "Deploy check" },
+      { toolCallId: "call-start" },
+    )) as {
+      conversation_id: string;
+      subscribable: { identifier: string; namespace: string; type: string };
+    };
+    expect(started.subscribable).toMatchObject({
+      identifier: started.conversation_id,
+      namespace: "junior",
+      type: "conversation",
+    });
+    // Drop the start of the new root, so only Watch Events stay queued.
+    harness.queue.takeMessageFor(started.conversation_id);
+
+    const watch = (identifier: string) =>
+      createWatchEventsTool(
+        { conversationId: lead.conversationId } as ToolRuntimeContext,
+        getEventCatalog(),
+      ).execute!(
+        {
+          events: [
+            "conversation.turn.completed",
+            "conversation.turn.failed",
+            "conversation.stopped",
+          ],
+          identifier,
+          intent: "Tell the person when the deploy check is done.",
+          label: "Deploy check",
+          namespace: started.subscribable.namespace,
+          resource_type: started.subscribable.type,
+        },
+        { toolCallId: `call-watch-${identifier}` },
+      );
+    await watch(started.subscribable.identifier);
+    // Another person's private Lead is not readable, so it is not watchable.
+    const boLead = await getLeadConversation(bo);
+    await expect(watch(boLead.conversationId)).rejects.toThrow(
+      `Conversation events are not accessible: ${boLead.conversationId}`,
+    );
+
+    const lifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+      { watchQueue: () => harness.queue },
+    );
+    // No status Event ends the Watch, so the Lead hears each one.
+    await lifecycle.complete({
+      conversationId: started.conversation_id,
+      createdAtMs: Date.now(),
+      outcome: "success",
+      turnId: "root-turn-1",
+    });
+    await lifecycle.fail({
+      conversationId: started.conversation_id,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      turnId: "root-turn-2",
+    });
+    await stopConversation({
+      conversationId: started.conversation_id,
+      queue: harness.queue,
+      state: harness.state,
+    });
+
+    const work = await getConversationWorkState({
+      conversationId: lead.conversationId,
+      state: harness.state,
+    });
+    expect(work?.messages.map((message) => message.input.text)).toEqual([
+      expect.stringContaining("conversation.turn.completed"),
+      expect.stringContaining("conversation.turn.failed"),
+      expect.stringContaining("conversation.stopped"),
+    ]);
   });
 });

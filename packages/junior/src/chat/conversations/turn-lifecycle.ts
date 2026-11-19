@@ -4,6 +4,9 @@ import type {
   ConversationTurnFailureReason,
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 /** Product-owned inputs for opening one correlated conversation turn. */
 export interface StartConversationTurnInput {
@@ -45,9 +48,26 @@ export interface ConversationTurnLifecycle {
 /** Persist correlated turn lifecycle facts with retry-safe terminal exclusion. */
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
   private readonly events: ConversationEventStore;
+  /** Delivers each Turn end to the Watches on the Conversation. */
+  private readonly watchQueue: (() => ConversationWorkQueue) | undefined;
 
-  constructor(events: ConversationEventStore) {
+  constructor(
+    events: ConversationEventStore,
+    options: { watchQueue?: () => ConversationWorkQueue } = {},
+  ) {
     this.events = events;
+    this.watchQueue = options.watchQueue;
+  }
+
+  private async publish(
+    input: { conversationId: string; createdAtMs: number },
+    status: Parameters<typeof publishConversationStatus>[1],
+  ): Promise<void> {
+    if (!this.watchQueue) return;
+    await publishConversationStatus(input.conversationId, status, {
+      nowMs: input.createdAtMs,
+      queue: this.watchQueue(),
+    });
   }
 
   /** Record the turn start once after every input message is durable. */
@@ -96,6 +116,11 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
+    await this.publish(input, {
+      type: "turn_completed",
+      outcome: input.outcome,
+      turnId: input.turnId,
+    });
   }
 
   /** Record a classified failure once. Do not store raw error text. */
@@ -115,10 +140,17 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
+    await this.publish(input, {
+      type: "turn_failed",
+      failureCode: input.failureCode,
+      turnId: input.turnId,
+    });
   }
 }
 
 /** Return the Turn lifecycle that records Conversation events. */
 export function getTurnLifecycle(): ConversationTurnLifecycle {
-  return new ConversationTurnLifecycleService(getConversationEventStore());
+  return new ConversationTurnLifecycleService(getConversationEventStore(), {
+    watchQueue: getVercelConversationWorkQueue,
+  });
 }

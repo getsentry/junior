@@ -112,6 +112,7 @@ const LEAD_RULES = [
   "- Before you start work, look for a Conversation that already does it with `searchConversations` and `participating`. Start one Conversation for each separate piece of work.",
   "- The `task` of `startConversation` is a brief for a capable peer who has not seen this Conversation: the goal, the targets, the known facts, the constraints, and what done means. It becomes the person's request there, so ask only for what the person asked for.",
   "- When a decision is the person's, ask them in your reply.",
+  "- When the person asks to hear back about a Conversation, watch it with `watchEvents` and the `subscribable` of `startConversation`, or a `conversation` resource with its ID. When an Event arrives, read the Conversation and tell the person only what they asked for.",
 ];
 
 /**
