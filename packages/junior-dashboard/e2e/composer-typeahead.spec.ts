@@ -16,6 +16,36 @@ async function openComposer(page: Page, baseURL: string, id: string) {
   return composer;
 }
 
+test("text typed before the editor loads stays in the editor", async ({
+  page,
+  dashboard,
+}) => {
+  // Hold the editor chunk, so the stand-in text box takes the first keys.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/chunks/ComposerEditor-*.js", async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(PUBLIC_CONVERSATION_ID)}`,
+  );
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  await composer.click();
+  await composer.pressSequentially("Typed early");
+  await expect(composer).not.toHaveAttribute("contenteditable", "true");
+
+  release();
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await expect(composer).toHaveText("Typed early");
+  // The editor takes the focus, with the caret after the text.
+  await expect(composer).toBeFocused();
+  await composer.pressSequentially(", then more");
+  await expect(composer).toHaveText("Typed early, then more");
+});
+
 test("@ suggests people and sends the mention as a Slack token", async ({
   page,
   dashboard,
