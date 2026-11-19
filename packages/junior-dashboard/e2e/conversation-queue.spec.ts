@@ -321,6 +321,13 @@ test("moves queued text to the composer before the cancel lands", async ({
     text: "Queued follow-up",
   };
   let queued: ConversationPendingMessage[] = [queuedMessage];
+  let sends = 0;
+  await page.route(`${path}/messages`, async (route) => {
+    sends += 1;
+    await route.fulfill({
+      json: { conversationId, messageId: "sent-edit", status: "accepted" },
+    });
+  });
   // Each cancel waits until the test answers it.
   const cancels: ((ok: boolean) => void)[] = [];
   await page.route(`${path}/pending-messages`, async (route) => {
@@ -368,9 +375,11 @@ test("moves queued text to the composer before the cancel lands", async ({
   await expect(pending).toBeHidden();
   await expect.poll(() => cancels.length).toBe(1);
 
-  // A failed cancel keeps the message queued and keeps the reader's edits.
+  // A send waits for the cancel. A failed cancel keeps the message queued,
+  // stops the send, and keeps the reader's edits.
   await composer.press("End");
   await composer.pressSequentially(" now");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   cancels[0]?.(false);
   await expect(
     page.getByText("Could not edit the queued message. Try again."),
@@ -379,6 +388,7 @@ test("moves queued text to the composer before the cancel lands", async ({
   await expect(composer).toHaveText(`${queuedMessage.text} now`, {
     useInnerText: true,
   });
+  expect(sends).toBe(0);
 
   // The retry does not add the text a second time, also after leaving the
   // view remounts the reply box.

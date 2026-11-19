@@ -28,7 +28,7 @@ import { readPersonCard } from "./card";
 import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
-import { readPeopleProfile } from "./profile";
+import { readPeopleProfileFromSql } from "./profile.query";
 import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
@@ -153,7 +153,7 @@ export function createPeopleRoutes(options: {
       const viewer = context.get("viewer");
       return jsonResponse(
         actorProfileReportSchema,
-        await readPeopleProfile(email, viewer ? { viewer } : {}),
+        await readPeopleProfileFromSql(email, viewer ? { viewer } : {}),
       );
     },
   );
