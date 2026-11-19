@@ -34,6 +34,7 @@ const MEMORY_TOOL_NAMES = new Set([
   "archiveMemory",
   "createMemory",
   "listMemories",
+  "restoreMemory",
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -376,7 +377,9 @@ export async function processMemorySession(
   }
   archived.push(
     ...(await retireContradictedMemories({
+      auditKey: `session:${sourceKey}:${run.runId}`,
       contradicted: extraction.contradicted,
+      conversationId: runtimeContext.conversationId,
       db,
       results,
       run,
@@ -406,7 +409,9 @@ async function loadRecalledMemories(context: PluginTaskContext, db: MemoryDb) {
  * a memory captured in the same Turn states the current fact, link it.
  */
 async function retireContradictedMemories(args: {
+  auditKey: string;
   contradicted: ContradictedMemory[];
+  conversationId: string | undefined;
   db: MemoryDb;
   results: Map<number, CreateMemoryResult>;
   run: PluginRunContext;
@@ -441,6 +446,8 @@ async function retireContradictedMemories(args: {
     if (replacement?.id === row.id) continue;
     // oxlint-disable-next-line no-await-in-loop -- At most five bounded writes, each with its own replacement.
     const [archivedRow] = await retireMemoryRows(db, {
+      auditKey: args.auditKey,
+      conversationId: args.conversationId,
       ids: [row.id],
       nowMs,
       reason: "contradicted",

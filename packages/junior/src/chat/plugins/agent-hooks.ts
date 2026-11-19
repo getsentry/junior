@@ -104,8 +104,12 @@ import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import {
+  coreRegistrations,
+  isCoreRegistrationName,
+} from "@/chat/plugins/core-registrations";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -295,6 +299,7 @@ function invocationPluginContext(
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
+  const conversationId = context.conversationId;
   const onCost = context.conversationId
     ? createPluginModelCostRecorder({
         conversationId: context.conversationId,
@@ -308,6 +313,15 @@ function invocationPluginContext(
     conversationId: context.conversationId,
     locationId: context.locationId,
     embedder: createPluginEmbedder(plugin.manifest.name, { onCost }),
+    ...(conversationId
+      ? {
+          loadHistory: async () =>
+            await loadPluginPromptHistory({
+              conversationId,
+              pluginName: plugin.manifest.name,
+            }),
+        }
+      : undefined),
     ...(context.conversationId && turnId
       ? {
           events: createPluginConversationEvents({
@@ -472,6 +486,9 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
+    if (isCoreRegistrationName(name)) {
+      throw new Error(`Plugin name "${name}" is reserved for a core feature`);
+    }
     if (
       plugin.events !== undefined &&
       !pluginEventsSchema.safeParse(plugin.events).success
@@ -509,6 +526,15 @@ export function setPlugins(
 /** Return the current runtime hook plugins without exposing mutable state. */
 export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
+}
+
+/**
+ * Return app plugins, then core feature registrations. Feature hook sites
+ * read this list. Provider hooks, such as credentials and routes, read only
+ * app plugins.
+ */
+export function getRegistrations(): PluginRegistration[] {
+  return [...registeredPlugins, ...coreRegistrations()];
 }
 
 /** Conversation facts that plugin Markdown rewrites may use. */
@@ -603,7 +629,7 @@ export async function getPluginSystemPromptContributions(
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
-  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
     return (
       hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
@@ -673,7 +699,7 @@ export async function getPluginUserPromptContributions(args: {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.userPrompt;
     return (
       hook &&
@@ -805,7 +831,7 @@ export function getStaticPluginToolDefinitions(): Record<
   AnyToolDefinition
 > {
   const definitions: Record<string, AnyToolDefinition> = {};
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     Object.assign(definitions, pluginToolDefinitions(plugin));
   }
   return definitions;
@@ -817,7 +843,7 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
     if (!hook) {
@@ -1652,22 +1678,19 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  const outcomes = await runPluginHooksAtOnce(
-    [...coreTaskRegistrations(), ...getPlugins()],
-    (plugin) => {
-      const hook = plugin.hooks?.operationalReport;
-      return (
-        hook &&
-        (() =>
-          hook({
-            ...basePluginContext(plugin),
-            eventStats: createPluginConversationEventStats(plugin, () => nowMs),
-            nowMs,
-            state: pluginReadState(createPluginState(plugin.manifest.name)),
-          }))
-      );
-    },
-  );
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
+    const hook = plugin.hooks?.operationalReport;
+    return (
+      hook &&
+      (() =>
+        hook({
+          ...basePluginContext(plugin),
+          eventStats: createPluginConversationEventStats(plugin, () => nowMs),
+          nowMs,
+          state: pluginReadState(createPluginState(plugin.manifest.name)),
+        }))
+    );
+  });
   for (const outcome of outcomes) {
     const pluginName = outcome.plugin.manifest.name;
     try {
@@ -1700,7 +1723,7 @@ export async function getPluginProfileReports(args: {
   viewer: User;
 }): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  const outcomes = await runPluginHooksAtOnce(getPlugins(), (plugin) => {
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.profileReport;
     return (
       hook &&
@@ -1762,7 +1785,7 @@ export function createPluginHookRunner(
     toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
 ): PluginHookRunner {
-  const loaded = getPlugins();
+  const loaded = getRegistrations();
 
   return {
     async afterToolExecute(tool) {
