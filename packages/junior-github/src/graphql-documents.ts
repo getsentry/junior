@@ -242,11 +242,14 @@ const PULL_REQUEST_LIFECYCLE = githubGraphql(`
   }
 
   fragment Lifecycle on PullRequest {
+    additions
     assignees(first: 20) { nodes { login } }
     author { __typename login }
+    changedFiles
     closedAt
     createdAt
     databaseId
+    deletions
     headRefName
     isDraft
     merged

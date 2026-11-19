@@ -1,3 +1,4 @@
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
@@ -10,6 +11,9 @@ import type {
   GitHubPullRequestOutcomeInput,
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
+
+// GitHub counts these on each pull request payload.
+const count = z.number().int().nonnegative();
 
 // `ready_for_review` and `converted_to_draft` change only the draft state.
 const pullRequestLifecycleActionsSchema = z.enum([
@@ -25,9 +29,12 @@ const canonicalPullRequestOutcomeSchema = z
     action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
+        additions: count.optional(),
         body: z.string().nullable().optional(),
+        changed_files: count.optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        deletions: count.optional(),
         draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
@@ -52,9 +59,12 @@ const pullRequestOutcomeSchema = z
     action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
+        additions: count.optional(),
         body: z.string().nullable().optional(),
+        changed_files: count.optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        deletions: count.optional(),
         draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
@@ -77,9 +87,12 @@ const pullRequestOutcomeSchema = z
     canonicalPullRequestOutcomeSchema.parse({
       action: provider.action,
       pull_request: {
+        additions: provider.pull_request.additions,
         body: provider.pull_request.body,
+        changed_files: provider.pull_request.changed_files,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
+        deletions: provider.pull_request.deletions,
         draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
@@ -145,6 +158,25 @@ function timestamp(value: string | null | undefined): Date | undefined {
   return Number.isFinite(parsed.getTime()) ? parsed : undefined;
 }
 
+/** The size of a pull request payload. Undefined when it counts nothing. */
+function githubPullRequestSize(pullRequest: {
+  additions?: number | undefined;
+  changed_files?: number | undefined;
+  deletions?: number | undefined;
+}): CodeChangeSize | undefined {
+  const size: CodeChangeSize = {};
+  if (pullRequest.additions !== undefined) {
+    size.additions = pullRequest.additions;
+  }
+  if (pullRequest.deletions !== undefined) {
+    size.deletions = pullRequest.deletions;
+  }
+  if (pullRequest.changed_files !== undefined) {
+    size.changedFiles = pullRequest.changed_files;
+  }
+  return Object.keys(size).length > 0 ? size : undefined;
+}
+
 /** Normalize only the fields required for the Junior-owned PR projection. */
 export function normalizeGitHubPullRequestOutcome(args: {
   body: unknown;
@@ -201,6 +233,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
     pullRequestId: String(pullRequest.id),
     repositoryFullName: parsed.repository.full_name,
     repositoryId: String(parsed.repository.id),
+    size: githubPullRequestSize(pullRequest),
     state,
     title: pullRequest.title,
     updatedAt,

@@ -50,6 +50,7 @@ const REPOSITORY_LIMIT = 1;
 const PULL_REQUESTS_PER_QUERY = 100;
 
 const lifecycleSchema = z.object({
+  additions: z.number().int().nonnegative(),
   assignees: z.object({
     nodes: z.array(z.object({ login: z.string().min(1) }).nullable()),
   }),
@@ -57,9 +58,11 @@ const lifecycleSchema = z.object({
   author: z
     .object({ __typename: z.string(), login: z.string().min(1) })
     .nullable(),
+  changedFiles: z.number().int().nonnegative(),
   closedAt: z.string().nullable(),
   createdAt: z.string(),
   databaseId: z.number().int().positive(),
+  deletions: z.number().int().nonnegative(),
   headRefName: z.string(),
   isDraft: z.boolean(),
   merged: z.boolean(),
@@ -117,11 +120,14 @@ function webhookBody(
   return {
     action,
     pull_request: {
+      additions: pullRequest.additions,
       assignees: pullRequest.assignees.nodes.flatMap((assignee) =>
         assignee ? [{ login: assignee.login }] : [],
       ),
+      changed_files: pullRequest.changedFiles,
       closed_at: pullRequest.closedAt,
       created_at: pullRequest.createdAt,
+      deletions: pullRequest.deletions,
       draft: pullRequest.isDraft,
       head: { ref: pullRequest.headRefName },
       id: pullRequest.databaseId,
@@ -214,8 +220,9 @@ async function reconcilePullRequest(
       return;
     }
     // Rows from before the code index stored titles have none, and no
-    // lifecycle webhook arrives for a title edit. Write the title from
-    // this read. No conversation ids keeps the linked ones.
+    // lifecycle webhook arrives for a title edit or a push. Write the title
+    // and the size from this read. No conversation ids keeps the linked
+    // ones.
     await args.codeChanges.record(
       githubCodeChange(
         {
@@ -226,6 +233,11 @@ async function reconcilePullRequest(
           pullRequestId: String(pullRequest.databaseId),
           repositoryFullName: nameWithOwner,
           repositoryId: String(databaseId),
+          size: {
+            additions: pullRequest.additions,
+            changedFiles: pullRequest.changedFiles,
+            deletions: pullRequest.deletions,
+          },
           state: "open",
           title: pullRequest.title,
           updatedAt: new Date(pullRequest.updatedAt),

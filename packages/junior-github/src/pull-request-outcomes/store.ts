@@ -1,5 +1,6 @@
 import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
+import { codeChangeSizeSchema } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestAction,
@@ -23,6 +24,8 @@ const githubPullRequestOutcomeInputSchema = z
     pullRequestId: z.string().min(1),
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
+    /** Written to Junior's code index only, not to the GitHub row. */
+    size: codeChangeSizeSchema.optional(),
     state: githubPullRequestStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),

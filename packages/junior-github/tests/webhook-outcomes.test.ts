@@ -3517,6 +3517,57 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("writes the size that a pull request payload counts", async () => {
+    const fixture = await createGitHubFixture();
+    const codeChanges: CodeChangeInput[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        codeChanges,
+      );
+      const opened = pullRequestPayload();
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              additions: 1204,
+              changed_files: 12,
+              deletions: 340,
+            },
+          }),
+        ),
+      );
+      // A payload without counts leaves the stored size alone.
+      await route.handler(
+        signedRequest(
+          pullRequestPayload({
+            action: "closed",
+            pull_request: {
+              ...(opened.pull_request as Record<string, unknown>),
+              closed_at: "2026-07-02T12:00:00.000Z",
+              updated_at: "2026-07-02T12:00:00.000Z",
+            },
+          }),
+        ),
+      );
+
+      expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
+        ["open", { additions: 1204, changedFiles: 12, deletions: 340 }],
+        ["closed", undefined],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("updates each chip when one stored chip has facts for another object type", async () => {
     const fixture = await createGitHubFixture();
     const key = "getsentry/junior#946";

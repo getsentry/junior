@@ -27,11 +27,14 @@ describe("daily reconcile of open pull requests", () => {
     const closed = number === 946 || number === 949;
     const merged = number === 946;
     return {
+      additions: number,
       assignees: { nodes: [{ login: "octocat" }] },
       author: { __typename: "Bot", login: "sentry-junior" },
+      changedFiles: 3,
       closedAt: closed ? new Date(now - day).toISOString() : null,
       createdAt: new Date(now - 3 * day).toISOString(),
       databaseId: number * 10,
+      deletions: 12,
       headRefName: `feat/pr-${number}`,
       isDraft: drafts.has(number),
       merged,
@@ -200,18 +203,38 @@ describe("daily reconcile of open pull requests", () => {
       [950, "open", null, null],
       [951, "open", null, null],
     ]);
-    // An open pull request keeps its state and gets its current title.
+    // An open pull request keeps its state and gets its current title and
+    // size.
     expect(
       h.codeChanges.map((change) => [
         change.number,
         change.state,
         change.title,
+        change.size,
         change.conversationIds,
       ]),
     ).toEqual([
-      [946, "merged", "Pull request 946", ["slack:C1:1.0"]],
-      [947, "open", "Pull request 947", []],
-      [949, "closed", "Pull request 949", ["slack:C1:1.0"]],
+      [
+        946,
+        "merged",
+        "Pull request 946",
+        { additions: 946, changedFiles: 3, deletions: 12 },
+        ["slack:C1:1.0"],
+      ],
+      [
+        947,
+        "open",
+        "Pull request 947",
+        { additions: 947, changedFiles: 3, deletions: 12 },
+        [],
+      ],
+      [
+        949,
+        "closed",
+        "Pull request 949",
+        { additions: 949, changedFiles: 3, deletions: 12 },
+        ["slack:C1:1.0"],
+      ],
     ]);
     expect(
       h.annotations.map(({ annotation, conversationId }) => [

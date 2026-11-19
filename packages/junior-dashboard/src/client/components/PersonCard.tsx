@@ -11,6 +11,7 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { ObjectCard } from "../conversations/ObjectCard";
 import { peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
+import { ChangeSize } from "./ChangeSize";
 import { InlineError } from "./InlineError";
 import type { Person } from "../person";
 import { formatRelativeTime, formatTime } from "../time";
@@ -71,6 +72,12 @@ function MergedChanges(props: { changes: PersonCardReport["mergedChanges"] }) {
                 <time dateTime={at} title={formatTime(at)}>
                   merged {formatRelativeTime(at)}
                 </time>
+                {change.size ? (
+                  <>
+                    {" · "}
+                    <ChangeSize className="text-xs" size={change.size} />
+                  </>
+                ) : null}
               </span>
             </li>
           );
