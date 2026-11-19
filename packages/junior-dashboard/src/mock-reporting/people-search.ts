@@ -21,6 +21,7 @@ const MOCK_MENTIONABLE_PEOPLE: MentionablePerson[] = [
     avatarUrl: "/api/people/avatars/mock-casey",
     email: "casey@example.com",
     fullName: "Casey Nguyen",
+    hasUser: true,
     slackUserId: "U456",
     slackUserName: "casey",
   },
@@ -28,6 +29,7 @@ const MOCK_MENTIONABLE_PEOPLE: MentionablePerson[] = [
     avatarUrl: "/api/people/avatars/mock-morgan",
     email: "dev@example.com",
     fullName: "Morgan Lee",
+    hasUser: true,
     slackUserId: "U123",
     slackUserName: "morgan",
   },
@@ -36,14 +38,22 @@ const MOCK_MENTIONABLE_PEOPLE: MentionablePerson[] = [
     avatarUrl: "/api/people/avatars/mock-avery",
     email: "avery@sentry.io",
     fullName: "Avery Chen",
+    hasUser: true,
     slackUserId: "U789",
     slackUserName: "avery",
   },
   // No verified email: no People page, but still a card with Invite.
   {
     fullName: "Sam Ortiz",
+    hasUser: true,
     slackUserId: "U234",
     slackUserName: "sam",
+  },
+  // In Slack but not a User: no feed, so no Invite.
+  {
+    fullName: "Riley Park",
+    slackUserId: "U345",
+    slackUserName: "riley",
   },
 ];
 
@@ -110,7 +120,7 @@ function inviteMockPerson(
   const person = MOCK_MENTIONABLE_PEOPLE.find(
     (candidate) => candidate.slackUserId === slackUserId,
   );
-  if (!person) return "person";
+  if (!person?.hasUser) return "person";
   const added = !detail.participants?.some(
     (participant) => participant.slackUserId === slackUserId,
   );

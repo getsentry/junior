@@ -77,6 +77,9 @@ describe("people search API", () => {
       "Burak Kaya",
     ]);
     expect(people[0]).toMatchObject({ slackUserId: "UBOB" });
+    // Only a User can be Invited: a Slack person without an email has none.
+    expect(people[0]).not.toHaveProperty("hasUser");
+    expect(people[1]).toMatchObject({ hasUser: true });
     expect((await search("kay")).map((person) => person.fullName)).toEqual([
       "Burak Kaya",
     ]);

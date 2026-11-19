@@ -11,7 +11,6 @@ export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
   .strict();
 
-/** Query of the people search that the composer `@` menu uses. */
 /**
  * A people search. With `conversationId`, it finds only people in the Slack
  * workspace of that Conversation, so a mention reaches them there.
@@ -23,9 +22,15 @@ export const peopleSearchQuerySchema = z
   })
   .strict();
 
-/** A person that a Message can mention: they have a Slack user id. */
+/**
+ * A person that a Message can mention: they have a Slack user id. `hasUser`
+ * is true when they are a User, so they have a feed to Invite them to.
+ */
 export const mentionablePersonSchema = actorIdentitySchema
-  .extend({ slackUserId: z.string().min(1) })
+  .extend({
+    hasUser: z.literal(true).optional(),
+    slackUserId: z.string().min(1),
+  })
   .strict();
 
 export const peopleSearchReportSchema = z

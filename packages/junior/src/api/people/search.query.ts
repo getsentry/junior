@@ -83,6 +83,7 @@ export async function readPeopleSearchFromSql(
     return [
       {
         slackUserId: row.providerSubjectId,
+        ...(row.userId ? { hasUser: true as const } : undefined),
         ...(fullName ? { fullName } : undefined),
         ...(row.handle ? { slackUserName: row.handle } : undefined),
         ...(email ? { email } : undefined),

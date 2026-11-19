@@ -177,6 +177,50 @@ test("Invite subscribes a mentioned person to a public conversation", async ({
   expect(invites).toEqual([{ slackUserId: "U456" }]);
 });
 
+test("Invite says when the person is already a participant", async ({
+  page,
+  dashboard,
+}) => {
+  // Only the API knows the feed subscribers.
+  await page.route("**/api/conversations/*/invites", (route) =>
+    route.fulfill({ json: { added: false } }),
+  );
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  await composer.pressSequentially("@case");
+  await expect(
+    page.getByRole("option", { name: /Casey Nguyen/ }),
+  ).toBeVisible();
+  await composer.press("Tab");
+  await composer.locator("[data-mention='U456']").click();
+
+  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
+  await card.getByRole("button", { name: "Invite" }).click();
+  await expect(card.getByText("Already a participant")).toBeVisible();
+});
+
+test("a person who is not a User has a card without Invite", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  await composer.pressSequentially("@rile");
+  await expect(page.getByRole("option", { name: /Riley Park/ })).toBeVisible();
+  await composer.press("Tab");
+  await composer.locator("[data-mention='U345']").hover();
+
+  const card = page.getByRole("dialog", { name: "Riley Park" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
+});
+
 for (const [name, change] of [
   ["private", { visibility: "private" }],
   [

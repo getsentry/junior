@@ -21,7 +21,6 @@ import { conversationDetailQueryKey } from "./queries";
 export type ComposerConversation = {
   conversationId: string;
   invite: boolean;
-  participantSlackUserIds: ReadonlySet<string>;
 };
 
 /** Give the `@` menu and mention cards of one composer their Conversation. */
@@ -57,7 +56,8 @@ export function ComposerMention(props: {
       content={
         <PersonCard
           actions={
-            conversation?.invite ? (
+            // Only a User has a feed to Invite them to.
+            conversation?.invite && person.hasUser ? (
               <InviteAction
                 conversation={conversation}
                 slackUserId={person.slackUserId}
@@ -113,11 +113,13 @@ function InviteAction(props: {
         queryKey: conversationDetailQueryKey(conversationId),
       }),
   });
-  if (
-    conversation.participantSlackUserIds.has(props.slackUserId) ||
-    invite.isSuccess
-  ) {
-    return <span className="text-dashboard-text-muted">Subscribed</span>;
+  // Only the API knows who is subscribed, so the card shows its answer.
+  if (invite.data) {
+    return (
+      <span className="text-dashboard-text-muted">
+        {invite.data.added ? "Subscribed" : "Already a participant"}
+      </span>
+    );
   }
   return (
     <>

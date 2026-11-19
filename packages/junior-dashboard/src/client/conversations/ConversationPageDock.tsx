@@ -47,19 +47,8 @@ export function ConversationPageDock(props: {
         data?.visibility === "public" &&
         data.kind !== "task" &&
         !data.archivedAt,
-      participantSlackUserIds: new Set(
-        data?.participants?.flatMap((person) =>
-          person.slackUserId ? [person.slackUserId] : [],
-        ),
-      ),
     }),
-    [
-      props.conversationId,
-      data?.visibility,
-      data?.kind,
-      data?.archivedAt,
-      data?.participants,
-    ],
+    [props.conversationId, data?.visibility, data?.kind, data?.archivedAt],
   );
 
   if (!detail.data) return null;
