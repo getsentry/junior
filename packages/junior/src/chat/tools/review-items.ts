@@ -267,7 +267,7 @@ export const addReviewItemToolDefinition = zodToolDefinition({
       kind: z
         .enum(["notice", "action"])
         .describe(
-          "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
+          "Use `action` with a `request` to ask. Use `notice` only to tell a person about a step they must take, and name that step. Never add an item for progress, status, or work that you can do yourself.",
         ),
       title: titleSchema,
       body: bodySchema,
