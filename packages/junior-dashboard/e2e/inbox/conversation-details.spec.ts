@@ -41,10 +41,10 @@ test.describe("new UI", { tag: "@new" }, () => {
             name: "Investigate checkout latency",
           }),
         })
-        .getByRole("status", { name: "Running" }),
+        .getByRole("status", { name: "Working" }),
     ).toBeVisible();
     await expect(
-      publicRow.getByRole("status", { name: "Running" }),
+      publicRow.getByRole("status", { name: "Working" }),
     ).toHaveCount(0);
     await openRow(publicConversation);
     await expect(page).toHaveURL(

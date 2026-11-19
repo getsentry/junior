@@ -554,6 +554,38 @@ export async function listWatches(input: {
 }
 
 /**
+ * Return which of these Conversations have an active Watch or Timer. It reads
+ * the Conversation indexes in one batch, then the Watches in one batch, so a
+ * page of Conversations costs two state reads.
+ */
+export async function listConversationsWithWatches(input: {
+  conversationIds: readonly string[];
+}): Promise<Set<string>> {
+  if (input.conversationIds.length === 0) return new Set();
+  const state = getStateAdapter();
+  await state.connect();
+  const nowMs = Date.now();
+  const indexes = await getStateValues(
+    state,
+    input.conversationIds.map(conversationIndexKey),
+  );
+  const ids = indexes.flatMap((value) =>
+    value === undefined || value === null
+      ? []
+      : subscriptionIdIndexSchema.parse(value),
+  );
+  const records = await readSubscriptions(state, ids);
+  const wanted = new Set(input.conversationIds);
+  return new Set(
+    records.flatMap((record) =>
+      record && wanted.has(record.conversationId) && activeAt(record, nowMs)
+        ? [record.conversationId]
+        : [],
+    ),
+  );
+}
+
+/**
  * Read one watch by id in any status. The caller checks that its Conversation
  * owns the watch before it acts on it.
  */

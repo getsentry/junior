@@ -1,4 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import {
+  hasUserPhoto,
+  identityAvatarUrl,
+  userAvatarUrlsFromIdentities,
+} from "@/chat/identities/avatar";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -64,10 +70,14 @@ export async function resolveMentions(
   });
 }
 
+// The photo Identities of each mentioned user, so one read returns names and
+// photos.
+const userPhotos = alias(juniorIdentities, "mention_user_photos");
+
 /**
- * Read current names for mentioned Slack users. Known Junior identities come
- * first. The email is set only for a linked, verified Junior user, because
- * that email is the People profile route.
+ * Read current names and photos for mentioned Slack users. Known Junior
+ * identities come first. The email is set only for a linked, verified Junior
+ * user, because that email is the People profile route.
  */
 async function readMentionedPeople(
   executor: JuniorSqlDatabase,
@@ -77,15 +87,31 @@ async function readMentionedPeople(
   const rows = await executor
     .db()
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       displayName: juniorIdentities.displayName,
       emailVerified: juniorIdentities.emailVerified,
       handle: juniorIdentities.handle,
+      identityId: juniorIdentities.id,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       providerSubjectId: juniorIdentities.providerSubjectId,
       userDisplayName: juniorUsers.displayName,
       userEmail: juniorUsers.primaryEmail,
+      userId: juniorIdentities.userId,
     })
     .from(juniorIdentities)
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(
+      userPhotos,
+      and(
+        eq(userPhotos.userId, juniorIdentities.userId),
+        hasUserPhoto(userPhotos),
+      ),
+    )
     .where(
       and(
         eq(juniorIdentities.provider, "slack"),
@@ -94,13 +120,30 @@ async function readMentionedPeople(
       ),
     );
 
+  const userAvatarUrls = userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [
+            {
+              avatarUrl: photo.avatarUrl,
+              identityId: photo.identityId,
+              provider: photo.provider,
+              updatedAt: photo.updatedAt,
+              userId,
+            },
+          ]
+        : [],
+    ),
+  );
   const people = new Map<string, ActorIdentity>();
   for (const row of rows) {
     if (people.has(row.providerSubjectId)) continue;
     const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
     const email = row.emailVerified ? row.userEmail?.trim() : undefined;
+    const avatarUrl = identityAvatarUrl(row, userAvatarUrls);
     people.set(row.providerSubjectId, {
       slackUserId: row.providerSubjectId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
       ...(fullName ? { fullName } : undefined),
       ...(row.handle ? { slackUserName: row.handle } : undefined),
       ...(email ? { email } : undefined),

@@ -7,10 +7,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-import {
-  conversationDisplayTitle,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
@@ -45,6 +42,7 @@ import {
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
 import { formatActivityDay, formatTime } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
@@ -239,16 +237,17 @@ function ConversationCard(props: ConversationCardProps) {
   const conversation = props.conversation;
   const drag = props.drag;
   const { archive, pin } = useConversationRowActions(conversation, props);
-  const status = visualStatusForConversation(conversation);
+  const status = conversation.status;
+  const running = conversationTurnIsActive(conversation);
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
   const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
-  // Only a wait on the viewer gets a badge. A running card shows its spinner
-  // in place of the time, and failed and stopped are text beside the time.
-  const showStatus = props.waitingOnViewer && status !== "active";
+  // Only a wait on the viewer gets a badge. A card whose Turn runs shows its
+  // spinner in place of the time.
+  const showStatus = props.waitingOnViewer && !running;
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <ConversationRowContextMenu
@@ -298,7 +297,7 @@ function ConversationCard(props: ConversationCardProps) {
           // within the tile.
           <span className="absolute bottom-px right-px grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
-              status={status}
+              turnActive={running}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>
@@ -314,7 +313,14 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
-          {status === "active" ? (
+          {/* The tile already shows the lock. A running row can also
+              need input, so this shows beside the spinner. */}
+          <ConversationStatusText
+            className="pointer-events-none relative z-[1]"
+            isPrivate={false}
+            status={status}
+          />
+          {running ? (
             // Like the sidebar row: a running row shows that it runs, not
             // when its last Event came, so the feed token can skip it.
             <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
@@ -324,24 +330,16 @@ function ConversationCard(props: ConversationCardProps) {
               />
             </span>
           ) : (
-            <>
-              {/* The tile already shows the lock. */}
-              <ConversationStatusText
-                className="pointer-events-none relative z-[1]"
-                isPrivate={false}
-                status={status}
-              />
-              <time
-                className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
-                dateTime={activityAt}
-                title={formatTime(activityAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                {formatActivityDay(activityAt)}
-              </time>
-            </>
+            <time
+              className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+              dateTime={activityAt}
+              title={formatTime(activityAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatActivityDay(activityAt)}
+            </time>
           )}
           <button
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
@@ -357,7 +355,7 @@ function ConversationCard(props: ConversationCardProps) {
             )}
           </button>
         </div>
-        {conversation.activityPreview || status === "active" ? (
+        {conversation.activityPreview || running ? (
           <p
             className={cn(
               "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",

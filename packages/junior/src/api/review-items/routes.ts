@@ -18,7 +18,7 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
@@ -48,7 +48,9 @@ import {
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import type { ActorIdentity } from "@/api/schema/conversation";
 import { readItemRoots } from "./item-roots";
+import { readReviewItemMentions } from "./mentions";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -163,6 +165,7 @@ function reviewItemPayload(
   item: ReviewItem,
   viewer: User,
   roots: Awaited<ReturnType<typeof readItemRoots>>,
+  mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
   const root = roots.get(item.addedByConversationId);
@@ -190,6 +193,7 @@ function reviewItemPayload(
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(mentions.length > 0 ? { mentions: [...mentions] } : undefined),
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
@@ -200,8 +204,9 @@ function reviewItemPayload(
 }
 
 /**
- * Build the payloads of a page of items, with the root of each one and the
- * related work of the open ones. Each read covers the page.
+ * Build the payloads of a page of items, with the root of each one, the
+ * people they mention, and the related work of the open ones. Each read
+ * covers the page, and the reads run at once.
  */
 async function reviewItemPayloads(
   items: readonly ReviewItem[],
@@ -209,12 +214,19 @@ async function reviewItemPayloads(
   reader: ReviewItemReader,
 ): Promise<ReviewItemPayload[]> {
   const db = getDb();
-  const [roots, related] = await Promise.all([
+  const [roots, mentions, related] = await Promise.all([
     readItemRoots(db, items, viewer),
+    readReviewItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
   ]);
-  return items.map((item) =>
-    reviewItemPayload(item, viewer, roots, related.get(item.id)),
+  return items.map((item, index) =>
+    reviewItemPayload(
+      item,
+      viewer,
+      roots,
+      mentions[index]!,
+      related.get(item.id),
+    ),
   );
 }
 

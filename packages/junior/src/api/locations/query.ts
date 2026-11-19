@@ -31,6 +31,7 @@ import {
 import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { readFirstHumanMessageTexts } from "../conversations/first-message";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { summaryFromRow } from "../conversations/reporting";
 import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
@@ -397,7 +398,6 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
         ${juniorIdentities.email}
       )`,
       executionStatus: juniorConversations.executionStatus,
-      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,
@@ -411,6 +411,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
         ELSE NULL
       END`,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,
