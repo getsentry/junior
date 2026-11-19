@@ -14,11 +14,11 @@ let startupDiscoveryLogged = false;
 
 /**
  * Return the skills that the model can load with `loadSkill`. A manual-only
- * skill is loadable only when the Turn's message invokes it, or when a
- * loadable skill references it as `$name` in its SKILL.md instructions. The
- * model can load any loadable skill at any time, so the list is fixed for the
- * Turn. No other text, such as memory, thread messages, or tool results,
- * unlocks one.
+ * skill is loadable only when the Turn's message invokes it, when `loadSkill`
+ * loaded it earlier in the Conversation, or when a loadable skill references
+ * it as `$name` in its SKILL.md instructions. The model can load any loadable
+ * skill at any time, so the list is fixed for the Turn. No other text, such
+ * as memory, thread messages, or tool results, unlocks one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
@@ -101,7 +101,9 @@ export function skillInvocationText(
     .join("\n\n");
 }
 
-function lastLoadedSkillName(messages: readonly PiMessage[]): string | null {
+function lastLoadedSkillName(
+  messages: readonly PiMessage[],
+): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index] as {
       details?: unknown;
@@ -126,7 +128,7 @@ function lastLoadedSkillName(messages: readonly PiMessage[]): string | null {
       return skillName;
     }
   }
-  return null;
+  return undefined;
 }
 
 /**

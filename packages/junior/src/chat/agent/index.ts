@@ -517,10 +517,7 @@ async function executeAgentRunInPrivacyContext(
     const invokedSkillNames = dispatchSkill
       ? [dispatchSkill]
       : parseSkillInvocations(skillInvocationText(run, actor), availableSkills);
-    const invokedSkills = invokedSkillNames.flatMap(
-      (name) => findSkillByName(name, availableSkills) ?? [],
-    );
-    if (dispatchSkill && invokedSkills.length === 0) {
+    if (dispatchSkill && !findSkillByName(dispatchSkill, availableSkills)) {
       throw new Error(missingAutomationSkillReason(dispatchSkill));
     }
     const skillSandbox = new SkillSandbox(availableSkills);
@@ -762,7 +759,7 @@ async function executeAgentRunInPrivacyContext(
       durability,
       authorization,
       generatedFiles,
-      invokedSkills,
+      invokedSkillNames,
       conversationSkillNames,
       onEvent: run.onEvent,
       onFatalToolError(error) {

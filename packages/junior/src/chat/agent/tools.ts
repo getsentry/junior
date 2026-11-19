@@ -208,7 +208,7 @@ interface ToolWiringArgs {
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
-  invokedSkills: readonly SkillMetadata[];
+  invokedSkillNames: readonly string[];
   /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
   conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
@@ -544,7 +544,7 @@ export async function wireAgentTools(
     }),
   });
   const skills = loadableSkills(args.availableSkills, [
-    ...args.invokedSkills.map((skill) => skill.name),
+    ...args.invokedSkillNames,
     ...args.conversationSkillNames,
   ]);
   const tools = createTools(

@@ -95,6 +95,7 @@ describe("load_skill tool", () => {
       name: "launch-review",
       description: "Review a launch",
       skillPath: skillRoot,
+      references: ["launch-checks", "brief"],
     };
     const checks: SkillMetadata = {
       name: "launch-checks",
@@ -107,13 +108,7 @@ describe("load_skill tool", () => {
       description: "Brief",
       skillPath: "/tmp/brief",
     };
-    // The run's `onSkillLoaded` hook adds the referenced manual-only skills.
-    const loadable = [review, brief];
-    const tool = createLoadSkillTool(loadable, {
-      onSkillLoaded: () => {
-        loadable.push(checks);
-      },
-    });
+    const tool = createLoadSkillTool([review, checks, brief]);
 
     const result = await tool.execute!({ skill_name: "launch-review" }, {
       toolCallId: "tool-call-3",
