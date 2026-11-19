@@ -758,7 +758,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             status: "running",
             input: {
               tool_name: "github_getPullRequest",
-              arguments: { repo: "getsentry/payments", number: 42 },
+              arguments: { repo: "getsentry/payments", pull_request: 42 },
             },
           },
         ],

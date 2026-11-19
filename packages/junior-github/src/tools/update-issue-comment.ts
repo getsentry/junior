@@ -54,7 +54,7 @@ export function createGitHubUpdateIssueCommentTool(
       readOnlyHint: false,
     },
     description:
-      "Replace the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
+      "Edit the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
     inputSchema,
     outputSchema,
     async execute(
