@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { CONVERSATION_FEED_PAGE_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
@@ -278,7 +279,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
+        // Request the full page because this test changes it.
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONVERSATION_FEED_PAGE_VERSION_HEADER]: "",
+          },
+        });
         const feed = (await response.json()) as {
           conversations: Array<{ displayTitle: string }>;
         };
