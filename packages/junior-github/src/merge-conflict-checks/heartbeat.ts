@@ -21,7 +21,7 @@ import {
 } from "../webhooks/merge-conflict.js";
 import {
   applyGitHubConflictPolicy,
-  closeGitHubConflictNotices,
+  closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
 import {
@@ -147,7 +147,7 @@ async function checkRepository(
       });
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
-    await closeGitHubConflictNotices({
+    await closeGitHubConflictItems({
       db: args.db,
       log: args.log,
       numbers: mergeable,

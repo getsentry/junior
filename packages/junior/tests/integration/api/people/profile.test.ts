@@ -204,9 +204,7 @@ describe("people profile API", () => {
           (person) => person.actor.email === "owner@example.com",
         ),
       ).toMatchObject({
-        conversations: 1,
-        durationMs: 800,
-        tokens: 8,
+        windows: { 90: { conversations: 1, durationMs: 800 } },
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
@@ -329,8 +327,8 @@ describe("people profile API", () => {
         report.recentConversations.map((item) => item.conversationId),
       ).toEqual(["slack:C4:456", "slack:C1:123"]);
       expect(report.recentConversations.map((item) => item.status)).toEqual([
-        "failed",
-        "active",
+        "needs_input",
+        "working",
       ]);
       expect(report.recentConversations[0]).toMatchObject({
         channelName: "Private Conversation",
@@ -532,11 +530,14 @@ describe("people profile API", () => {
       const directory = await readPeopleListFromSql();
       expect(directory.people).toEqual([
         expect.objectContaining({
-          conversations: 5_000,
-          durationMs: 10_000,
-          tokens: 15_000,
           actor: expect.objectContaining({
             email: "aggregate@example.com",
+          }),
+          windows: expect.objectContaining({
+            90: expect.objectContaining({
+              conversations: 5_000,
+              durationMs: 10_000,
+            }),
           }),
         }),
       ]);

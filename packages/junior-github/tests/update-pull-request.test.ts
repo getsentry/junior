@@ -89,7 +89,7 @@ async function savedFacts(pullRequest: Record<string, unknown>) {
     ),
   );
   const result = (await tool.execute?.(
-    { repo: "getsentry/junior", number: 691, title: "Updated title" },
+    { repo: "getsentry/junior", pull_request: 691, title: "Updated title" },
     { toolCallId: "update-pr" },
   )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
   return result.objectAnnotations[0]!.facts;
@@ -117,7 +117,7 @@ describe("updatePullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           title: "Updated title",
           body: "Updated body",
           base: "release",
@@ -241,7 +241,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     });
 
     await tool.execute?.(
-      { repo: "getsentry/junior", number: 691, body: "Updated body" },
+      { repo: "getsentry/junior", pull_request: 691, body: "Updated body" },
       { toolCallId: "update-pr" },
     );
 
@@ -265,7 +265,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Retry timed-out webhooks.\n\n## Test plan\n- [x] pnpm test",
         },
         { toolCallId: "update-pr" },
@@ -285,7 +285,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, body: "  " },
+        { repo: "getsentry/junior", pull_request: 691, body: "  " },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({
@@ -304,6 +304,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
           body: "Updated body",
           draft: false,
           merged: true,
+          mergeable: false,
           html_url: "https://github.com/getsentry/junior/pull/691",
           number: 691,
           state: "closed",
@@ -315,12 +316,14 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, title: "Updated title" },
+        { repo: "getsentry/junior", pull_request: 691, title: "Updated title" },
         { toolCallId: "update-merged-pr" },
       ),
     ).resolves.toMatchObject({
       objectAnnotations: [
         {
+          // A closed pull request has no merge state to show.
+          facts: expect.not.objectContaining({ mergeable: false }),
           key: "getsentry/junior#691",
           status: "merged",
           title: "Updated title",
@@ -444,7 +447,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/Junior", number: 691, draft: false },
+        { repo: "getsentry/Junior", pull_request: 691, draft: false },
         { toolCallId: "ready-pr" },
       ),
     ).resolves.toMatchObject({
@@ -477,7 +480,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       );
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, draft: false },
+        { repo: "getsentry/junior", pull_request: 691, draft: false },
         { toolCallId: "ready-pr-denied" },
       ),
     ).rejects.toThrow(
@@ -514,7 +517,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           title: "New title",
           draft: true,
         },
@@ -535,7 +538,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     fetch.mockResolvedValueOnce(new Response(JSON.stringify(readyPull)));
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, draft: false },
+        { repo: "getsentry/junior", pull_request: 691, draft: false },
         { toolCallId: "already-ready" },
       ),
     ).resolves.toMatchObject({ draft: false });
@@ -543,9 +546,9 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
   });
 
   it.each([
-    { repo: "getsentry/junior", number: 691 },
-    { repo: "getsentry/junior", number: 691, title: "   " },
-    { repo: "getsentry/junior", number: 691, base: "" },
+    { repo: "getsentry/junior", pull_request: 691 },
+    { repo: "getsentry/junior", pull_request: 691, title: "   " },
+    { repo: "getsentry/junior", pull_request: 691, base: "" },
   ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 
@@ -564,7 +567,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, base: "missing" },
+        { repo: "getsentry/junior", pull_request: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({
@@ -583,7 +586,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, base: "main" },
+        { repo: "getsentry/junior", pull_request: 691, base: "main" },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({

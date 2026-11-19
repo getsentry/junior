@@ -40,6 +40,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   completed: "success",
   error: "danger",
   failed: "danger",
+  needs_input: "warning",
   paused: "info",
   running: "info",
 };
@@ -81,7 +82,6 @@ export function ConversationThreads(props: {
     <DetailsCard
       action={action}
       count={threads.length}
-      flat
       label="Threads"
       title="Threads"
     >
@@ -119,7 +119,6 @@ export function ConversationTasks(props: {
     <DetailsCard
       action={action}
       count={tasks.length}
-      flat
       label="Tasks"
       title="Tasks"
     >

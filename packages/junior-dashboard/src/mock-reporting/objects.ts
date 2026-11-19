@@ -3,14 +3,18 @@ import {
   messageObjectCard,
   personObjectCard,
   webPageObjectCard,
+  PERSON_CARD_RECENT_LIMIT,
   type AttachObjectLinkResponse,
   type ObjectLinksReport,
+  type PersonCardReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
   readMockConversationDetail,
+  readMockPeopleCode,
   readMockPeopleDirectory,
+  readMockPeopleProfile,
 } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
@@ -19,6 +23,45 @@ function pageSegment(url: URL, page: string): string | undefined {
   const match = new RegExp(`^/${page}/([^/]+)/?$`).exec(url.pathname);
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
+
+// The live cards of mock pull requests that conflict with main, so their
+// asks in the Inbox say "Merge conflict".
+const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/2188": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#2188",
+    label: "getsentry/junior#2188",
+    title: "Retry Slack uploads on rate limits",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "fix/slack-upload-retry",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+  "https://github.com/getsentry/payments/pull/91": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#91",
+    label: "getsentry/payments#91",
+    title: "Pin the release train to payments 4.2",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "release/pin-payments-4.2",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+};
 
 // The mock release thread links to one Google Doc, one Calendar event, and
 // one Drive file and folder.
@@ -407,16 +450,69 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
     title: "What's new in Release 4.2",
     url: "https://blog.example.com/posts/release-4-2",
   },
+  // A page title as long as a GitHub pull request page's, so its Inbox
+  // line must truncate inside its column.
+  "https://code.example.com/acme/checkout/pull/5378": {
+    siteName: "Example Code",
+    title:
+      "feat(checkout): cache tax rates per checkout session by Riley Park · Pull Request #5378 · acme/checkout",
+    url: "https://code.example.com/acme/checkout/pull/5378",
+  },
+  "https://news.example.com/checkout-4-2-session-tax-cache": {
+    siteName: "Example News",
+    title: "Checkout 4.2 brings back per-session tax caching",
+    url: "https://news.example.com/checkout-4-2-session-tax-cache",
+  },
+};
+
+// The Sentaur review ask's pull request, with a long body, so the Inbox
+// shows how a description sits under the ask's own text.
+const SENTAUR_PULL_REQUEST: OwnedObjectAnnotation = {
+  kind: "object",
+  objectType: "code_change",
+  key: "getsentry/sentaur#418",
+  label: "getsentry/sentaur#418",
+  title: "Retry a canary stage once on a lost agent",
+  displayType: "Pull request",
+  facts: {
+    type: "code_change",
+    additions: 1204,
+    author: "junior",
+    changedFiles: 12,
+    deletions: 340,
+    sourceBranch: "fix/canary-lost-agent-retry",
+    targetBranch: "main",
+  },
+  plugin: "github",
+  status: "open",
+  url: "https://github.com/getsentry/sentaur/pull/418",
+  description: [
+    "A canary stage fails when its GoCD agent loses its lease, even though the deploy itself is fine. Three of the last ten runs failed this way.",
+    "",
+    "## Changes",
+    "",
+    "- Retry a canary stage once when its agent loses the lease.",
+    "- Do not retry a stage that failed its health checks.",
+    "- Log the agent and the lease age on each retry.",
+    "",
+    "## Rollout",
+    "",
+    "Merge after the current train. To roll back, revert this PR.",
+  ].join("\n"),
 };
 
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
+  if (url.href === SENTAUR_PULL_REQUEST.url)
+    return [{ object: SENTAUR_PULL_REQUEST, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);
     return [{ object: { ...object, plugin: "junior" }, url: href }];
   }
+  const pull = GITHUB_PULLS[url.href];
+  if (pull) return [{ object: { ...pull, url: href }, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
@@ -506,6 +602,43 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url: href,
   });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
+}
+
+/**
+ * Build a person card like the person card API: the person link card, the
+ * merged code changes of their People profile, and their recent activity.
+ */
+export function readMockPersonCard(
+  origin: string,
+  email: string,
+): PersonCardReport {
+  const card = mockObject(`${origin}/people/${encodeURIComponent(email)}`)[0]
+    ?.object;
+  const recent = [
+    ...(readMockPeopleProfile(email)?.recentConversations ?? []),
+  ].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  const merged = (readMockPeopleCode(email)?.changes ?? [])
+    .filter((change) => change.state === "merged" && change.mergedAt)
+    .sort(
+      (a, b) => Date.parse(b.mergedAt ?? "") - Date.parse(a.mergedAt ?? ""),
+    );
+  return {
+    // Last active covers every Conversation, like the API. Mocks have one
+    // viewer, who may read a private Conversation only as a participant.
+    activity: {
+      ...(recent[0] ? { lastActiveAt: recent[0].lastSeenAt } : undefined),
+      recentConversations: recent
+        .filter((item) => item.visibility !== "private" || item.isParticipant)
+        .slice(0, PERSON_CARD_RECENT_LIMIT)
+        .map((item) => ({
+          conversationId: item.conversationId,
+          lastTurnAt: item.lastSeenAt,
+          title: item.displayTitle,
+        })),
+    },
+    ...(card ? { card } : undefined),
+    mergedChanges: merged.slice(0, PERSON_CARD_RECENT_LIMIT),
+  };
 }
 
 /** Resolve mock links to the cards that the API would show. */

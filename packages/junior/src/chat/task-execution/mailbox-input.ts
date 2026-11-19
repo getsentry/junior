@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type {
@@ -24,16 +23,14 @@ export async function webTurnInputs(
     text: string;
   }[],
 ): Promise<AgentInstructionInput[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const inputs = await Promise.all(
-    messages.map((message) =>
-      limit(async (): Promise<AgentInstructionInput[]> => {
-        const reviewItem = await loadReviewItemInput(message.reviewItemChange);
-        if (reviewItem) return [{ kind: "runtime", text: reviewItem }];
-        const text = message.text.trim();
-        return text ? [{ kind: "person", text }] : [];
-      }),
-    ),
+  const inputs = await mapBounded(
+    messages,
+    async (message): Promise<AgentInstructionInput[]> => {
+      const reviewItem = await loadReviewItemInput(message.reviewItemChange);
+      if (reviewItem) return [reviewItem];
+      const text = message.text.trim();
+      return text ? [{ kind: "person", text }] : [];
+    },
   );
   const flat = inputs.flat();
   return flat.length ? flat : [{ kind: "person", text: "" }];

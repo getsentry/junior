@@ -5,7 +5,6 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
-import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -22,6 +21,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginTurnEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
@@ -51,8 +51,7 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
-import { getPlugins } from "./agent-hooks";
+import { getRegistrations } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
@@ -61,6 +60,7 @@ import {
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import { mapBounded } from "@/chat/fan-out";
 
 // Plugin task messages that one run sends at once.
 const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
@@ -119,17 +119,22 @@ function toolResultText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
@@ -454,11 +459,16 @@ function taskPluginContext(
       },
     },
     state: createPluginState(pluginName),
+    turnEvents: createPluginTurnEventReader({
+      conversationId: sessionParams.conversationId,
+      plugin,
+      turnId: sessionParams.sessionId,
+    }),
   };
 }
 
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -474,10 +484,7 @@ export async function scheduleSessionCompletedPluginTasks(
   send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = [
-    ...getPlugins(),
-    ...coreTaskRegistrations(),
-  ].flatMap((plugin) =>
+  const taskRegistrations = getRegistrations().flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
   if (taskRegistrations.length === 0) {
@@ -495,13 +502,12 @@ export async function scheduleSessionCompletedPluginTasks(
     params: coreParams,
     plugin: plugin.manifest.name,
   }));
-  const limit = pLimit(PLUGIN_MESSAGE_SEND_CONCURRENCY);
-  await Promise.all(
-    messages.map((message) =>
-      limit(async () => {
-        await send(message);
-      }),
-    ),
+  await mapBounded(
+    messages,
+    async (message) => {
+      await send(message);
+    },
+    PLUGIN_MESSAGE_SEND_CONCURRENCY,
   );
 }
 

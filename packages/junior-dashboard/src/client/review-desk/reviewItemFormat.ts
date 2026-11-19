@@ -5,6 +5,10 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { withoutStandaloneUrl } from "../display-text/DisplayText";
+import { displayPlainText } from "../display-text/plainText";
+import type { Conversation } from "../types";
+
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
@@ -35,6 +39,18 @@ export function reviewItemSubjectHref(url: string): string | undefined {
   }
 }
 
+/**
+ * Return the text of an item without a bare URL to its subject, for a
+ * surface that shows the subject's own card.
+ */
+export function reviewItemText(
+  item: Pick<ReviewItemPayload, "body" | "subject">,
+): string {
+  return item.subject?.url
+    ? withoutStandaloneUrl(item.body, item.subject.url)
+    : item.body;
+}
+
 /** Name the state of an item: what it needs while open, or how it closed. */
 export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   if (item.status === "open") {
@@ -45,13 +61,9 @@ export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   return item.status === "done" ? "Done" : "Dismissed";
 }
 
-/** Name the assignees of an item in one short line. */
-export function assigneeLabel(item: ReviewItemPayload): string {
-  const names = item.assignees.map(
-    (person) => person.displayName ?? person.email,
-  );
-  if (item.assignedToEveryone) names.unshift("Everyone");
-  return names.length > 0 ? names.join(", ") : "Unassigned";
+/** Return an item's title as text, with the names of the people it mentions. */
+export function reviewItemTitleText(item: ReviewItemPayload): string {
+  return displayPlainText(item.title, item.mentions);
 }
 
 const ADD_REVIEW_ITEM_TOOL_NAME = "addReviewItem";
@@ -149,6 +161,31 @@ export function answerLine(
     .join(" · ");
 }
 
+/** Say "You answered Hold" for picked options, or "You replied" for text. */
+function answeredLine(choices: readonly string[]): string {
+  return choices.length > 0
+    ? `You answered ${choices.join(", ")}`
+    : "You replied";
+}
+
+/**
+ * Say what the viewer last answered in a Conversation, from the answer that
+ * its feed row carries, until a later Message moves it on. The answer's own
+ * Message has the close time, so it does not count as later.
+ */
+export function conversationAnswerLine(
+  conversation: Pick<Conversation, "lastMessageAt" | "viewerAnswer">,
+): string | undefined {
+  const answer = conversation.viewerAnswer;
+  if (!answer) return undefined;
+  if (
+    conversation.lastMessageAt &&
+    Date.parse(conversation.lastMessageAt) > Date.parse(answer.closedAt)
+  )
+    return undefined;
+  return answeredLine(answer.choices);
+}
+
 /** The open Review items of the inbox, in the groups and order it shows. */
 export type InboxGroups = {
   fyi: ReviewItemPayload[];
@@ -156,16 +193,17 @@ export type InboxGroups = {
 };
 
 /**
- * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
- * the bundle into the queue; other bundles are FYI and sort after it.
+ * The Review items of one root Conversation and its child agents: a stack of
+ * cards, each with its own actions. `needsYou` sorts the stack into the
+ * queue; other stacks are FYI and sort after it.
  */
 export type InboxBundle = {
   /**
-   * Names the row: the Conversation id for a Conversation bundle, or the
+   * Names the row: the Conversation id for a Conversation stack, or the
    * item id for a row that shows one item.
    */
   key: string;
-  /** The Conversation that added the items. */
+  /** The root Conversation whose stack shows the items (`rootConversationId`). */
   conversationId: string;
   /** Items in inbox order: questions first, then the oldest. */
   items: ReviewItemPayload[];
@@ -212,16 +250,16 @@ export function itemUpForGrabs(item: ReviewItemPayload): boolean {
 }
 
 /**
- * Group items into one bundle per Conversation. Bundles that need the viewer
- * come first, the one that waited longest at the top, so the order does not
- * change while the reader works. FYI bundles follow, oldest first.
+ * Group items into one stack per root Conversation. Stacks that need the
+ * viewer come first, the one that waited longest at the top, so the order
+ * does not change while the reader works. FYI stacks follow, oldest first.
  */
 export function inboxBundles(
   items: readonly ReviewItemPayload[],
 ): InboxBundle[] {
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of items) {
-    const key = item.addedByConversationId;
+    const key = item.rootConversationId;
     byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
   }
   const bundles = [...byConversation].map(([conversationId, group]) => {

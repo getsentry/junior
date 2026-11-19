@@ -136,6 +136,7 @@ async function runToolCalls(
   input: StepInput,
 ): Promise<StepResult> {
   const results = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
     pending.calls.map((call) => runToolCall(call, pending.truncated, input)),
   );
   // An aborted tool returns an error result. Those results must not reach the

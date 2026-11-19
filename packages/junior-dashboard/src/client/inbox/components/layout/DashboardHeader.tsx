@@ -17,6 +17,8 @@ import {
 import { PaneDestinations } from "../../../review-desk/PaneDestinations";
 import { cn, dashboardInteractiveTextClass } from "../../../styles";
 import { MOBILE_LAYOUT_QUERY } from "../../../layoutMedia";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
+import { NAV_PAGES } from "../../../navPages";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
@@ -130,7 +132,13 @@ export function DashboardHeader(props: {
         {conversationMode ? (
           <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
             {mobileTitle ? (
-              <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
+              <h1
+                className={cn(
+                  fadeOverflowClass,
+                  "m-0 text-left font-display text-sm font-medium text-dashboard-text",
+                )}
+                ref={fadeWhenOverflowing}
+              >
                 {mobileTitle}
               </h1>
             ) : null}
@@ -142,9 +150,12 @@ export function DashboardHeader(props: {
             "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
-          to="/"
+          to={NAV_PAGES.inbox.to}
         >
-          <span className="truncate font-sans text-sm font-semibold">
+          <span
+            className={cn(fadeOverflowClass, "font-sans text-sm font-semibold")}
+            ref={fadeWhenOverflowing}
+          >
             {getDashboardAgentName()}
           </span>
         </Link>
@@ -159,10 +170,12 @@ export function DashboardHeader(props: {
           <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
               aria-label={`${getDashboardAgentName()} home`}
-              className="min-w-0 truncate font-sans text-sm font-semibold text-inherit no-underline"
-              to="/"
+              className="flex min-w-0 font-sans text-sm font-semibold text-inherit no-underline"
+              to={NAV_PAGES.inbox.to}
             >
-              {getDashboardAgentName()}
+              <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+                {getDashboardAgentName()}
+              </span>
             </Link>
             <SheetClose
               aria-label="Close navigation"

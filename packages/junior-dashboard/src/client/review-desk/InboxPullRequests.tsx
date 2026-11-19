@@ -3,12 +3,14 @@ import { ArrowUpRight } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 
 import { useActorOpenCodeChanges, useDashboardCoreData } from "../api";
+import { ChangeSize } from "../components/ChangeSize";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
 import type { InboxBundle } from "./reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /** One open code change, with the pull request asks that name it. */
 export type PullRequestChangeRow = {
@@ -41,12 +43,12 @@ const byActivity = (a: PullRequestChangeRow, b: PullRequestChangeRow) =>
 
 /**
  * Sort the viewer's open code changes and the pull request asks into three
- * piles. Waiting on you: changes with an ask that waits on the viewer,
- * longest wait first, and such asks that name no open change of theirs.
- * Waiting on others: every other open change, waiting on a reviewer, CI or
- * Junior, newest activity first, and the other asks, so nothing gets lost.
- * Drafts: draft changes with their asks, newest activity first, collapsed.
- * Empty piles drop out.
+ * piles. Waiting on you: changes with an ask that waits on the viewer, also
+ * a draft, longest wait first, and such asks that name no open change of
+ * theirs. Waiting on others: every other open change, waiting on a
+ * reviewer, CI or Junior, newest activity first, and the other asks, so
+ * nothing gets lost. Drafts: the other draft changes with their asks,
+ * newest activity first, collapsed. Empty piles drop out.
  */
 export function pullRequestSections(
   changes: readonly CodeChangeSummaryReport[],
@@ -66,12 +68,15 @@ export function pullRequestSections(
     }));
   const attached = new Set(rows.flatMap((row) => row.items));
   const loose = itemRows.filter((row) => !attached.has(row));
-  const drafts = rows.filter((row) => row.change.draft).sort(byActivity);
-  const ready = rows.filter((row) => !row.change.draft);
-  const waiting = ready
+  // An ask that waits on the viewer puts its change in Waiting on you, also
+  // a draft, so the pile matches its count (`waitingPullRequestCount`)
+  // before the viewer's changes load.
+  const waiting = rows
     .filter((row) => row.items.some((item) => item.needsYou))
     .sort((a, b) => waitedSince(a) - waitedSince(b));
-  const others = ready.filter((row) => !waiting.includes(row)).sort(byActivity);
+  const rest = rows.filter((row) => !waiting.includes(row));
+  const drafts = rest.filter((row) => row.change.draft).sort(byActivity);
+  const others = rest.filter((row) => !row.change.draft).sort(byActivity);
   return [
     {
       changes: waiting,
@@ -93,6 +98,25 @@ export function pullRequestSections(
       label: "Drafts",
     },
   ].filter((section) => section.changes.length + section.items.length > 0);
+}
+
+/**
+ * Count the entries under Waiting on you: one per pull request with an ask
+ * that waits on the viewer, and one per such ask that names no pull request.
+ * It needs only the asks, so the badge counts before the viewer's changes
+ * load. Two asks for one pull request that is not the viewer's open change
+ * show as two rows there, but count once.
+ */
+export function waitingPullRequestCount(
+  itemRows: readonly InboxBundle[],
+): number {
+  return new Set(
+    itemRows
+      .filter((row) => row.needsYou)
+      .map((row) =>
+        row.newest.subject?.url ? sameUrl(row.newest.subject.url) : row.key,
+      ),
+  ).size;
 }
 
 /**
@@ -158,23 +182,44 @@ export function PullRequestChange(props: {
           "flex min-w-0 items-center justify-between gap-4 px-4 py-2.5 font-sans",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-dashboard-text">
-          <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
-          {change.url ? (
-            <a
-              className="inline-flex min-w-0 items-center gap-1.5 text-inherit no-underline hover:underline"
-              href={change.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <span className="truncate">{title}</span>
-              <ArrowUpRight aria-hidden="true" className="shrink-0" size={14} />
-            </a>
-          ) : (
-            <span className="truncate">{title}</span>
-          )}
+        <div className="grid min-w-0 gap-0.5">
+          <div className="flex min-w-0 items-center gap-2.5 font-display text-base font-medium text-dashboard-text">
+            <SidebarAnnotationIcon
+              decorative
+              icon="git-pull-request"
+              size={14}
+            />
+            {change.url ? (
+              <a
+                className="inline-flex min-w-0 items-center gap-1.5 text-inherit no-underline hover:underline"
+                href={change.url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+                  {title}
+                </span>
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="shrink-0"
+                  size={14}
+                />
+              </a>
+            ) : (
+              <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+                {title}
+              </span>
+            )}
+          </div>
+          {/* A narrow row gives the title the width, so the size goes under
+              it, in line with the title. */}
+          <ChangeSize
+            className="pl-6 text-xs text-dashboard-text-muted sm:hidden"
+            size={change.size}
+          />
         </div>
         <div className="flex shrink-0 items-center gap-4 text-xs text-dashboard-text-muted">
+          <ChangeSize className="hidden sm:inline" size={change.size} />
           <span className="hidden sm:inline">
             {change.repository}{" "}
             <span className="tabular-nums">#{change.number}</span>

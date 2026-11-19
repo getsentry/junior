@@ -1,5 +1,6 @@
 import { expect, test } from "../test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
@@ -334,11 +335,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       panel.getByText("Effectiveness", { exact: true }),
     ).toBeVisible();
     await expect(
-      panel.getByText(/of possible savings had no warm state/),
+      panel.getByText(/of possible savings on live days had no warm state/),
     ).toBeVisible();
-    await expect(
-      panel.getByText(/Excludes 8 days without warmup cost/),
-    ).toBeVisible();
+    await expect(panel.getByText(/Includes 4 days from history/)).toBeVisible();
     await expect(
       panel.getByLabel("Cache warming net savings and effectiveness per day"),
     ).toBeVisible();
@@ -421,5 +420,43 @@ test.describe("new UI", { tag: "@new" }, () => {
       view: "desktop",
     });
     expect(starts).toEqual(["POST"]);
+  });
+
+  test.describe("keeps the people directory across window focus", () => {
+    test.use({ controlTimers: true });
+
+    test("loads System People within its request budget", async ({
+      page,
+      dashboard,
+    }) => {
+      let directoryReads = 0;
+      page.on("request", (request) => {
+        if (new URL(request.url()).pathname === "/api/people") {
+          directoryReads += 1;
+        }
+      });
+
+      await expectRequestBudget(
+        page,
+        async () => {
+          await page.goto(`${dashboard.baseURL}/system/people`);
+          await expect(
+            page.getByText("Highest spend", { exact: true }),
+          ).toBeVisible();
+        },
+        { requests: 8, serialRounds: 2 },
+      );
+      expect(directoryReads).toBe(1);
+
+      // React Query refetches stale queries on `visibilitychange`. Go past
+      // the default stale time so a focus refetch would read the directory
+      // again.
+      await page.clock.fastForward(60_000);
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("visibilitychange"));
+      });
+      await page.waitForLoadState("networkidle");
+      expect(directoryReads).toBe(1);
+    });
   });
 });

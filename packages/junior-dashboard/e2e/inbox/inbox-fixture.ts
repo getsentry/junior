@@ -10,6 +10,7 @@ export const viewer = {
 
 const base = {
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
@@ -29,6 +30,7 @@ export const conversationId = "slack:CQA123:1770003600.000200";
 export const rollout = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
@@ -117,6 +119,7 @@ const dismissedNotice = {
 export const migration = {
   ...license,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T10:20:00.000Z",
@@ -129,6 +132,7 @@ export const migration = {
 export const prMerge = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T11:00:00.000Z",
@@ -147,6 +151,7 @@ export const prMerge = {
 export const prReview = {
   ...prMerge,
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   body: "GitHub asks you to review **Pin the release train**.",
   conversationIds: [],
   createdAt: "2026-08-07T09:00:00.000Z",
@@ -160,10 +165,57 @@ export const prReview = {
   title: "Review requested · #91",
 };
 
+// The release Conversation saved the card of this pull request, with its
+// description.
+const releaseConversationId = "slack:CQA456:1770021600.000600";
+const pinPullRequest = {
+  id: "https://github.com/getsentry/payments/pull/91",
+  objectType: "code_change" as const,
+  title: "Pin the release train to payments 4.2 (#91)",
+  url: "https://github.com/getsentry/payments/pull/91",
+};
+
+// The GitHub plugin's review ask, as it writes it: the URL alone on a line.
+export const pinReview = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  rootConversationId: releaseConversationId,
+  body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:20:00.000Z",
+  id: "item-pin-review",
+  subject: pinPullRequest,
+  title: "Review requested · #91",
+};
+
+// A notice about the same pull request, with the URL inside its sentence.
+export const pinChecks = {
+  ...pinReview,
+  body: "The required checks failed on **Pin the release train to payments 4.2**: https://github.com/getsentry/payments/pull/91",
+  createdAt: "2026-08-07T09:40:00.000Z",
+  id: "item-pin-checks",
+  kind: "notice" as const,
+  title: "Checks failed · #91",
+};
+
+// A notice in the same Conversation about nothing that an ask names.
+export const releaseNotes = {
+  ...base,
+  addedByConversationId: releaseConversationId,
+  rootConversationId: releaseConversationId,
+  body: "Release notes for 0.288.0 are drafted in the release PR.",
+  conversationIds: [releaseConversationId],
+  createdAt: "2026-08-07T09:30:00.000Z",
+  id: "item-release-notes",
+  kind: "notice" as const,
+  title: "Release notes drafted",
+};
+
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,
   addedByConversationId: "scheduler:daily-ops-digest",
+  rootConversationId: "scheduler:daily-ops-digest",
   assignedToEveryone: true,
   assignees: [],
   body: "The digest skipped two noisy alerts.",
@@ -178,6 +230,7 @@ export const digest = {
 export const grab = {
   ...base,
   addedByConversationId: "slack:CGRAB:1770003600.000300",
+  rootConversationId: "slack:CGRAB:1770003600.000300",
   assignedToEveryone: true,
   assignees: [],
   body: "The usual on-call is out on Friday.",
@@ -341,6 +394,7 @@ export async function mockViewerCodeChanges(
     draft?: boolean;
     idleDays: number;
     number: number;
+    size?: { additions?: number; changedFiles?: number; deletions?: number };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -370,6 +424,7 @@ export async function mockViewerCodeChanges(
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
+          ...(change.size ? { size: change.size } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
@@ -380,8 +435,8 @@ export async function mockViewerCodeChanges(
 }
 
 /**
- * The head of the Inbox row titled `title`. A click or Enter expands the
- * row in place; only Open leaves the list.
+ * The head of the Inbox row titled `title`. A click or Enter opens the
+ * row's Conversation. On a row for one item, it expands the row in place.
  */
 export function rowHead(scope: Page | Locator, title: string) {
   return scope
@@ -393,7 +448,7 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action. A click on the head only expands the row.
+ * row's Open action.
  */
 export async function openRow(head: Locator) {
   await head.hover();
@@ -402,4 +457,13 @@ export async function openRow(head: Locator) {
     .getByRole("link", { name: "Open conversation" })
     .first()
     .click();
+}
+
+/**
+ * Expand the Inbox row whose head is `head` in place: an item row with its
+ * head, a Conversation row with an ask pill.
+ */
+export async function expandRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  await row.locator('[aria-controls^="inbox-row-"]').first().click();
 }

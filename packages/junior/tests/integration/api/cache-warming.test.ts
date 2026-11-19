@@ -1,3 +1,4 @@
+import { expectNoFullScan, expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -8,6 +9,7 @@ import {
 import { connectedState } from "@/chat/cache-warming/request";
 import {
   addHistoryPeriod,
+  addHistoryWarmupCost,
   recordIdlePeriodSavings,
   recordWarmupCost,
   replaceHistorySavings,
@@ -22,11 +24,12 @@ const PERSON = "person@example.com";
 const OPEN_KEY = "junior:cache_warming:breaker:anthropic:open";
 const OUTCOMES_KEY = "junior:cache_warming:breaker:anthropic:outcomes";
 
-function authenticatedApi(email: string) {
+// The viewer resolves once here, so a SQL budget counts only the route.
+async function authenticatedApi(email: string) {
+  const viewer = await resolveViewerUser(email);
+  if (!viewer) throw new Error(`missing viewer for ${email}`);
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (c, next) => {
-    const viewer = await resolveViewerUser(email);
-    if (!viewer) throw new Error(`missing viewer for ${email}`);
     c.set("viewer", viewer);
     await next();
   });
@@ -34,7 +37,7 @@ function authenticatedApi(email: string) {
   return app;
 }
 
-async function listBreakers(app: ReturnType<typeof authenticatedApi>) {
+async function listBreakers(app: Awaited<ReturnType<typeof authenticatedApi>>) {
   const response = await app.request(`${BASE_URL}/api/cache-warming/breakers`);
   expect(response.status).toBe(200);
   return cacheWarmingBreakerListSchema.parse(await response.json()).breakers;
@@ -59,8 +62,8 @@ describe("cache warming API", () => {
     const state = await connectedState();
     await state.set(OPEN_KEY, true, 60_000);
     await state.appendToList(OUTCOMES_KEY, 1, { maxLength: 20 });
-    const admin = authenticatedApi(ADMIN);
-    const person = authenticatedApi(PERSON);
+    const admin = await authenticatedApi(ADMIN);
+    const person = await authenticatedApi(PERSON);
 
     // The breaker stops warming for everyone, so only an admin can close it.
     expect(
@@ -107,7 +110,7 @@ describe("cache warming API", () => {
 
   it("serves net savings per day of the range and in total", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    const person = authenticatedApi(PERSON);
+    const person = await authenticatedApi(PERSON);
     vi.setSystemTime(new Date("2031-05-09T08:00:00.000Z"));
     await recordIdlePeriodSavings(
       "anthropic/claude-opus-5.5",
@@ -122,8 +125,8 @@ describe("cache warming API", () => {
       false,
     );
     await recordWarmupCost("anthropic/claude-opus-5.5", 0.1);
-    // A day from history has no warmup cost, so net savings and
-    // effectiveness leave it out.
+    // A day from history counts in the totals, with its recorded warmup
+    // cost.
     const history: HistorySavings = {};
     addHistoryPeriod(
       history,
@@ -131,13 +134,18 @@ describe("cache warming API", () => {
       "anthropic/claude-opus-5.5",
       { hit: true, oracleUsd: 2, savedUsd: 3 },
     );
+    addHistoryWarmupCost(history, "2031-05-08", 0.5);
     await replaceHistorySavings(history, {
       start: "2031-05-08",
       end: "2031-05-09",
     });
 
-    const response = await person.request(
-      `${BASE_URL}/api/cache-warming/savings?days=7`,
+    // One read of the stats rows of the range, however many days it spans.
+    const response = await expectNoFullScan(() =>
+      expectSqlBudget(
+        () => person.request(`${BASE_URL}/api/cache-warming/savings?days=7`),
+        { statements: 1, serialRounds: 1 },
+      ),
     );
     expect(response.status).toBe(200);
     const report = cacheWarmingSavingsReportSchema.parse(await response.json());
@@ -152,10 +160,13 @@ describe("cache warming API", () => {
     ]);
     expect(report.days.at(-3)).toMatchObject({
       date: "2031-05-08",
+      history: true,
       savedUsd: expect.closeTo(3),
-      netSavingsUsd: null,
+      warmupCostUsd: expect.closeTo(0.5),
+      netSavingsUsd: expect.closeTo(2.5),
     });
     expect(report.days.at(-1)).toMatchObject({
+      history: false,
       idlePeriods: 1,
       hits: 0,
       netSavingsUsd: expect.closeTo(-0.1),
@@ -166,12 +177,12 @@ describe("cache warming API", () => {
       idlePeriods: 3,
       hits: 2,
       savedUsd: expect.closeTo(4),
-      warmupCostUsd: expect.closeTo(0.4),
-      netSavingsUsd: expect.closeTo(0.6),
+      warmupCostUsd: expect.closeTo(0.9),
+      netSavingsUsd: expect.closeTo(3.1),
       oracleSavingsUsd: expect.closeTo(3),
-      knownCostOracleSavingsUsd: expect.closeTo(1),
-      effectiveness: expect.closeTo(0.6),
-      unknownCostDays: 1,
+      liveOracleSavingsUsd: expect.closeTo(1),
+      effectiveness: expect.closeTo(3.1 / 3),
+      historyDays: 1,
     });
 
     // A range with no idle periods has no effectiveness.

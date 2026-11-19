@@ -17,6 +17,22 @@ export const conversationSubscriptionResponseSchema = z
   })
   .strict();
 
+/** Invite one mentioned person, by Slack user id, to a public Conversation. */
+export const conversationInviteBodySchema = z
+  .object({ slackUserId: z.string().min(1).max(64) })
+  .strict();
+
+/** `added` is false when the person was already a Participant. */
+export const conversationInviteResponseSchema = z
+  .object({ added: z.boolean() })
+  .strict();
+
+export type ConversationInviteBody = z.infer<
+  typeof conversationInviteBodySchema
+>;
+export type ConversationInviteResponse = z.infer<
+  typeof conversationInviteResponseSchema
+>;
 export type ConversationSubscriptionBody = z.infer<
   typeof conversationSubscriptionBodySchema
 >;

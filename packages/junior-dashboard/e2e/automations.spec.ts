@@ -62,7 +62,8 @@ test("opens scheduled and event automations in the native Automations view", asy
         lastProgressAt: NOW,
         lastSeenAt: NOW,
         startedAt: NOW,
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "internal",
       }),
     });
@@ -170,9 +171,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
   );
   const recentDetails = page.getByRole("dialog");
-  await expect(
-    recentDetails.getByText("completed", { exact: true }),
-  ).toBeVisible();
+  await expect(recentDetails.getByText("done", { exact: true })).toBeVisible();
   // Details show the run's Conversation, not only its numbers.
   await expect(
     recentDetails.getByText("Scheduled operation completed successfully."),
@@ -257,9 +256,6 @@ test("opens scheduled and event automations in the native Automations view", asy
       exact: true,
     }),
   ).toBeEnabled();
-  await expect(
-    page.getByText("Automation deleted", { exact: true }),
-  ).toHaveCount(0);
   await confirmation
     .getByRole("button", { name: "Cancel", exact: true })
     .click();
@@ -569,9 +565,6 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     `${dashboard.baseURL}/automations?type=scheduled`,
   );
   await expect(
-    page.getByText("Automation deleted", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.getByRole("heading", { name: "Automations", exact: true }),
   ).toBeVisible();
   await expect(openWeekly).toHaveCount(0);
@@ -845,9 +838,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await expect(
     page.getByText("No runs until resumed", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Automation paused", { exact: true }),
-  ).toBeVisible();
   await screenshot(page, "automation-paused");
   const pauseHelp = page.getByRole("button", {
     name: "About pausing",
@@ -861,9 +851,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Pause", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Automation resumed", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open last run", exact: true }),

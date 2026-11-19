@@ -3,15 +3,23 @@ import { objectPresentation } from "@sentry/junior-plugin-api";
 import { objectToneClass } from "../components/ObjectIcon";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { AskKindIcon, askLook } from "./askKind";
+import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
 import { itemNeedsViewer } from "./reviewItemFormat";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
 
 const PLURALS: Record<string, string> = {
   Approval: "Approvals",
+  FYI: "FYIs",
   Question: "Questions",
+};
+
+// The kind of a pull request ask in short words, before its change's title.
+const PULL_REQUEST_KIND_WORDS: Record<string, string> = {
+  "Ready to merge": "Ready to merge",
+  "Review requested": "Review",
 };
 
 /**
@@ -22,6 +30,8 @@ export type AskPill = {
   count: number;
   key: string;
   kind: string;
+  /** The kind in words before `label`, when `label` names something else. */
+  kindLabel?: string;
   /** The full name, such as "Review requested #91: Pin the release train". */
   name: string;
   /** The change's number, such as #91, in its status color. */
@@ -83,6 +93,7 @@ export function askPills(
         count: 1,
         key,
         kind,
+        kindLabel: PULL_REQUEST_KIND_WORDS[kind],
         name: change.title ? `${key}: ${change.title}` : key,
         label: change.title,
         ref: { number, tone: change.tone },
@@ -99,8 +110,7 @@ export function askPills(
       kind,
       name,
       strong,
-      // An FYI asks nothing, so its icon is enough.
-      label: kind === "FYI" ? (count > 1 ? String(count) : undefined) : name,
+      label: name,
     });
   }
   return [...pills.values()].sort(
@@ -108,23 +118,34 @@ export function askPills(
   );
 }
 
-/** One ask pill. The icon carries the kind, so the words name only what it is about. */
+/**
+ * One ask pill: plain text with no fill or frame. The kind shows in words
+ * next to its icon, quiet, then what it is about. An ask that waits on the
+ * viewer reads in the full text color.
+ */
 export function Pill(props: { pill: AskPill }) {
   const { pill } = props;
-  const look = askLook(pill.kind);
   return (
     <span
       className={cn(
-        "inline-flex h-5 max-w-60 shrink-0 items-center gap-1 rounded-full px-1.5 text-2xs leading-none whitespace-nowrap",
-        pill.strong
-          ? cn(look?.tint ?? "bg-dashboard-fill-soft", "text-dashboard-text")
-          : "border border-dashboard-border text-dashboard-text-muted",
+        "inline-flex h-5 min-w-0 max-w-60 items-center gap-1 text-xs leading-none whitespace-nowrap",
+        pill.strong ? "text-dashboard-text" : "text-dashboard-text-muted",
       )}
       data-ask-pill={pill.kind}
     >
       <AskKindIcon className="size-3" kind={pill.kind} />
+      {pill.kindLabel ? (
+        <span className="shrink-0 text-dashboard-text-muted">
+          {pill.kindLabel}
+        </span>
+      ) : null}
       {pill.label ? (
-        <span className="min-w-0 truncate font-medium">{pill.label}</span>
+        <span
+          className={cn(fadeOverflowClass, "font-medium")}
+          ref={fadeWhenOverflowing}
+        >
+          {pill.label}
+        </span>
       ) : null}
       {pill.ref ? (
         <span

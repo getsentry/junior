@@ -1,3 +1,4 @@
+import { renderTag } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -53,9 +54,7 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
 
 const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
 
-<personality>
-${JUNIOR_PERSONALITY}
-</personality>
+${renderTag("personality", {}, [JUNIOR_PERSONALITY])}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 

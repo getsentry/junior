@@ -11,23 +11,6 @@ test.describe("new UI", { tag: "@new" }, () => {
   const TASK_ID = "junior:internal:dashboard-qa:advisor-plan";
   const ARCHIVED_THREAD_ID = "junior:internal:dashboard-qa:archived-thread";
 
-  /** Make one Conversation wait on the viewer, as an open Review item does. */
-  async function mockWaiting(page: Page, conversationId: string) {
-    await page.route("**/api/review-items/waiting-conversations", (route) =>
-      route.fulfill({
-        json: {
-          conversations: [
-            {
-              conversationId,
-              items: [{ title: "Pick a fix" }],
-              waitingSince: "2026-08-07T08:00:00.000Z",
-            },
-          ],
-        },
-      }),
-    );
-  }
-
   /** The Conversations bundle, which nests each Thread under its parent. */
   function conversationsList(page: Page) {
     return page.getByRole("region", { exact: true, name: "Conversations" });
@@ -90,59 +73,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await threads.getByRole("button", { name: "Hide archived" }).click();
     await expect(threads.getByRole("listitem")).toHaveCount(1);
-  });
-
-  test("an open row's actions follow its Threads", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    const row = conversationsList(page)
-      .locator("[data-inbox-row]")
-      .filter({
-        has: page.getByRole("link", { name: /^Dashboard QA edge cases/ }),
-      })
-      .first();
-    await row
-      .getByRole("link", { name: /^Dashboard QA edge cases/ })
-      .first()
-      .click();
-    await expect(
-      row.getByRole("link", { exact: true, name: "Open conversation" }).last(),
-    ).toBeVisible();
-    // Reading order: every Thread row, then the bar, which ends the card.
-    const names = await row
-      .locator("a, button")
-      .evaluateAll((elements) =>
-        elements.map(
-          (element) =>
-            element.getAttribute("aria-label") ?? element.textContent ?? "",
-        ),
-      );
-    const lastThread = names.reduce(
-      (last, name, index) =>
-        /Check pinned row order|Recheck pin order in Safari/.test(name)
-          ? index
-          : last,
-      -1,
-    );
-    const bar = names.lastIndexOf("Open conversation");
-    expect(lastThread).toBeGreaterThan(-1);
-    expect(bar).toBeGreaterThan(lastThread);
-    // What the head controls is on the page, and its last part holds the bar.
-    const controls = await row
-      .getByRole("link", { name: /^Dashboard QA edge cases/ })
-      .first()
-      .getAttribute("aria-controls");
-    const ids = controls?.split(" ") ?? [];
-    expect(ids.length).toBeGreaterThan(0);
-    for (const id of ids)
-      await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
-    await expect(
-      page
-        .locator(`[id="${ids.at(-1)}"]`)
-        .getByRole("link", { exact: true, name: "Open conversation" }),
-    ).toBeVisible();
   });
 
   test("sends a message from a Thread page", async ({ page, dashboard }) => {
@@ -281,8 +211,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openMenu.click();
     await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
     await expect(openMenus).toHaveCount(0);
-    // The reload starts a new visit, so Back goes to the Inbox.
-    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    // The direct link has no origin, so Back goes to Conversations.
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
     await openConversations(page);
     await expect(threadRow).toBeVisible();
     await expect(nestedRow).toBeVisible();
@@ -397,7 +327,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockWaiting(page, THREAD_ID);
     await page.setViewportSize({ height: 900, width: 1440 });
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
@@ -412,7 +341,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       `/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
-    await expect(threadCard).toContainText("Waiting on you");
+    await expect(threadCard).toContainText("Done");
     // The feed leaves out an archived Thread, so its card has no status.
     const archivedCard = transcript.getByRole("link", {
       name: /Compare sidebar badges/,
@@ -421,7 +350,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "href",
       `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
     );
-    await expect(archivedCard).not.toContainText(/Idle|Running|Waiting/);
+    await expect(archivedCard).not.toContainText(/Done|Working|Needs input/);
 
     // Each Task is a chip under the reply. A chip opens the drawer.
     await screenshot(page, "conversation-task-line");
@@ -451,7 +380,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockWaiting(page, THREAD_ID);
     await page.setViewportSize({ height: 900, width: 1440 });
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
@@ -464,11 +392,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       breadcrumb.getByRole("link", { name: "Dashboard QA edge cases" }),
     ).toHaveAttribute("href", `/conversations/${encodeURIComponent(ROOT_ID)}`);
-    // The pill comes from runtime state: an open Review item waits on the
-    // viewer.
+    // The pill shows the status that the API derives from runtime state.
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Waiting on you").filter({ visible: true }),
+      header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
 
     // The parent agent started the first Turn; a person started the next.
@@ -487,6 +414,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await expect(
       breadcrumb.getByRole("heading", { name: "Recheck pin order in Safari" }),
+    ).toBeVisible();
+    // Its own Review item waits on a person.
+    await expect(
+      header.getByText("Needs input").filter({ visible: true }),
     ).toBeVisible();
     await breadcrumb
       .getByRole("link", { name: "Check pinned row order" })
@@ -510,7 +441,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Idle").filter({ visible: true }),
+      header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
   });

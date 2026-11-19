@@ -11,6 +11,7 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { InlineError } from "../../../components/InlineError";
+import { FilterTabList } from "../../../components/FilterBar";
 import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../../components/Pagination";
 import { SelectableRow } from "../../../components/SelectableRow";
@@ -29,7 +30,7 @@ import {
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../../searchParams";
-import { cn } from "../../../styles";
+import { cn, dashboardIconTileClass } from "../../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
@@ -38,14 +39,30 @@ import { MemoryDetails } from "../../../pages/memory/MemoryDetails";
 import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "../../../pages/memory/MemoryTimeline";
 import { MemoryCostChart } from "../../../pages/memory/MemoryCostChart";
-import { useMemoryRecord } from "../../../pages/memory/memoryRecord";
+import {
+  useListShowsFilter,
+  useMemoryRecord,
+  useRestoreMemory,
+} from "../../../pages/memory/memoryRecord";
 import { getDashboardAgentName } from "../../../agentName";
+import {
+  fadeOverflowClass,
+  fadeTextClass,
+  fadeWhenOverflowing,
+} from "../../../textFade";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
  * widths on `sm` and up. Below `sm` those columns are hidden.
  */
 const MEMORY_GRID = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_9rem]";
+
+// The memory plugin page lists archived memories under this filter.
+const ARCHIVED_FILTER = "archived";
+const MEMORY_FILTERS = [
+  { label: "Active", value: "" },
+  { label: "Archived", value: ARCHIVED_FILTER },
+] as const;
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -139,16 +156,24 @@ function MemoryLibrary(props: {
   libraryPath: string;
   page: PluginUserPageLink;
 }) {
-  const { action, content, query, records, runAction } = usePluginUserPageData(
-    props.page,
-  );
+  const { action, content, filter, query, records, runAction, setFilter } =
+    usePluginUserPageData(props.page);
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
   const listRef = useRef<HTMLDivElement>(null);
-  const memoryQuery = useMemoryRecord(memoryId);
+  const archived = filter === ARCHIVED_FILTER;
+  const memoryQuery = useMemoryRecord(memoryId, archived);
+  const restore = useRestoreMemory();
+  const listShowsFilter = useListShowsFilter(
+    filter,
+    Boolean(query.data) && !query.isPlaceholderData,
+  );
   const selectedRecord =
-    memoryQuery.data ?? records.find((record) => record.id === memoryId);
+    memoryQuery.data ??
+    (listShowsFilter
+      ? records.find((record) => record.id === memoryId)
+      : undefined);
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
   const closeDetails = () => {
@@ -160,17 +185,25 @@ function MemoryLibrary(props: {
     void navigate(memoryPath(props.libraryPath));
     (trigger ?? listRef.current)?.focus();
   };
-  const forget = (recordAction: PluginUserPageRecordAction) => {
-    // The forgotten row leaves the list, so focus the list instead.
+  const runRecordAction = (recordAction: PluginUserPageRecordAction) => {
+    // Forget and restore move the row out of this list, so focus the list.
     void navigate(memoryPath(props.libraryPath));
     listRef.current?.focus();
     runAction(recordAction);
   };
+  const restoreSelected = (id: string) => {
+    void navigate(memoryPath(props.libraryPath));
+    listRef.current?.focus();
+    restore.mutate(id);
+  };
 
   useEffect(() => {
-    // Forget leaves the shared mutation in success or error. Clear it when
+    // An action leaves the shared mutation in success or error. Clear it when
     // another memory opens, so old action feedback does not stay visible.
-    if (memoryId) action.reset();
+    if (memoryId) {
+      action.reset();
+      restore.reset();
+    }
     // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
   }, [memoryId]);
 
@@ -202,7 +235,7 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  const loading = !query.data && !query.error;
+  const loading = (!query.data || !listShowsFilter) && !query.error;
 
   return (
     <div
@@ -233,10 +266,19 @@ function MemoryLibrary(props: {
                   className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
                   id="memory-library-title"
                 >
-                  What {getDashboardAgentName()} remembers
+                  {archived
+                    ? "Archived memories"
+                    : `What ${getDashboardAgentName()} remembers`}
                 </h2>
               </div>
             </div>
+
+            <FilterTabList
+              ariaLabel="Memory state"
+              items={MEMORY_FILTERS}
+              onChange={setFilter}
+              value={filter}
+            />
 
             {loading ? (
               <PageContentSkeleton label="Loading memories" variant="panel" />
@@ -288,7 +330,7 @@ function MemoryLibrary(props: {
                   loading={query.isFetchingNextPage}
                   onLoadMore={() => void query.fetchNextPage()}
                 />
-                {action.error ? (
+                {action.error || restore.error ? (
                   <InlineError className="text-center">
                     Could not complete this action. Try again.
                   </InlineError>
@@ -300,10 +342,13 @@ function MemoryLibrary(props: {
       </div>
       {memoryId ? (
         <MemoryDetails
-          forgetPending={action.isPending}
+          actionPending={action.isPending || restore.isPending}
           key={memoryId}
+          onAction={runRecordAction}
           onClose={closeDetails}
-          onForget={forget}
+          onRestore={
+            archived && memoryId ? () => restoreSelected(memoryId) : undefined
+          }
           record={selectedRecord}
         />
       ) : null}
@@ -333,7 +378,6 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     {
       detail: "shared across the workspace",
       label: "Total active",
-      tone: "text-dashboard-accent-text",
       value: stats.active.toLocaleString("en-US"),
     },
     {
@@ -352,12 +396,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
           <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             {item.label}
           </div>
-          <div
-            className={cn(
-              "mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text",
-              item.tone,
-            )}
-          >
+          <div className="mt-2 font-display text-3xl font-light tracking-[-0.04em] text-dashboard-text">
             {item.value}
           </div>
           <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
@@ -448,7 +487,7 @@ function OverviewBreakdownRow(props: {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-bg-elevated px-3 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+      <div className={cn(dashboardIconTileClass, "size-9")}>
         <Icon aria-hidden="true" size={15} />
       </div>
       <div className="min-w-0 flex-1">
@@ -497,11 +536,22 @@ function MemoryRow(props: {
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+            <h3
+              className={cn(
+                fadeOverflowClass,
+                "m-0 font-display text-base font-medium leading-snug text-dashboard-text",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {props.record.title}
             </h3>
           </div>
-          <div className="mt-1.5 truncate font-sans text-xs leading-relaxed text-dashboard-text-muted">
+          <div
+            className={cn(
+              fadeTextClass,
+              "mt-1.5 font-sans text-xs leading-relaxed text-dashboard-text-muted",
+            )}
+          >
             Source: {source}
             <span className="sm:hidden">
               {" "}
@@ -509,10 +559,20 @@ function MemoryRow(props: {
             </span>
           </div>
         </div>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text-muted sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text-muted sm:block",
+          )}
+        >
           {kind}
         </span>
-        <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
+        <span
+          className={cn(
+            fadeTextClass,
+            "hidden font-mono text-xs text-dashboard-text sm:block",
+          )}
+        >
           {shortDate(remembered)}
         </span>
       </button>

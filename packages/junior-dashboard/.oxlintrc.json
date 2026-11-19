@@ -35,6 +35,18 @@
     {
       "name": "query-invalidation",
       "specifier": "./oxlint/query-invalidation.ts"
+    },
+    {
+      "name": "radius",
+      "specifier": "./oxlint/radius.ts"
+    },
+    {
+      "name": "toast",
+      "specifier": "./oxlint/toast.ts"
+    },
+    {
+      "name": "nav-pages",
+      "specifier": "./oxlint/nav-pages.ts"
     }
   ],
   "ignorePatterns": [
@@ -88,6 +100,7 @@
     "px-geometry/px-constant-sizes-element": "error",
     "image-src/no-raw-external-image-src": "error",
     "query-invalidation/no-broad-query-invalidation": "error",
+    "query-invalidation/no-refetch-interval": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -141,14 +154,44 @@
     {
       "files": ["src/client/**"],
       "rules": {
-        "time-format/no-raw-time-format": "error"
+        "time-format/no-raw-time-format": "error",
+        "toast/no-actionless-success": "error"
       }
     },
     {
       "files": ["src/**"],
       "rules": {
         "junior/bounded-fan-out": "error",
+        "junior/prefer-map-bounded": "error",
         "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "rules": {
+        "radius/no-large-radius": "error"
+      }
+    },
+    {
+      "files": ["src/client/**"],
+      "rules": {
+        "nav-pages/listed-page-path": "error"
+      }
+    },
+    {
+      "files": [
+        "src/client/navPages.ts",
+        "src/client/classic/**",
+        "src/client/components/ProfileMenu.tsx",
+        "src/client/components/layout/DashboardHeader.tsx",
+        "src/client/components/layout/NavRail.tsx",
+        "src/client/conversations/HomeSummary.tsx",
+        "src/client/pages/automations/AutomationsPageLayout.tsx",
+        "src/client/pages/code/RepositoryPage.tsx",
+        "src/client/primaryNav.ts"
+      ],
+      "rules": {
+        "nav-pages/listed-page-path": "off"
       }
     },
     {

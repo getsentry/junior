@@ -21,9 +21,35 @@ function originLabel(origin: MemoryView["origin"]): string {
   return "Other";
 }
 
-function pageEmptyText(input: { query?: string | undefined }): string {
+/** The page filter that lists archived memories instead of active ones. */
+const ARCHIVED_MEMORY_FILTER = "archived";
+
+// Why a memory left recall, by `archive_reason`.
+const ARCHIVE_REASON_LABELS: Record<string, string> = {
+  contradicted: "Contradicted",
+  superseded: "Replaced",
+  tool_removed: "Forgotten",
+  user_removed: "Forgotten",
+};
+
+function pageEmptyText(input: {
+  archived: boolean;
+  query?: string | undefined;
+}): string {
   if (input.query) return "No memories matched your search.";
+  if (input.archived) return "No archived memories.";
   return "No memories yet.";
+}
+
+function archiveFacts(memory: MemoryView) {
+  if (memory.archivedAtMs === undefined) return [];
+  return [
+    { label: "Archived", value: rememberedDate(memory.archivedAtMs) },
+    {
+      label: "Reason",
+      value: ARCHIVE_REASON_LABELS[memory.archiveReason ?? ""] ?? "Archived",
+    },
+  ];
 }
 
 /** Create the interactive Memories dashboard page. */
@@ -34,14 +60,16 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     navigation: "profile",
     description: "Public memories that every conversation can use.",
     async read(ctx, input) {
+      const archived = input.filter === ARCHIVED_MEMORY_FILTER;
       const page = await listMemories(ctx.db as MemoryDb, {
+        ...(archived ? { archived: true } : undefined),
         cursor: input.cursor,
         limit: input.limit,
         ...(input.query ? { query: input.query } : undefined),
       });
       return {
         type: "list",
-        emptyText: pageEmptyText(input),
+        emptyText: pageEmptyText({ archived, query: input.query }),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
@@ -59,6 +87,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
                 ? rememberedDate(memory.expiresAtMs)
                 : "Never",
             },
+            ...archiveFacts(memory),
           ],
         })),
       };

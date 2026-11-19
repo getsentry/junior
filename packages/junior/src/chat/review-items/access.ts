@@ -1,5 +1,3 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -97,6 +95,20 @@ export function reviewItemNeedsSomeone(): SQL {
     eq(juniorReviewItems.status, "open"),
     eq(juniorReviewItems.kind, "action"),
     sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+  )!;
+}
+
+/**
+ * SQL: the Review item waits for a person's input: an open `action` item,
+ * whoever it is assigned to. An item with no assignees still waits for
+ * anyone who can answer it. The Conversation that added it shows
+ * `needs_input`. `junior_review_items_open_action_added_by_idx` has this
+ * predicate.
+ */
+export function reviewItemNeedsInput(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
   )!;
 }
 
@@ -278,6 +290,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
   return plugin || undefined;
 }
 
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
+}
+
 /**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public
@@ -365,15 +382,11 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const participants = await Promise.all(
-    [...new Set(args.conversationIds)].map((conversationId) =>
-      limit(() =>
-        conversationParticipantUserIds(getDb(), conversationId, others),
-      ),
-    ),
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    args.conversationIds,
+    others,
   );
-  const inConversation = new Set(participants.flatMap((ids) => [...ids]));
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

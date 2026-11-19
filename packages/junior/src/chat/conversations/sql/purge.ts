@@ -49,6 +49,7 @@ async function discoverConversationTree(
     [root.conversationId, root],
   ]);
   let frontier = [root.conversationId];
+  /* oxlint-disable no-await-in-loop -- Each level reads the children of the level before. */
   while (frontier.length > 0) {
     const children = await executor
       .db()
@@ -67,6 +68,7 @@ async function discoverConversationTree(
       }
     }
   }
+  /* oxlint-enable no-await-in-loop */
   return [...all.values()];
 }
 
@@ -250,6 +252,7 @@ export async function purgeConversationTree(
           // child creation after discovery. Acquire every event lock before row
           // locks so a child writer can finish without deadlocking on its parent
           // relationship.
+          /* oxlint-disable no-await-in-loop -- Take event locks in tree order so writers cannot deadlock. */
           for (const conversation of tree.slice(1)) {
             await withConversationEventLock(
               executor,
@@ -257,6 +260,7 @@ export async function purgeConversationTree(
               async () => undefined,
             );
           }
+          /* oxlint-enable no-await-in-loop */
 
           const roots = await executor
             .db()

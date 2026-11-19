@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
@@ -14,14 +14,7 @@ import type {
   ActorWindowMetrics,
   PeopleActivityDayReport,
 } from "../schema/person";
-import {
-  conversationRootId,
-  personRootJoin,
-  personRoots,
-  personTotalColumns,
-  turnRoot,
-  verifiedActorWhere,
-} from "./shared";
+import { conversationRootId, verifiedActorWhere } from "./shared";
 import {
   DAY_MS,
   HOUR_MS,
@@ -35,8 +28,6 @@ import {
 } from "../reporting-window";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;
-/** Day ranges need the prior equal period too (90d + prior 90d). */
-const DAY_METRIC_LOOKBACK = 180;
 
 type Range = 1 | 7 | 30 | 90;
 
@@ -44,6 +35,22 @@ const metrics = juniorConversationMetrics;
 
 function emptyDirectoryDay(date: string): PeopleActivityDayReport {
   return { activePeople: 0, conversations: 0, date };
+}
+
+type ActivityUnit = "day" | "hour" | "six_hour";
+
+/** Pick one series from activity rows, without the unit. */
+function activitySeries(
+  rows: (PeopleActivityDayReport & { unit: string })[],
+  unit: ActivityUnit,
+): PeopleActivityDayReport[] {
+  return rows
+    .filter((row) => row.unit === unit)
+    .map(({ activePeople, conversations, date }) => ({
+      activePeople,
+      conversations,
+      date,
+    }));
 }
 
 function directoryActivityDays(
@@ -88,24 +95,75 @@ function rangeStart(nowMs: number, range: Range): Date {
     : trailingUtcDayWindow(nowMs, range).start;
 }
 
-/**
- * Sum one range of a person's spend: the current period, and the prior
- * period of equal length that ends where the current one starts.
- */
-function rangeSpendColumns(nowMs: number, range: Range) {
-  const start = rangeStart(nowMs, range);
-  const priorStart = new Date(
-    start.getTime() - (range === 1 ? 24 * HOUR_MS : range * DAY_MS),
+/** Start of the prior period of each range, of equal length. */
+function rangePriorStart(nowMs: number, range: Range): Date {
+  return new Date(
+    rangeStart(nowMs, range).getTime() -
+      (range === 1 ? 24 * HOUR_MS : range * DAY_MS),
   );
-  const current = sql`${metrics.occurredAt} >= ${start.toISOString()}::timestamptz`;
-  const prior = sql`${metrics.occurredAt} >= ${priorStart.toISOString()}::timestamptz
-    AND ${metrics.occurredAt} < ${start.toISOString()}::timestamptz`;
-  const sum = (metric: "cost_micro_usd" | "duration_ms", when: SQL) =>
-    sql`sum(${metrics.value}) FILTER (WHERE ${metrics.metric} = ${metric} AND ${when})`;
+}
+
+type SpendMetric = "cost_micro_usd" | "duration_ms";
+
+/**
+ * Sum one metric of one range: the current period and, for cost, the prior
+ * period. A column that does not apply to the metric is null, so the cost
+ * and duration branches of `identitySpend` have the same columns.
+ */
+function rangeSpendSums(nowMs: number, range: Range, metric: SpendMetric) {
+  const start = rangeStart(nowMs, range);
+  const sumWhere = (when: SQL | undefined) =>
+    sql<number | null>`sum(${metrics.value}) FILTER (WHERE ${when})`;
+  const none = sql<number | null>`NULL::double precision`;
+  const current = sumWhere(gte(metrics.occurredAt, start));
+  const prior = sumWhere(
+    and(
+      gte(metrics.occurredAt, rangePriorStart(nowMs, range)),
+      lt(metrics.occurredAt, start),
+    ),
+  );
+  const cost = metric === "cost_micro_usd";
   return {
-    costMicroUsd: microUsdSql(sum("cost_micro_usd", current)),
-    durationMs: sql<number>`COALESCE(${sum("duration_ms", current)}, 0)::double precision`,
-    priorCostMicroUsd: microUsdSql(sum("cost_micro_usd", prior)),
+    costMicroUsd: (cost ? current : none).as(`cost_micro_usd_${range}`),
+    durationMs: (cost ? none : current).as(`duration_ms_${range}`),
+    priorCostMicroUsd: (cost ? prior : none).as(
+      `prior_cost_micro_usd_${range}`,
+    ),
+  };
+}
+
+/**
+ * Sum each identity's spend in every range in one pass over the metric
+ * rows, grouped before any join. Cost and duration are separate branches,
+ * so each row checks only its own metric's periods, and duration rows are
+ * read only for the longest current period.
+ */
+function identitySpend(nowMs: number) {
+  const byIdentity = (metric: SpendMetric, since: Date) =>
+    getDb()
+      .select({
+        identityId: sql<string>`${metrics.actorIdentityId}`.as(
+          "identity_totals_id",
+        ),
+        1: rangeSpendSums(nowMs, 1, metric),
+        7: rangeSpendSums(nowMs, 7, metric),
+        30: rangeSpendSums(nowMs, 30, metric),
+        90: rangeSpendSums(nowMs, 90, metric),
+      })
+      .from(metrics)
+      .where(and(eq(metrics.metric, metric), gte(metrics.occurredAt, since)))
+      .groupBy(metrics.actorIdentityId);
+  return byIdentity("cost_micro_usd", rangePriorStart(nowMs, 90))
+    .unionAll(byIdentity("duration_ms", rangeStart(nowMs, 90)))
+    .as("person_identity_totals");
+}
+
+/** Sum one range of a person's spend over their identities. */
+function rangeSpendColumns(spend: ReturnType<typeof identitySpend>[Range]) {
+  return {
+    costMicroUsd: microUsdSql(sql`sum(${spend.costMicroUsd})`),
+    durationMs: sql<number>`COALESCE(sum(${spend.durationMs}), 0)::double precision`,
+    priorCostMicroUsd: microUsdSql(sql`sum(${spend.priorCostMicroUsd})`),
   };
 }
 
@@ -128,93 +186,25 @@ function rangeWindow(
 }
 
 /**
- * Count active people and root Conversations in each bucket from one row per
- * Turn. The time bound applies to the metric rows before any join.
- */
-function activityRows(since: Date, unit: "day" | "hour" | "six_hour") {
-  const utc = sql`(${metrics.occurredAt} AT TIME ZONE 'UTC')`;
-  const bucket =
-    unit === "six_hour"
-      ? sql<Date>`date_trunc('day', ${utc}) + FLOOR(EXTRACT(HOUR FROM ${utc}) / 6) * INTERVAL '6 hours'`
-      : sql<Date>`date_trunc(${sql.raw(`'${unit}'`)}, ${utc})`;
-  const format = unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
-  // One row per bucket, person, and root, so the outer counts stay small.
-  const turns = getDb()
-    .select({
-      bucket: bucket.as("activity_bucket"),
-      userId: sql<string>`${juniorUsers.id}`.as("activity_user_id"),
-      rootConversationId: conversationRootId.as("activity_root_id"),
-    })
-    .from(metrics)
-    .innerJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, metrics.actorIdentityId),
-    )
-    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .innerJoin(
-      juniorConversations,
-      eq(juniorConversations.conversationId, metrics.conversationId),
-    )
-    .where(
-      and(
-        verifiedActorWhere(),
-        // Every Run writes one `duration_ms` row.
-        eq(metrics.metric, "duration_ms"),
-        gte(metrics.occurredAt, since),
-      ),
-    )
-    .groupBy(bucket, juniorUsers.id, conversationRootId)
-    .as("activity_turns");
-  return getDb()
-    .select({
-      activePeople: sql<number>`COUNT(DISTINCT ${turns.userId})::int`,
-      conversations: sql<number>`COUNT(DISTINCT ${turns.rootConversationId})::int`,
-      date: sql<string>`TO_CHAR(${turns.bucket}, ${sql.raw(`'${format}'`)})`,
-    })
-    .from(turns)
-    .groupBy(turns.bucket);
-}
-
-/**
- * Load the complete People directory with grouping and metrics owned by SQL.
+ * Count active people and root Conversations in each bucket of each series,
+ * from one read of the Turns since `since`. The time bound applies to the
+ * metric rows before any join. Six-hour buckets roll up hour buckets.
  *
- * Every count and total comes from Turns. A person counts a Conversation when
- * they ran a Turn in it, whoever started it.
+ * Each count is a hashed `DISTINCT` of (bucket, person) or (bucket, root)
+ * pairs, which costs less than sorting for `COUNT(DISTINCT)`.
  */
-export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
-  const nowMs = Date.now();
-  const { end, start } = trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
-  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
-  const sixHourWindow = trailingUtcSixHourWindow(nowMs);
-  const roots = personRoots();
-  const rangeConversations = (range: Range) =>
-    sql<number>`(count(*) FILTER (
-      WHERE ${roots.lastAt} >= ${rangeStart(nowMs, range).toISOString()}::timestamptz
-    ))::integer`;
-  const [rows, activityDayRows, activityHourRows, activitySixHourRows, spend] =
-    await Promise.all([
+function activityRows(since: Date, read: "day" | "hour") {
+  const utc = sql`(${metrics.occurredAt} AT TIME ZONE 'UTC')`;
+  const readBucket = sql<Date>`date_trunc(${sql.raw(`'${read}'`)}, ${utc})`;
+  // One row per bucket, person, and root, so the counts read few rows.
+  const turns = getDb()
+    .$with("activity_turns")
+    .as(
       getDb()
         .select({
-          ...personTotalColumns(roots),
-          conversations1: rangeConversations(1),
-          conversations7: rangeConversations(7),
-          conversations30: rangeConversations(30),
-          conversations90: rangeConversations(90),
-        })
-        .from(roots)
-        .innerJoin(juniorUsers, eq(juniorUsers.id, roots.userId))
-        .innerJoin(turnRoot, personRootJoin(roots))
-        .groupBy(juniorUsers.id),
-      activityRows(start, "day"),
-      activityRows(hourWindow.start, "hour"),
-      activityRows(sixHourWindow.start, "six_hour"),
-      getDb()
-        .select({
-          email: sql<string>`${juniorUsers.primaryEmailNormalized}`,
-          1: rangeSpendColumns(nowMs, 1),
-          7: rangeSpendColumns(nowMs, 7),
-          30: rangeSpendColumns(nowMs, 30),
-          90: rangeSpendColumns(nowMs, 90),
+          bucket: readBucket.as("activity_bucket"),
+          userId: sql<string>`${juniorUsers.id}`.as("activity_user_id"),
+          rootConversationId: conversationRootId.as("activity_root_id"),
         })
         .from(metrics)
         .innerJoin(
@@ -222,16 +212,232 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           eq(juniorIdentities.id, metrics.actorIdentityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .innerJoin(
+          juniorConversations,
+          eq(juniorConversations.conversationId, metrics.conversationId),
+        )
         .where(
           and(
             verifiedActorWhere(),
-            inArray(metrics.metric, ["cost_micro_usd", "duration_ms"]),
-            gte(
-              metrics.occurredAt,
-              trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK).start,
-            ),
+            // Every Run writes one `duration_ms` row.
+            eq(metrics.metric, "duration_ms"),
+            gte(metrics.occurredAt, since),
           ),
         )
+        .groupBy(readBucket, juniorUsers.id, conversationRootId),
+    );
+  const unitCounts = (unit: ActivityUnit) => {
+    const bucket =
+      unit === "six_hour"
+        ? sql<Date>`date_trunc('day', ${turns.bucket}) + FLOOR(EXTRACT(HOUR FROM ${turns.bucket}) / 6) * INTERVAL '6 hours'`
+        : sql<Date>`${turns.bucket}`;
+    const pairs = (kind: "people" | "conversations", id: SQL) =>
+      getDb()
+        .selectDistinct({
+          bucket: bucket.as("pair_bucket"),
+          kind: sql<string>`${kind}::text`.as("pair_kind"),
+          id: sql<string>`${id}`.as("pair_id"),
+        })
+        .from(turns);
+    const allPairs = pairs("people", sql`${turns.userId}`)
+      .unionAll(pairs("conversations", sql`${turns.rootConversationId}`))
+      .as("activity_pairs");
+    const format = unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
+    return getDb()
+      .select({
+        unit: sql<ActivityUnit>`${unit}::text`.as("activity_unit"),
+        activePeople:
+          sql<number>`(count(*) FILTER (WHERE ${allPairs.kind} = 'people'))::int`.as(
+            "activity_people",
+          ),
+        conversations:
+          sql<number>`(count(*) FILTER (WHERE ${allPairs.kind} = 'conversations'))::int`.as(
+            "activity_conversations",
+          ),
+        date: sql<string>`TO_CHAR(${allPairs.bucket}, ${sql.raw(`'${format}'`)})`.as(
+          "activity_date",
+        ),
+      })
+      .from(allPairs)
+      .groupBy(allPairs.bucket);
+  };
+  const counts =
+    read === "day"
+      ? unitCounts("day").as("activity_counts")
+      : unitCounts("hour")
+          .unionAll(unitCounts("six_hour"))
+          .as("activity_counts");
+  return getDb().with(turns).select().from(counts);
+}
+
+/**
+ * Read one row per verified person who ever ran a Turn: their identity and
+ * their first and last Turn over all time. Each edge is a probe of the actor
+ * index, so the cost grows with identities, not with Turns.
+ */
+function personTurnRange() {
+  const edge = (fn: "min" | "max") =>
+    sql`(${getDb()
+      .select({ at: sql`${sql.raw(fn)}(${metrics.occurredAt})` })
+      .from(metrics)
+      .where(eq(metrics.actorIdentityId, juniorIdentities.id))})`;
+  return getDb()
+    .select({
+      userId: sql<string>`${juniorUsers.id}`.as("range_user_id"),
+      email: sql<string>`${juniorUsers.primaryEmailNormalized}`.as(
+        "range_email",
+      ),
+      fullName: sql<string | null>`${juniorUsers.displayName}`.as(
+        "range_full_name",
+      ),
+      firstAt: sql<Date>`min(${edge("min")})`.as("range_first_at"),
+      lastAt: sql<Date>`max(${edge("max")})`.as("range_last_at"),
+      // Web identities use the email as the subject. Only Slack fills these.
+      slackUserId: sql<
+        string | null
+      >`max(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END)`.as(
+        "range_slack_user_id",
+      ),
+      slackUserName: sql<
+        string | null
+      >`max(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END)`.as(
+        "range_slack_user_name",
+      ),
+    })
+    .from(juniorIdentities)
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        verifiedActorWhere(),
+        exists(
+          getDb()
+            .select({ one: sql`1` })
+            .from(metrics)
+            .where(eq(metrics.actorIdentityId, juniorIdentities.id)),
+        ),
+      ),
+    )
+    .groupBy(juniorUsers.id)
+    .as("person_turn_range");
+}
+
+/**
+ * Count each person's root Conversations with a Turn in each range. Only
+ * Turns since the start of the longest range are read, and they are grouped
+ * before any join.
+ */
+function personRangeConversations(nowMs: number, since: Date) {
+  const verifiedIdentities = getDb()
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(verifiedActorWhere());
+  const turns = getDb()
+    .select({
+      identityId: sql<string>`${metrics.actorIdentityId}`.as(
+        "recent_identity_id",
+      ),
+      conversationId: sql<string>`${metrics.conversationId}`.as(
+        "recent_conversation_id",
+      ),
+      lastAt: sql<Date>`max(${metrics.occurredAt})`.as("recent_last_at"),
+    })
+    .from(metrics)
+    .where(
+      and(
+        inArray(metrics.actorIdentityId, verifiedIdentities),
+        // Every Run writes one `duration_ms` row.
+        eq(metrics.metric, "duration_ms"),
+        gte(metrics.occurredAt, since),
+      ),
+    )
+    .groupBy(metrics.actorIdentityId, metrics.conversationId)
+    .as("person_recent_turns");
+  const roots = getDb()
+    .select({
+      userId: sql<string>`${juniorIdentities.userId}`.as("recent_user_id"),
+      lastAt: sql<Date>`max(${turns.lastAt})`.as("recent_root_last_at"),
+    })
+    .from(turns)
+    .innerJoin(juniorIdentities, eq(juniorIdentities.id, turns.identityId))
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, turns.conversationId),
+    )
+    .groupBy(juniorIdentities.userId, conversationRootId)
+    .as("person_recent_roots");
+  const count = (range: Range) =>
+    sql<number>`(count(*) FILTER (
+      WHERE ${roots.lastAt} >= ${rangeStart(nowMs, range).toISOString()}::timestamptz
+    ))::integer`;
+  return getDb()
+    .select({
+      userId: sql<string>`${roots.userId}`.as("range_count_user_id"),
+      conversations1: count(1).as("range_conversations_1"),
+      conversations7: count(7).as("range_conversations_7"),
+      conversations30: count(30).as("range_conversations_30"),
+      conversations90: count(90).as("range_conversations_90"),
+    })
+    .from(roots)
+    .groupBy(roots.userId)
+    .as("person_range_conversations");
+}
+
+/**
+ * Load the complete People directory with grouping and metrics owned by SQL.
+ *
+ * Every count and total comes from Turns. A person counts a Conversation when
+ * they ran a Turn in it, whoever started it. Only the Turn range is
+ * all-time; every other statement reads at most the last 180 days.
+ */
+export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
+  const nowMs = Date.now();
+  const { end, start } = trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
+  const sixHourWindow = trailingUtcSixHourWindow(nowMs);
+  // One hour read serves the hour and six-hour series.
+  const hourlySince = new Date(
+    Math.min(hourWindow.start.getTime(), sixHourWindow.start.getTime()),
+  );
+  const range = personTurnRange();
+  const counts = personRangeConversations(nowMs, start);
+  const spendByIdentity = identitySpend(nowMs);
+  const rangeCount = (column: SQL.Aliased<number>) =>
+    sql<number>`COALESCE(${column}, 0)::integer`;
+  const [rows, activityDayRows, activityHourAndSixHourRows, spend] =
+    await Promise.all([
+      getDb()
+        .select({
+          email: range.email,
+          fullName: range.fullName,
+          firstSeenAt: sql`${range.firstAt}`.mapWith(metrics.occurredAt),
+          lastSeenAt: sql`${range.lastAt}`.mapWith(metrics.occurredAt),
+          slackUserId: range.slackUserId,
+          slackUserName: range.slackUserName,
+          conversations1: rangeCount(counts.conversations1),
+          conversations7: rangeCount(counts.conversations7),
+          conversations30: rangeCount(counts.conversations30),
+          conversations90: rangeCount(counts.conversations90),
+        })
+        .from(range)
+        .leftJoin(counts, eq(counts.userId, range.userId)),
+      activityRows(start, "day"),
+      activityRows(hourlySince, "hour"),
+      getDb()
+        .select({
+          email: sql<string>`${juniorUsers.primaryEmailNormalized}`,
+          1: rangeSpendColumns(spendByIdentity[1]),
+          7: rangeSpendColumns(spendByIdentity[7]),
+          30: rangeSpendColumns(spendByIdentity[30]),
+          90: rangeSpendColumns(spendByIdentity[90]),
+        })
+        .from(spendByIdentity)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, spendByIdentity.identityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(verifiedActorWhere())
         .groupBy(juniorUsers.id),
     ]);
 
@@ -245,11 +451,6 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     };
     const personSpend = spendByEmail.get(row.email);
     return {
-      active: row.active,
-      activeDays: row.activeDays,
-      conversations: row.conversations,
-      durationMs: row.durationMs,
-      failed: row.failed,
       firstSeenAt: row.firstSeenAt.toISOString(),
       lastSeenAt: row.lastSeenAt.toISOString(),
       actor,
@@ -259,19 +460,27 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         30: rangeWindow(personSpend?.[30], row.conversations30),
         90: rangeWindow(personSpend?.[90], row.conversations90),
       },
-      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     };
   });
 
   return {
-    activityDays: directoryActivityDays(activityDayRows, nowMs),
-    activityHours: directoryActivityHours(activityHourRows, nowMs),
-    activitySixHours: directoryActivitySixHours(activitySixHourRows, nowMs),
+    activityDays: directoryActivityDays(
+      activitySeries(activityDayRows, "day"),
+      nowMs,
+    ),
+    activityHours: directoryActivityHours(
+      activitySeries(activityHourAndSixHourRows, "hour"),
+      nowMs,
+    ),
+    activitySixHours: directoryActivitySixHours(
+      activitySeries(activityHourAndSixHourRows, "six_hour"),
+      nowMs,
+    ),
     generatedAt: new Date(nowMs).toISOString(),
     people: people.sort(
       (left, right) =>
         Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt) ||
-        right.conversations - left.conversations ||
+        right.windows[90].conversations - left.windows[90].conversations ||
         left.actor.email.localeCompare(right.actor.email),
     ),
     source: "conversation_index",

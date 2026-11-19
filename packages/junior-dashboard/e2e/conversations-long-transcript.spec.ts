@@ -14,12 +14,15 @@ const MEMORY_CAPTURE_SEQ = 1_000;
 /**
  * Mock one completed Conversation with 2,000 message events. With `paged`,
  * the detail holds only the latest page, like the server, and earlier pages
- * wait for `holdEarlier` before they load.
+ * wait for `holdEarlier` before they load. Pages around an event take
+ * `aroundDelayMs` to load, like a server read, and wait for `holdAround`. Every other event is a person
+ * message, or every `personEvery`th.
  */
 async function mockLongConversation(
   page: Page,
-  input: { lastReadSeq: number; paged: boolean },
+  input: { lastReadSeq: number; paged: boolean; personEvery?: number },
 ) {
+  const personEvery = input.personEvery ?? 2;
   const generatedAt = "2026-08-07T11:00:00.000Z";
   const conversationId = "long-transcript";
   const conversation = {
@@ -31,13 +34,17 @@ async function mockLongConversation(
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
   const state = {
+    aroundDelayMs: 0,
     conversationId,
     /** Holds `before` pages until it resolves. */
     holdEarlier: Promise.resolve(),
+    /** Holds pages around an event until it resolves. */
+    holdAround: Promise.resolve(),
     pageRequests: [] as string[],
   };
   const lastSeq = EVENT_COUNT - 1;
@@ -61,7 +68,7 @@ async function mockLongConversation(
             : {
                 type: "message",
                 messageId: `message-${seq}`,
-                role: seq % 2 === 0 ? "user" : "assistant",
+                role: seq % personEvery === 0 ? "user" : "assistant",
                 text: `Transcript message ${seq} with enough content to occupy a visible row.`,
               },
         seq,
@@ -117,6 +124,12 @@ async function mockLongConversation(
       const around = searchParams.get("around") ?? searchParams.get("event");
       const before = searchParams.get("before");
       if (before) await state.holdEarlier;
+      if (around) await state.holdAround;
+      if (around && state.aroundDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, state.aroundDelayMs),
+        );
+      }
       const [from, to] = after
         ? [Number(after) + 1, Math.min(Number(after) + PAGE_SIZE, lastSeq)]
         : around
@@ -245,13 +258,8 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  // The capture shows under the reply that ends its Turn.
-  const captured = transcript.getByRole("button", {
-    name: "Captured 2 memories",
-  });
-  await expect(captured).toHaveCount(0);
 
-  // A memory jump mounts its far row before it scrolls there.
+  // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
@@ -265,14 +273,12 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     .getByRole("button", { name: "Go to message" })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
-  await expect(captured).toBeInViewport();
+    transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
+  ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
-  await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
   await page.keyboard.press("ControlOrMeta+f");
@@ -405,12 +411,16 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(
     page.locator('[data-slot="message-outline-preview-meta"]'),
   ).toHaveText(/^Andrew Asker · /);
+  // The preview reads the page of its message, so the click needs no read.
+  await expect.poll(() => mock.pageRequests).toContain("?event=1234");
+  const requests = mock.pageRequests.length;
   await item.click();
   // The message starts at the top of the viewport.
   await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  expect(mock.pageRequests).toHaveLength(requests);
 });
 
 test("scrolls with the outline instead of the scrollbar", async ({
@@ -480,6 +490,137 @@ test("scrolls with the outline instead of the scrollbar", async ({
   await page.setViewportSize({ height: 900, width: 700 });
   await expect(outline).toBeHidden();
   await expect.poll(() => scrollbarHidden(transcript)).toBe(false);
+});
+
+test("shows a far message at once while its page loads", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/settings#scroll-conversations-with`);
+  await page.getByRole("radio", { name: "Outline" }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline).toHaveAttribute("data-replaces-scrollbar", "");
+  // No page read lands until the end.
+  let landReads!: () => void;
+  mock.holdAround = new Promise((resolve) => {
+    landReads = resolve;
+  });
+
+  const item = outline.getByRole("button", {
+    name: "Transcript message 400 with",
+  });
+  await item.click();
+  // The message and the start of its reply show from the outline alone.
+  const standIn = page.locator('[data-outline-stand-in="400"]');
+  await expect(standIn).toBeVisible();
+  await expect(standIn).toContainText("Transcript message 400 ");
+  await expect(standIn).toContainText("Transcript message 401 ");
+  await expect(item).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, 400)).toHaveCount(0);
+  await expect.poll(() => mock.pageRequests).toContain("?event=400");
+
+  // When the page lands, its rows take the place of the stand-in.
+  landReads();
+  await expect(row(transcript, 400)).toBeInViewport({ ratio: 1 });
+  await expect(row(transcript, 399)).not.toBeInViewport({ ratio: 0.5 });
+  await expect(standIn).toHaveCount(0);
+  await expect(item).toHaveAttribute("aria-current", "location");
+
+  // The stand-in takes the pointer from the rows below it, and the wheel
+  // dismisses it.
+  mock.holdAround = new Promise(() => {});
+  await outline
+    .getByRole("button", { name: "Transcript message 800 with" })
+    .click();
+  const nextStandIn = page.locator('[data-outline-stand-in="800"]');
+  await nextStandIn.hover();
+  await page.mouse.wheel(0, -400);
+  await expect(nextStandIn).toHaveCount(0);
+});
+
+test("drags the outline through messages whose pages load slowly", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  // Person messages lie far apart, so each item is on a page that is not
+  // loaded, and each page takes a while to load.
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+    personEvery: 25,
+  });
+  mock.aroundDelayMs = 500;
+  await page.goto(`${dashboard.baseURL}/settings#scroll-conversations-with`);
+  await page.getByRole("radio", { name: "Outline" }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  const outlineItem = (seq: number) =>
+    outline.getByRole("button", { name: `Transcript message ${seq} with` });
+  const active = outline.locator("button[aria-current]");
+  const activeSeq = async () =>
+    Number(
+      /message (\d+) /.exec((await active.getAttribute("aria-label"))!)![1],
+    );
+  const previewTitle = page.locator(
+    '[data-slot="message-outline-preview-title"]',
+  );
+  // The memory event takes the place of one person message.
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 25 - 1);
+  await expect(outline).toHaveAttribute("data-replaces-scrollbar", "");
+  const startSeq = await activeSeq();
+  const requests = mock.pageRequests.length;
+  // No page read lands during the drag.
+  let landReads!: () => void;
+  mock.holdAround = new Promise((resolve) => {
+    landReads = resolve;
+  });
+
+  // A person presses an item and moves the pointer past item after item.
+  // The transcript follows at once, with the rows or the stand-in of each.
+  await active.hover();
+  await page.mouse.down();
+  for (let seq = startSeq - 25; seq >= startSeq - 1_000; seq -= 25) {
+    if (seq === MEMORY_CAPTURE_SEQ) continue;
+    await outlineItem(seq).hover();
+    await expect(previewTitle).toHaveText(
+      new RegExp(`^Transcript message ${seq} `),
+    );
+    await expect(
+      page
+        .locator(`[data-outline-stand-in="${seq}"]`)
+        .or(row(page.getByLabel("Conversation transcript"), seq)),
+    ).toBeVisible();
+    await expect.poll(activeSeq).toBe(seq);
+  }
+  // It reads one page at a time, not one page for each of the 39 items that
+  // the pointer passed.
+  const eventReads = mock.pageRequests
+    .slice(requests)
+    .filter((search) => search.startsWith("?event="));
+  expect(eventReads.length).toBeLessThanOrEqual(1);
+  landReads();
+  await page.mouse.up();
+  await expect(outlineItem(startSeq - 1_000)).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await expect(
+    page
+      .getByLabel("Conversation transcript")
+      .locator(`[data-transcript-seq="${startSeq - 1_000}"]`),
+  ).toBeInViewport();
 });
 
 test("points at the outline item under a still pointer while the list scrolls", async ({

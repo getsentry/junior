@@ -78,6 +78,7 @@ async function mockWaitingConversation(
                   {
                     ...reviewItem,
                     addedByConversationId: waitingId,
+                    rootConversationId: waitingId,
                     conversationIds: [waitingId],
                   },
                 ]
@@ -117,6 +118,7 @@ async function sidebarSectionOf(
 async function mockChangingWaiting(page: Page) {
   let waiting = false;
   const versions = {
+    conversationDetails: {},
     conversations: "feed-1",
     reviewItems: "review-1",
     spend: "spend-1",

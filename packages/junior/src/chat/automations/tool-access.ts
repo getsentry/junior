@@ -156,7 +156,7 @@ export function requireToolDestination(
 ): AutomationDestination {
   if (!context.destination) {
     throw new ToolInputError(
-      "This Conversation has no channel or DM that an Automation can deliver to. Ask from the channel or DM where it should deliver.",
+      "This Conversation has no channel or DM that an Automation can deliver to. Set destination to a public Slack channel, or ask from the Slack channel or DM where it should deliver.",
     );
   }
   return context.destination;

@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import {
   createEventSource,
   createLocalSource,
@@ -43,6 +43,8 @@ export type MailboxTurnInput = {
   /** Grants of a system Actor that a child agent's input continues. */
   credentialContext?: CredentialContext;
   message: InboundMessage;
+  /** The words of a parent message, without its tag and generic instructions. */
+  requestText?: string;
   source: Source;
 };
 
@@ -131,7 +133,7 @@ function hasEventActor(actors: readonly Actor[] | undefined): boolean {
 }
 
 /** Return the active web Turn for one Conversation, if it has one. */
-export async function getActiveConversationTurnId(
+async function getActiveConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
   const summaries = await listTurnSummaries(conversationId);
@@ -165,12 +167,24 @@ export async function getActiveConversationTurnId(
 export async function listActiveMailboxTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
-  const summaries = await listTurnSummaries(conversationId);
+  const summaries = (await listTurnSummaries(conversationId)).filter(
+    isOpenTurnSummary,
+  );
+  // One cursor read rules out the Turns that are not mailbox Turns, so only
+  // the rest load their Turn history. A legacy cursor with no Source needs
+  // its Actors, which come from Turn history.
+  const stored = await getStoredTurnFields(summaries);
+  const candidates = summaries.filter((_summary, index) => {
+    const fields = stored[index];
+    return (
+      fields !== undefined &&
+      (isActiveMailboxTurn(fields) ||
+        (!fields.source && fields.surface !== "api"))
+    );
+  });
   return (
-    await Promise.all(
-      summaries
-        .filter(isOpenTurnSummary)
-        .map((summary) => getTurnRecord(conversationId, summary.turnId)),
+    await mapBounded(candidates, (summary) =>
+      getTurnRecord(conversationId, summary.turnId),
     )
   ).filter(
     (record): record is TurnRecord =>
@@ -268,7 +282,7 @@ export async function getAuthPausedConversationTurnId(
 }
 
 /** Read one web input batch as Turn input. A batch with no web input gives []. */
-export function parseWebMessages(
+function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {

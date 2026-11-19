@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { createPluginCache } from "@/chat/plugins/cache";
 import {
   conversationSidebarAnnotationSchema,
@@ -9,7 +8,7 @@ import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 
 /** Show native objects by default and let plugins select compact sidebar labels. */
 export async function listConversationSidebarAnnotations(
@@ -47,55 +46,46 @@ export async function listConversationSidebarAnnotations(
     if (objects.length) selected[conversationId] = objects;
   }
   // Run the hooks at once, then add their annotations in plugin order.
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const results = await Promise.all(
-    plugins.map((plugin) =>
-      limit(async () => {
-        const hook = plugin.hooks?.conversationSidebar;
-        if (!hook) return [];
-        const annotationsByConversationId = Object.fromEntries(
-          conversationIds.flatMap((conversationId) => {
-            const annotations = (
-              annotationsByConversation.get(conversationId) ?? []
-            ).filter(
-              (annotation) => annotation.plugin === plugin.manifest.name,
-            );
-            return annotations.length > 0
-              ? [[conversationId, annotations]]
-              : [];
-          }),
-        );
-        try {
-          const result = await hook({
-            annotationsByConversationId,
-            conversationIds,
-            db: getDb(),
-            log: createPluginLogger(plugin.manifest.name),
-            plugin: { name: plugin.manifest.name },
-            cache: createPluginCache(plugin.manifest.name),
-          });
-          return Object.entries(result.annotationsByConversationId).flatMap(
-            ([conversationId, annotations]) => {
-              if (!candidates.has(conversationId)) return [];
-              const parsed = conversationSidebarAnnotationSchema
-                .array()
-                .safeParse(annotations);
-              return parsed.success && parsed.data.length > 0
-                ? [{ annotations: parsed.data, conversationId }]
-                : [];
-            },
-          );
-        } catch (error) {
-          logWarn("plugin.conversation_sidebar.hook.failed", {
-            "app.plugin.name": plugin.manifest.name,
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
-          });
-          return [];
-        }
+  const results = await mapBounded(plugins, async (plugin) => {
+    const hook = plugin.hooks?.conversationSidebar;
+    if (!hook) return [];
+    const annotationsByConversationId = Object.fromEntries(
+      conversationIds.flatMap((conversationId) => {
+        const annotations = (
+          annotationsByConversation.get(conversationId) ?? []
+        ).filter((annotation) => annotation.plugin === plugin.manifest.name);
+        return annotations.length > 0 ? [[conversationId, annotations]] : [];
       }),
-    ),
-  );
+    );
+    try {
+      const result = await hook({
+        annotationsByConversationId,
+        conversationIds,
+        db: getDb(),
+        log: createPluginLogger(plugin.manifest.name),
+        plugin: { name: plugin.manifest.name },
+        cache: createPluginCache(plugin.manifest.name),
+      });
+      return Object.entries(result.annotationsByConversationId).flatMap(
+        ([conversationId, annotations]) => {
+          if (!candidates.has(conversationId)) return [];
+          const parsed = conversationSidebarAnnotationSchema
+            .array()
+            .safeParse(annotations);
+          return parsed.success && parsed.data.length > 0
+            ? [{ annotations: parsed.data, conversationId }]
+            : [];
+        },
+      );
+    } catch (error) {
+      logWarn("plugin.conversation_sidebar.hook.failed", {
+        "app.plugin.name": plugin.manifest.name,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
   for (const { annotations, conversationId } of results.flat()) {
     selected[conversationId] = [
       ...(selected[conversationId] ?? []),

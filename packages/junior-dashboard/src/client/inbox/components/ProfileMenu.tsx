@@ -10,7 +10,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
-import { formatCostSummary, peoplePath } from "../../format";
+import { formatCostSummary } from "../../format";
+import { myProfilePage, NAV_PAGES } from "../../navPages";
 import { canSendFeedback } from "../../sentry";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { SIDEBAR_ROW_GRID_CLASS } from "../../components/layout/sidebarGrid";
@@ -19,7 +20,6 @@ import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "../../components/layout/navIcons";
 import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { DensitySwitcher } from "../../conversations/conversationDensity";
-import { HoverExpandSwitcher } from "../../review-desk/hoverExpand";
 import {
   Avatar,
   AvatarFallback,
@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { FeedbackDialog } from "./FeedbackDialog";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -267,6 +268,7 @@ export function ProfileMenu({
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
+  const profile = myProfilePage(email);
   // Without a DSN, the dashboard sends no feedback, so it offers none.
   const feedback = canSendFeedback();
   // The menu or the mobile sheet stays mounted under the dialog, so the
@@ -284,11 +286,23 @@ export function ProfileMenu({
       <div className="flex min-w-0 items-center gap-2.5">
         <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
+          <p
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate text-xs text-dashboard-text-muted">
+            <p
+              className={cn(
+                fadeOverflowClass,
+                "mt-0.5 mb-0 text-xs text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {email}
             </p>
           ) : null}
@@ -317,9 +331,9 @@ export function ProfileMenu({
 
   const menuLinks = (
     <>
-      <DropdownMenuLinkItem render={<Link to={peoplePath(email)} />}>
+      <DropdownMenuLinkItem render={<Link to={profile.to} />}>
         <UserRound aria-hidden="true" />
-        My profile
+        {profile.label}
       </DropdownMenuLinkItem>
       {pages.map((page) => {
         const Icon = navItemIcon(page.key);
@@ -331,14 +345,14 @@ export function ProfileMenu({
         );
       })}
       {identity.user.isAdmin ? (
-        <DropdownMenuLinkItem render={<Link to="/admin" />}>
+        <DropdownMenuLinkItem render={<Link to={NAV_PAGES.admin.to} />}>
           <ShieldCheck aria-hidden="true" />
-          Admin
+          {NAV_PAGES.admin.label}
         </DropdownMenuLinkItem>
       ) : null}
-      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+      <DropdownMenuLinkItem render={<Link to={NAV_PAGES.settings.to} />}>
         <Settings aria-hidden="true" />
-        Settings
+        {NAV_PAGES.settings.label}
       </DropdownMenuLinkItem>
       {feedback ? (
         <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
@@ -385,8 +399,8 @@ export function ProfileMenu({
     );
     return (
       <nav aria-label={`Account menu for ${name}`} className="grid gap-1">
-        <Link className={sheetItemClass} to={peoplePath(email)}>
-          My profile
+        <Link className={sheetItemClass} to={profile.to}>
+          {profile.label}
         </Link>
         {pages.map((page) => (
           <Link className={sheetItemClass} key={page.key} to={page.to}>
@@ -394,12 +408,12 @@ export function ProfileMenu({
           </Link>
         ))}
         {identity.user.isAdmin ? (
-          <Link className={sheetItemClass} to="/admin">
-            Admin
+          <Link className={sheetItemClass} to={NAV_PAGES.admin.to}>
+            {NAV_PAGES.admin.label}
           </Link>
         ) : null}
-        <Link className={sheetItemClass} to="/settings">
-          Settings
+        <Link className={sheetItemClass} to={NAV_PAGES.settings.to}>
+          {NAV_PAGES.settings.label}
         </Link>
         {feedback ? (
           <button
@@ -422,7 +436,6 @@ export function ProfileMenu({
         </button>
         <ThemeSwitcher className="px-3 py-2" />
         <DensitySwitcher className="px-3 py-2" />
-        <HoverExpandSwitcher className="px-3 py-2" />
         {feedbackDialog}
       </nav>
     );
@@ -436,11 +449,23 @@ export function ProfileMenu({
       >
         <ProfileAvatar user={identity.user} />
         <div className="min-w-0">
-          <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
+          <p
+            className={cn(
+              fadeOverflowClass,
+              "m-0 text-xs font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate font-sans text-xs text-dashboard-text-muted">
+            <p
+              className={cn(
+                fadeOverflowClass,
+                "mt-0.5 mb-0 font-sans text-xs text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
+            >
               {email}
             </p>
           ) : null}
@@ -487,7 +512,12 @@ export function ProfileMenu({
           user={identity.user}
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="truncate font-medium leading-tight">{name}</span>
+          <span
+            className={cn(fadeOverflowClass, "font-medium leading-tight")}
+            ref={fadeWhenOverflowing}
+          >
+            {name}
+          </span>
           <PaneSpendMeter spend={spend} />
         </span>
         <ChevronsUpDown
@@ -509,7 +539,6 @@ export function ProfileMenu({
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher menu />
           <DensitySwitcher menu />
-          <HoverExpandSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}
