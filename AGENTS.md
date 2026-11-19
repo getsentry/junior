@@ -79,8 +79,7 @@ One simulator can use about 10 GB of memory, so:
 
 - Test logic with `swift test` in `apps/ios/Packages/JuniorKit`. It needs no
   simulator.
-- Build and run only with `apps/ios/scripts/xcbuild.sh` and `sim.sh`: one
-  simulator at a time, build before boot, and delete the device after.
+- Build and run only with `apps/ios/scripts/xcbuild.sh` and `sim.sh`.
 - Do not shut down a simulator that you did not boot. Shut down one that you
   boot, and check `xcrun simctl list devices booted` before you finish.
 - Run only the UI tests that the change needs.

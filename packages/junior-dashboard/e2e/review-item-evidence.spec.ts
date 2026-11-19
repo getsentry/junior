@@ -72,5 +72,14 @@ test("an Inbox question row links its evidence and related items @new", async ({
   const related = await expectEvidence(
     page.getByRole("region", { name: "Approve the payments-v42 rollout" }),
   );
-  await openRelatedItem(page, related);
+  // The Inbox has the item's row, so the link expands it in place and then
+  // leaves the URL.
+  const link = related.getByRole("link", {
+    name: "Checkout p95 rose after payments-v42",
+  });
+  await expect(link).toHaveAttribute("href", /item=qa-p95-rose/);
+  await link.click();
+  await expect(
+    page.getByRole("region", { name: "Checkout p95 rose after payments-v42" }),
+  ).toBeVisible();
 });
