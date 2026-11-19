@@ -778,6 +778,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       awaitingAuthorization: summary.awaitingAuthorization,
+      viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
