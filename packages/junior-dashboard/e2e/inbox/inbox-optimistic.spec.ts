@@ -7,7 +7,7 @@ import {
   digest,
   license,
   mockReviewItems,
-  pinConflict,
+  pinChecks,
   pinReview,
   prReview,
   rollout,
@@ -335,27 +335,27 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinConflict] });
+    await mockReviewItems(page, { open: [pinReview, pinChecks] });
     let answer = () => {};
     const answered = new Promise<void>((resolve) => (answer = resolve));
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${pinConflict.id}/actions`,
+      `**/api/review-items/${pinChecks.id}/actions`,
       async (route) => {
-        sent.push(pinConflict.id);
+        sent.push(pinChecks.id);
         if (!fails) return route.fallback();
         await answered;
         await route.fulfill({ json: { error: "Failed" }, status: 500 });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
-    const conflict = asks.getByRole("region", { name: pinConflict.title });
-    await conflict.getByRole("button", { name: "Merge conflict" }).click();
-    await conflict.getByRole("button", { name: "Dismiss" }).click();
-    await expect.poll(() => sent).toEqual([pinConflict.id]);
-    await expect(conflict).toHaveCount(0);
+    const checks = asks.getByRole("region", { name: pinChecks.title });
+    await checks.getByRole("button", { name: "Checks failed" }).click();
+    await checks.getByRole("button", { name: "Dismiss" }).click();
+    await expect.poll(() => sent).toEqual([pinChecks.id]);
+    await expect(checks).toHaveCount(0);
 
     answer();
     const toast = page
@@ -363,7 +363,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: "Could not dismiss" });
     await expect(toast).toBeVisible();
     await expect(asks.locator("[data-folded-notice]")).toHaveText(
-      "Merge conflict",
+      "Checks failed",
     );
 
     fails = false;
