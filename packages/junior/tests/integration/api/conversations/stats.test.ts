@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { recordCodeChange } from "@/chat/code/store";
+import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -469,6 +470,45 @@ describe("conversation stats API", () => {
           ?.filter((hour) => hour.conversations > 0)
           .reduce((sum, hour) => sum + hour.conversations, 0),
       ).toBe(6);
+
+      // A later read keeps the Guardian hours of the last read and reads only
+      // the reviews after it, plus the hour where its late-commit overlap
+      // starts.
+      const review = (at: string, toolCallId: string) => ({
+        createdAtMs: Date.parse(at),
+        data: {
+          type: "guardian_action_reviewed" as const,
+          turnId: "turn-later",
+          toolCallId,
+          toolName: "publishReport",
+          costUsd: 0.005,
+          decision: "deny" as const,
+          riskLevel: "high" as const,
+          userAuthorization: "low" as const,
+        },
+      });
+      await eventStore.append("slack:C1:recent", [
+        // Before the overlap, so the later read does not see it.
+        review("2026-06-08T13:30:00.000Z", "tool-backdated"),
+        // Before the last read, but committed after it.
+        review("2026-06-15T12:34:00.000Z", "tool-late-commit"),
+        review("2026-06-15T12:44:00.000Z", "tool-after"),
+      ]);
+      vi.setSystemTime(new Date("2026-06-15T12:45:00.000Z"));
+      const later = await measureSql(readConversationStatsFromSql);
+      expect(later.sql.statements).toBe(5);
+      expect(later.result.guardian.metricHours?.at(0)).toEqual(
+        report.guardian.metricHours?.at(0),
+      );
+      expect(later.result.guardian.metricHours?.at(-1)).toEqual({
+        allow: 1,
+        ask: 0,
+        costUsd: 0.014,
+        date: "2026-06-15T12",
+        deny: 2,
+        requests: 3,
+      });
+      expect(later.result.guardian.requests).toBe(8);
     } finally {
       vi.useRealTimers();
       await fixture.close();

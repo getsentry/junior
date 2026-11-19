@@ -49,16 +49,21 @@ each rule, so new code cannot drift from it.
   condition. A known full scan with a fix on the way gets a named `allowed`
   entry with a reason. An entry that matches nothing fails, so the fix
   removes it.
+- Keep the JSON body of hot API routes inside a size budget. A budget holds
+  the size of the largest item of a list. A nested list with no cap on its
+  count gets its own budget. Integration tests measure it with
+  `expectResponseBudget` from `packages/junior/tests/fixtures/response-budget.ts`.
+  Seed the fields at their max lengths, so the budget holds for real data.
 - Keep the API requests of the main dashboard pages inside a budget. Dashboard
   e2e specs measure a first page load with `expectRequestBudget` from
   `packages/junior-dashboard/e2e/request-budget.ts`. Each primary nav route
   needs one. Check: `pnpm nav-request-budgets:check`.
   `scripts/nav-request-budget-exceptions.mjs` lists the routes without one and
   why. Do not add entries.
-- Keep the first load of each dashboard UI shell inside a gzip budget. Check:
-  `pnpm dashboard-bundle-size:check` fails when a shell grows more than 2%
-  over `scripts/dashboard-bundle-size-baseline.json`. Update the baseline only
-  in the change that must grow the first load.
+- Keep the first load of each dashboard UI shell inside a gzip budget.
+  `scripts/dashboard-bundle-size-baseline.json` holds the size on `main`. A
+  change that grows the first load updates it, and may grow it at most 2%.
+  Check: `pnpm dashboard-bundle-size:check`.
 - Set a new budget to the measured value. When a change uses less, lower the
   budget in the same change. Do not raise a budget to pass. Fix the code.
 
