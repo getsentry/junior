@@ -34,6 +34,7 @@ import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
+  loadConversationSkillNames,
   recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
@@ -652,6 +653,11 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
+    // A manual-only skill that `loadSkill` loaded earlier in this
+    // Conversation stays loadable, and so do the skills that it references.
+    const conversationSkillNames =
+      await loadConversationSkillNames(conversationId);
+
     // A new turn starts with no active skill. A resumed turn recovers the
     // skill loaded last in this Turn, never skill state from older turns.
     // Invoked skills wait for the model to call `loadSkill`.
@@ -757,6 +763,7 @@ async function executeAgentRunInPrivacyContext(
       authorization,
       generatedFiles,
       invokedSkills,
+      conversationSkillNames,
       onEvent: run.onEvent,
       onFatalToolError(error) {
         pendingPiHookError = error;
