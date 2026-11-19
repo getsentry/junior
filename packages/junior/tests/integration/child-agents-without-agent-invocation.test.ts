@@ -703,6 +703,8 @@ describe("child agents that no Agent invocation names", () => {
         instruction: { provenance: { authority: "instruction" } },
         turnId: first!.turnId,
       });
+      // The resumed Turn recalls from the same task words as the first.
+      expect(turnRequestText(resumed!)).toBe("Check the deploy.");
       await expect(
         readRootConversation({ actor: undefined, conversationId: childId }),
       ).resolves.toMatchObject({

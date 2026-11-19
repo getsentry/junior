@@ -89,6 +89,7 @@ export async function loadReviewItemInput(
  */
 export async function savedInputInstruction(args: {
   runtime: boolean;
+  requestText?: string | undefined;
   reviewItemChange: ReviewItemChangeRecord | undefined;
   text: string;
 }): Promise<Pick<AgentInstruction, "inputs" | "text">> {
@@ -97,7 +98,11 @@ export async function savedInputInstruction(args: {
     : await loadReviewItemInput(args.reviewItemChange);
   if (!args.runtime && !reviewItemInput) return { text: args.text };
   return instructionForInputs([
-    reviewItemInput ?? { kind: "runtime", text: args.text },
+    reviewItemInput ?? {
+      kind: "runtime",
+      text: args.text,
+      ...(args.requestText ? { requestText: args.requestText } : undefined),
+    },
   ]);
 }
 
