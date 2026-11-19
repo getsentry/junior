@@ -9,7 +9,7 @@ import {
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getLeadConversation } from "@/chat/lead/conversation";
-import { createStartConversationTool } from "@/chat/lead/start-conversation-tool";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";

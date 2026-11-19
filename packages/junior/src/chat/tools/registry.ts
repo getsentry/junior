@@ -70,7 +70,7 @@ import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
 import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
-import { startConversationToolDefinition } from "@/chat/lead/start-conversation-tool";
+import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";

@@ -3,7 +3,7 @@ import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/lead/start-conversation-tool";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
