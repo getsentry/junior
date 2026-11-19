@@ -1,9 +1,12 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
@@ -26,8 +29,17 @@ import {
   recordAnswer,
   addItem,
   watchDeployment,
+  recordBrief,
   DONE,
 } from "../../../fixtures/conversation-status";
+
+type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
+
+/** Read the viewer's feed version token. */
+async function feedToken(fixture: StatusFixture): Promise<string> {
+  const response = await fixture.request("/api/versions");
+  return ((await response.json()) as { conversations: string }).conversations;
+}
 
 describe("conversation tree state", () => {
   afterEach(async () => {
@@ -244,19 +256,14 @@ describe("conversation tree state", () => {
       intent: "Check the deployment again.",
       toolCallId: "tree-timer-again",
     });
-    const feedToken = async () => {
-      const response = await fixture.request("/api/versions");
-      return ((await response.json()) as { conversations: string })
-        .conversations;
-    };
-    const beforeStop = await feedToken();
+    const beforeStop = await feedToken(fixture);
     const childStopped = await fixture.request(
       `${detailPath(childConversationId)}/stop`,
       { method: "POST" },
     );
     expect(childStopped.status).toBe(200);
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
-    expect(await feedToken()).not.toBe(beforeStop);
+    expect(await feedToken(fixture)).not.toBe(beforeStop);
 
     // A stopped Conversation starts no Turn for its Watches.
     await watchDeployment(conversationId);
@@ -267,6 +274,83 @@ describe("conversation tree state", () => {
     );
     expect(stopped.status).toBe(200);
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
+  });
+
+  it("skips archived children and their descendants", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000550",
+    );
+    const childConversationId = "agent:tree-archived-child";
+    const grandchildConversationId = "agent:tree-archived-grandchild";
+    await fixture.conversationStore.createChild({
+      childConversationId,
+      kind: "thread",
+      parentConversationId: conversationId,
+    });
+    await fixture.conversationStore.createChild({
+      childConversationId: grandchildConversationId,
+      kind: "task",
+      parentConversationId: childConversationId,
+    });
+    await addItem(grandchildConversationId, ACTION_ITEM);
+    await watchDeployment(childConversationId);
+    const needsYou = { treeState: "needs_you", watching: true };
+    await expect(fixture.tree(conversationId)).resolves.toEqual(needsYou);
+
+    const [child] = await getDb()
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, childConversationId));
+    await expect(
+      setConversationArchive({
+        applyToChildren: true,
+        archived: true,
+        conversationId: childConversationId,
+        lastSeenAt: child!.lastActivityAt.toISOString(),
+      }),
+    ).resolves.toMatchObject({ status: "archived" });
+    await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
+    // An archived Conversation still counts for itself.
+    await expect(fixture.tree(childConversationId)).resolves.toEqual({
+      treeState: "done",
+      watching: true,
+    });
+  });
+
+  it("moves the feed token when the root starts to wait on the viewer", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:tree-token",
+    );
+    const other = await resolveViewerUser("bob@example.com");
+    await insertReviewItem(getDb(), {
+      addedByConversationId: conversationId,
+      assignedToEveryone: false,
+      assigneeUserIds: [other!.id],
+      body: "Bob decides.",
+      conversationIds: [conversationId],
+      dedupeKey: "token-for-other",
+      kind: "action",
+      nowMs: Date.now(),
+      request: REQUEST,
+      title: "Bob's call",
+      visibility: "public",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
+    const before = await feedToken(fixture);
+
+    // The status still reads `needs_input`; only the viewer's wait moves.
+    await recordBrief(conversationId, 1, "partial");
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    expect(await feedToken(fixture)).not.toBe(before);
   });
 
   it("reads the tree state of a feed page and a detail in one statement", async () => {
