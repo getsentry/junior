@@ -397,13 +397,16 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     process.env["NODE_ENV"] = "development";
     process.env["JUNIOR_SECRET"] = "conversation-work-secret";
 
+    // Import one module before the others. Each parallel import that starts
+    // while mocks are pending replays the whole pending list, so a late replay
+    // of the afterEach `doUnmock("@vercel/queue")` can load the real module.
+    const { registerVercelConversationWorkDevConsumer } =
+      await import("@/chat/task-execution/vercel-callback");
     const [
-      { registerVercelConversationWorkDevConsumer },
       { getTurnRequestDeadline, runWithTurnRequestDeadline },
       { appendInboundMessage },
       { signConversationQueueMessage },
     ] = await Promise.all([
-      import("@/chat/task-execution/vercel-callback"),
       import("@/chat/runtime/request-deadline"),
       import("@/chat/task-execution/store"),
       import("@/chat/task-execution/queue-signing"),
