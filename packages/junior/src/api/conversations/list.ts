@@ -56,7 +56,7 @@ import {
   conversationStatusSql,
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
-import { readFeedThreads } from "./threads";
+import { nestFeedThreads, readFeedThreadRecords } from "./threads";
 import { conversationFeedSchema } from "../schema/conversation-feed";
 import type {
   ConversationFeed,
@@ -70,7 +70,7 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
-import { listWaitingConversations } from "@/chat/review-items/store";
+import { waitingConversationIdsQuery } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
@@ -86,6 +86,7 @@ import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
+import { conversationSlackTenantId } from "@/chat/conversations/sql/event-actor";
 import { readConversationParticipants } from "./participants";
 import {
   decodeConversationFeedCursor,
@@ -165,6 +166,7 @@ async function conversationRows(
     pinnedForUserId,
     query,
     status,
+    waitingForUserId,
   }: {
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
@@ -180,6 +182,8 @@ async function conversationRows(
     pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string | undefined;
     status: "active" | "archived" | "all";
+    /** Read only the root conversations that wait on this user. */
+    waitingForUserId?: string;
   },
 ) {
   const rows = db
@@ -214,6 +218,12 @@ async function conversationRows(
         conversationFeedMembershipFilter(status, filter),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
+          : undefined,
+        waitingForUserId
+          ? inArray(
+              juniorConversations.conversationId,
+              waitingConversationIdsQuery(db, waitingForUserId),
+            )
           : undefined,
         pinnedForUserId
           ? pinnedForUserId.pinned
@@ -256,34 +266,6 @@ async function conversationRows(
     )
     .$dynamic();
   return limit === undefined ? rows : rows.limit(limit);
-}
-
-type FeedRow = Awaited<ReturnType<typeof conversationRows>>[number];
-
-/**
- * Read the viewer's active conversations that wait on them but fall outside
- * the first page. Needs you shows every conversation that waits on the
- * viewer, so an old one must come back to the feed.
- */
-async function waitingRowsOutsidePage(
-  db: JuniorDatabase,
-  filter: ConversationFeedMembership & { kind: "viewer" },
-  page: FeedRow[],
-  include: readonly ConversationFeedInclude[],
-): Promise<FeedRow[]> {
-  const loaded = new Set(page.map((row) => row.conversation.conversationId));
-  const missing = (await listWaitingConversations(db, filter.userId))
-    .map((waiting) => waiting.conversationId)
-    .filter((conversationId) => !loaded.has(conversationId));
-  if (missing.length === 0) return [];
-  return await conversationRows(db, {
-    conversationIds: missing,
-    filter,
-    include,
-    includePrivateBriefs: true,
-    limit: missing.length,
-    status: "active",
-  });
 }
 
 /**
@@ -536,8 +518,9 @@ export async function readConversationFeedFromSql(
     query,
     status,
   };
-  const [pinnedRows, pageRows] = await Promise.all([
-    pinsFirst && !cursor
+  const firstPage = pinsFirst && !cursor;
+  const [pinnedRows, pageRows, waitingRows] = await Promise.all([
+    firstPage
       ? conversationRows(db, {
           ...feedQuery,
           pinnedForUserId: { pinned: true, userId: filter.userId },
@@ -552,13 +535,27 @@ export async function readConversationFeedFromSql(
         ? { pinnedForUserId: { pinned: false, userId: filter.userId } }
         : undefined),
     }),
+    // Needs you shows every conversation that waits on the viewer, so the
+    // first page also holds the waiting ones that fall outside it.
+    firstPage
+      ? conversationRows(db, {
+          filter,
+          include,
+          includePrivateBriefs: true,
+          status: "active",
+          waitingForUserId: filter.userId,
+        })
+      : [],
   ]);
   const page = pageRows.slice(0, limit);
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
-  if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
-  }
+  const loaded = new Set(rows.map((row) => row.conversation.conversationId));
+  rows.push(
+    ...waitingRows.filter(
+      (row) => !loaded.has(row.conversation.conversationId),
+    ),
+  );
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
@@ -580,6 +577,7 @@ export async function readConversationFeedFromSql(
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     treeStateByConversation,
+    threadRecords,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -614,15 +612,22 @@ export async function readConversationFeedFromSql(
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
-  ]);
-  const visibleActivityPreviews = await attachActivityPreviewMentions(
-    getSqlExecutor(),
-    new Map(
-      [...activityPreviewByConversation].filter(
-        ([conversationId]) =>
-          accessByConversation.get(conversationId)?.canViewPrivateContent,
-      ),
+    // A Thread shows only while its root is not archived.
+    readFeedThreadRecords(
+      db,
+      conversations
+        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .map(({ conversationId }) => conversationId),
     ),
+  ]);
+  const tenantByConversation = new Map(
+    rows.flatMap((row) => {
+      const tenantId = conversationSlackTenantId({
+        providerTenantId: row.location?.providerTenantId,
+        sessionSource: row.conversation.sessionSource,
+      });
+      return tenantId ? [[row.conversation.conversationId, tenantId]] : [];
+    }),
   );
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
@@ -632,22 +637,24 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [sidebarAnnotationsByConversation, threadsByRoot] = await Promise.all([
-    listConversationSidebarAnnotations(
-      conversationIds,
-      visibleAnnotationsByConversation,
-    ),
-    // A Thread shows only while its root is not archived.
-    readFeedThreads(
-      db,
-      conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
-        .map(({ conversationId }) => ({
-          access: accessByConversation.get(conversationId),
-          conversationId,
-        })),
-    ),
-  ]);
+  const [visibleActivityPreviews, sidebarAnnotationsByConversation] =
+    await Promise.all([
+      attachActivityPreviewMentions(
+        getSqlExecutor(),
+        new Map(
+          [...activityPreviewByConversation].filter(
+            ([conversationId]) =>
+              accessByConversation.get(conversationId)?.canViewPrivateContent,
+          ),
+        ),
+        tenantByConversation,
+      ),
+      listConversationSidebarAnnotations(
+        conversationIds,
+        visibleAnnotationsByConversation,
+      ),
+    ]);
+  const threadsByRoot = nestFeedThreads(threadRecords, accessByConversation);
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {

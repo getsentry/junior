@@ -431,7 +431,7 @@ describe("conversation tree state", () => {
     }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
-        { statements: 20, serialRounds: 5 },
+        { statements: 20, serialRounds: 3 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
