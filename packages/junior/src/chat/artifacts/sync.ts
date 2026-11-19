@@ -27,18 +27,24 @@ const MAX_FILES = 200;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 const TOO_LARGE = "larger than 10 MB";
+const OVER_TOTAL = "over the 50 MB total limit";
 /** Tools that can change files. Read-only tools skip the save step. */
 const SAVE_TOOLS = new Set(["bash", "editFile", "writeFile"]);
 
 // Regular files only. `-P` and `-type f` skip symlinks, so a link that points
 // outside the directory is never read. A missing or linked directory lists
 // nothing, and nothing creates it.
-const LIST_SCRIPT = `if [ -d ${ARTIFACTS_DIR} ] && [ ! -L ${ARTIFACTS_DIR} ]; then find -P ${ARTIFACTS_DIR} -type f -printf '%s\\t%T@\\t%P\\0'; fi`;
+const LIST_SCRIPT = `if [ -d ${ARTIFACTS_DIR} ] && [ ! -L ${ARTIFACTS_DIR} ]; then find -P ${ARTIFACTS_DIR} -type f -printf '%s\\t%C@\\t%P\\0'; fi`;
 
-/** Size and modification time of one listed file. Equal stats mean unchanged. */
+/**
+ * Size and status change time of one listed file. Equal stats mean
+ * unchanged. The change time (ctime), not the modification time, because
+ * tools such as `cp -p` and `touch -d` can set the modification time back,
+ * but every write moves the change time.
+ */
 interface FileStat {
   bytes: number;
-  mtime: string;
+  changedAt: string;
 }
 
 interface ListedFile extends FileStat {
@@ -113,9 +119,9 @@ async function listArtifactFiles(
     .split("\0")
     .filter(Boolean)
     .flatMap((record) => {
-      const [bytes, mtime, ...rest] = record.split("\t");
-      return bytes && mtime && rest.length > 0
-        ? [{ bytes: Number(bytes), mtime, path: rest.join("\t") }]
+      const [bytes, changedAt, ...rest] = record.split("\t");
+      return bytes && changedAt && rest.length > 0
+        ? [{ bytes: Number(bytes), changedAt, path: rest.join("\t") }]
         : [];
     });
 }
@@ -247,22 +253,24 @@ export function createArtifactSync(args: {
     );
     const isUnchanged = (file: ListedFile) => {
       const stat = previous.get(file.path);
-      return stat?.bytes === file.bytes && stat.mtime === file.mtime;
+      return stat?.bytes === file.bytes && stat.changedAt === file.changedAt;
     };
     const next = new Map<string, FileStat>();
     let count = 0;
     let totalBytes = 0;
     for (const file of listed.filter(isUnchanged)) {
-      next.set(file.path, { bytes: file.bytes, mtime: file.mtime });
+      next.set(file.path, { bytes: file.bytes, changedAt: file.changedAt });
       count += 1;
       totalBytes += file.bytes;
     }
+    const unchangedBytes = totalBytes;
 
     // A known file that this save does not record stays known with a stat
     // that never matches. The next save checks it again, and still marks its
     // row deleted when the file goes away.
     const keepKnown = (filePath: string) => {
-      if (previous.has(filePath)) next.set(filePath, { bytes: -1, mtime: "" });
+      if (previous.has(filePath))
+        next.set(filePath, { bytes: -1, changedAt: "" });
     };
     const skipped: string[] = [];
     const accepted: ListedFile[] = [];
@@ -274,7 +282,7 @@ export function createArtifactSync(args: {
           : count >= MAX_FILES
             ? "over the 200 file limit"
             : totalBytes + file.bytes > MAX_TOTAL_BYTES
-              ? "over the 50 MB total limit"
+              ? OVER_TOTAL
               : undefined;
       if (reason) {
         skipped.push(`${sandboxPath(file.path)} (${reason})`);
@@ -295,6 +303,9 @@ export function createArtifactSync(args: {
       return skippedNote(skipped);
     }
 
+    // Files can grow after the listing, so the total limit also counts the
+    // bytes actually read.
+    let budget = MAX_TOTAL_BYTES - unchangedBytes;
     const rows = await liveRows();
     const savedShas = new Map(rows.map((row) => [row.path, row.sha256]));
     const storedShas = new Set(rows.map((row) => row.sha256));
@@ -308,14 +319,21 @@ export function createArtifactSync(args: {
         keepKnown(file.path);
         continue;
       }
-      if (body.byteLength > MAX_FILE_BYTES) {
-        skipped.push(`${sandboxPath(file.path)} (${TOO_LARGE})`);
+      const reason =
+        body.byteLength > MAX_FILE_BYTES
+          ? TOO_LARGE
+          : body.byteLength > budget
+            ? OVER_TOTAL
+            : undefined;
+      if (reason) {
+        skipped.push(`${sandboxPath(file.path)} (${reason})`);
         keepKnown(file.path);
         continue;
       }
+      budget -= body.byteLength;
       // oxlint-disable-next-line no-await-in-loop -- See the read above.
       await saveFile(file, body, savedShas.get(file.path), storedShas);
-      next.set(file.path, { bytes: file.bytes, mtime: file.mtime });
+      next.set(file.path, { bytes: file.bytes, changedAt: file.changedAt });
     }
     if (removed.length > 0) {
       await db
@@ -389,7 +407,7 @@ export function createArtifactSync(args: {
     return new Map(
       [...restored].map(([artifactPath, file]) => [
         artifactPath,
-        { bytes: file.bytes, mtime: file.mtime },
+        { bytes: file.bytes, changedAt: file.changedAt },
       ]),
     );
   };

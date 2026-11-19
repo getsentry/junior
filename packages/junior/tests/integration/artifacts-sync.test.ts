@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -204,6 +205,62 @@ describe("conversation artifacts", () => {
         path: "report.md",
         visibility: "conversation",
       },
+    ]);
+  });
+
+  it("saves a same-size rewrite that keeps its old modification time", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const first = await newSandbox();
+    const run = newRun(storage);
+    await run.restore(first.workspace);
+    const file = path.join(first.root, "artifacts/report.md");
+    await first.write("artifacts/report.md", "draft one");
+    await run.afterToolCall("bash", first.workspace);
+    const reference = path.join(first.root, "reference");
+    execFileSync("touch", ["-r", file, reference]);
+
+    // Like `cp -p`: new bytes, same size, old modification time.
+    await fs.writeFile(file, "draft two");
+    execFileSync("touch", ["-r", reference, file]);
+    await run.afterToolCall("bash", first.workspace);
+
+    const second = await newSandbox();
+    await newRun(storage).restore(second.workspace);
+    expect(
+      await fs.readFile(path.join(second.root, "artifacts/report.md"), "utf8"),
+    ).toBe("draft two");
+  });
+
+  it("counts the bytes it reads against the total limit", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const sandbox = await newSandbox();
+    const workspace = localWorkspace(sandbox.root);
+    // Injected fault: a background process grows each file after the listing.
+    const growingWorkspace = {
+      ...workspace,
+      readFileToBuffer: async (input: { path: string }) => {
+        await fs.writeFile(
+          path.join(sandbox.root, input.path),
+          Buffer.alloc(9 * MIB),
+        );
+        return await workspace.readFileToBuffer(input);
+      },
+    };
+    const run = newRun(storage);
+    await run.restore(growingWorkspace);
+    for (const name of ["a", "b", "c", "d", "e", "f"]) {
+      await sandbox.write(`artifacts/${name}.bin`, "x");
+    }
+
+    const note = await run.afterToolCall("bash", growingWorkspace);
+
+    expect(note).toContain("artifacts/f.bin (over the 50 MB total limit)");
+    expect((await rows()).map((row) => row.path)).toEqual([
+      "a.bin",
+      "b.bin",
+      "c.bin",
+      "d.bin",
+      "e.bin",
     ]);
   });
 });
