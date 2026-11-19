@@ -37,14 +37,17 @@ import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import { readConversationAccessFromSql } from "./access";
+import {
+  conversationAccessFromRows,
+  readConversationAccessRows,
+} from "./access";
 import {
   conversationPinnedForUser,
-  conversationViewerMarks,
   conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
+  readMemberParticipants,
 } from "./membership";
 import {
   conversationFromRecordRow,
@@ -70,6 +73,7 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
@@ -563,9 +567,12 @@ export async function readConversationFeedFromSql(
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
   );
+  // Every child of these roots, read once for work owners and Threads.
+  const conversationTrees = readConversationTrees(db, conversationIds);
   const [
-    accessByConversation,
-    viewerMarksByConversation,
+    accessRows,
+    tree,
+    participantsByRoot,
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
@@ -581,11 +588,19 @@ export async function readConversationFeedFromSql(
     firstHumanMessageTextByConversation,
     treeStateByConversation,
   ] = await Promise.all([
-    readConversationAccessFromSql(db, conversationIds, options.viewer),
-    conversationViewerMarks(
+    readConversationAccessRows(db, conversationIds),
+    conversationTrees,
+    // The viewer's rows give both access and pin marks. Without a viewer, an
+    // actor email feed reads only its pin marks. Feed rows are roots, so
+    // these roots cover the access check.
+    readMemberParticipants(
       db,
       conversationIds,
-      filter ? feedMember(filter) : undefined,
+      options.viewer
+        ? { userId: options.viewer.id }
+        : filter
+          ? feedMember(filter)
+          : undefined,
     ),
     listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds),
@@ -598,23 +613,29 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
-    listConversationWork(conversationIds).then(async (work) => ({
-      work,
-      // Priority uses this time only for finished assigned work. Skip the
-      // message scan for every other Conversation.
-      lastUserMessageAt: await readLastUserMessageAtByConversation(
-        db,
-        work.assignedIds.filter(
-          (conversationId) => work.finishedAtById[conversationId],
+    conversationTrees
+      .then((tree) => listConversationWork(conversationIds, tree))
+      .then(async (work) => ({
+        work,
+        // Priority uses this time only for finished assigned work. Skip the
+        // message scan for every other Conversation.
+        lastUserMessageAt: await readLastUserMessageAtByConversation(
+          db,
+          work.assignedIds.filter(
+            (conversationId) => work.finishedAtById[conversationId],
+          ),
         ),
-      ),
-    })),
+      })),
     readConversationActivityPreviews(db, conversationIds),
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
   ]);
+  const accessByConversation = conversationAccessFromRows(
+    accessRows,
+    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
+  );
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
     new Map(
@@ -646,6 +667,7 @@ export async function readConversationFeedFromSql(
           access: accessByConversation.get(conversationId),
           conversationId,
         })),
+      tree,
     ),
   ]);
   const assignedWork = new Set(conversationWork.assignedIds);
@@ -660,7 +682,9 @@ export async function readConversationFeedFromSql(
       );
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
-        ...viewerMarksByConversation.get(conversation.conversationId),
+        ...(filter
+          ? participantsByRoot.get(conversation.conversationId)
+          : undefined),
         status: row.status,
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,

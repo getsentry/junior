@@ -3,7 +3,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
   type ConversationTreeNode,
-  readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationFeedItem } from "../schema/conversation-feed";
@@ -38,7 +37,7 @@ function findThreadPlacement(
  * their nearest shown ancestor. A Thread shows when it and every ancestor
  * have no `archived_at`. The caller passes only unarchived roots, so a root
  * archive hides its tree with no writes to the children. A Thread uses the
- * access of its root.
+ * access of its root. `tree` holds the trees of at least these roots.
  */
 export async function readFeedThreads(
   db: JuniorDatabase,
@@ -46,25 +45,23 @@ export async function readFeedThreads(
     access?: ConversationAccess | undefined;
     conversationId: string;
   }>,
+  tree: ReadonlyMap<string, ConversationTreeNode>,
 ): Promise<Map<string, ConversationFeedItem[]>> {
   if (roots.length === 0) return new Map();
   const rootIdList = roots.map((root) => root.conversationId);
   const rootIds = new Set(rootIdList);
-  const [rows, tree] = await Promise.all([
-    selectConversationRecords(db)
-      .where(
-        and(
-          inArray(juniorConversations.rootConversationId, rootIdList),
-          eq(juniorConversations.kind, "thread"),
-          isNull(juniorConversations.archivedAt),
-        ),
-      )
-      .orderBy(
-        desc(juniorConversations.lastActivityAt),
-        asc(juniorConversations.conversationId),
+  const rows = await selectConversationRecords(db)
+    .where(
+      and(
+        inArray(juniorConversations.rootConversationId, rootIdList),
+        eq(juniorConversations.kind, "thread"),
+        isNull(juniorConversations.archivedAt),
       ),
-    readConversationTrees(db, rootIdList),
-  ]);
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      asc(juniorConversations.conversationId),
+    );
   if (rows.length === 0) return new Map();
   const threads = rows.map((row) => ({
     conversation: conversationFromRecordRow(row),
