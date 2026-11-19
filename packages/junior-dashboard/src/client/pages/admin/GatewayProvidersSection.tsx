@@ -47,7 +47,8 @@ export function GatewayProvidersSection() {
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
         AI Gateway sends agent model calls only to checked providers that serve
         the model. A model that no checked provider serves can use any provider.
-        Unchecked providers are not used as a fallback.
+        Unchecked providers are not used as a fallback. Saved changes reach
+        every model call within a minute.
       </p>
       {query.data ? (
         <ProvidersForm data={query.data} key={JSON.stringify(query.data)} />

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { gatewayProvidersSchema } from "@/api/schema";
 import { botConfig } from "@/chat/config";
@@ -59,7 +59,7 @@ describe("gateway providers API", () => {
     for (const [modelId, providers] of Object.entries(SERVED)) {
       await cache.getOrLoad(modelId, async () => ({
         value: providers,
-        ttlMs: 60_000,
+        ttlMs: 60 * 60_000,
       }));
     }
     await resolveViewerUser(ADMIN);
@@ -68,6 +68,8 @@ describe("gateway providers API", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     await setEnabled(await authenticatedApi(ADMIN), null);
     await closeDb();
   });
@@ -112,6 +114,37 @@ describe("gateway providers API", () => {
     // No enabled provider serves this model, so it stays unfiltered.
     expect(await sentBody(UNLISTED_MODEL)).toEqual({
       model: UNLISTED_MODEL,
+      messages: [],
+    });
+  });
+
+  it("reuses the setting in process memory for a minute", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const admin = await authenticatedApi(ADMIN);
+    const state = getStateAdapter();
+    await setEnabled(admin, ["anthropic"]);
+    const only = (providers: string[]) => ({
+      model: botConfig.modelId,
+      messages: [],
+      providerOptions: { gateway: { only: providers } },
+    });
+    expect(await sentBody(botConfig.modelId)).toEqual(only(["anthropic"]));
+
+    // Another process saves a new list. This process keeps its copy, and a
+    // model call makes no state read.
+    await state.set("junior:gateway:enabled_providers", ["bedrock"]);
+    const reads = vi.spyOn(state, "get");
+    expect(await sentBody(botConfig.modelId)).toEqual(only(["anthropic"]));
+    expect(reads).not.toHaveBeenCalled();
+
+    vi.setSystemTime(Date.now() + 61_000);
+    expect(await sentBody(botConfig.modelId)).toEqual(only(["bedrock"]));
+    expect(reads).toHaveBeenCalled();
+
+    // A save in this process applies to the next model call right away.
+    await setEnabled(admin, null);
+    expect(await sentBody(botConfig.modelId)).toEqual({
+      model: botConfig.modelId,
       messages: [],
     });
   });

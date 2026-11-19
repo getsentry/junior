@@ -25,6 +25,32 @@ const PROVIDER_SLUGS: Readonly<Record<string, string>> = {
   vertexAnthropic: "vertex",
 };
 
+// Every model call reads the setting and the served providers. Process-local
+// copies keep a model call free of state reads and fetches while they are
+// fresh. A miss stores the pending read, so concurrent calls share it.
+const LOCAL_TTL_MS = 60_000;
+
+type LocalEntry<T> = { value: Promise<T>; expiresAtMs: number };
+
+const localEnabledProviders = new Map<string, LocalEntry<string[] | null>>();
+const localServedProviders = new Map<string, LocalEntry<string[]>>();
+
+function readLocal<T>(
+  entries: Map<string, LocalEntry<T>>,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const entry = entries.get(key);
+  if (entry && entry.expiresAtMs > Date.now()) return entry.value;
+  const value = load();
+  entries.set(key, { value, expiresAtMs: Date.now() + LOCAL_TTL_MS });
+  // A failed read is not kept, so the next call tries again.
+  value.catch(() => {
+    if (entries.get(key)?.value === value) entries.delete(key);
+  });
+  return value;
+}
+
 const enabledProvidersSchema = z.array(z.string());
 // Pi passes the Messages request body as `unknown`. Keep every field, and
 // read only the provider options that this module extends.
@@ -47,16 +73,23 @@ export async function readEnabledProviders(
   return stored === null ? null : enabledProvidersSchema.parse(stored);
 }
 
-/** Save the enabled providers. Null enables every provider again. */
+/**
+ * Save the enabled providers. Null enables every provider again.
+ *
+ * Model calls in this process see the change right away. Other processes see
+ * it when their local copy expires.
+ */
 export async function saveEnabledProviders(
   state: StateAdapter,
   enabled: readonly string[] | null,
 ): Promise<void> {
   if (enabled === null) {
     await state.delete(ENABLED_PROVIDERS_KEY);
-    return;
+  } else {
+    await state.set(ENABLED_PROVIDERS_KEY, [...new Set(enabled)].sort());
   }
-  await state.set(ENABLED_PROVIDERS_KEY, [...new Set(enabled)].sort());
+  // Clear after the write, so a read that started before it is dropped too.
+  localEnabledProviders.clear();
 }
 
 async function fetchServedProviders(modelId: string): Promise<string[]> {
@@ -98,11 +131,15 @@ async function gatewayOnlyForModel(
   // the Pi client that wraps its streams with this module.
   const { getStateAdapter } = await import("@/chat/state/adapter");
   const state = getStateAdapter();
-  const enabled = await readEnabledProviders(state);
+  const enabled = await readLocal(localEnabledProviders, "enabled", () =>
+    readEnabledProviders(state),
+  );
   if (enabled === null) return undefined;
   let served: string[];
   try {
-    served = await readServedProviders(state, modelId);
+    served = await readLocal(localServedProviders, modelId, () =>
+      readServedProviders(state, modelId),
+    );
   } catch (error) {
     // Unfiltered is the default routing, so a failed lookup never breaks a
     // call. The call may reach a provider with a cold cache.
