@@ -177,6 +177,19 @@ new RuleTester().run("no-value-switch", noValueSwitchRule, {
     }
   }
 }`,
+    // A case that falls through shares the next case's work.
+    `function f(k) {
+  switch (k) {
+    case "a":
+      prepare();
+    case "b":
+      run("b");
+      break;
+    case "c":
+      run("c");
+      break;
+  }
+}`,
     // A procedure, not one action.
     `function f(k) {
   switch (k) {

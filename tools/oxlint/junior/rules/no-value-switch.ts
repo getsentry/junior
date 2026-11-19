@@ -59,10 +59,16 @@ function isExit(statement: ESTree.Node): boolean {
 }
 
 /** Count the actions of a case, or return undefined when it does more. */
-function caseActions(item: ESTree.SwitchCase): number | undefined {
+function caseActions(
+  item: ESTree.SwitchCase,
+  isLastCase: boolean,
+): number | undefined {
   const statements = caseStatements(item);
   const last = statements.at(-1);
-  const actions = last && isExit(last) ? statements.slice(0, -1) : statements;
+  const exits = last !== undefined && isExit(last);
+  // A case that falls through into the next one shares that case's work.
+  if (!exits && !isLastCase) return undefined;
+  const actions = exits ? statements.slice(0, -1) : statements;
   if (actions.length > MAX_CASE_ACTIONS || !actions.every(isAction)) {
     return undefined;
   }
@@ -112,9 +118,10 @@ function casesReadSwitchedValue(
  * - `valueSwitch`: `MIN_CASES` or more cases that only return a value.
  * - `actionSwitch`: `MIN_ACTION_CASES` or more cases that each run at most
  *   `MAX_CASE_ACTIONS` expressions (a call or an assignment, optionally
- *   behind an `if` with no `else`) and then `break`, `return`, or end, when
- *   at least one case runs an expression and no case reads the switched
- *   value or its object.
+ *   behind an `if` with no `else`) and then `break` or `return`, or end the
+ *   switch, when at least one case runs an expression and no case reads
+ *   the switched value or its object. A case that falls through into the
+ *   next one does not count as an action.
  *
  * A map checked with `satisfies` reads as data and still fails to compile
  * when a key is missing. Switches stay when a case calls a different function
@@ -154,7 +161,7 @@ export const noValueSwitchRule = defineRule({
         if (cases.length < MIN_ACTION_CASES) return;
         const actions = node.cases
           .filter((item) => item.consequent.length > 0)
-          .map(caseActions);
+          .map((item) => caseActions(item, item === node.cases.at(-1)));
         if (
           actions.every((count) => count !== undefined) &&
           actions.some((count) => count > 0) &&
