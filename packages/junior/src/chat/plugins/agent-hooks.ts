@@ -109,6 +109,7 @@ import {
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -298,6 +299,7 @@ function invocationPluginContext(
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
+  const conversationId = context.conversationId;
   const onCost = context.conversationId
     ? createPluginModelCostRecorder({
         conversationId: context.conversationId,
@@ -311,6 +313,15 @@ function invocationPluginContext(
     conversationId: context.conversationId,
     locationId: context.locationId,
     embedder: createPluginEmbedder(plugin.manifest.name, { onCost }),
+    ...(conversationId
+      ? {
+          loadHistory: async () =>
+            await loadPluginPromptHistory({
+              conversationId,
+              pluginName: plugin.manifest.name,
+            }),
+        }
+      : undefined),
     ...(context.conversationId && turnId
       ? {
           events: createPluginConversationEvents({

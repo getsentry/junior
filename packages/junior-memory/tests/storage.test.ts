@@ -4418,6 +4418,122 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
+  it("skips memories that the replayed history already holds", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const context = slackContext();
+      const db = memoryDb(fixture);
+      const embedder = createTestEmbedder();
+      const otherStore = createMemoryStore(
+        db,
+        slackContext({ threadTs: "1718800999.000000" }),
+        { embedder, now: () => nowMs },
+      );
+      const thisStore = createMemoryStore(db, context, {
+        embedder,
+        now: () => nowMs,
+      });
+      const injected = await otherStore.createConversationMemory({
+        content: "Release notes live in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-injected",
+      });
+      const changed = await otherStore.createConversationMemory({
+        content: "Deploys go out on Tuesdays.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-changed",
+      });
+      const fresh = await otherStore.createConversationMemory({
+        content: "Runbooks live in the wiki.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-fresh",
+      });
+      const beforeCompaction = await thisStore.createConversationMemory({
+        content: "Staging resets every night.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-before-compaction",
+      });
+      const historyStartedAtMs = nowMs + 10;
+      nowMs += 20;
+      const capturedHere = await thisStore.createConversationMemory({
+        content: "The deploy freeze starts on Friday.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:history-captured-here",
+      });
+      const snapshot = (
+        memory: typeof injected.memory,
+        content = memory.content,
+      ) => ({
+        id: memory.id,
+        content,
+        kind: memory.kind,
+        observedAtMs: memory.observedAtMs,
+        scope: "conversation" as const,
+      });
+
+      const emitted: PluginConversationEventValue[] = [];
+      const result = await memoryPlugin().hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        users: memoryUsers(context.userId),
+        db,
+        embedder,
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
+        async loadHistory() {
+          return {
+            startedAtMs: historyStartedAtMs,
+            contexts: [
+              {
+                kind: "recall",
+                version: 1,
+                loadedAtMs: historyStartedAtMs + 5,
+                content: {
+                  memories: [
+                    snapshot(injected.memory),
+                    snapshot(changed.memory, "Deploys go out on Mondays."),
+                  ],
+                },
+              },
+            ],
+          };
+        },
+        log: noopLogger,
+        model: recallOnlyModel,
+        plugin: { name: "memory" },
+        reranker: testReranker(),
+        setSpanAttributes() {},
+        state: memoryState,
+        text: "What should I know before the deploy?",
+      });
+
+      // The history still holds the unchanged injected memory and the facts
+      // captured here after it started. A changed memory and a memory
+      // captured here before the History replacement come back.
+      const contribution = result?.[0];
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      const recalledIds = contribution.context.content["memories"].map(
+        (memory) => memory.id,
+      );
+      expect([...recalledIds].sort()).toEqual(
+        [changed.memory.id, fresh.memory.id, beforeCompaction.memory.id].sort(),
+      );
+      expect(recalledIds).not.toContain(capturedHere.memory.id);
+      expect(emitted).toEqual([
+        expect.objectContaining({ data: { memories: recalledIds } }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("admits only candidates whose rerank score clears the threshold", async () => {
     const fixture = await createMemoryFixture();
 
@@ -4617,7 +4733,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
     }
   }, 15_000);
 
-  it("skips user prompt memory recall when prompt text is blank", async () => {
+  it("skips recall when no person wrote text for the Turn", async () => {
     const fixture = await createMemoryFixture();
 
     try {
