@@ -34,6 +34,19 @@ test("Enter in the stand-in sends the message", async ({ page, dashboard }) => {
   await expect(composer).toHaveValue("");
 });
 
+test("the stand-in grows with its text", async ({ page, dashboard }) => {
+  await page.route(EDITOR_CHUNK, () => {});
+  const composer = await openStandIn(page, dashboard.baseURL);
+  const scrolls = () =>
+    composer.evaluate((field) => field.scrollHeight > field.clientHeight);
+  await composer.pressSequentially("one");
+  for (const line of ["two", "three"]) {
+    await composer.press("Shift+Enter");
+    await composer.pressSequentially(line);
+  }
+  await expect.poll(scrolls).toBe(false);
+});
+
 test("a file pasted into the stand-in is attached", async ({
   page,
   dashboard,
