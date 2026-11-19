@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { codeChangeSizeSchema } from "./object-facts";
 
 export const codeChangeStateSchema = z.enum(["closed", "merged", "open"]);
 export type CodeChangeState = z.output<typeof codeChangeStateSchema>;
@@ -23,6 +24,11 @@ export const codeChangeInputSchema = z
         url: z.string().url().optional(),
       })
       .strict(),
+    /**
+     * The size as the provider counts it now. Junior keeps the stored value
+     * of each part that is omitted.
+     */
+    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
