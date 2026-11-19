@@ -23,7 +23,8 @@ function ToastPortal({ ...props }: ToastPrimitive.Portal.Props) {
 }
 
 // A phone puts toasts at the top, away from the composer, the keyboard,
-// and the "+" button, so a tap meant for them cannot land on a toast.
+// and the "+" button, so a tap meant for them cannot land on a toast. They
+// follow the visual viewport pan that `useMobileViewportHeight` publishes.
 type ToastEdge = "top" | "bottom";
 
 function subscribeToLayout(onChange: () => void) {
@@ -51,7 +52,7 @@ function ToastViewport({
       className={cn(
         "pointer-events-none fixed z-[60] outline-none",
         edge === "top"
-          ? "inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] mx-auto max-w-sm"
+          ? "inset-x-3 top-[calc(var(--dashboard-viewport-offset-top,0px)+max(0.75rem,env(safe-area-inset-top)))] mx-auto max-w-sm"
           : "right-4 bottom-[max(5.25rem,env(safe-area-inset-bottom))] w-full max-w-sm",
         className,
       )}
