@@ -1,6 +1,6 @@
-/** The `$skill-name` reference that the caret is in. */
-export type SkillToken = {
-  /** Index of the `$`. */
+/** The `$skill-name` or `@name` reference that the caret is in. */
+export type ComposerToken = {
+  /** Index of the `$` or `@`. */
   start: number;
   /** Index after the last name character, which can be after the caret. */
   end: number;
@@ -18,7 +18,7 @@ const NAME_AFTER_CARET = /^[a-z0-9-]*/i;
 export function skillTokenAt(
   text: string,
   caret: number,
-): SkillToken | undefined {
+): ComposerToken | undefined {
   const match = TOKEN_BEFORE_CARET.exec(text.slice(0, caret));
   if (!match) return undefined;
   const rest = NAME_AFTER_CARET.exec(text.slice(caret))?.[0] ?? "";

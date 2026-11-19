@@ -70,11 +70,16 @@ Canonical words for Junior code and docs. One concept, one word.
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
 - **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children. A Participant is active until they unsubscribe; an inactive
-  Participant keeps access but leaves the active feed. Access, feeds, and
-  defaults that need people use Participants. A Conversation has no owner.
-  The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
-  Participant like any other, and is kept only for attribution such as spend.
+  its children, or who was invited to it. A Participant is active until they
+  unsubscribe; an inactive Participant keeps access but leaves the active
+  feed. Access, feeds, and defaults that need people use Participants. A
+  Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
+  of the first Turn) is a Participant like any other, and is kept only for
+  attribution such as spend.
+- **Invite**: a person subscribes someone they mention in the composer to a
+  public Conversation's feed. Access stays the same, because anyone can
+  already read a public Conversation and join it by posting. A private
+  Conversation refuses it.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.

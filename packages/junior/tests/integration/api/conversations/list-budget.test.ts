@@ -170,7 +170,7 @@ describe("conversation list API response budget", () => {
       () =>
         expectSqlBudget(
           () => fixture.request("/api/conversations?include=links,media"),
-          { statements: 21, serialRounds: 3 },
+          { statements: 18, serialRounds: 3 },
         ),
       // Pins and waiting rows are not paged, so the body has no budget.
       {
