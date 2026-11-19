@@ -76,7 +76,7 @@ export function createCachedReport<T, const N extends string>(source: {
           logException(error, source.refreshFailedEvent);
         }
       },
-      { "cache.key": source.key },
+      { "cache.key": [source.key] },
     );
 
   return ({ waitUntil }) =>
@@ -122,6 +122,6 @@ export function createCachedReport<T, const N extends string>(source: {
         }
         return cached.report;
       },
-      { "cache.key": source.key },
+      { "cache.key": [source.key] },
     );
 }

@@ -52,7 +52,7 @@ describe("cached report telemetry", () => {
     expect(await read()).toMatchObject({
       name: "telemetry-test-report",
       attributes: {
-        "cache.key": "telemetry-test-report",
+        "cache.key": ["telemetry-test-report"],
         "cache.hit": false,
         "cache.item_size": JSON.stringify({
           refreshAtMs: Date.parse("2026-06-15T12:05:00.000Z"),
@@ -80,7 +80,7 @@ describe("cached report telemetry", () => {
     ).toEqual([
       expect.objectContaining({
         attributes: expect.objectContaining({
-          "cache.key": "telemetry-test-report",
+          "cache.key": ["telemetry-test-report"],
         }),
       }),
     ]);
