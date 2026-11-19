@@ -23,6 +23,7 @@ import {
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
 import { objectPreviewImageSchema } from "./object-preview-image";
+import { ACTIVITY_PREVIEW_MAX_LENGTH } from "./activity-preview-text";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -249,7 +250,7 @@ export const conversationActivityPreviewSchema = z
     createdAt: z.string().datetime(),
     mentions: z.array(actorIdentitySchema).optional(),
     role: z.enum(["assistant", "user"]),
-    text: z.string().min(1),
+    text: z.string().min(1).max(ACTIVITY_PREVIEW_MAX_LENGTH),
   })
   .strict();
 

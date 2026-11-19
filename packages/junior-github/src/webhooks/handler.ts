@@ -246,6 +246,7 @@ export function createGitHubWebhookRoute(args: {
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
+          reviewItems: args.reviewItems,
         });
         if (
           recordedOutcome.applied &&

@@ -188,7 +188,6 @@ export function ClassicShell() {
   // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
-    versionsPoll: true,
   });
   useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {

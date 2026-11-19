@@ -35,6 +35,7 @@ import { formatCompactNumber } from "../../format";
 import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
 import { formatDuration } from "../../time";
+import { NAV_PAGES } from "../../navPages";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -96,7 +97,7 @@ export function Profile(props: {
     <div className="grid min-w-0 gap-5">
       <Link
         className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-        to="/system/people"
+        to={NAV_PAGES.people.to}
       >
         <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
         Back to people

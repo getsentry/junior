@@ -37,6 +37,8 @@ describe("searchConversations MCP tool", () => {
             title: "Viewer launch plan",
             status: "done",
             turnActive: false,
+            treeState: "done",
+            watching: false,
             surface: "slack",
             startedAt: expect.any(String),
             lastSeenAt: expect.any(String),

@@ -31,7 +31,10 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import {
+  activityPreviewText,
+  IDLE_CHANGE_DAYS,
+} from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
@@ -758,7 +761,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             status: "running",
             input: {
               tool_name: "github_getPullRequest",
-              arguments: { repo: "getsentry/payments", number: 42 },
+              arguments: { repo: "getsentry/payments", pull_request: 42 },
             },
           },
         ],
@@ -2493,7 +2496,7 @@ function summaryFromConversation(
             ? { mentions: activityEvent.mentions }
             : undefined),
           role: activityEvent.data.role as "assistant" | "user",
-          text: activityEvent.data.text,
+          text: activityPreviewText(activityEvent.data.text),
         }
       : undefined;
   const {
@@ -4063,9 +4066,8 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
         pluginName: "briefs",
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "148" },
-          { label: "conversations with a brief", value: "93" },
-          { label: "briefs · 30d", value: "61" },
+          { label: "briefs · 30d", tone: "good", value: "61" },
+          { label: "conversations with a brief · 30d", value: "38" },
           { label: "cost · 30d · retained", value: "$0.23" },
           {
             label: "average cost per brief · 30d · retained",
