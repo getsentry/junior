@@ -27,6 +27,7 @@ import {
   createAttachmentUploadBodySchema,
 } from "../schema/conversation-attachment-upload";
 import {
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "../schema/conversation-feed";
@@ -118,6 +119,7 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
+import { conversationFeedPageVersion } from "./feed-page-version";
 import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
@@ -151,22 +153,33 @@ export function createConversationRoutes(
       const viewer = context.get("viewer");
       // The feed does not mark waiting rows, so the read reports their count.
       let waitingRows = 0;
-      return jsonResponse(
-        conversationFeedSchema,
-        await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : undefined),
-          ...(codeRepositoryId ? { codeRepositoryId } : undefined),
-          ...(cursor ? { cursor } : undefined),
-          include,
-          onWaitingRows: (count) => {
-            waitingRows = count;
-          },
-          ...(q ? { q } : undefined),
-          status,
-          ...(viewer ? { viewer } : undefined),
-        }),
-        undefined,
-        (feed) => serializeConversationFeed(feed, waitingRows),
+      const feed = await readConversationFeed({
+        ...(actorEmail ? { actorEmail } : undefined),
+        ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+        ...(cursor ? { cursor } : undefined),
+        include,
+        onWaitingRows: (count) => {
+          waitingRows = count;
+        },
+        ...(q ? { q } : undefined),
+        status,
+        ...(viewer ? { viewer } : undefined),
+      });
+      const pageVersion = conversationFeedPageVersion(feed);
+      const headers = {
+        "cache-control": "private, no-store",
+        [CONVERSATION_FEED_PAGE_VERSION_HEADER]: pageVersion,
+      };
+      // The token hashes the page itself, so it holds everything that the
+      // query and the viewer change on it.
+      if (
+        context.req.header(CONVERSATION_FEED_PAGE_VERSION_HEADER) ===
+        pageVersion
+      ) {
+        return new Response(null, { status: 304, headers });
+      }
+      return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
+        serializeConversationFeed(parsed, waitingRows),
       );
     },
   );
