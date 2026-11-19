@@ -2,7 +2,10 @@
 // format and its one writer, `SqlConversationEventStore.append`. Main changes
 // that code often, so a copy in core would drift and break history loads.
 // Remove this file when core owns Conversation history.
-import type { Message } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
@@ -14,7 +17,7 @@ export { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 export async function appendStepMessages(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  messages: Message[],
+  messages: Array<AssistantMessage | ToolResultMessage>,
 ): Promise<void> {
   await createSqlConversationEventStore(executor).append(
     conversationId,
