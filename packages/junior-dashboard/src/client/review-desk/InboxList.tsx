@@ -112,7 +112,8 @@ export function InboxList(props: {
   const state = useInboxListState(ready);
   const { view } = state;
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
-  const { nowMs, snoozes, sweeper, titleOf } = data;
+  const { nowMs, readSnoozed, snoozes, sweeper, titleOf } = data;
+  useEffect(readSnoozed, [readSnoozed]);
   const done = useReviewItemsData({
     closed: true,
     enabled: data.signedIn && view === "done",

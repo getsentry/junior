@@ -102,9 +102,12 @@ function useBuildInboxData(input: {
     sort: "waiting",
   });
   // Snoozed reads its rows from the server, like To do. It reads every
-  // page, so its rows match its count.
+  // page, so its rows match its count. Only the Inbox list shows them, so
+  // the read waits until a list mounts; the counts read on their own.
+  const [snoozedWanted, setSnoozedWanted] = useState(false);
+  const readSnoozed = useCallback(() => setSnoozedWanted(true), []);
   const { items: snoozedItems, query: snoozedQuery } = useReviewItemsData({
-    enabled: signedIn,
+    enabled: signedIn && snoozedWanted,
     forViewer: true,
     snoozed: true,
   });
@@ -428,6 +431,8 @@ function useBuildInboxData(input: {
     releaseHeld,
     signedIn,
     snoozedRows,
+    /** Start reading Snoozed; the Inbox list calls it when it mounts. */
+    readSnoozed,
     snoozedRead: {
       failed: snoozedFailed,
       /** Every page is read, so an empty list means nothing is snoozed. */
