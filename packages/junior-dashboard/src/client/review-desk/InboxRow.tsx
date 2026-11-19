@@ -10,11 +10,10 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
-import { Link, useHref, useNavigate } from "react-router";
+import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
   ReviewItemActionBody,
@@ -58,6 +57,7 @@ import {
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
+import { openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
@@ -405,19 +405,11 @@ function InboxRowBody(
   },
 ) {
   const { bundle, conversation } = props;
-  const navigate = useNavigate();
   // A row that names its Conversation opens it. A row for one item names
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
   const path = rowConversationPath(props);
-  const href = useHref(path);
-  // As a click on the head link does: a Ctrl/⌘ or Shift click, or a middle
-  // click, opens a new tab.
-  const openConversation = (event: MouseEvent) => {
-    if (event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey)
-      window.open(href, "_blank", "noopener");
-    else void navigate(path);
-  };
+  const openConversation = useOpenPath(path);
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
@@ -497,27 +489,12 @@ function InboxRowBody(
         conversation={conversation}
       />
     ) : null;
-  // A click on the row does what the head link does, except on the links
-  // and buttons in it, such as pills, summary chips and images, or at the
-  // end of a text selection.
-  const rowClick = {
-    onAuxClick: (event: ReactMouseEvent<HTMLElement>) => {
-      if (event.button !== 1 || !opens || onControl(event)) return;
-      openConversation(event.nativeEvent);
-    },
-    // A middle press would start the browser's autoscroll, not the new tab
-    // that its click opens.
-    onMouseDown: (event: ReactMouseEvent<HTMLElement>) => {
-      if (event.button === 1 && opens && !onControl(event))
-        event.preventDefault();
-    },
-    onClick: (event: ReactMouseEvent<HTMLElement>) => {
-      if (event.button !== 0 || onControl(event)) return;
-      if (!opens) return props.onToggle();
-      if (window.getSelection()?.isCollapsed === false) return;
-      openConversation(event.nativeEvent);
-    },
-  };
+  // A click on the row does what the head link does, except on the pills,
+  // summary chips and images in it.
+  const rowClick = openOnClick(
+    openConversation,
+    opens ? undefined : props.onToggle,
+  );
   return (
     <>
       <div
@@ -781,19 +758,6 @@ function InboxRowBody(
         </div>
       ) : null}
     </>
-  );
-}
-
-/**
- * Whether a click on the row head belongs to something else: a control in
- * the head, or a popover that React bubbles through the head from a portal.
- */
-function onControl(event: { currentTarget: Element; target: EventTarget }) {
-  const { target } = event;
-  return (
-    !(target instanceof Element) ||
-    !event.currentTarget.contains(target) ||
-    Boolean(target.closest("a, button"))
   );
 }
 

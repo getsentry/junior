@@ -4,6 +4,7 @@ import {
   codeChangeInputSchema,
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
+import { setSpanAttributes } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 
@@ -14,6 +15,14 @@ export async function recordCodeChange(
   input: CodeChangeInput,
 ): Promise<void> {
   const change = codeChangeInputSchema.parse(input);
+  // Each provider event records the change again. These ids count distinct
+  // code changes.
+  setSpanAttributes({
+    "vcs.change.id": String(change.number),
+    "vcs.change.state": change.state,
+    "vcs.provider.name": provider,
+    "vcs.repository.url.full": change.repository.url,
+  });
   const repositories = await db
     .insert(juniorCodeRepositories)
     .values({

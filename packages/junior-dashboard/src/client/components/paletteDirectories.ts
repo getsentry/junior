@@ -47,6 +47,7 @@ import {
 import type { DashboardHeaderNavItem } from "../inbox/components/layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
 import { matchedItem, type PaletteItem } from "./paletteItem";
+import { NAV_PAGES } from "../navPages";
 
 const LIMIT = 8;
 const LABEL_LENGTH = 120;
@@ -269,7 +270,7 @@ export function useDirectoryPaletteItems(input: {
             id: `run-${run.executionId}`,
             label: run.title ?? run.automationTitle,
             meta: run.status,
-            to: `/automations/runs?${new URLSearchParams({ [AUTOMATION_RUN_PARAM]: run.executionId })}`,
+            to: `${NAV_PAGES.automationRuns.to}?${new URLSearchParams({ [AUTOMATION_RUN_PARAM]: run.executionId })}`,
           },
           query,
           [run.automationTitle, run.status, run.kind, run.conversationId],
