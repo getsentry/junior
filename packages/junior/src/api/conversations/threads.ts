@@ -3,7 +3,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
   type ConversationTreeNode,
-  readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationFeedItem } from "../schema/conversation-feed";
@@ -37,8 +36,8 @@ function findThreadPlacement(
 type FeedThreadRecords = Awaited<ReturnType<typeof readFeedThreadRecords>>;
 
 /**
- * Read the stored Threads of the listed roots for the feed, with their trees
- * and read-time titles. It needs no access, so it can start with the other
+ * Read the stored Threads of the listed roots for the feed, with their
+ * read-time titles. It needs no access, so it can start with the other
  * feed reads. The caller passes only unarchived roots, so a root archive
  * hides its tree with no writes to the children.
  */
@@ -47,21 +46,18 @@ export async function readFeedThreadRecords(
   rootIds: string[],
 ) {
   if (rootIds.length === 0) return undefined;
-  const [rows, tree] = await Promise.all([
-    selectConversationRecords(db)
-      .where(
-        and(
-          inArray(juniorConversations.rootConversationId, rootIds),
-          eq(juniorConversations.kind, "thread"),
-          isNull(juniorConversations.archivedAt),
-        ),
-      )
-      .orderBy(
-        desc(juniorConversations.lastActivityAt),
-        asc(juniorConversations.conversationId),
+  const rows = await selectConversationRecords(db)
+    .where(
+      and(
+        inArray(juniorConversations.rootConversationId, rootIds),
+        eq(juniorConversations.kind, "thread"),
+        isNull(juniorConversations.archivedAt),
       ),
-    readConversationTrees(db, rootIds),
-  ]);
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      asc(juniorConversations.conversationId),
+    );
   if (rows.length === 0) return undefined;
   const threads = rows.map((row) => ({
     conversation: conversationFromRecordRow(row),
@@ -71,20 +67,22 @@ export async function readFeedThreadRecords(
     db,
     threads.map(({ conversation }) => conversation),
   );
-  return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads, tree };
+  return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads };
 }
 
 /**
  * Nest the shown Threads of `readFeedThreadRecords` under their nearest shown
  * ancestor. A Thread shows when it and every ancestor have no
- * `archived_at`. A Thread uses the access of its root.
+ * `archived_at`. A Thread uses the access of its root. `tree` holds the
+ * trees of at least the listed roots.
  */
 export function nestFeedThreads(
   records: FeedThreadRecords,
+  tree: ReadonlyMap<string, ConversationTreeNode>,
   accessByRoot: ReadonlyMap<string, ConversationAccess | undefined>,
 ): Map<string, ConversationFeedItem[]> {
   if (!records) return new Map();
-  const { firstHumanMessageTexts, rootIds, threads, tree } = records;
+  const { firstHumanMessageTexts, rootIds, threads } = records;
   const childrenByParent = new Map<string, ConversationFeedItem[]>();
   for (const { conversation, row } of threads) {
     const parentId = findThreadPlacement(

@@ -1,5 +1,5 @@
 {
-  "id": "17ee6673-f0c7-474f-a7a7-fb809ec8b423",
+  "id": "34948016-a9a1-442a-b126-dbc8ada7eda7",
   "prevId": "de0b7922-760f-4aea-b229-3baf89a3f410",
   "version": "7",
   "dialect": "postgresql",
@@ -1561,18 +1561,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "additions": {
-          "name": "additions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "changed_files": {
-          "name": "changed_files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1585,12 +1573,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
-        },
-        "deletions": {
-          "name": "deletions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "draft": {
           "name": "draft",
@@ -4060,6 +4042,22 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "junior_identities_slack_person_search_idx": {
+          "name": "junior_identities_slack_person_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },

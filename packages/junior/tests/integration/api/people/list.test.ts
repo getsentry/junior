@@ -6,7 +6,11 @@ import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-import { expectSqlBudget, measureSql } from "../../../fixtures/sql-budget";
+import {
+  expectNoFullScan,
+  expectSqlBudget,
+  measureSql,
+} from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import { recordTurn, seedPeople, turnActorIdentityId } from "./fixture";
@@ -135,11 +139,14 @@ describe("people list API", () => {
         });
       }
 
-      // One round of bounded reads, whatever the history length.
-      const report = await expectSqlBudget(() => readPeopleListFromSql(), {
-        statements: 4,
-        serialRounds: 1,
-      });
+      // One round of bounded reads, whatever the history length. Each read
+      // of a big table uses an index.
+      const report = await expectNoFullScan(() =>
+        expectSqlBudget(() => readPeopleListFromSql(), {
+          statements: 4,
+          serialRounds: 1,
+        }),
+      );
 
       expect(report.people.map((person) => person.actor.email)).toEqual([
         "bob@example.com",
