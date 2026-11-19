@@ -137,8 +137,9 @@ export async function collectInboxSnoozeMatchKeys(
 
 /**
  * Schedule the timer of a snooze. Its `timer.fired` Event wakes the
- * snoozes whose triggers name `timerId`. Schedule it after the snoozes
- * commit: a claimed timer is removed even when no snooze names it yet.
+ * snoozes whose triggers name `timerId`. A claimed timer is removed even
+ * when no snooze names it yet, so a caller that schedules before the
+ * snoozes commit wakes them itself if the fire time passed meanwhile.
  */
 export async function scheduleInboxSnoozeTimer(
   timerId: string,
