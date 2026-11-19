@@ -13,7 +13,6 @@ import {
   commitStep,
   completeTurn,
   failTurn,
-  heartbeat,
   holdsLease,
   reclaimExpired,
 } from "@/core/turn/state";
@@ -140,7 +139,6 @@ describe("Turn state", () => {
 
     await expect(holdsLease(fixture.sql, taken!)).resolves.toBe(true);
     await expect(holdsLease(fixture.sql, stale)).resolves.toBe(false);
-    await expect(heartbeat(fixture.sql, stale, LEASE_MS)).resolves.toBe(false);
     await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
       false,
     );
@@ -170,23 +168,6 @@ describe("Turn state", () => {
     expect(["worker-b", "worker-c"]).toContain(turn.leaseOwner);
   });
 
-  it("extends the lease, and rejects a heartbeat with a stale lease_epoch", async () => {
-    const claimed = (await claim("worker-a", EXPIRED_LEASE_MS))!;
-
-    await expect(heartbeat(fixture.sql, claimed, LEASE_MS)).resolves.toBe(true);
-    await expect(reclaimExpired(fixture.sql)).resolves.toEqual([]);
-
-    const before = await readTurn();
-    await expect(
-      heartbeat(
-        fixture.sql,
-        { turnId, leaseEpoch: claimed.leaseEpoch - 1 },
-        LEASE_MS * 10,
-      ),
-    ).resolves.toBe(false);
-    await expect(readTurn()).resolves.toEqual(before);
-  });
-
   it("queues a Turn whose lease expired and fences out the old lease holder", async () => {
     const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
 
@@ -199,7 +180,6 @@ describe("Turn state", () => {
       leaseOwner: null,
       leaseExpiresAt: null,
     });
-    await expect(heartbeat(fixture.sql, stale, LEASE_MS)).resolves.toBe(false);
     await expect(completeTurn(fixture.sql, stale)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(queued);
 
@@ -260,9 +240,6 @@ describe("Turn state", () => {
     expect(completed.endedAt).toBeInstanceOf(Date);
 
     await expect(claim()).resolves.toBeUndefined();
-    await expect(heartbeat(fixture.sql, claimed, LEASE_MS)).resolves.toBe(
-      false,
-    );
     await expect(failTurn(fixture.sql, claimed, "late")).resolves.toBe(false);
     await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(completed);
@@ -361,7 +338,6 @@ describe("Turn state", () => {
     const running = await readTurn();
     expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
 
-    await expect(heartbeat(fixture.sql, first, LEASE_MS)).resolves.toBe(false);
     await expect(commitStep(fixture.sql, first, finishedStep())).resolves.toBe(
       false,
     );

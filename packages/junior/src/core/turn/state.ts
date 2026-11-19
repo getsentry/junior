@@ -2,8 +2,8 @@
 //
 //            claimTurn            completeTurn, commitStep (completed)
 //   queued ─────────────▶ running ─────────────────────────────────▶ completed
-//     │   ◀─────────────    │  ↺ heartbeat
-//     │   commitStep        │  ↺ claimTurn (lease expired)
+//     │   ◀─────────────    │  ↺ claimTurn (lease expired)
+//     │   commitStep        │
 //     │   (continue),       │                failTurn
 //     │   reclaimExpired    ├──────────────────────────▶ failed
 //     │   (lease expired)   │
@@ -17,7 +17,6 @@
 // | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
 // | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
 // | claimTurn              | queued, or expired    | +1          | +1       |          | set      |
-// | heartbeat              | running, fenced       |             |          |          | extended |
 // | commitStep (continue)  | running, fenced, step |             | 0        | +1       | cleared  |
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
 // | completeTurn           | running, fenced       |             |          |          | cleared  |
@@ -124,21 +123,6 @@ export async function holdsLease(
     .select({ id: juniorTurns.id })
     .from(juniorTurns)
     .where(leaseFence(lease));
-  return rows.length > 0;
-}
-
-/** Extends the lease by `leaseMs` from now. False when the lease is lost. */
-export async function heartbeat(
-  executor: JuniorSqlDatabase,
-  lease: TurnLease,
-  leaseMs: number,
-): Promise<boolean> {
-  const rows = await executor
-    .db()
-    .update(juniorTurns)
-    .set({ leaseExpiresAt: leaseExpiry(leaseMs), updatedAt: sql`now()` })
-    .where(leaseFence(lease))
-    .returning({ id: juniorTurns.id });
   return rows.length > 0;
 }
 
