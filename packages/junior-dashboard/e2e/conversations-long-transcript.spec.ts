@@ -534,6 +534,17 @@ test("shows a far message at once while its page loads", async ({
   await expect(row(transcript, 399)).not.toBeInViewport({ ratio: 0.5 });
   await expect(standIn).toHaveCount(0);
   await expect(item).toHaveAttribute("aria-current", "location");
+
+  // The stand-in takes the pointer from the rows below it, and the wheel
+  // dismisses it.
+  mock.holdAround = new Promise(() => {});
+  await outline
+    .getByRole("button", { name: "Transcript message 800 with" })
+    .click();
+  const nextStandIn = page.locator('[data-outline-stand-in="800"]');
+  await nextStandIn.hover();
+  await page.mouse.wheel(0, -400);
+  await expect(nextStandIn).toHaveCount(0);
 });
 
 test("drags the outline through messages whose pages load slowly", async ({

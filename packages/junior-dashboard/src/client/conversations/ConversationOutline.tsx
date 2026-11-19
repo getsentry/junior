@@ -196,18 +196,20 @@ export function ConversationOutline(props: {
     );
   }, [events, jumpSeq, scrollRef]);
 
-  // A person who scrolls the transcript takes over from the stand-in.
+  // A person who scrolls takes over from the jump: the stand-in goes, and
+  // the rows that land later do not move the transcript.
+  const dismissStandIn = () => {
+    jumpedSeqRef.current = undefined;
+    setJumpSeq(undefined);
+    setStandInSeq(undefined);
+  };
+  const dismissOnKey = useEffectEvent(dismissStandIn);
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll || standInSeq === undefined) return;
-    const hide = () => setStandInSeq(undefined);
-    const inputs = ["keydown", "touchstart", "wheel"] as const;
-    for (const input of inputs) {
-      scroll.addEventListener(input, hide, { passive: true });
-    }
-    return () => {
-      for (const input of inputs) scroll.removeEventListener(input, hide);
-    };
+    const dismiss = () => dismissOnKey();
+    scroll.addEventListener("keydown", dismiss);
+    return () => scroll.removeEventListener("keydown", dismiss);
   }, [scrollRef, standInSeq]);
 
   // The pages of the pointed item and its neighbours load before a click,
@@ -260,6 +262,7 @@ export function ConversationOutline(props: {
         <OutlineStandIn
           conversation={props.conversation}
           item={standIn}
+          onDismiss={dismissStandIn}
           topPx={JUMP_MARGIN_PX}
         />
       ) : null}

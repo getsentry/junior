@@ -10,11 +10,13 @@ import { cn } from "../styles";
  * a jump, while the transcript loads and mounts the message's rows. It draws
  * the item like its transcript rows, so the swap to the real rows does not
  * move the message. It holds only what the outline knows: the message text
- * and the start of the reply.
+ * and the start of the reply. It takes the pointer, so no input reaches the
+ * hidden rows below it, and a wheel or touch on it dismisses it.
  */
 export function OutlineStandIn(props: {
   conversation: ConversationTranscript;
   item: ConversationOutlineItem;
+  onDismiss(): void;
   /** Room above the message, like the jump leaves. */
   topPx: number;
 }) {
@@ -25,13 +27,15 @@ export function OutlineStandIn(props: {
       className={cn(
         // The padding of the scroll region lines the column up with it.
         transcriptScrollClassName,
-        "pointer-events-none absolute inset-0 z-10 overflow-hidden bg-background",
+        "absolute inset-0 z-10 overflow-hidden bg-background",
       )}
       data-outline-stand-in={item.seq}
-      inert
+      onTouchStart={props.onDismiss}
+      onWheel={props.onDismiss}
     >
       <div
         className="mx-auto w-full max-w-[52.5rem]"
+        inert
         style={{ paddingTop: props.topPx }}
       >
         <TranscriptRows>
