@@ -866,13 +866,13 @@ export function waitingConversationIdsQuery(
         juniorReviewItemConversations.conversationId,
       ),
     )
-    .where(reviewItemNeedsUser(userId));
+    .where(reviewItemNeedsUserNow(userId));
 }
 
 /**
  * List the root Conversations that wait on a User: each root or one of its
- * child conversations is linked to an open item that needs the User
- * (`reviewItemNeedsUser`).
+ * child conversations is linked to an open item that needs the User now
+ * (`reviewItemNeedsUserNow`), so a snoozed item leaves it out.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,

@@ -498,6 +498,7 @@ export async function mockViewerCodeChanges(
     draft?: boolean;
     idleDays: number;
     number: number;
+    size?: { additions?: number; changedFiles?: number; deletions?: number };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -527,6 +528,7 @@ export async function mockViewerCodeChanges(
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
+          ...(change.size ? { size: change.size } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,

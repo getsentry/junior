@@ -5,7 +5,10 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getDb } from "@/chat/db";
-import { getReviewItem } from "@/chat/review-items/store";
+import {
+  getReviewItem,
+  waitingConversationIdsQuery,
+} from "@/chat/review-items/store";
 import {
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
@@ -37,6 +40,12 @@ async function storedStates() {
     .from(juniorInboxSnoozes)
     .orderBy(juniorInboxSnoozes.createdAt, juniorInboxSnoozes.id);
   return rows.map((row) => row.state);
+}
+
+/** The roots that the Conversations feed's Needs you section pins. */
+async function feedWaitingIds(userId: string) {
+  const rows = await waitingConversationIdsQuery(getDb(), userId);
+  return [...new Set(rows.map((row) => row.conversationId))];
 }
 
 /** A GitHub-style Event about one pull request. */
@@ -116,6 +125,7 @@ describe("snoozes", () => {
     };
     expect(await asAna.inbox()).toEqual(awake);
     expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
+    expect(await feedWaitingIds(ana.id)).toEqual([ROOT]);
     const versionBefore = await asAna.versions();
 
     // A row snooze is one snooze per open item in it.
@@ -126,6 +136,7 @@ describe("snoozes", () => {
     expect(created.status).toBe(201);
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    expect(await feedWaitingIds(ana.id)).toEqual([]);
     const snoozed = await asAna.snoozed();
     expect(snoozed.count).toBe(2);
     expect([...snoozed.items].sort()).toEqual(awake.inbox);
