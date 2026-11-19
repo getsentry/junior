@@ -84,6 +84,28 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
+/** A search of tracked code changes, for the composer `#` menu. */
+export const codeChangeSearchQuerySchema = z
+  .object({ q: z.string().trim().min(1).max(100) })
+  .strict();
+
+/** A tracked code change that a Message can link to. */
+export const mentionableCodeChangeSchema = z
+  .object({
+    draft: z.boolean(),
+    number: z.number().int(),
+    /** `owner/repo`. */
+    repository: z.string(),
+    state: codeChangeStateSchema,
+    title: z.string().nullable(),
+    url: z.string(),
+  })
+  .strict();
+
+export const codeChangeSearchReportSchema = z
+  .object({ changes: z.array(mentionableCodeChangeSchema) })
+  .strict();
+
 export const codeRepositoryParamsSchema = z
   .object({ repositoryId: z.string().uuid() })
   .strict();
@@ -151,6 +173,9 @@ export const personCodeQuerySchema = z
   .strict();
 
 export type CodeActivityDay = z.infer<typeof codeActivityDaySchema>;
+export type CodeChangeSearchReport = z.infer<
+  typeof codeChangeSearchReportSchema
+>;
 export type CodeChangeSummaryReport = z.infer<
   typeof codeChangeSummaryReportSchema
 >;
@@ -158,3 +183,4 @@ export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
 export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
 export type CodeRepositoryReport = z.infer<typeof codeRepositoryReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;
+export type MentionableCodeChange = z.infer<typeof mentionableCodeChangeSchema>;
