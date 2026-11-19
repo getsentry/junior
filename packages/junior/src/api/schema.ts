@@ -96,6 +96,7 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
@@ -332,6 +333,12 @@ export type {
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
+export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

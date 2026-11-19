@@ -84,6 +84,7 @@ attributes. Nested logs and spans inherit them.
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
@@ -96,6 +97,8 @@ attributes. Nested logs and spans inherit them.
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
+| Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
+| Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
 
 ## Trace Shape
@@ -117,6 +120,37 @@ attributes. Nested logs and spans inherit them.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
+
+## Response Size
+
+| Attribute                      | Span                                | Measures                                       | Set in                                           |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| `app.api.response.chars`       | `serialize` (`Write API response`)  | JSON body length in UTF-16 chars, uncompressed | `api/http.ts`                                    |
+| `app.dashboard.response.chars` | `deserialize` (`Read API response`) | the same, as the browser read it               | `packages/junior-dashboard/src/client/sentry.ts` |
+| `http.response.body.size`      | browser `http.client`               | body bytes on the wire, compressed             | `packages/junior-dashboard/src/client/sentry.ts` |
+
+- Vercel compresses responses at the edge, so only the browser sees the
+  compressed size.
+- `deserialize` spans exist only while a pageload or navigation is open.
+  Fetch spans get `http.response.body.size` at all times, polls included.
+  A fetch span without it got no resource timing entry before it ended.
+
+Largest dashboard API responses, by server route.
+
+```text
+dataset=spans query='span.op:serialize has:tags[app.api.response.chars,number]'
+fields=transaction,max(tags[app.api.response.chars,number]),p95(tags[app.api.response.chars,number]),count()
+sort=-max(tags[app.api.response.chars,number])
+```
+
+Compressed size in the browser. Use `tags[app.dashboard.response.chars,number]`
+on `span.op:deserialize` for the browser chars.
+
+```text
+dataset=spans query='span.op:http.client has:tags[http.response.body.size,number]'
+fields=url.full,max(tags[http.response.body.size,number]),p95(tags[http.response.body.size,number]),count()
+sort=-max(tags[http.response.body.size,number])
+```
 
 ## Query Recipes
 
