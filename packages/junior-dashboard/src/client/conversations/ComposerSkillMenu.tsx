@@ -20,7 +20,7 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import { cn } from "../styles";
-import { skillTokenAt, type SkillToken } from "./composerSkillToken";
+import { skillTokenAt, type SkillToken } from "./skillReferences";
 
 /**
  * Suggest skills while the reader types `$` in the composer. Focus stays in

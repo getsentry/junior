@@ -8,6 +8,7 @@ import { cn } from "../styles";
 import { replaceSlackEmoji } from "./emoji";
 import { useAnchorClass } from "./links";
 import { PersonMention } from "./people";
+import { SkillReferenceText } from "./skills";
 
 type Mention = {
   end: number;
@@ -48,7 +49,8 @@ export function MentionPeopleProvider(props: {
 /**
  * Render one text run with Slack `<@U123>` and `<#C123|name>` tokens as
  * readable mentions, Slack `:name:` codes as emoji, and search matches
- * highlighted. It reads people from the nearest `MentionPeopleProvider`.
+ * highlighted. It reads people from the nearest `MentionPeopleProvider`, and
+ * links skills under a `SkillReferencesProvider`.
  */
 export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -56,7 +58,7 @@ export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   for (const mention of findMentions(text)) {
     if (mention.start > cursor) {
       nodes.push(
-        <HighlightText
+        <SkillReferenceText
           key={`${keyBase}-m-${cursor}`}
           text={replaceSlackEmoji(text.slice(cursor, mention.start))}
         />,
@@ -69,7 +71,7 @@ export function renderTextTokens(text: string, keyBase: string): ReactNode[] {
   }
   if (cursor < text.length) {
     nodes.push(
-      <HighlightText
+      <SkillReferenceText
         key={`${keyBase}-m-${cursor}`}
         text={replaceSlackEmoji(text.slice(cursor))}
       />,

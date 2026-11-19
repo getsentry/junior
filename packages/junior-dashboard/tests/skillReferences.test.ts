@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 
-import { skillTokenAt } from "../src/client/conversations/composerSkillToken";
+import {
+  findSkillReferences,
+  skillTokenAt,
+} from "../src/client/conversations/skillReferences";
 
 // `|` marks the caret.
 const at = (text: string) => {
@@ -20,4 +23,15 @@ it("skips a dollar after a word or outside a name", () => {
   expect(at("US$5|")).toBeUndefined();
   expect(at("$$x|")).toBeUndefined();
   expect(at("$review |")).toBeUndefined();
+});
+
+it("finds each complete skill reference the runtime reads", () => {
+  expect(findSkillReferences("use $brief, then ($Review-PR).")).toEqual([
+    { start: 4, end: 10, name: "brief" },
+    { start: 18, end: 28, name: "review-pr" },
+  ]);
+  expect(findSkillReferences("US$5 $$x $ $-x")).toEqual([]);
+  expect(findSkillReferences("$brief-")).toEqual([
+    { start: 0, end: 6, name: "brief" },
+  ]);
 });
