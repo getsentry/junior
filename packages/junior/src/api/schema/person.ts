@@ -11,6 +11,32 @@ export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
   .strict();
 
+/**
+ * A people search. With `conversationId`, it finds only people in the Slack
+ * workspace of that Conversation, so a mention reaches them there.
+ */
+export const peopleSearchQuerySchema = z
+  .object({
+    conversationId: z.string().min(1).max(500).optional(),
+    q: z.string().trim().min(1).max(100),
+  })
+  .strict();
+
+/**
+ * A person that a Message can mention: they have a Slack user id. `hasUser`
+ * is true when they are a User, so they have a feed to Invite them to.
+ */
+export const mentionablePersonSchema = actorIdentitySchema
+  .extend({
+    hasUser: z.literal(true).optional(),
+    slackUserId: z.string().min(1),
+  })
+  .strict();
+
+export const peopleSearchReportSchema = z
+  .object({ people: z.array(mentionablePersonSchema) })
+  .strict();
+
 /** Route parameters for the photo of one Identity. */
 export const avatarParamsSchema = z
   .object({ identityId: z.string().min(1).max(200) })
@@ -154,6 +180,8 @@ export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;
 export type PersonalSpendReport = z.infer<typeof personalSpendReportSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
+export type MentionablePerson = z.infer<typeof mentionablePersonSchema>;
+export type PeopleSearchReport = z.infer<typeof peopleSearchReportSchema>;
 
 /** The most recent merged code changes and Conversations a person card lists. */
 export const PERSON_CARD_RECENT_LIMIT = 3;
