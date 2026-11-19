@@ -54,8 +54,8 @@ export type ComposerTypeahead = {
 /**
  * Suggest rows while the reader types a reference. Focus stays in the text
  * box: arrows move, Enter or Tab inserts, Escape closes. While `pending`,
- * the rows are from an earlier query: Enter and Tab do nothing, so they
- * neither insert a stale row nor send the message.
+ * the rows are from an earlier query, or there are none yet: Enter and Tab
+ * do nothing, so they neither insert a stale row nor send the message.
  */
 export function ComposerMenu<Row>(props: {
   children(row: Row): ReactNode;
@@ -108,6 +108,14 @@ export function ComposerMenu<Row>(props: {
       return action !== undefined;
     });
   }, [active, onSelect, open, pending, rows, typeahead]);
+
+  // Before the first rows arrive there is no menu, so Enter would send the
+  // half-typed reference and Tab would leave the text box. Hold both.
+  const waiting = typeahead.query !== undefined && !open && pending;
+  useEffect(() => {
+    if (!waiting) return;
+    return typeahead.registerKeys((key) => key === "select");
+  }, [typeahead, waiting]);
 
   // A text box supports these. `aria-expanded` needs the combobox role.
   useEffect(() => {

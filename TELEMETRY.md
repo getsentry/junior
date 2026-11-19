@@ -12,6 +12,7 @@ table documents its attributes and how to read them. Paths are under
 | `event_id`                          | captured Sentry error        | failure notice in Slack     |
 | `trace_id` / `span_id`              | one trace / one span         | errors, logs, spans         |
 | `gen_ai.conversation.id`            | Conversation                 | Slack footer, logs, spans   |
+| `app.conversation.root_id`          | root Conversation            | Turn logs and spans         |
 | `messaging.message.conversation_id` | Slack thread                 | logs, spans                 |
 | `messaging.message.id`              | Slack message ts or queue id | logs, spans                 |
 | `messaging.destination.name`        | Slack channel or queue topic | logs, spans                 |
@@ -25,7 +26,13 @@ table documents its attributes and how to read them. Paths are under
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
 | `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `vcs.change.id`                     | Code change number           | code change record spans    |
 
+- `gen_ai.conversation.id` also names child agents. Count root Conversations
+  by `app.conversation.root_id`.
+- Each provider event records a Code change again. Count Code changes by
+  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
+  `open`, `closed`, or `merged`.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only warnings and audit info events (`app.log.audit:true`),
@@ -110,6 +117,37 @@ attributes. Nested logs and spans inherit them.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
+
+## Response Size
+
+| Attribute                      | Span                                | Measures                                       | Set in                                           |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| `app.api.response.chars`       | `serialize` (`Write API response`)  | JSON body length in UTF-16 chars, uncompressed | `api/http.ts`                                    |
+| `app.dashboard.response.chars` | `deserialize` (`Read API response`) | the same, as the browser read it               | `packages/junior-dashboard/src/client/sentry.ts` |
+| `http.response.body.size`      | browser `http.client`               | body bytes on the wire, compressed             | `packages/junior-dashboard/src/client/sentry.ts` |
+
+- Vercel compresses responses at the edge, so only the browser sees the
+  compressed size.
+- `deserialize` spans exist only while a pageload or navigation is open.
+  Fetch spans get `http.response.body.size` at all times, polls included.
+  A fetch span without it got no resource timing entry before it ended.
+
+Largest dashboard API responses, by server route.
+
+```text
+dataset=spans query='span.op:serialize has:tags[app.api.response.chars,number]'
+fields=transaction,max(tags[app.api.response.chars,number]),p95(tags[app.api.response.chars,number]),count()
+sort=-max(tags[app.api.response.chars,number])
+```
+
+Compressed size in the browser. Use `tags[app.dashboard.response.chars,number]`
+on `span.op:deserialize` for the browser chars.
+
+```text
+dataset=spans query='span.op:http.client has:tags[http.response.body.size,number]'
+fields=url.full,max(tags[http.response.body.size,number]),p95(tags[http.response.body.size,number]),count()
+sort=-max(tags[http.response.body.size,number])
+```
 
 ## Query Recipes
 

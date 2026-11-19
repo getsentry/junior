@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { mobile, screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -237,6 +238,84 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await expect(page).toHaveURL(/\/code$/);
     await expect(palette).toHaveCount(0);
+  });
+
+  test("finds the pages of every menu by name", async ({ page, dashboard }) => {
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await page.goto(dashboard.baseURL);
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    const input = palette.getByRole("combobox");
+    const pages = palette.getByRole("group", { name: "Go to" });
+    // One page from each menu: the pane, the profile menu, and the pages
+    // that the Automations, System, Memories, and Settings areas list.
+    for (const name of [
+      "Snoozed",
+      "Pull requests",
+      "Settings",
+      "My profile",
+      "Automation runs",
+      "Workspaces",
+      "Memory library",
+      "API Tokens",
+    ]) {
+      await input.fill(name);
+      await expect(
+        pages.getByRole("option", { name: new RegExp(`^${name}`) }),
+      ).toBeVisible();
+    }
+    await screenshot(page, "inbox-palette-pages", { lightTheme: true });
+
+    await input.fill("API Tokens");
+    await input.press("Enter");
+    await expect(palette).toHaveCount(0);
+    await expect(page).toHaveURL(/\/settings#api-tokens$/);
+    await expect(
+      page.getByRole("heading", { name: "API Tokens" }),
+    ).toBeVisible();
+  });
+
+  test("sends feedback from the command palette", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.addInitScript(() => {
+      Object.assign(window, {
+        __JUNIOR_DASHBOARD_SENTRY__: {
+          dsn: "https://public@sentry.example/1",
+          tracesSampleRate: 0,
+        },
+      });
+    });
+    await page.route("https://sentry.example/**", (route) =>
+      route.fulfill({ json: {} }),
+    );
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await page.goto(dashboard.baseURL);
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await palette.getByRole("combobox").fill("feedback");
+    const entry = palette
+      .getByRole("group", { name: "Actions" })
+      .getByRole("option", { name: "Send feedback" });
+    await expect(entry).toHaveAttribute("aria-selected", "true");
+    await screenshot(page, "inbox-palette-feedback", { lightTheme: true });
+    await page.keyboard.press("Enter");
+
+    await expect(palette).toHaveCount(0);
+    const dialog = page.getByRole("dialog", { name: "Send feedback" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // On a phone the palette offers it too.
+    await page.setViewportSize(mobile);
+    await page.keyboard.press("ControlOrMeta+k");
+    await palette.getByRole("combobox").fill("feedback");
+    await palette.getByRole("option", { name: "Send feedback" }).click();
+    await expect(dialog).toBeVisible();
   });
 
   test("ranks the active tab's results first", async ({ page, dashboard }) => {

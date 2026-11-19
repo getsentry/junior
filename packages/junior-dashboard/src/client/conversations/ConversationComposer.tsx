@@ -7,6 +7,7 @@ import {
   memo,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -242,6 +243,10 @@ export const ConversationComposer = memo(function ConversationComposer(
   const standInRef = useRef<HTMLTextAreaElement>(null);
   useSwipeDownToBlur(editorElementRef);
   useSwipeDownToBlur(standInRef);
+  // A restored draft opens the stand-in at its full height.
+  useLayoutEffect(() => {
+    if (standInRef.current) fitToText(standInRef.current);
+  }, [Editor]);
   const draftRef = useRef(initialDraft);
   const peopleRef = useRef(
     new Map(initialDraft.people?.map((person) => [person.slackUserId, person])),
@@ -341,6 +346,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     const field = standInRef.current;
     if (!field) return;
     field.value = text;
+    fitToText(field);
     if (!caretAtEnd) return;
     field.focus({ preventScroll: true });
     field.setSelectionRange(text.length, text.length);
@@ -560,7 +566,10 @@ export const ConversationComposer = memo(function ConversationComposer(
       enterKeyHint={enterSends ? "send" : "enter"}
       inputMode="text"
       maxLength={DRAFT_MAX_LENGTH}
-      onChange={(event) => setMessage(event.target.value)}
+      onChange={(event) => {
+        fitToText(event.target);
+        setMessage(event.target.value);
+      }}
       onFocus={props.onFocus}
       onKeyDown={(event) => {
         if (
@@ -797,6 +806,13 @@ function emptyDraft(): ConversationDraft {
     lastSubmittedText: "",
     text: "",
   };
+}
+
+/** Fit the stand-in to its text. CSS `max-height` sets the scroll limit. */
+function fitToText(textarea: HTMLTextAreaElement): void {
+  // Measure from auto height so the box can also shrink after deletes.
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function readStoredDraft(storageKey: string): ConversationDraft {

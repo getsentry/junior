@@ -261,6 +261,38 @@ test("closes a quick question and shows details again", async ({
   await expect(details).toBeVisible();
 });
 
+test("finds people of this Conversation's workspace in a quick question", async ({
+  page,
+  dashboard,
+}) => {
+  const searches: (string | null)[] = [];
+  await page.route("**/api/people/search?*", async (route) => {
+    searches.push(
+      new URL(route.request().url()).searchParams.get("conversationId"),
+    );
+    await route.fallback();
+  });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  await expect(
+    page.locator("[data-quick-question-message-id]").first(),
+  ).toBeVisible();
+  await selectReplyText(page);
+  await page
+    .getByRole("button", { name: "Quick question", exact: true })
+    .click();
+  const composer = page
+    .getByRole("complementary", { name: "Quick question", exact: true })
+    .getByRole("textbox", { name: "Quick question" });
+  await composer.pressSequentially(" @c");
+  await expect(
+    page.getByRole("listbox", { name: "People" }).getByRole("option").first(),
+  ).toBeVisible();
+  expect(searches.length).toBeGreaterThan(0);
+  expect(new Set(searches)).toEqual(new Set([conversationId]));
+});
+
 test("quotes selected reply text in the message box", async ({
   page,
   dashboard,
