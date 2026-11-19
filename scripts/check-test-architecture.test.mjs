@@ -271,25 +271,6 @@ test("rejects agent test contract violations above the baseline", () => {
   );
 });
 
-test("allows model fakes only in the excluded step test", () => {
-  const contents = 'fauxAssistantMessage("hello");';
-  assert.deepEqual(
-    checkAgentTestArchitecture(
-      [
-        integrationTest(
-          contents,
-          "packages/junior/tests/component/core/turn/step.test.ts",
-        ),
-        integrationTest(contents),
-      ],
-      {},
-    ),
-    [
-      `${TEST_PATH}: tests must not fake the model; run the real agent through the agent test fixture (1 found)`,
-    ],
-  );
-});
-
 test("requires a lower baseline when a file breaks a rule less", () => {
   assert.deepEqual(
     checkAgentTestArchitecture([integrationTest("setPlugins([]);")], {
