@@ -154,16 +154,20 @@ function ReplyFooter(props: {
   const beforeSubmit = useCallback(
     ({ sendsMessage }: { sendsMessage: boolean }) => {
       const editCancelled = editCancelledRef.current;
-      const confirmation = sendsMessage ? confirmSubmit() : undefined;
+      // A send during an edit waits for its cancel, and stops when the
+      // queued message is still queued or Junior read it. Then the text does
+      // not go out twice, and the reader sees the edit error. The unsent
+      // answers dialog opens only after the wait, so a stopped send leaves
+      // none open.
+      const confirm = () => (sendsMessage ? confirmSubmit() : undefined);
+      const confirmation = editCancelled ? undefined : confirm();
       if (!editCancelled && !confirmation && !hasQuestionAnswersRef.current) {
         return undefined;
       }
       return (async () => {
-        // A send during an edit waits for its cancel, and stops when the
-        // queued message is still queued or Junior read it. Then the text
-        // does not go out twice, and the reader sees the edit error.
         if (editCancelled && !(await editCancelled)) return false;
-        if (confirmation && !(await confirmation)) return false;
+        const confirmed = editCancelled ? confirm() : confirmation;
+        if (confirmed && !(await confirmed)) return false;
         return (await questionAnswersRef.current?.send()) ?? true;
       })();
     },
