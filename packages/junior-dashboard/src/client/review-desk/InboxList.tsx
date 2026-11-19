@@ -40,6 +40,7 @@ import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
   inboxViewPath,
+  childOf,
   itemRowSubtitle,
   linkedRowOf,
   singleRow,
@@ -389,10 +390,11 @@ export function InboxList(props: {
                 options.subjectShown
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
-                // In a stack, a child's item names its sub-thread.
+                // A child's item names its sub-thread: under the stack's
+                // title, or after its root's title on its own.
                 options.stacked
                   ? row.newest.addedByLabel
-                  : titleOf(row.conversationId),
+                  : childOf(titleOf(row.conversationId), row.newest),
               )
             : undefined
         }

@@ -1,9 +1,9 @@
 # Inbox
 
 The Inbox shows the open Review items for the viewer, one item row each.
-The rows of one root Conversation sit together in a stack: a light border
-under the root's title. The viewer answers, dismisses, or snoozes each row
-on its own. `./review-desk.md` owns who sees an item and who can act on it.
+The rows of one root Conversation sit together in a stack: a lightly
+tinted tray under the root's title. The viewer answers, dismisses, or
+snoozes each row on its own. `./review-desk.md` owns who sees an item and who can act on it.
 
 ## Intent
 
@@ -51,11 +51,14 @@ Grouping:
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
   root that they cannot see.
-- A Conversation with one item shows that item's row, with no border. A
+- A Conversation with one item shows that item's row, with no tray. A
   click on it opens the row, as in a stack.
 - A stack of more than four rows shows the first four and "+N more in this
   Conversation". That control shows the rest in place. A stack also shows
   the rest when its open row is past the first four.
+- An open row says each fact once. The row's head names the kind, the
+  number, the title, and the sub-thread. The open card and the subject's
+  preview do not say them again.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
@@ -70,7 +73,7 @@ Actions:
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.
-- When a stack shrinks to one row, the border goes and the row stays. An
+- When a stack shrinks to one row, the tray goes and the row stays. An
   open row stays open.
 - A stack's Snooze and Dismiss put the whole stack away with the same leave
   motion as a row. When a row of the stack was open, the next row after the

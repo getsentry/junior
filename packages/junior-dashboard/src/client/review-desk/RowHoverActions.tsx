@@ -52,7 +52,7 @@ export function RowActionButton(props: {
 
 /**
  * The quick actions of a row with one ask: Open, Snooze and Dismiss. While
- * the row is open, its card holds Snooze and Dismiss.
+ * the row is open, its card's action line holds all three, so these go.
  */
 export function RowQuickActions(props: {
   actions: InboxCardActions;
@@ -60,10 +60,11 @@ export function RowQuickActions(props: {
   to: string;
 }) {
   const { actions } = props;
+  if (props.expanded) return null;
   return (
     <>
       <RowOpenLink to={props.to} />
-      {!props.expanded && actions.onSnooze ? (
+      {actions.onSnooze ? (
         <RowSnoozeButton
           look="icon"
           onOpenChange={actions.onSnoozeMenu}
@@ -72,7 +73,7 @@ export function RowQuickActions(props: {
         />
       ) : null}
       {/* Dismiss is the main action, so it goes right-most. */}
-      {!props.expanded && actions.onDismiss ? (
+      {actions.onDismiss ? (
         <RowDismissButton look="icon" onClick={actions.onDismiss} />
       ) : null}
     </>

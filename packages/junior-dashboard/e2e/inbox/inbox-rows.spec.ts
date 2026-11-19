@@ -91,10 +91,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-ask-kind",
       "Ready to merge",
     );
-    // The changes the pills name get no chip of their own.
-    await expect(row.locator("[data-linked-work-chip]")).toHaveText([
-      "Return 429 before parsing oversized envelopes#44",
-    ]);
+    // The changes the pills name get no chip of their own. A chip shows
+    // its number, and names its title, which shows on hover.
+    const chip = row.getByRole("link", {
+      name: "Return 429 before parsing oversized envelopes #44",
+    });
+    await expect(row.locator("[data-linked-work-chip]")).toHaveCount(1);
+    await expect(chip).toHaveAttribute("data-linked-work-chip", "");
+    await chip.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "Return 429 before parsing oversized envelopes",
+    );
 
     // An FYI says so in words too. To do leaves it out, so Conversations
     // shows it.
