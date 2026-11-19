@@ -39,20 +39,14 @@ import {
 import { splitMentions } from "./composerMentionToken";
 import type ComposerEditor from "./composer-editor/ComposerEditor";
 import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
+import editorChunkUrl from "./composer-editor/editorChunkUrl";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 import { getDashboardAgentName } from "../agentName";
 
 const DRAFT_MAX_LENGTH = 32_000;
 
 type ComposerEditorModule = typeof import("./composer-editor/ComposerEditor");
-type ComposerEditorLoad =
-  | { module: ComposerEditorModule }
-  | { failedUrl: string | undefined };
-
-// Chrome and Firefox keep a failed module import, so an import of the same
-// URL fails again at once. Their error names the chunk's URL. A query makes
-// that URL a new module.
-const CHUNK_URL_IN_ERROR = /https?:\/\/\S+?\.js\b/g;
+type ComposerEditorLoad = { module: ComposerEditorModule } | { failed: true };
 
 // A retry imports the chunk by URL, which the compiler cannot type.
 function isComposerEditorModule(value: unknown): value is ComposerEditorModule {
@@ -64,23 +58,23 @@ function isComposerEditorModule(value: unknown): value is ComposerEditorModule {
   );
 }
 
-const loadComposerEditor = (retryUrl?: string): Promise<ComposerEditorLoad> => {
-  const load = retryUrl
-    ? import(/* @vite-ignore */ retryUrl).then((module: unknown) => {
-        if (!isComposerEditorModule(module)) {
-          throw new Error(`${retryUrl} is not the composer editor`);
-        }
-        return module;
-      })
-    : import("./composer-editor/ComposerEditor");
+// Browsers keep a failed module import, so an import of the same URL fails
+// again at once. A query on the chunk URL makes a new module.
+const loadComposerEditor = (attempt = 0): Promise<ComposerEditorLoad> => {
+  const load =
+    attempt > 0 && editorChunkUrl
+      ? import(/* @vite-ignore */ `${editorChunkUrl}?retry=${attempt}`).then(
+          (module: unknown) => {
+            if (!isComposerEditorModule(module)) {
+              throw new Error(`${editorChunkUrl} is not the composer editor`);
+            }
+            return module;
+          },
+        )
+      : import("./composer-editor/ComposerEditor");
   return load.then(
     (module) => ({ module }),
-    (error: unknown) => ({
-      failedUrl:
-        error instanceof Error
-          ? error.message.match(CHUNK_URL_IN_ERROR)?.[0]
-          : undefined,
-    }),
+    () => ({ failed: true }),
   );
 };
 // Lexical is large, so the editor is not in the first page load. Start to
@@ -234,8 +228,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
   // A textarea stands in until the editor loads, and when it cannot load.
   const [Editor, setEditor] = useState<typeof ComposerEditor>();
-  // The chunk URL of a failed load, or null when the error names none.
-  const editorFailedUrlRef = useRef<string | null | undefined>(undefined);
   const [editorLoadAttempt, setEditorLoadAttempt] = useState(0);
   const editorRef = useRef<ComposerEditorHandle>(null);
   const editorElementRef = useRef<HTMLDivElement>(null);
@@ -282,22 +274,16 @@ export const ConversationComposer = memo(function ConversationComposer(
     if (Editor || !online) return;
     let current = true;
     let retryTimer: number | undefined;
-    const failedUrl = editorFailedUrlRef.current;
     const load =
-      failedUrl === undefined
+      editorLoadAttempt === 0
         ? composerEditorLoad
-        : loadComposerEditor(
-            failedUrl === null
-              ? undefined
-              : `${failedUrl}?retry=${editorLoadAttempt}`,
-          );
+        : loadComposerEditor(editorLoadAttempt);
     void load.then((result) => {
       if (!current) return;
       if ("module" in result) {
         setEditor(() => result.module.default);
         return;
       }
-      editorFailedUrlRef.current ??= result.failedUrl ?? null;
       retryTimer = window.setTimeout(
         () => setEditorLoadAttempt((attempt) => attempt + 1),
         EDITOR_RETRY_MS,

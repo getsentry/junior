@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -77,6 +78,13 @@ export const juniorGitHubIssues = pgTable(
   ],
 );
 
+/** A merge conflict fix that Junior started: the event it published. */
+export interface GitHubConflictFix {
+  atMs: number;
+  /** The head commit that the fix was for. */
+  headSha: string;
+}
+
 /** Current provider projection for pull requests classified as Junior-owned. */
 export const juniorGitHubPullRequests = pgTable(
   "junior_github_pull_requests",
@@ -114,6 +122,22 @@ export const juniorGitHubPullRequests = pgTable(
     readySyncId: integer("ready_sync_id"),
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /**
+     * When a person last chose Resume on the stopped merge conflict item.
+     * It counts as activity by a person, so the fix count starts again.
+     */
+    conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
+      withTimezone: true,
+    }),
+    /**
+     * The latest merge conflict fixes that Junior started, oldest first.
+     * Only these count as fixes, so a merge or force push for work that a
+     * person asked for does not.
+     */
+    conflictFixes: jsonb("conflict_fixes")
+      .$type<GitHubConflictFix[]>()
+      .notNull()
+      .default([]),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
