@@ -21,7 +21,7 @@
  * - `app.event_search.backfill.lexeme.count`,
  *   `app.event_search.backfill.vector.count`: rows that the run stored.
  * - `app.event_search.backfill.outcome`: `completed` when the run indexed
- *   the whole backlog, else `budget_exceeded`.
+ *   the whole backlog, else `limit_reached`.
  * Policy: policies/observability.md.
  */
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
@@ -255,7 +255,7 @@ export async function runEventSearchBackfill(args: {
         "app.event_search.backfill.vector.count": result.stored.vectors,
         "app.event_search.backfill.outcome": result.done
           ? "completed"
-          : "budget_exceeded",
+          : "limit_reached",
       });
     },
   );
