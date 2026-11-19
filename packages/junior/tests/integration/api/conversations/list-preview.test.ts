@@ -17,6 +17,8 @@ describe("conversation list API activity preview", () => {
         "slack:C123:long": "words ".repeat(5_000),
         // The mention starts before the cut and ends after it.
         "slack:C123:mention": `${"a".repeat(390)}<@UPARTICIPANT1> rest`,
+        // A `<` in prose is not a Slack token.
+        "slack:C123:prose": `x < y ${"words ".repeat(100)}`,
         // The cut falls between the two halves of the emoji.
         "slack:C123:emoji": `${"b".repeat(398)}😀 rest`,
       };
@@ -60,6 +62,9 @@ describe("conversation list API activity preview", () => {
       );
       expect(previews.get("slack:C123:mention")?.text).toBe(
         `${"a".repeat(390)}…`,
+      );
+      expect(previews.get("slack:C123:prose")?.text).toBe(
+        `x < y ${"words ".repeat(65).trimEnd()}…`,
       );
       expect(previews.get("slack:C123:emoji")?.text).toBe(
         `${"b".repeat(398)}…`,
