@@ -1,1 +1,0 @@
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_briefs_created_at_idx" ON "junior_conversation_briefs" USING btree ("created_at");

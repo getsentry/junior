@@ -1,5 +1,5 @@
 {
-  "id": "50086ea2-e695-4533-b7b1-7791e9da4163",
+  "id": "9cccbc8b-a5fa-49c6-8c75-b56c150a5bd8",
   "prevId": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "version": "7",
   "dialect": "postgresql",
@@ -2020,43 +2020,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_conversation_brief_totals": {
-      "name": "junior_conversation_brief_totals",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "boolean",
-          "primaryKey": true,
-          "notNull": true,
-          "default": true
-        },
-        "stored": {
-          "name": "stored",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "conversations": {
-          "name": "conversations",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_conversation_brief_totals_one_row": {
-          "name": "junior_conversation_brief_totals_one_row",
-          "value": "\"junior_conversation_brief_totals\".\"id\""
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.junior_conversation_briefs": {
       "name": "junior_conversation_briefs",
       "schema": "",
@@ -2158,6 +2121,27 @@
               "expression": "version",
               "isExpression": false,
               "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_conversation_briefs_created_at_idx": {
+          "name": "junior_conversation_briefs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],

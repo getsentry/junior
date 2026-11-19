@@ -1,8 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
-  boolean,
-  check,
   doublePrecision,
   foreignKey,
   index,
@@ -52,30 +50,15 @@ export const juniorConversationBriefs = pgTable(
       table.conversationId,
       table.version.desc(),
     ),
-    // The System page counts the Briefs of a recent window.
-    index("junior_conversation_briefs_created_at_idx").on(table.createdAt),
+    // The System page counts the Briefs and Conversations of a recent
+    // window from this index alone.
+    index("junior_conversation_briefs_created_at_idx").on(
+      table.createdAt,
+      table.conversationId,
+    ),
     index("junior_conversation_briefs_search_idx").using(
       "gin",
       sql`to_tsvector('english', ${table.searchText})`,
     ),
-  ],
-);
-
-/**
- * All-time Brief totals for the System page, so the report does not read
- * every Brief. A deferred trigger on `junior_conversation_briefs` keeps the
- * one row exact for every insert and delete (migration 0131).
- */
-export const juniorConversationBriefTotals = pgTable(
-  "junior_conversation_brief_totals",
-  {
-    id: boolean("id").primaryKey().default(true),
-    stored: bigint("stored", { mode: "number" }).notNull(),
-    // Counts version 1 rows. Versions start at 1, and a purge deletes every
-    // version, so a Conversation has Briefs exactly when it has version 1.
-    conversations: bigint("conversations", { mode: "number" }).notNull(),
-  },
-  (table) => [
-    check("junior_conversation_brief_totals_one_row", sql`${table.id}`),
   ],
 );

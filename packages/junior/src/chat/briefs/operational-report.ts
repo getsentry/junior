@@ -2,12 +2,9 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { and, count, gte, lt, sql } from "drizzle-orm";
+import { and, count, countDistinct, gte, lt } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversationBriefTotals,
-  juniorConversationBriefs,
-} from "@/db/schema";
+import { juniorConversationBriefs } from "@/db/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
@@ -45,22 +42,13 @@ export async function buildBriefsOperationalReport(args: {
   const newestDay = startOfUtcDay(args.nowMs);
   const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
   const windowEnd = new Date(newestDay.getTime() + DAY_MS);
-  const totals = juniorConversationBriefTotals;
   const [[counts], briefDays] = await Promise.all([
-    // The window count reads the `created_at` index. The all-time totals
-    // come from the one row that a trigger keeps, so no read covers every
-    // Brief. Until the first Brief, the row can be missing.
+    // Every number on the card covers the same 30 days, so the read stays on
+    // the `created_at` index and never covers every Brief.
     args.db
       .select({
-        conversations:
-          sql<number>`coalesce((${args.db.select({ value: totals.conversations }).from(totals)}), 0)`.mapWith(
-            Number,
-          ),
-        recent: count(),
-        stored:
-          sql<number>`coalesce((${args.db.select({ value: totals.stored }).from(totals)}), 0)`.mapWith(
-            Number,
-          ),
+        briefs: count(),
+        conversations: countDistinct(juniorConversationBriefs.conversationId),
       })
       .from(juniorConversationBriefs)
       .where(
@@ -83,17 +71,13 @@ export async function buildBriefsOperationalReport(args: {
     title: "Briefs",
     metrics: [
       {
-        label: "briefs stored",
-        tone: counts?.stored ? "good" : "neutral",
-        value: formatCount(counts?.stored ?? 0),
-      },
-      {
-        label: "conversations with a brief",
-        value: formatCount(counts?.conversations ?? 0),
-      },
-      {
         label: "briefs · 30d",
-        value: formatCount(counts?.recent ?? 0),
+        tone: counts?.briefs ? "good" : "neutral",
+        value: formatCount(counts?.briefs ?? 0),
+      },
+      {
+        label: "conversations with a brief · 30d",
+        value: formatCount(counts?.conversations ?? 0),
       },
       { label: "cost · 30d · retained", value: formatUsd(recentCost) },
       {
