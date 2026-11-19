@@ -107,7 +107,8 @@ export type RunTurnStep = (
 export function turnStepCallback(run: RunTurnStep) {
   return queueCallback<TurnStepMessage>({
     consumerGroup: TURN_STEP_CONSUMER_GROUP,
-    // The Turn row counts attempts, so the queue retries without a limit.
+    // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the
+    // queue retries without a limit.
     maxDeliveries: null,
     onRejected: (reason, metadata) => {
       logWarn("turn.step.queue_message.rejected", {
