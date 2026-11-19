@@ -19,6 +19,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   isNotNull,
   isNull,
   sql,
@@ -79,6 +80,12 @@ function metadataText(title: string | null | undefined, summary: string) {
  * Store one batch of metadata vectors. A row is replaced only by a vector of
  * the same or newer metadata, so an older Turn never replaces a newer vector,
  * and a backfill can replace a vector of another model.
+ *
+ * A vector is stored only while its Conversation still has that or newer
+ * metadata. The share lock on the Conversation row holds until the insert
+ * commits. Purge clears the metadata with an update before it deletes the
+ * embeddings, so it either waits for this insert and then deletes it, or
+ * runs first and this write skips the Conversation.
  */
 async function writeConversationEmbeddings(
   db: JuniorDatabase,
@@ -86,32 +93,60 @@ async function writeConversationEmbeddings(
   batch: EmbeddingBatch,
 ): Promise<void> {
   const table = juniorConversationEmbeddings;
-  await db
-    .insert(table)
-    .values(
-      rows.map(({ item, vector }) => ({
-        conversationId: item.conversationId,
-        dimensions: batch.dimensions,
-        embedding: vector,
-        legacyBriefVersion: null,
-        model: batch.model,
-        provider: batch.provider,
-        throughSeq: item.throughSeq,
-      })),
-    )
-    .onConflictDoUpdate({
-      target: table.conversationId,
-      set: {
-        dimensions: sql`excluded.dimensions`,
-        embedding: sql`excluded.embedding`,
-        legacyBriefVersion: null,
-        model: sql`excluded.model`,
-        provider: sql`excluded.provider`,
-        throughSeq: sql`excluded.through_seq`,
-        createdAt: sql`now()`,
-      },
-      setWhere: sql`${table.throughSeq} is null or ${table.throughSeq} <= excluded.through_seq`,
+  await db.transaction(async (tx) => {
+    const current = await tx
+      .select({
+        conversationId: juniorConversations.conversationId,
+        metadataThroughSeq: juniorConversations.metadataThroughSeq,
+      })
+      .from(juniorConversations)
+      .where(
+        inArray(
+          juniorConversations.conversationId,
+          rows.map(({ item }) => item.conversationId),
+        ),
+      )
+      .orderBy(asc(juniorConversations.conversationId))
+      .for("share");
+    const throughSeqs = new Map(
+      current.map((row) => [row.conversationId, row.metadataThroughSeq]),
+    );
+    const kept = rows.filter(({ item }) => {
+      const throughSeq = throughSeqs.get(item.conversationId);
+      return (
+        throughSeq !== null &&
+        throughSeq !== undefined &&
+        throughSeq >= item.throughSeq
+      );
     });
+    if (kept.length === 0) return;
+    await tx
+      .insert(table)
+      .values(
+        kept.map(({ item, vector }) => ({
+          conversationId: item.conversationId,
+          dimensions: batch.dimensions,
+          embedding: vector,
+          legacyBriefVersion: null,
+          model: batch.model,
+          provider: batch.provider,
+          throughSeq: item.throughSeq,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: table.conversationId,
+        set: {
+          dimensions: sql`excluded.dimensions`,
+          embedding: sql`excluded.embedding`,
+          legacyBriefVersion: null,
+          model: sql`excluded.model`,
+          provider: sql`excluded.provider`,
+          throughSeq: sql`excluded.through_seq`,
+          createdAt: sql`now()`,
+        },
+        setWhere: sql`${table.throughSeq} is null or ${table.throughSeq} <= excluded.through_seq`,
+      });
+  });
 }
 
 /** Whether a stored row is the embedder's vector of this or newer metadata. */

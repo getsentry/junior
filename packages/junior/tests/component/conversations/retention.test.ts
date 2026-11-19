@@ -4,6 +4,7 @@ import {
   purgeConversation,
   runRetentionPurge,
 } from "@/chat/conversations/retention";
+import { storeConversationEmbedding } from "@/chat/conversations/embedding";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   purgeConversationTree,
@@ -695,6 +696,30 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorConversationEmbeddings),
     ).resolves.toMatchObject([{ conversationId: "pub", throughSeq: 0 }]);
+    // A metadata task that read the summary before the purge cannot bring
+    // its embedding back.
+    await storeConversationEmbedding(
+      fixture.sql.db(),
+      {
+        model: "test-embedding-model",
+        provider: "test-provider",
+        async embedTexts({ texts }) {
+          return {
+            dimensions: 2,
+            model: "test-embedding-model",
+            provider: "test-provider",
+            vectors: texts.map(() => [1, 0]),
+          };
+        },
+      },
+      {
+        conversationId: "priv",
+        metadata: { summary: "priv retention summary", throughSeq: 0 },
+      },
+    );
+    await expect(
+      fixture.sql.db().select().from(juniorConversationEmbeddings),
+    ).resolves.toMatchObject([{ conversationId: "pub" }]);
     // A private Review item holds content from its Conversation, so it goes
     // with the summary. Its links go with it.
     await expect(

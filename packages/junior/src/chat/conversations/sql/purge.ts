@@ -351,6 +351,26 @@ export async function purgeConversationTree(
           const scrubMetadata = args.retention
             ? !isPublic
             : resolvedScrubMetadata;
+          // Clear the metadata before the embedding delete. The update locks
+          // each Conversation row, so an embedding write that holds a share
+          // lock commits first and is deleted below, and a later one finds
+          // no metadata. See `writeConversationEmbeddings`.
+          await executor
+            .db()
+            .update(juniorConversations)
+            .set({
+              transcriptPurgedAt: new Date(args.nowMs),
+              ...(scrubMetadata
+                ? {
+                    title: null,
+                    channelName: null,
+                    actor: null,
+                    summary: null,
+                    metadataThroughSeq: null,
+                  }
+                : undefined),
+            })
+            .where(inArray(juniorConversations.conversationId, ids));
           if (scrubMetadata) {
             await executor
               .db()
@@ -379,22 +399,6 @@ export async function purgeConversationTree(
                 ),
               );
           }
-          await executor
-            .db()
-            .update(juniorConversations)
-            .set({
-              transcriptPurgedAt: new Date(args.nowMs),
-              ...(scrubMetadata
-                ? {
-                    title: null,
-                    channelName: null,
-                    actor: null,
-                    summary: null,
-                    metadataThroughSeq: null,
-                  }
-                : undefined),
-            })
-            .where(inArray(juniorConversations.conversationId, ids));
           await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },
