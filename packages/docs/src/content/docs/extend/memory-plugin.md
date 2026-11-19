@@ -14,7 +14,7 @@ The memory plugin uses a Postgres database with the pgvector extension to store 
 
 All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
-Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason.
+Passive extraction also retires stale memories. When a user message or a successful tool result in a Turn shows that a recalled memory is no longer true, Junior archives that memory. When a Turn says that a fact changed, such as a renamed option, the new memory replaces the old one, even when another Conversation taught the old one. The Turn's capture event in the transcript lists each archived memory and the reason, and the memory database records the reason and the Conversation that showed it. A retried write does not bring back an archived memory.
 
 New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 

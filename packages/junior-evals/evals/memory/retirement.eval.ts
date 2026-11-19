@@ -85,4 +85,20 @@ describe("Memory Retirement", () => {
 
     expect(await activeMemoryIds()).toContain(kept.id);
   });
+
+  test("when a person states an exception for another scope, keep the general memory", async ({
+    run,
+  }) => {
+    const kept = await insertKnowledge(
+      "Junior's dashboard styles components with Tailwind utility classes.",
+    );
+
+    await run(
+      slackMention(
+        "FYI, Junior's Slack message renderer doesn't use Tailwind at all; it builds mrkdwn strings.",
+      ),
+    );
+
+    expect(await activeMemoryIds()).toContain(kept.id);
+  });
 });

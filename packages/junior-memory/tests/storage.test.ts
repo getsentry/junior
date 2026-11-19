@@ -4056,7 +4056,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
             content: "I prefer duplicate-safe retries.",
             expires_at: "never",
           },
-          { toolCallId: "tool-create-personal" },
+          { toolCallId: "tool-create-after-archive" },
         ),
       ).resolves.toMatchObject({
         created: true,
@@ -5221,7 +5221,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("recreates archived memories instead of resolving retries to hidden rows", async () => {
+  it("keeps an archived memory archived when a retry reuses its write key", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -5242,34 +5242,17 @@ INSERT INTO junior_memory_memories (
       await store.archiveMemory({ id: archived.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const recreated = await store.createMemory({
-        content: "Prefers short deployment summaries.",
-        kind: "preference",
-        idempotencyKey: "explicit-create-archived",
-      });
-      expect(recreated).toMatchObject({
-        created: true,
-        memory: { content: archived.memory.content },
-      });
-      expect(recreated.memory.id).not.toBe(archived.memory.id);
-
-      nowMs = TEST_NOW_MS + 3;
       await expect(
         store.createMemory({
-          content: "Changed content with the recreated retry key.",
+          content: "Prefers short deployment summaries.",
           kind: "preference",
           idempotencyKey: "explicit-create-archived",
         }),
       ).resolves.toMatchObject({
         created: false,
-        memory: {
-          id: recreated.memory.id,
-          content: recreated.memory.content,
-        },
+        memory: { id: archived.memory.id },
       });
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: recreated.memory.id }),
-      ]);
+      await expect(store.listMemories({})).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
