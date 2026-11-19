@@ -116,7 +116,10 @@ const AGENT_TEST_RULES = [
     // `runStep` takes the model as a `complete` argument. Its edge cases, such
     // as a cut-off reply, a provider error, or an abort, cannot come from a
     // real model on demand. See policies/testing.md.
-    exclude: ["packages/junior/tests/component/core/turn/step.test.ts"],
+    exclude: [
+      "packages/junior/tests/component/core/turn/step.test.ts",
+      "packages/junior/tests/integration/advance-turn.test.ts",
+    ],
   },
   {
     id: "runtime-config-mutation",
