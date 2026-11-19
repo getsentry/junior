@@ -8,7 +8,7 @@ import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { Api, Model, StreamOptions } from "@/chat/pi/sdk";
 import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
-import { createCache } from "@/chat/state/cache";
+import { cacheKeyPrefix, createCache } from "@/chat/state/cache";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const BASE_URL = "https://junior.example.com";
@@ -116,6 +116,22 @@ describe("gateway providers API", () => {
       model: UNLISTED_MODEL,
       messages: [],
     });
+  });
+
+  it("keeps the setting when the provider lookup fails", async () => {
+    const admin = await authenticatedApi(ADMIN);
+    await setEnabled(admin, ["anthropic"]);
+    await getStateAdapter().delete(
+      `${cacheKeyPrefix("gateway-served-providers")}${botConfig.modelId}`,
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 503 }),
+    );
+
+    expect((await setEnabled(admin, ["bedrock"])).status).toBe(500);
+    expect(
+      await getStateAdapter().get("junior:gateway:enabled_providers"),
+    ).toEqual(["anthropic"]);
   });
 
   it("reuses the setting in process memory for a minute", async () => {

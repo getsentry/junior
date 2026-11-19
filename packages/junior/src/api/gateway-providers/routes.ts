@@ -68,11 +68,14 @@ export function createGatewayProviderRoutes(): Hono<JuniorApiEnv> {
     ),
     async (context) => {
       const { enabled } = context.req.valid("json");
+      // Read before the write, so a failed provider lookup fails the save
+      // instead of reporting an error for a setting that changed.
+      const current = await readGatewayProviders();
       await saveEnabledProviders(getStateAdapter(), enabled);
       logInfo("dashboard.gateway_providers.updated", {
         "app.gateway.enabled_providers": enabled ?? ["*"],
       });
-      return jsonResponse(gatewayProvidersSchema, await readGatewayProviders());
+      return jsonResponse(gatewayProvidersSchema, { ...current, enabled });
     },
   );
 
