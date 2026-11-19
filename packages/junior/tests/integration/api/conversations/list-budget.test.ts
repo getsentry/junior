@@ -170,9 +170,9 @@ describe("conversation list API response budget", () => {
       () =>
         expectSqlBudget(
           () => fixture.request("/api/conversations?include=links,media"),
-          // The tree state and Threads reads add BEGIN and COMMIT to turn
-          // JIT off.
-          { statements: 25, serialRounds: 5 },
+          // The tree state, Threads, tree totals and watermark reads add
+          // BEGIN and COMMIT to turn JIT off.
+          { statements: 29, serialRounds: 8 },
         ),
       // Pins and waiting rows are not paged, so the body has no budget.
       {

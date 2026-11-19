@@ -243,10 +243,7 @@ async function readConversationDetailFromSql(
     isPurged
       ? Promise.resolve([])
       : readConversationModelUsageFromSql(executor, { conversationId }),
-    // The subtree read plans at a cost that starts JIT.
-    executor.readWithoutJit((db) =>
-      readConversationTreeMetricsFromSql(db, [conversationId]),
-    ),
+    readConversationTreeMetricsFromSql(getDb(), [conversationId]),
     readConversationAuthors(getDb(), conversationId),
     readConversationSourceTask({
       conversationId,

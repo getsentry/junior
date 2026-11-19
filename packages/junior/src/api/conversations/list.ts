@@ -590,7 +590,7 @@ export async function readConversationFeedFromSql(
     ),
     listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds),
-    // The subtree read plans at a cost that starts JIT.
+    // For a page of ids the subtree read plans at a cost that starts JIT.
     getSqlExecutor().readWithoutJit((jitOffDb) =>
       readConversationTreeMetricsFromSql(jitOffDb, conversationIds),
     ),

@@ -487,6 +487,8 @@ describe("conversation tree state", () => {
         kind: "thread",
         parentConversationId: conversationId,
       });
+      // A feed page of more than one root plans above the threshold.
+      await recordSlackRoot(fixture.conversationStore, "1700000000.000590");
       const executor = getSqlExecutor();
       const byDefault = await jitSetting(getDb());
       expect(byDefault).toBe("on");
@@ -505,9 +507,9 @@ describe("conversation tree state", () => {
       await fixture.feedTree(conversationId);
       await fixture.tree(conversationId);
       // Versions (1). The feed: tree state, Threads, tree totals and
-      // watermarks (4). The detail: state row, tree state, tree totals and
-      // watermarks (4).
-      expect(settings).toEqual(Array.from({ length: 9 }, () => "off"));
+      // watermarks (4). A detail reads one id, which plans below the
+      // threshold.
+      expect(settings).toEqual(Array.from({ length: 5 }, () => "off"));
       vi.restoreAllMocks();
 
       // The setting ends with the read, also inside a transaction.
@@ -536,15 +538,15 @@ describe("conversation tree state", () => {
       }
     };
     // The feed and the detail keep one budget however big the tree grows.
-    // Each JIT-off read adds BEGIN and COMMIT: four in the feed, four in
-    // the detail.
+    // Each JIT-off read adds BEGIN and COMMIT: four in the feed. The
+    // detail reads one id, which plans below the threshold.
     const expectBudget = async (tree: {
       treeState: string;
       watching: boolean;
     }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
-        { statements: 24, serialRounds: 6 },
+        { statements: 28, serialRounds: 9 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -554,7 +556,7 @@ describe("conversation tree state", () => {
       );
       const detail = await expectSqlBudget(
         () => fixture.request(detailPath(conversationId)),
-        { statements: 28, serialRounds: 12 },
+        { statements: 20, serialRounds: 5 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
       expect({

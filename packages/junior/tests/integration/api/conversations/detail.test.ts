@@ -64,9 +64,7 @@ describe("conversation detail API", () => {
     const app = createJuniorApi();
     const detailResponse = await expectSqlBudget(
       () => app.request(`http://localhost/api/conversations/${conversationId}`),
-      // Each JIT-off read adds BEGIN and COMMIT: the state row, the tree
-      // state, the tree totals and the subtree watermarks.
-      { statements: 23, serialRounds: 11 },
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),

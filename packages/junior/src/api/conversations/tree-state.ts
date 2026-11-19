@@ -14,7 +14,8 @@ import {
   reviewItemForUser,
   reviewItemNeedsInput,
 } from "@/chat/review-items/access";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations, juniorReviewItems } from "@/db/schema";
 
 /**
@@ -69,9 +70,10 @@ function needsUserSql(userId: string) {
  * Children use the visibility of their root, so a viewer who can see the
  * row may see its tree state. It shows no child's content.
  *
- * One SQL statement reads the trees, with JIT off, since its plan cost
- * starts JIT, which costs more than the read. Then two batched state reads
- * check Watches and Timers.
+ * One SQL statement reads the trees. For a page of ids it runs with JIT
+ * off, since its plan cost starts JIT, which costs more than the read. One
+ * id plans far below the JIT threshold. Then two batched state reads check
+ * Watches and Timers.
  */
 export async function readConversationTreeStates(
   conversationIds: readonly string[],
@@ -85,7 +87,7 @@ export async function readConversationTreeStates(
         scopeId,
       )} and ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)}))`
     : sql<boolean>`false`;
-  const rows = await getSqlExecutor().readWithoutJit((db) =>
+  const readTrees = (db: JuniorDatabase) =>
     db
       .select({
         conversationId: scopeId,
@@ -112,8 +114,11 @@ export async function readConversationTreeStates(
           isNull(juniorConversations.archivedAt),
         ),
       )
-      .groupBy(scopeId),
-  );
+      .groupBy(scopeId);
+  const rows =
+    conversationIds.length > 1
+      ? await getSqlExecutor().readWithoutJit(readTrees)
+      : await readTrees(getDb());
   const watched = await listConversationsWithWatches({
     conversationIds: [...new Set(rows.flatMap((row) => row.watchable ?? []))],
   });
