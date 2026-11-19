@@ -198,7 +198,7 @@ describe("Google Slides tools", () => {
     );
   });
 
-  it("reads a deck outline or one full slide, always with the revision", async () => {
+  it("reads a deck outline or one full slide, with the revision when the account can edit", async () => {
     const outline = slidesTools([
       deckFile(),
       Response.json({ revisionId: "rev-1", slides: [{ objectId: "s1" }] }),
@@ -232,6 +232,17 @@ describe("Google Slides tools", () => {
     expect(page?.url.searchParams.get("fields")).toBe(
       "revisionId,pageElements(objectId)",
     );
+
+    // Google returns no revision to an account that can only view the deck.
+    const viewOnly = slidesTools([
+      deckFile(false),
+      Response.json({ slides: [{ objectId: "s1" }] }),
+    ]);
+    const layout = await viewOnly.call("readGoogleSlidesLayout", {
+      presentation: DECK_LINK,
+    });
+    expect(layout).toMatchObject({ content: { slides: [{ objectId: "s1" }] } });
+    expect(layout).not.toHaveProperty("revision_id");
 
     const huge = slidesTools([
       deckFile(),

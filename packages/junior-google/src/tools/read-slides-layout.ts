@@ -38,7 +38,7 @@ const inputSchema = z
       .max(2000)
       .optional()
       .describe(
-        "Slides API field mask, such as 'slides(objectId,pageElements(objectId,shape(text)))'. Omit for the default. revision_id is always returned.",
+        "Slides API field mask, such as 'slides(objectId,pageElements(objectId,shape(text)))'. Omit for the default. revision_id is returned when your account can edit the presentation.",
       ),
   })
   .strict();
@@ -53,12 +53,15 @@ const outputSchema = pluginToolOutputSchema.extend({
   presentation_id: z.string(),
   revision_id: z
     .string()
-    .describe("Pass it as revision_id to updateGoogleSlides."),
+    .optional()
+    .describe(
+      "Pass it as revision_id to updateGoogleSlides. Google returns it only when your account can edit the presentation.",
+    ),
   title: z.string(),
   url: z.string(),
 });
 
-const revisionSchema = z.object({ revisionId: z.string() }).loose();
+const revisionSchema = z.object({ revisionId: z.string().optional() }).loose();
 
 /** Read the Slides API JSON of a presentation or one slide, for edits. */
 export const readGoogleSlidesLayoutTool = definePluginTool({
@@ -95,11 +98,12 @@ export const readGoogleSlidesLayoutTool = definePluginTool({
         `The layout of "${file.name}" is longer than ${MAX_CONTENT_CHARS} characters. Read one slide with slide_object_id, or pass a narrower fields mask.`,
       );
     }
+    const { revisionId } = revisionSchema.parse(response.body);
     return {
       target: "readGoogleSlidesLayout" as const,
       content: response.body,
       presentation_id: ref.fileId,
-      revision_id: revisionSchema.parse(response.body).revisionId,
+      ...(revisionId ? { revision_id: revisionId } : undefined),
       title: file.name,
       url: file.webViewLink ?? presentationUrl(ref.fileId),
     };
