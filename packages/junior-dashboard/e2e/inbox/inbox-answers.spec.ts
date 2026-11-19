@@ -43,8 +43,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toast).toContainText(title);
 
     // The answered item leaves the Inbox. Its Conversation's row says the
-    // answer in place of the ask, after a reload too. The row leaves before
-    // the server answers, so wait for the answer: a navigation would stop it.
+    // answer in place of the ask at once, and after a reload too. Wait for
+    // the answer, since the row leaves before the server answers.
     const answered = page.waitForResponse(
       (response) =>
         /\/api\/review-items\/[^/]+\/actions$/.test(response.url()) &&
@@ -53,7 +53,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     release();
     expect((await answered).ok()).toBe(true);
     await expect(rollout(page)).toHaveCount(0);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { exact: true, name: "Conversations" })
+      .click();
     const summary = rollout(page).locator('[data-inbox-slot="summary"]');
     await expect(summary).toHaveText("You answered Hold");
     await expect(page.getByText(ask)).toHaveCount(0);
