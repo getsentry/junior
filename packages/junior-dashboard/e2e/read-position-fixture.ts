@@ -51,8 +51,6 @@ export async function mockReadPositionConversation(
     failNewer: false,
     /** The event that starts Turn `turn-<seq>`. */
     turnStartSeq: -1,
-    /** The event that captured the memories of the shared memory mock. */
-    memoryCaptureSeq: -1,
     /** Events that finish a Turn. */
     turnEndSeqs: [] as number[],
     /** Return only the latest page in detail, like the server. */
@@ -116,27 +114,18 @@ export async function mockReadPositionConversation(
                 state: "started",
                 turnId: `turn-${seq}`,
               }
-            : seq === state.memoryCaptureSeq
+            : state.turnEndSeqs.includes(seq)
               ? {
-                  type: "structured_event",
-                  namespace: "memory",
-                  name: "memories_captured",
-                  version: 1,
-                  turnId: "qa-turn",
-                  presentation: { icon: "brain", title: "2 memories captured" },
+                  type: "turn_lifecycle",
+                  state: "succeeded",
+                  turnId: `turn-${seq}`,
                 }
-              : state.turnEndSeqs.includes(seq)
-                ? {
-                    type: "turn_lifecycle",
-                    state: "succeeded",
-                    turnId: `turn-${seq}`,
-                  }
-                : {
-                    type: "message",
-                    messageId: `message-${seq}`,
-                    role: seq % 2 === 0 ? "user" : "assistant",
-                    text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-                  },
+              : {
+                  type: "message",
+                  messageId: `message-${seq}`,
+                  role: seq % 2 === 0 ? "user" : "assistant",
+                  text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+                },
         seq,
       };
     });

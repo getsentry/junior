@@ -1,4 +1,4 @@
-import { ArrowRight, BookmarkPlus, Brain, ChevronRight } from "lucide-react";
+import { BookmarkPlus, Brain, ChevronRight } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { dashboardDisclosureChevronClass } from "../styles";
@@ -50,48 +50,30 @@ export function ConversationMemoryCard(props: {
   );
 }
 
-/** One memory with its full text, its visibility, and a jump to its Turn. */
-function MemoryCard(props: {
-  entry: ConversationMemoryEntry;
-  onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
-}) {
+/** One memory with its full text and its visibility. */
+function MemoryCard(props: { entry: ConversationMemoryEntry }) {
   const { entry } = props;
-  const { turnId } = entry;
   return (
     <li className="grid overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel">
       {/* Break long URLs so the card keeps the panel width. */}
       <p className="m-0 whitespace-pre-wrap px-3 py-2.5 text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
         {entry.memory.content}
       </p>
-      <div className="flex min-h-8 items-center justify-between gap-2 border-t border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-1 text-xs text-dashboard-text-muted">
-        {entry.memory.visibility === "private" ? (
+      {entry.memory.visibility === "private" ? (
+        <div className="flex min-h-8 items-center border-t border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-1 text-xs text-dashboard-text-muted">
           <PrivateMemoryIcon />
-        ) : (
-          <span />
-        )}
-        {turnId ? (
-          <Button
-            className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
-            onClick={() => props.onSelect({ ...entry, turnId })}
-            size="bare"
-            variant="ghost"
-          >
-            Go to message
-            <ArrowRight aria-hidden="true" size={13} />
-          </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </li>
   );
 }
 
 /**
  * List every memory that a Conversation recalled or captured, with its full
- * text. Selecting one shows it in the transcript.
+ * text.
  */
 export function ConversationMemoryEntries(props: {
   entries: ConversationMemoryEntry[];
-  onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
 }) {
   const groups = (["recalled", "captured"] as const)
     .map((source) => ({
@@ -119,7 +101,6 @@ export function ConversationMemoryEntries(props: {
               <MemoryCard
                 entry={entry}
                 key={`${entry.source}:${entry.memory.id}`}
-                onSelect={props.onSelect}
               />
             ))}
           </ol>

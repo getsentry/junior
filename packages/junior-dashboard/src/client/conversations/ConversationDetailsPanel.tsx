@@ -8,11 +8,7 @@ import {
   ConversationUsageBreakdown,
   hasConversationUsageBreakdown,
 } from "./ConversationUsageBreakdown";
-import {
-  ConversationMemoryContext,
-  type ConversationMemoryEntry,
-  type ConversationMemoryState,
-} from "./conversationMemory";
+import type { ConversationMemoryList } from "./conversationMemory";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import {
   conversationParticipants,
@@ -28,10 +24,9 @@ export function ConversationDetailsPanel(props: {
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   links: ConversationLink[];
-  memoryState: ConversationMemoryState;
+  memoryList: ConversationMemoryList | undefined;
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
-  onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
 }) {
   const { conversation, detail } = props;
   const participants = conversationParticipants(conversation);
@@ -40,52 +35,50 @@ export function ConversationDetailsPanel(props: {
     detail,
   });
   return (
-    <ConversationMemoryContext value={props.memoryState}>
-      <ConversationDetails
-        agentTree={detail?.agentTree}
-        autoArchive={
-          detail?.autoArchive === undefined ? null : (
-            <AutoArchiveToggle
-              autoArchive={detail.autoArchive}
-              conversationId={props.conversationId}
-            />
-          )
-        }
-        brief={detail?.brief}
-        canEditPlan={detail?.isParticipant === true}
-        conversationId={props.conversationId}
-        highlightReview={props.highlightReview}
-        identity={
-          participants.length > 0 ? (
-            <ParticipantAvatarStack participants={participants} size="detail" />
-          ) : null
-        }
-        onClose={props.onClose}
-        onOpenSubagent={props.onOpenSubagent}
-        onSelectMemory={props.onSelectMemory}
-        links={props.links}
-        overview={
-          hasConversationStats({
-            conversation,
-            detail,
-            showUsageBreakdown,
-          }) ? (
-            <ConversationStats
-              conversation={conversation}
-              detail={detail}
-              showUsageBreakdown={showUsageBreakdown}
-            />
-          ) : null
-        }
-        usage={
-          showUsageBreakdown ? (
-            <ConversationUsageBreakdown
-              conversation={conversation}
-              detail={detail}
-            />
-          ) : null
-        }
-      />
-    </ConversationMemoryContext>
+    <ConversationDetails
+      agentTree={detail?.agentTree}
+      autoArchive={
+        detail?.autoArchive === undefined ? null : (
+          <AutoArchiveToggle
+            autoArchive={detail.autoArchive}
+            conversationId={props.conversationId}
+          />
+        )
+      }
+      brief={detail?.brief}
+      canEditPlan={detail?.isParticipant === true}
+      conversationId={props.conversationId}
+      highlightReview={props.highlightReview}
+      identity={
+        participants.length > 0 ? (
+          <ParticipantAvatarStack participants={participants} size="detail" />
+        ) : null
+      }
+      onClose={props.onClose}
+      onOpenSubagent={props.onOpenSubagent}
+      links={props.links}
+      memoryList={props.memoryList}
+      overview={
+        hasConversationStats({
+          conversation,
+          detail,
+          showUsageBreakdown,
+        }) ? (
+          <ConversationStats
+            conversation={conversation}
+            detail={detail}
+            showUsageBreakdown={showUsageBreakdown}
+          />
+        ) : null
+      }
+      usage={
+        showUsageBreakdown ? (
+          <ConversationUsageBreakdown
+            conversation={conversation}
+            detail={detail}
+          />
+        ) : null
+      }
+    />
   );
 }

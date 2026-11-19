@@ -26,8 +26,7 @@ import {
 } from "./ConversationMemories";
 import {
   conversationMemoryEntries,
-  useConversationMemoryState,
-  type ConversationMemoryEntry,
+  type ConversationMemoryList,
 } from "./conversationMemory";
 import { ConversationPlan } from "./ConversationPlan";
 import {
@@ -56,16 +55,15 @@ export function ConversationDetails(props: {
   highlightReview: boolean;
   identity: ReactNode;
   links: ConversationLink[];
+  memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
   onOpenSubagent(target: ConversationDrawerTarget): void;
-  /** Show one memory where its Turn recalled or captured it. */
-  onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
   overview: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
-  const memoryList = useConversationMemoryState()?.list;
+  const { memoryList } = props;
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -121,11 +119,6 @@ export function ConversationDetails(props: {
         <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <ConversationMemoryEntries
             entries={conversationMemoryEntries(memoryList)}
-            onSelect={(entry) => {
-              // The transcript sits under a details sheet. Close it first.
-              if (!panel) props.onClose();
-              props.onSelectMemory(entry);
-            }}
           />
         </div>
       </DetailsPanel>

@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { desktop, mobile, screenshot } from "./screenshot";
+import { desktop, mobile } from "./screenshot";
 
 const EVENT_COUNT = 2_000;
 const PAGE_SIZE = 40;
@@ -156,46 +156,6 @@ async function mockLongConversation(
       });
     },
   );
-  await page.route(
-    "**/api/plugins/memory/conversations/*/memories",
-    async (route) => {
-      await route.fulfill({
-        json: {
-          events: [
-            {
-              memoryIds: ["recalled-memory"],
-              seq: 2,
-              source: "recalled",
-              turnId: "first-turn",
-            },
-            {
-              memoryIds: ["captured-memory-1", "captured-memory-2"],
-              seq: MEMORY_CAPTURE_SEQ,
-              source: "captured",
-              turnId: "qa-turn",
-            },
-          ],
-          memories: [
-            {
-              content: "Checkout investigations start with deployments.",
-              id: "recalled-memory",
-              visibility: "public",
-            },
-            {
-              content: "Use pnpm for repository commands.",
-              id: "captured-memory-1",
-              visibility: "private",
-            },
-            {
-              content: "Dashboard transcript events should remain expandable.",
-              id: "captured-memory-2",
-              visibility: "public",
-            },
-          ],
-        },
-      });
-    },
-  );
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     const firstSeq = input.paged ? EVENT_COUNT - PAGE_SIZE : 0;
     const behind = input.lastReadSeq + 1 < firstSeq;
@@ -254,34 +214,10 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  // The capture shows under the reply that ends its Turn.
-  const captured = transcript.getByRole("button", {
-    name: "Captured 2 memories",
-  });
-  await expect(captured).toHaveCount(0);
-
-  // A memory jump mounts its far row before it scrolls there.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
   });
-  await details
-    .getByRole("button", { name: "1 recalled · 2 captured" })
-    .click();
-  await details
-    .getByRole("listitem")
-    .filter({ hasText: "Dashboard transcript events should remain" })
-    .getByRole("button", { name: "Go to message" })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
-  await expect(captured).toBeInViewport();
-  expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  await screenshot(page, "conversation-long-transcript-memory", {
-    view: "desktop",
-  });
-  await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
   await page.keyboard.press("ControlOrMeta+f");
