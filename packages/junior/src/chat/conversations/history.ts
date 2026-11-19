@@ -144,15 +144,6 @@ const mcpProviderConnectedEventDataSchema = z
   })
   .strict();
 
-// A manual-only skill that `loadSkill` loaded. It stays loadable for the rest
-// of the Conversation, also after compaction drops the call.
-const skillLoadedEventDataSchema = z
-  .object({
-    type: z.literal("skill_loaded"),
-    skillName: z.string().min(1),
-  })
-  .strict();
-
 // Migration-only fact for connections recorded before credential ownership.
 // Readers keep it replayable, but writers cannot append it and restore ignores it.
 const unownedMcpProviderConnectedEventDataSchema = z
@@ -486,7 +477,6 @@ const appendableConversationEventDataSchema = z.union([
   messageUpdatedEventDataSchema,
   agentHistoryItemSchema,
   mcpProviderConnectedEventDataSchema,
-  skillLoadedEventDataSchema,
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
@@ -532,7 +522,6 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "system_message",
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",
-  "skill_loaded",
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",

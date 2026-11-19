@@ -41,6 +41,7 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { appendConversationMessages } from "./messages";
 
 /** Distinct MCP providers one credential subject connected in the given events, sorted. */
@@ -542,7 +543,6 @@ async function appendHostFactOnce(args: {
   data: ConversationEventData & {
     type:
       | "mcp_provider_connected"
-      | "skill_loaded"
       | "authorization_requested"
       | "authorization_completed";
   };
@@ -592,35 +592,27 @@ export async function recordMcpProviderConnected(args: {
   });
 }
 
-/** Record once that `loadSkill` loaded a manual-only skill in this Conversation. */
-export async function recordSkillLoaded(args: {
-  conversationId: string;
-  skillName: string;
-}): Promise<void> {
-  await appendHostFactOnce({
-    conversationId: args.conversationId,
-    idempotencyKey: `skill_loaded:${args.skillName}`,
-    data: { type: "skill_loaded", skillName: args.skillName },
-    isSameFact: (data) =>
-      data.type === "skill_loaded" && data.skillName === args.skillName,
-  });
-}
-
-/** Load the manual-only skills that `loadSkill` loaded in this Conversation. */
-export async function loadConversationSkillNames(
+/**
+ * Load the text of each message that a person wrote in this Conversation.
+ * Agent tasks have no author Identity, and Event inputs carry their event
+ * type, so neither is included.
+ */
+export async function loadPersonMessageTexts(
   conversationId: string,
 ): Promise<string[]> {
   const events = await getConversationEventStore().loadEventsOfType(
     conversationId,
-    "skill_loaded",
+    "message",
   );
-  return [
-    ...new Set(
-      events.flatMap((event) =>
-        event.data.type === "skill_loaded" ? [event.data.skillName] : [],
-      ),
-    ),
-  ];
+  return events.flatMap(({ data }) =>
+    data.type === "message" &&
+    data.role === "user" &&
+    data.authorIdentityId !== undefined &&
+    data.authorIdentityId !== SYSTEM_IDENTITY_ID &&
+    data.meta?.["eventType"] === undefined
+      ? [data.text]
+      : [],
+  );
 }
 
 /** Record that an OAuth/MCP authorization link was delivered or reused. */

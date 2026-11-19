@@ -259,7 +259,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   loadConnectedMcpProviders: async () => [],
-  loadConversationSkillNames: async () => [],
+  loadPersonMessageTexts: async () => [],
   openConversationProjection: async () => ({}),
   recordMcpProviderConnected: async () => undefined,
   recordToolExecutionStarted: async () => undefined,
