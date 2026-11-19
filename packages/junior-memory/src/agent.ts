@@ -582,7 +582,7 @@ function adjudicationPrompt(request: MemorySupersessionInput): string {
     "",
     renderTag("rules", {}, [
       "- Return duplicate when the candidate and one existing memory state the same durable fact, procedure, preference, or value with different wording.",
-      "- Return supersedes_old only for preference candidates, and only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
+      "- For a preference candidate, return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
       "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
       "- For knowledge and procedure candidates, return supersedes_old only when the candidate has statesChange=true and the old memory states the earlier value of the same fact, such as an old name, option, tool, owner, or behavior. Otherwise return distinct or uncertain when the candidate changes or contradicts an existing memory.",
       "- Return distinct when the candidate adds information or belongs to a different task or topic.",
