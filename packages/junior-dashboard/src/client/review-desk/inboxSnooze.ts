@@ -137,9 +137,11 @@ function itemSnoozes(
       changed = true;
       continue;
     }
-    const newest = byId.get(snooze.newestItemId);
-    if (!newest) continue;
-    const legacy = { ...snooze, newestCreatedAt: newest.createdAt };
+    // Its newest item dates the cutoff once, so later pages convert without it.
+    const newestCreatedAt =
+      snooze.newestCreatedAt ?? byId.get(snooze.newestItemId)?.createdAt;
+    if (!newestCreatedAt) continue;
+    const legacy = { ...snooze, newestCreatedAt };
     if (!snooze.newestCreatedAt) {
       next[key] = legacy;
       changed = true;
@@ -187,10 +189,15 @@ export function useSnoozedItemIds(): string[] {
   const [snoozes] = useStoredSnoozes();
   const nowMs = Date.now();
   useWakeAtNextEnd(snoozes, nowMs);
-  // A legacy row snooze names its newest item.
   const ids = Object.entries(snoozes)
     .filter(([, snooze]) => snooze.untilMs > nowMs)
-    .map(([id, snooze]) => snooze.newestItemId ?? id);
+    .flatMap(([id, snooze]) => {
+      if (!snooze.newestItemId) return [id];
+      // A legacy row snooze names its newest item until that item has its
+      // own snooze, which says whether it still sleeps.
+      const own = snoozes[snooze.newestItemId];
+      return own && !own.newestItemId ? [] : [snooze.newestItemId];
+    });
   return [...new Set(ids)].sort();
 }
 

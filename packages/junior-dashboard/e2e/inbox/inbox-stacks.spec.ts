@@ -534,5 +534,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       "2",
     );
     await expect(rowOf(page, rollout)).toHaveCount(0);
+
+    // Its newest ask wakes by itself, and leaves the Snoozed count.
+    const snoozed = nav.getByRole("link", { name: /^Snoozed/ });
+    await snoozed.click();
+    const row = page.locator(`li[data-inbox-row="${childReview.id}"]`);
+    await row.locator("[data-inbox-head]").click();
+    await row.getByRole("button", { exact: true, name: "Wake" }).click();
+    await expect(row).toHaveCount(0);
+    await expect(snoozed).toContainText("1");
   });
 });
