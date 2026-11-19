@@ -11,14 +11,15 @@ import {
 } from "../../styles";
 import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
 import { CacheWarmingSection } from "./CacheWarmingSection";
+import { GatewayProvidersSection } from "./GatewayProvidersSection";
 import {
   ServiceAccountsSection,
   useServiceAccounts,
 } from "./ServiceAccountsSection";
 
 /**
- * Show service accounts, cache warming, and admin-only plugin pages to a
- * Junior admin.
+ * Show service accounts, cache warming, enabled providers, and admin-only
+ * plugin pages to a Junior admin.
  *
  * The server hides admin pages and service accounts from other viewers and
  * refuses their requests, so this page only arranges them.
@@ -44,6 +45,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
         />
         <ServiceAccountsSection accountsQuery={serviceAccounts} />
         <CacheWarmingSection />
+        <GatewayProvidersSection />
         {nothingToSet ? (
           <Card padding="md">
             <div className="flex items-center gap-4">

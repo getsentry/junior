@@ -1,5 +1,5 @@
 {
-  "id": "ed3835d9-6912-4fd8-9521-84ff7a7635e6",
+  "id": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
   "prevId": "0ad4af18-c2ba-4c0f-b7dd-8444087166ad",
   "version": "7",
   "dialect": "postgresql",
@@ -1561,18 +1561,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "additions": {
-          "name": "additions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "changed_files": {
-          "name": "changed_files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1585,12 +1573,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
-        },
-        "deletions": {
-          "name": "deletions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "draft": {
           "name": "draft",
@@ -2071,6 +2053,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "outcome_status": {
+          "name": "outcome_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "search_text": {
           "name": "search_text",
