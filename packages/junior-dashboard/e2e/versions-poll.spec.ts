@@ -28,6 +28,7 @@ test("refreshes idle reads only when their version moves", async ({
     versionReads += 1;
     await route.fulfill({ json: versions });
   });
+  const feedStatuses: number[] = [];
   await page.route(
     (url) => url.pathname === "/api/conversations",
     async (route) => {
@@ -35,6 +36,14 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
+  page.on("response", (response) => {
+    if (
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === "/api/conversations"
+    ) {
+      feedStatuses.push(response.status());
+    }
+  });
   await page.route(
     (url) => url.pathname === detailPath,
     async (route) => {
@@ -93,6 +102,12 @@ test("refreshes idle reads only when their version moves", async ({
   await expect
     .poll(() => feedReads, { timeout: 15_000 })
     .toBeGreaterThan(settled.feedReads);
+  // The mock feed did not change, so the page comes back with no body and
+  // the list keeps its rows.
+  await expect.poll(() => feedStatuses.at(-1)).toBe(304);
+  await expect(
+    page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
+  ).toBeVisible();
 });
 
 test.describe("checks less often while the reader is away", () => {
