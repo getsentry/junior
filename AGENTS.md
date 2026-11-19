@@ -7,8 +7,8 @@ Read the reference files at the end when your work touches their area.
 - Don't state the obvious. Minimize visual noise in UI. In UI copy, agent
   replies, Slack messages, docs, and PR text, cut what the context already shows.
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
-- Never ask a person to do the obviously right thing; do it. Notify them only
-  for a step that only they can take. See `design/notifications.md`.
+- Never ask a person to do the obviously right thing; do it. Interrupt a
+  person only as `design/notifications.md` allows.
 - Build the smallest design that solves the proven problem. No speculative
   abstractions, configuration, or wrappers.
 - Write TypeScript, not Java: functions, plain objects, simple types, small
@@ -98,12 +98,12 @@ One simulator can use about 10 GB of memory, so:
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.
-- `policies/context-bound-systems.md`: authority, destination, and scope.
+- `policies/context-bound-systems.md`: passing authority, destination, scope.
 - `policies/security.md`: credentials, sandbox, and model access.
 - `policies/conversation-access.md`: when one Conversation may read, find,
   or act on another.
 - `policies/data-redaction.md`: conversation privacy and redaction.
-- `policies/serverless-background-work.md`: work past a request edge.
+- `policies/serverless-background-work.md`: work that must outlive a request.
 - `policies/observability.md`: telemetry for diagnosis.
 - `policies/performance.md`: awaits, fan-out, and query refreshes.
 - `policies/system-prompt.md`: system prompt blocks.

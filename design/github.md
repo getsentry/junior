@@ -7,8 +7,8 @@ also wake a Conversation or run an Event automation.
 
 ## Intent
 
-- Junior carries its PR to the requester's review without asking. It posts
-  in Slack only when a person must decide or act.
+- Junior carries its PR to the requester's review without asking
+  ([Notifications](./notifications.md)).
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
 - Junior never approves or merges a PR. A person merges it.
@@ -36,18 +36,24 @@ also wake a Conversation or run an Event automation.
 - Junior can review a PR and request changes.
 - When the requester requests changes on a Junior PR, the PR asks for
   their review again after Junior pushes new commits or marks the change
-  request addressed. A requester who approved since is not asked.
+  request addressed, and the required checks pass. A requester who approved
+  since is not asked.
 - Junior cannot fork or administer a repo, and never pushes to or deletes
   the default branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
-- When a Junior PR is approved, merged, or closed, Junior posts nothing,
-  but its later replies in that Conversation know it.
+- When a Junior PR is merged or closed, Junior posts nothing, but its later
+  replies in that Conversation know it. When it is approved and can merge,
+  the requester gets a "Ready to merge" item, because a person merges.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 
 ## Gaps
+
+- Junior asks the requester to review again as soon as it pushes a fix or
+  marks a change request addressed, before the required checks pass. This
+  breaks "asks for a review only when the required checks pass".
 
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior

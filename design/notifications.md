@@ -1,8 +1,9 @@
 # Notifications
 
 Junior interrupts a person only when that person has a clear next step. All
-other work happens with no message, Review item, or count. This rule decides
-how Slack, the Review desk, the Inbox, and each plugin tell people about work.
+other work happens with no message, Review item, push, or count. This rule
+decides how Slack, the Review desk, the Inbox, push, and each plugin tell
+people about work.
 
 ## Intent
 
@@ -19,31 +20,28 @@ how Slack, the Review desk, the Inbox, and each plugin tell people about work.
 - Junior owns the upkeep of its own work, such as merge conflicts, failed
   checks, and review feedback on its pull requests. That work goes to the
   agent, which does it and tells nobody.
-- For a pull request, the next step is a review. Junior gets the required
-  checks green and marks it ready for review. Only then does it ask the
-  requester to review it.
+- For a pull request, the next steps are review and merge. Junior asks for a
+  review only when the required checks pass ([GitHub](./github.md)).
 - Slack and the dashboard notify about the same things. The dashboard can
   show more detail, but not more notifications.
 
 ## Entry points
 
 - Slack: a reply in the thread of the request, and a Review item card.
-- Dashboard: Inbox, the Inbox count in the tab, and "Needs you".
+- Dashboard: Inbox, the Inbox count in the tab, "Needs you", and push
+  notifications.
 - GitHub: a review request on a pull request that Junior opened.
 
 ## Rules
 
 - An Event about work that Junior owns starts a Turn for the agent, not a
   notification. When the agent finishes that work, it ends the Turn with no
-  reply.
-- A Turn that an Event starts posts only when a person must decide or act.
-  An Automation posts what its instruction asks for.
-- Progress, status, and FYIs are not notifications. When Junior stops
-  upkeep that it owns, such as fixes on a pull request that nobody works
-  on, it tells nobody.
+  reply. An Automation posts what its instruction asks for.
+- When Junior stops upkeep that it owns, such as fixes on a pull request
+  that nobody works on, it tells nobody.
 - When Junior is blocked, it says what the person must do. "Junior stopped"
   with nothing to do is not a notification.
-- A Review item is the only way to ask a person
+- Junior asks a person only with a Review item
   ([Review desk](./review-desk.md)).
 
 ## Gaps
@@ -53,12 +51,17 @@ how Slack, the Review desk, the Inbox, and each plugin tell people about work.
   `Merge conflict` notice for the requester in Slack and the Inbox. No agent
   runs for it. This breaks "Junior owns the upkeep of its own work" and
   "when Junior stops upkeep that it owns, it tells nobody".
-- The merge conflict instructions do not tell the agent to end the Turn with
-  no reply when the fix lands. This breaks "when the agent finishes that
-  work, it ends the Turn with no reply".
-- An agent can add a notice Review item that names no next step. This
-  breaks "each notification names a next step".
 - Junior counts its own merges and force pushes for requested work as
   merge conflict fixes. So the fix limit can stop fixes on a pull request
   that people still work on. This breaks "Junior owns the upkeep of its own
   work".
+- An agent or a plugin can add a notice that names no next step, and the
+  Inbox shows it in FYI. This breaks "each notification names a next step".
+- Some asks are only a Slack message: a draft pull request that waits for
+  the requester's review, a decision on a watched issue, and a blocked
+  Automation. They add no Review item, so the Inbox does not show them. This
+  breaks "Junior asks a person only with a Review item" and "Slack and the
+  dashboard notify about the same things".
+- In a dashboard Conversation, a Turn that ends with a question card and no
+  reply sends no push. In Slack, the same card shows in the thread. This
+  breaks "Slack and the dashboard notify about the same things".
