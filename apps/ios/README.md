@@ -13,6 +13,7 @@ the MCP server at `/api/mcp`, and signs in with its OAuth flow.
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
 | `JuniorUITests`         | UI journeys against the mock MCP server.                                                                       |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
+| `fastlane/`             | The signed TestFlight build that `.github/workflows/ios-beta.yml` runs.                                        |
 | `scripts/`              | `mock-server.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, `generate-icons.mjs`, and the CI steps in `.github/workflows/ios*.yml`. |
 
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
@@ -55,7 +56,7 @@ browser.
    apps/ios/scripts/sim.sh ui-test NavigationUITests/testAnswerQuestion
    ```
 
-To open the project in Xcode, run `xcodegen generate` in `apps/ios`.
+In `apps/ios`, `make init` installs the tools and `make xcode` makes and opens the Xcode project.
 
 ### On an iPhone
 

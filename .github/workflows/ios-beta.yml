@@ -1,0 +1,63 @@
+name: iOS Beta
+
+# Builds a signed Release of apps/ios and uploads it to TestFlight.
+# Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-beta
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Upload to TestFlight
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          working-directory: apps/ios
+          bundler-cache: true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Get codesigning repo token
+        id: codesign-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.IOS_CODESIGN_APP_ID }}
+          private-key: ${{ secrets.IOS_CODESIGN_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: apple-apps-codesigning
+          # The beta lane only reads the match repo.
+          permission-contents: read
+
+      - name: Build and upload to TestFlight
+        run: scripts/testflight.sh
+        env:
+          CODESIGN_TOKEN: ${{ steps.codesign-token.outputs.token }}
+          MATCH_PASSWORD: ${{ secrets.IOS_MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.IOS_APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.IOS_APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-beta-logs
+          path: |
+            ~/Library/Logs/gym
+            apps/ios/fastlane/report.xml

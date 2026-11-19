@@ -41,6 +41,8 @@ targets:
         CFBundleDisplayName: Junior
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Only standard HTTPS, so TestFlight asks no export-compliance question.
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
