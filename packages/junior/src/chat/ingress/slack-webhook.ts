@@ -701,6 +701,10 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          // Junior is read-only in a channel shared with another
+          // organization: no post there starts a Turn or an automation, so
+          // no reply exposes internal data. Tools can still read the channel.
+          if (channelScope === "external") return;
           // A post with a bot ID and no user, such as from an app
           // integration, runs only channel-message automations that name the
           // bot. It never starts a Turn. A post that mentions Junior runs

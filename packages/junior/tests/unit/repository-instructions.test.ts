@@ -208,6 +208,14 @@ describe("repository instructions", () => {
         "no frontmatter",
       )
       .file(
+        "/vercel/sandbox/repos/sdk/.agents/skills/codex-release/SKILL.md",
+        skill("codex-release"),
+      )
+      .file(
+        "/vercel/sandbox/repos/sdk/.agents/skills/codex-release/agents/openai.yaml",
+        "policy:\n  allow_implicit_invocation: false\n",
+      )
+      .file(
         "/vercel/sandbox/repos/sdk/.claude/skills/write-tests/SKILL.md",
         skill("write-tests").replace("Use for", "Shadowed"),
       )

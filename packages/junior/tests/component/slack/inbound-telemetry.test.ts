@@ -46,7 +46,8 @@ describe("Slack inbound telemetry", () => {
         request: slackWebhookRequest({
           ...envelope,
           event_id: "Ev123",
-          is_ext_shared_channel: true,
+          // A shared channel is dropped before the author check runs.
+          is_ext_shared_channel: false,
           event: {
             ...envelope.event,
             team: "T123",
@@ -75,7 +76,7 @@ describe("Slack inbound telemetry", () => {
             "app.slack.source_team": "TEXTERNAL",
             "app.slack.event_team": "T123",
             "app.slack.event_id": "Ev123",
-            "app.slack.is_ext_shared_channel": true,
+            "app.slack.is_ext_shared_channel": false,
             "messaging.message.id": envelope.event.ts,
             "gen_ai.conversation.id": `slack:${envelope.event.channel}:${envelope.event.ts}`,
           }),

@@ -91,9 +91,10 @@ export async function snoozeInboxItems(
     userId: string;
   },
 ): Promise<string[]> {
-  // Serialize one User's snoozes in one row, so overlapping requests
-  // replace in turn instead of failing on the unique index.
-  const lockKey = `junior:inbox-snooze:${input.userId}:${input.rootConversationId}`;
+  // Serialize all of one User's snoozes, so overlapping requests replace in
+  // turn instead of failing on the unique index. An item can be in the rows
+  // of more than one root, so a lock per row is not enough.
+  const lockKey = `junior:inbox-snooze:${input.userId}`;
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
     await tx

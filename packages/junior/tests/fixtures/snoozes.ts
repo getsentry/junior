@@ -39,8 +39,9 @@ export async function conversation(
 }
 
 /**
- * Add an open action item for these assignees, linked to `conversationId`.
- * Another Conversation can add it, so it gets a row of its own.
+ * Add an open action item for these assignees, linked to `conversationId`
+ * and to `linkedConversationIds`. Another Conversation can add it, so it
+ * gets a row of its own.
  */
 export async function addItem(
   conversationId: string,
@@ -48,13 +49,14 @@ export async function addItem(
   title: string,
   visibility: "private" | "public" = "public",
   addedByConversationId = conversationId,
+  linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
     addedByConversationId,
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
-    conversationIds: [conversationId],
+    conversationIds: [conversationId, ...linkedConversationIds],
     dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),

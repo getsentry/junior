@@ -127,7 +127,7 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
     const snoozed = await asAna.snoozed();
-    expect(snoozed.count).toBe(1);
+    expect(snoozed.count).toBe(2);
     expect([...snoozed.items].sort()).toEqual(awake.inbox);
     expect(await asAna.versions()).not.toBe(versionBefore);
     // Bob's Inbox does not change, and his Wake does not touch Ana's snooze.
@@ -154,7 +154,7 @@ describe("snoozes", () => {
     });
   });
 
-  it("counts each Snoozed row that one snooze on their root hides", async () => {
+  it("counts each item that one snooze on their root hides", async () => {
     const ana = await user("ana@example.com");
     const other = "slack:CSNOOZE:1.000002";
     await conversation(other, "public");
@@ -287,6 +287,23 @@ describe("snoozes", () => {
     expect(
       (await storedStates()).filter((state) => state === "snoozed"),
     ).toHaveLength(1);
+
+    // An item linked to two roots is in both rows. Snoozes from each row
+    // at once still replace in turn.
+    const other = "slack:CSNOOZE:1.000002";
+    await conversation(other, "public");
+    await addItem(other, [ana], "Review shared entry", "public", other, [ROOT]);
+    const snoozeIn = (conversationId: string, wakeAtMs: number) =>
+      asAna.snooze({ conversationId }, wakeAtMs);
+    const fromBothRows = await Promise.all([
+      snoozeIn(ROOT, NOW_MS + 360_000),
+      snoozeIn(other, NOW_MS + 420_000),
+      snoozeIn(ROOT, NOW_MS + 480_000),
+      snoozeIn(other, NOW_MS + 540_000),
+    ]);
+    expect(fromBothRows.map((response) => response.status)).toEqual([
+      201, 201, 201, 201,
+    ]);
   });
 
   it("shows nothing in Snoozed once the viewer loses access to the row", async () => {

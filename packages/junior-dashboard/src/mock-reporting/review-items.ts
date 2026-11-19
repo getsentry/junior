@@ -4,11 +4,14 @@
  * rows, and the review desk can be checked without a database. GitHub
  * plugin asks and FYI notices fill the rest of the inbox.
  */
-import type {
-  ConversationReportEvent,
-  ReviewItemActionBody,
-  ReviewItemPayload,
-  InboxSnoozeCreateBody,
+import {
+  answeredChoices,
+  type ConversationFeed,
+  type ConversationFeedViewerAnswer,
+  type ConversationReportEvent,
+  type ReviewItemActionBody,
+  type ReviewItemPayload,
+  type InboxSnoozeCreateBody,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -28,6 +31,11 @@ const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const DIGEST_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const RELIABILITY_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+// A root and two of its Threads, so the Inbox stacks a child's items under
+// the root.
+const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
+const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
+const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 // The checkout latency Conversations: one found that p95 rose after
 // payments-v42, the other rolled it back.
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -45,6 +53,8 @@ type MockItemSeed = Pick<
       "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
     >
   > & {
+    /** The Thread title, for an item that a child agent added. */
+    childLabel?: string;
     conversationId: string;
     createdAt: string;
     /** Linked Conversations other than the one that added the item. */
@@ -266,6 +276,117 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Digest skipped two noisy alerts",
     },
+    // A question on the root, and a review request and a notice from two of
+    // its Threads, so one stack holds three kinds of item.
+    {
+      body: "Two GoCD agents hold their lease after the canary stage failed.",
+      conversationId: SENTAUR_CONVERSATION_ID,
+      createdAt: at(36),
+      id: "qa-sentaur-restart",
+      request: {
+        question: "Restart the two stuck canary agents?",
+        fields: [
+          {
+            id: "restart",
+            kind: "choice",
+            label: "Agents",
+            options: [
+              { label: "Restart both", recommended: true },
+              { label: "Leave them" },
+            ],
+          },
+        ],
+      },
+      status: "open",
+      title: "Restart the stuck canary agents",
+    },
+    {
+      body: "GitHub asks you to review #418.\n\nhttps://github.com/getsentry/sentaur/pull/418",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(34),
+      id: "qa-sentaur-review-418",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/sentaur/pull/418",
+        objectType: "code_change",
+        title: "Retry a canary stage once on a lost agent",
+        url: "https://github.com/getsentry/sentaur/pull/418",
+      },
+      title: "Review requested · #418",
+    },
+    {
+      body: "Agents 7 and 9 lost their lease during the last three canary stages.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(33),
+      id: "qa-sentaur-lost-agents",
+      kind: "notice",
+      status: "open",
+      title: "Two agents lost their lease",
+    },
+    // Three more asks, so the stack folds past its fourth row.
+    {
+      body: "The canary stage fails on a lost agent three runs out of ten.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(32),
+      id: "qa-sentaur-pause",
+      request: {
+        question: "Pause canary rollouts until #418 lands?",
+        fields: [
+          {
+            id: "pause",
+            kind: "choice",
+            label: "Rollouts",
+            options: [{ label: "Pause" }, { label: "Keep going" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Pause canary rollouts",
+    },
+    {
+      body: "Agent 9 restarted by itself and holds no lease now.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(31),
+      id: "qa-sentaur-agent-9",
+      request: {
+        question: "Put agent 9 back in the canary pool?",
+        fields: [
+          {
+            id: "pool",
+            kind: "choice",
+            label: "Agent 9",
+            options: [{ label: "Put it back" }, { label: "Keep it out" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Put agent 9 back in the pool",
+    },
+    {
+      body: "Three canary runs failed on a lost agent this week.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(30),
+      id: "qa-sentaur-rerun",
+      request: {
+        question: "Rerun the three failed canary runs?",
+        fields: [
+          {
+            id: "rerun",
+            kind: "choice",
+            label: "Runs",
+            options: [{ label: "Rerun" }, { label: "Skip" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Rerun the failed canary runs",
+    },
     {
       assignedToEveryone: true,
       body: "Checkout p95 went from 210 ms to 890 ms after payments-v42 landed.",
@@ -428,7 +549,7 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
   const reviewItemIds = seeds(nowMs)
     .filter(
       (seed) =>
-        seed.conversationId === body.conversationId &&
+        rootOf(seed) === body.conversationId &&
         isOpen(seed) &&
         (!body.reviewItemId || seed.id === body.reviewItemId),
     )
@@ -437,11 +558,23 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
   return { reviewItemIds };
 }
 
-/** Wake a mock row, like `DELETE /api/inbox/snoozes`. */
-export function wakeMockRow(nowMs: number, conversationId: string): void {
-  for (const seed of seeds(nowMs)) {
-    if (seed.conversationId === conversationId) snoozes.delete(seed.id);
+/** Wake a mock row, or one item of it, like `DELETE /api/inbox/snoozes`. */
+export function wakeMockRow(
+  nowMs: number,
+  subject: { conversationId: string; reviewItemId?: string | undefined },
+): void {
+  if (subject.reviewItemId) {
+    snoozes.delete(subject.reviewItemId);
+    return;
   }
+  for (const seed of seeds(nowMs)) {
+    if (rootOf(seed) === subject.conversationId) snoozes.delete(seed.id);
+  }
+}
+
+/** The root Conversation whose stack shows the seed: a child's parent. */
+function rootOf(seed: MockItemSeed): string {
+  return seed.childLabel ? SENTAUR_CONVERSATION_ID : seed.conversationId;
 }
 
 function isOpen(seed: MockItemSeed): boolean {
@@ -475,6 +608,7 @@ function payload(
   all: readonly MockItemSeed[],
 ): ReviewItemPayload {
   const {
+    childLabel,
     conversationId,
     linkedConversationIds = [],
     plugin: _plugin,
@@ -487,12 +621,14 @@ function payload(
   return {
     ...item,
     addedByConversationId: conversationId,
+    ...(childLabel ? { addedByLabel: childLabel } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
     conversationIds: [conversationId, ...linkedConversationIds],
     kind: seed.kind ?? "action",
+    rootConversationId: rootOf(seed),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
@@ -573,6 +709,39 @@ export function actOnMockReviewItem(
 }
 
 /**
+ * Put the viewer's newest answer on each feed row of the Conversation that
+ * added it, like the API.
+ */
+export function withMockViewerAnswers(
+  feed: ConversationFeed,
+  nowMs: number,
+): ConversationFeed {
+  const answers = new Map<string, ConversationFeedViewerAnswer>();
+  // Closed items come newest closed first, so the first one wins.
+  for (const item of readMockReviewItems(nowMs, { closed: true })) {
+    if (
+      !item.answer ||
+      !item.request ||
+      !item.closedAt ||
+      item.closedBy?.userId !== viewer.userId ||
+      answers.has(item.addedByConversationId)
+    )
+      continue;
+    answers.set(item.addedByConversationId, {
+      choices: answeredChoices(item.request, item.answer),
+      closedAt: item.closedAt,
+    });
+  }
+  return {
+    ...feed,
+    conversations: feed.conversations.map((conversation) => {
+      const viewerAnswer = answers.get(conversation.conversationId);
+      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
+    }),
+  };
+}
+
+/**
  * Close the oldest open question in a Conversation with a typed message as
  * its answer. It stands in for the model that decides which questions a
  * reply answers.
@@ -607,8 +776,9 @@ export function readMockWaitingConversations(nowMs: number) {
   );
   const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
+  // Like the API, a child's items wait in its root.
   for (const item of open) {
-    const id = item.addedByConversationId;
+    const id = item.rootConversationId;
     byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {
@@ -645,12 +815,10 @@ export function readMockReviewItemCounts(nowMs: number) {
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    // Like the server: one per Conversation that added a snoozed open item.
-    snoozed: new Set(
-      seeds(nowMs)
-        .filter((seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id))
-        .map((seed) => seed.conversationId),
-    ).size,
+    // Like the server: each snoozed item that is still open.
+    snoozed: seeds(nowMs).filter(
+      (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
+    ).length,
   };
 }
 

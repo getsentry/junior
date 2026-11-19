@@ -3,7 +3,7 @@ import {
   type PostgresTestFixture,
 } from "@sentry/junior-testing/postgres/fixture";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
 import * as googleSqlSchema from "../src/db/schema";
 import type { GoogleDb } from "../src/store";
 
@@ -36,4 +36,26 @@ export function idToken(claims: Record<string, unknown>): string {
 
 /** Every API scope the tools need, as Google lists them in a grant. */
 export const API_SCOPES =
-  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
+  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/presentations";
+
+/**
+ * Wrap an egress fetch so that it answers the read check's Drive queries.
+ * The requester is named on `readableIds` and on no other file. Every other
+ * call goes to `api`, so tests assert only the calls that they mock.
+ */
+export function withReadCheck(api: Mock, readableIds: readonly string[]) {
+  return vi.fn(async (call: { operation: string; request: Request }) => {
+    const query = new URL(call.request.url).searchParams.get("q") ?? "";
+    if (
+      call.operation === "google.drive.files.list" &&
+      query.startsWith("name = ")
+    ) {
+      return Response.json({
+        files: query.includes(" in readers")
+          ? readableIds.map((id) => ({ id }))
+          : [],
+      });
+    }
+    return api(call);
+  });
+}

@@ -12,6 +12,7 @@ import {
   insertMarkdownRequests,
   markdownContentSchema,
 } from "./doc-edits";
+import { newEditableFile } from "./editable-file";
 import { googleFileRequest } from "./files";
 import {
   googleApiError,
@@ -87,6 +88,7 @@ export const createGoogleDocTool = definePluginTool({
     }
     const created = createdSchema.parse(response.body);
     const ref = { fileId: created.documentId };
+    const file = newEditableFile(ref, created.title);
     const url = docUrl(created.documentId);
     const doc = `Google Doc "${created.title}" (${url})`;
     const reason = (error: unknown) =>
@@ -98,7 +100,7 @@ export const createGoogleDocTool = definePluginTool({
         // A new Doc body is one empty paragraph that starts at index 1.
         await batchUpdateDoc(
           ctx,
-          ref,
+          file,
           insertMarkdownRequests(converted, {
             index: 1,
             prefix: "",
@@ -111,6 +113,7 @@ export const createGoogleDocTool = definePluginTool({
       // account becomes a writer.
       await googleFileRequest(ctx, ref, {
         body: { emailAddress: requester, role: "owner", type: "user" },
+        editable: file,
         operation: "google.drive.permission.create",
         path: `/drive/v3/files/${ref.fileId}/permissions`,
         query: { supportsAllDrives: "true", transferOwnership: "true" },
@@ -119,6 +122,7 @@ export const createGoogleDocTool = definePluginTool({
       // Until the hand-over, the Doc lives only in Junior's shared account,
       // where anyone who can talk to Junior can read it. Delete it instead.
       const deleted = await googleApiRequest(ctx, {
+        editable: file,
         operation: "google.drive.file.delete",
         path: `/drive/v3/files/${ref.fileId}`,
         query: { supportsAllDrives: "true" },
@@ -147,6 +151,7 @@ export const createGoogleDocTool = definePluginTool({
       }
       const { permissionId } = aboutSchema.parse(about.body).user;
       const removed = await googleApiRequest(ctx, {
+        editable: file,
         operation: "google.drive.permission.delete",
         path: `/drive/v3/files/${ref.fileId}/permissions/${permissionId}`,
         query: { supportsAllDrives: "true" },

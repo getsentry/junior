@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   inboxSnoozeSchema,
   type InboxSnoozeCreateBody,
+  type InboxSnoozeSubjectBody,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
@@ -26,8 +27,9 @@ interface SnoozedRead {
 }
 
 /**
- * Snooze Inbox rows on the server, so a snooze holds in every browser. A
- * row wakes at its time, or when its Conversation adds an item; the
+ * Snooze Inbox items on the server, so a snooze holds in every browser. A
+ * row snoozes its item, and a stack's Snooze all its root's items. An item
+ * wakes at its time, or when its root Conversation adds an item; the
  * versions poll then refreshes the lists. The server hides snoozed rows
  * from the Inbox lists and counts; until the Inbox list reads the server
  * again, `hides` keeps a row that was just snoozed out of the lists, and
@@ -40,6 +42,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
   // the lists refetch after it. A list read after that time already leaves
   // the row out: the refetch cancels reads that started before the save.
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
+  // The items that were just woken, by id.
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
   // When the viewer's last snooze change saved; Infinity until the lists
   // refetch after it. Snoozed read before that time may be stale.
@@ -53,26 +56,24 @@ export function useInboxSnoozes(read: SnoozedRead) {
     });
   const hiddenNow = (key: string) =>
     (hidden.get(key) ?? -Infinity) >= read.listUpdatedAtMs;
-  /**
-   * Snooze a row until `untilMs`. A Conversation row snoozes its
-   * Conversation; a row of one item, such as an FYI notice, only that item.
-   */
-  const snooze = async (bundle: InboxBundle, untilMs: number) => {
+  /** Save a snooze of `subject`, and hide `key` while it saves. */
+  const save = async (
+    key: string,
+    subject: InboxSnoozeSubjectBody,
+    untilMs: number,
+  ) => {
     const lastChangedAtMs = changedAtMs;
-    hide(bundle.key, Infinity);
+    hide(key, Infinity);
     setChangedAtMs(Infinity);
     try {
       const body: InboxSnoozeCreateBody = {
-        conversationId: bundle.conversationId,
-        ...(bundle.key === bundle.conversationId
-          ? undefined
-          : { reviewItemId: bundle.key }),
+        ...subject,
         wakeAt: new Date(untilMs).toISOString(),
       };
       await post(inboxSnoozeSchema, SNOOZES_PATH, body);
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.
-      hide(bundle.key, undefined);
+      hide(key, undefined);
       setChangedAtMs(lastChangedAtMs);
       toast.add({ title: "The row could not be snoozed", type: "error" });
       return;
@@ -81,18 +82,19 @@ export function useInboxSnoozes(read: SnoozedRead) {
     // it started after the save.
     const savedAtMs = Date.now();
     await invalidateReviewItemCollections(queryClient);
-    hide(bundle.key, savedAtMs);
+    hide(key, savedAtMs);
     setChangedAtMs(savedAtMs);
   };
-  /** Wake a snoozed row now: undo the viewer's snoozes on its Conversation. */
-  const wake = async (bundle: InboxBundle) => {
+  /** Undo the viewer's snoozes on `subject`, and mark its items waking. */
+  const unsnooze = async (
+    itemIds: readonly string[],
+    subject: InboxSnoozeSubjectBody,
+  ) => {
     const lastChangedAtMs = changedAtMs;
-    setWaking((current) => new Set(current).add(bundle.key));
+    setWaking((current) => new Set([...current, ...itemIds]));
     setChangedAtMs(Infinity);
     try {
-      await deleteDashboardResource(SNOOZES_PATH, {
-        conversationId: bundle.conversationId,
-      });
+      await deleteDashboardResource(SNOOZES_PATH, subject);
       const savedAtMs = Date.now();
       await invalidateReviewItemCollections(queryClient);
       setChangedAtMs(savedAtMs);
@@ -103,11 +105,51 @@ export function useInboxSnoozes(read: SnoozedRead) {
     } finally {
       setWaking((current) => {
         const next = new Set(current);
-        next.delete(bundle.key);
+        for (const id of itemIds) next.delete(id);
         return next;
       });
     }
   };
+  /**
+   * Snooze a row until `untilMs`. A root Conversation's row, such as a
+   * stack's Snooze all, snoozes each of its open items; a row of one item,
+   * such as an FYI notice, only that item.
+   */
+  const snooze = (bundle: InboxBundle, untilMs: number) =>
+    save(
+      bundle.key,
+      {
+        conversationId: bundle.conversationId,
+        ...(bundle.key === bundle.conversationId
+          ? undefined
+          : { reviewItemId: bundle.key }),
+      },
+      untilMs,
+    );
+  /** Snooze one item until `untilMs`. The rest of its stack stays. */
+  const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
+    save(
+      item.id,
+      { conversationId: item.rootConversationId, reviewItemId: item.id },
+      untilMs,
+    );
+  /** Wake a snoozed row now: undo the viewer's snoozes on its items. */
+  const wake = (bundle: InboxBundle) =>
+    unsnooze(
+      bundle.items.map((item) => item.id),
+      {
+        conversationId: bundle.conversationId,
+        ...(bundle.key === bundle.conversationId
+          ? undefined
+          : { reviewItemId: bundle.key }),
+      },
+    );
+  /** Wake one item now. The other items of its stack stay snoozed. */
+  const wakeItem = (item: ReviewItemPayload) =>
+    unsnooze([item.id], {
+      conversationId: item.rootConversationId,
+      reviewItemId: item.id,
+    });
   return {
     /**
      * The item's row was just snoozed, and the lists have not refreshed
@@ -117,6 +159,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
      */
     hides: (item: ReviewItemPayload) =>
       hiddenNow(item.id) ||
+      hiddenNow(item.rootConversationId) ||
       hiddenNow(item.addedByConversationId) ||
       item.conversationIds.some(hiddenNow),
     /**
@@ -131,8 +174,10 @@ export function useInboxSnoozes(read: SnoozedRead) {
     /** Snoozed could not be read, so `hidesItem` stays unknown. */
     failed: read.failed,
     snooze,
+    snoozeItem,
     wake,
-    /** The row was just woken, and the lists have not refreshed yet. */
-    waking: (key: string) => waking.has(key),
+    wakeItem,
+    /** The item was just woken, and the lists have not refreshed yet. */
+    waking: (itemId: string) => waking.has(itemId),
   };
 }

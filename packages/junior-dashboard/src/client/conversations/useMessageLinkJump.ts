@@ -28,16 +28,29 @@ export function useMessageLinkJump(input: {
     if (!content || seq === undefined || shownRef.current === messageId) {
       return;
     }
-    const row = content.querySelector(`[data-transcript-seq="${seq}"]`);
+    // A row carries the seq of its last event. A reply that ends a Turn
+    // with Tasks carries a Task's seq, so match the first row that reaches
+    // the Message's seq, like the row the transcript keeps mounted for it.
+    const row = Array.from(
+      content.querySelectorAll("[data-transcript-seq]"),
+    ).find(
+      (candidate) =>
+        Number(candidate.getAttribute("data-transcript-seq")) >= seq,
+    );
     if (!row) return;
     shownRef.current = messageId;
     // A smooth scroll stops when rows that mount on the way resize.
     showRow(row, { arrived: false, instant: true });
-    row.setAttribute("data-highlighted", "");
-    window.setTimeout(
-      () => row.removeAttribute("data-highlighted"),
-      HIGHLIGHT_MS,
-    );
+    markTranscriptRow(row);
   }, [content, events, messageId, seq, showRow]);
   return seq;
+}
+
+/** Mark a transcript row for a moment, so the reader sees where a jump went. */
+export function markTranscriptRow(row: Element) {
+  row.setAttribute("data-highlighted", "");
+  window.setTimeout(
+    () => row.removeAttribute("data-highlighted"),
+    HIGHLIGHT_MS,
+  );
 }

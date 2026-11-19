@@ -446,7 +446,7 @@ describe("Google Docs write tools", () => {
     const readOnly = run("replaceGoogleDocText", input);
     await expect(readOnly).rejects.toThrow(PluginToolInputError);
     await expect(readOnly).rejects.toThrow(
-      `Your Google account (${ACCOUNT_EMAIL}) cannot edit "Rethinking"`,
+      `Your Google account (${ACCOUNT_EMAIL}) cannot edit this file.`,
     );
     await expect(run("replaceGoogleDocText", input)).rejects.toThrow(
       `${REQUESTER} is not an editor`,

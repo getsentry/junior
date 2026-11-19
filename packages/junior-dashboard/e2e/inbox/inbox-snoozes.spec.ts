@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   digest,
@@ -14,6 +15,10 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
+// The open row. Every row has its own quick Snooze, so scope to this one.
+const openRowOf = (page: Page) =>
+  page.locator("li[data-inbox-row][data-expanded]");
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
@@ -22,7 +27,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(page, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
@@ -33,10 +38,11 @@ test.describe("new UI", { tag: "@new" }, () => {
         new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Tomorrow" }).click();
-    // The server keeps the snooze: it wakes the row at its time, or when
-    // the Conversation adds an item.
+    // A lone card snoozes its own item. The server keeps the snooze and
+    // wakes the item at its time.
     expect((await created).postDataJSON()).toEqual({
-      conversationId: rollout.addedByConversationId,
+      conversationId: rollout.rootConversationId,
+      reviewItemId: rollout.id,
       wakeAt: expect.any(String),
     });
     const todo = page.getByRole("region", { name: "To do" });
@@ -65,7 +71,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(page.getByText("The row could not be snoozed")).toBeVisible();
     await expect(rowHead(todo, checkout)).toBeVisible();
@@ -111,8 +117,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-linked-release",
       title: "Approve the release window",
     };
-    await mockReviewItems(page, { open: [license, pinReview, linked] });
-    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    // A second ask makes the release Conversation a stack, with Snooze all.
+    const checklist = {
+      ...pinReview,
+      createdAt: "2026-08-07T09:50:00.000Z",
+      id: "item-release-checklist",
+      title: "Approve the release checklist",
+    };
+    await mockReviewItems(page, {
+      open: [license, pinReview, checklist, linked],
+    });
+    await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     const linkedRow = todo
       .locator("[data-inbox-row]")
@@ -126,8 +141,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       await route.fallback();
     });
     await todo
-      .getByRole("region", { name: /: asks$/ })
-      .getByRole("button", { name: "Snooze" })
+      .locator(
+        `li[data-inbox-stack][data-dock-key$=":${pinReview.rootConversationId}"]`,
+      )
+      .getByRole("button", { name: "Snooze all" })
       .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(linkedRow).toHaveCount(0);
@@ -196,7 +213,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await held;
       await route.fallback();
     });
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(row).toHaveCount(0);
     release();
@@ -352,7 +369,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await polled;
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
-    await page.getByRole("button", { name: "Snooze" }).click();
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "3 hours" }).click();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
     await expect(

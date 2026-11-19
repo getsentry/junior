@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, countDistinct, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   canUserReadReviewItem,
@@ -158,13 +158,12 @@ export async function unsnoozeViewerRow(
 }
 
 /**
- * Count the Inbox rows that the viewer snoozed, as Snoozed lists them: one
- * per Conversation that added an open item that a snooze hides. One snooze
- * on a root Conversation can hide the rows of several.
+ * Count the open items that the viewer snoozed. Snoozed shows a card for
+ * each, as a root Conversation's stack does.
  */
 export async function countViewerSnoozes(user: User): Promise<number> {
   const [row] = await getDb()
-    .select({ count: countDistinct(juniorReviewItems.addedByConversationId) })
+    .select({ count: count() })
     .from(juniorReviewItems)
     .where(
       and(

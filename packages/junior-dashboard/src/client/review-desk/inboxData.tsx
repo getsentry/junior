@@ -9,7 +9,6 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { useDashboardCoreData } from "../api";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -34,7 +33,6 @@ import {
 import {
   inboxBundles,
   itemUpForGrabs,
-  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -143,8 +141,9 @@ function useBuildInboxData(input: {
     [setLinkedItems],
   );
   // The items of the open Inbox row, as the list last showed them. When a
-  // read shows them closed, as when an agent or a Watch closes them, they
-  // stay until the row leaves as it does on Dismiss.
+  // read shows one closed, as when an agent or a Watch closes it, it stays
+  // until its card leaves as it does on Dismiss: the list then stops
+  // holding it.
   const [openRow, setOpenRow] = useState<readonly ReviewItemPayload[]>([]);
   const holdOpenRow = useCallback(
     (items: readonly ReviewItemPayload[]) =>
@@ -154,6 +153,12 @@ function useBuildInboxData(input: {
           ? current
           : items,
       ),
+    [],
+  );
+  // A card that left stops being held, so the list drops it.
+  const releaseHeld = useCallback(
+    (id: string) =>
+      setOpenRow((current) => current.filter((item) => item.id !== id)),
     [],
   );
   // The items of rows that leave, held until their motion ends, by id.
@@ -206,37 +211,20 @@ function useBuildInboxData(input: {
   // own read says whether it closed. Until then, it stays.
   const states = useReviewItemStates(missing.map((item) => item.id));
   const closedElsewhere = useMemo(
-    () =>
-      // A row with an item still open stays, without the closed ones.
-      missing.length === openRow.length &&
-      states.every((state) => state === "closed")
-        ? missing
-        : [],
-    [missing, openRow, states],
+    () => missing.filter((_item, index) => states[index] === "closed"),
+    [missing, states],
   );
   const list = useMemo(() => {
     const held = missing.flatMap((item, index) => {
       const state = states[index] ?? "pending";
-      if (state === "pending") return [item];
-      if (state !== "closed") return [state];
-      return closedElsewhere.length > 0 ? [item] : [];
+      return state === "pending" || state === "closed" ? [item] : [state];
     });
     const shown = new Set([...read, ...held].map((item) => item.id));
     const left = [...leaving.values()].filter((item) => !shown.has(item.id));
     return held.length > 0 || left.length > 0
       ? [...read, ...held, ...left]
       : read;
-  }, [closedElsewhere, leaving, missing, read, states]);
-  // Closed items, newest closed first, as Done lists them. A Conversation
-  // row says what the viewer answered until the Conversation moves on.
-  const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  const { items: closed } = useReviewItemsData({
-    closed: true,
-    enabled: signedIn,
-    forViewer: true,
-  });
-  const answerOf = (conversation: Conversation): string | undefined =>
-    conversationAnswerLine(closed, conversation, viewerEmail);
+  }, [leaving, missing, read, states]);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -257,7 +245,7 @@ function useBuildInboxData(input: {
     () => [
       ...new Set(
         list
-          .map((item) => item.addedByConversationId)
+          .map((item) => item.rootConversationId)
           .filter((id) => !conversationById.has(id)),
       ),
     ],
@@ -296,9 +284,10 @@ function useBuildInboxData(input: {
   const asks = awake.filter((item) => item.kind === "action");
   const todoRows = todoRowsOf(awake);
   const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
+  // An item woken a moment ago leaves Snoozed before the list refreshes.
   const snoozedRows = inboxBundles(
-    shown.filter((item) => snoozedIds.has(item.id)),
-  ).filter((bundle) => !snoozes.waking(bundle.key));
+    shown.filter((item) => snoozedIds.has(item.id) && !snoozes.waking(item.id)),
+  );
 
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity, with its items. A Conversation outside the loaded feed joins
@@ -361,7 +350,11 @@ function useBuildInboxData(input: {
     rows: {
       decisions: viewRows(onPage, "decisions").length,
       prs: waitingPullRequestCount(viewRows(onPage, "prs")),
-      todo: todoRowsOf(onPage).length,
+      // A stack shows a row for each of its items.
+      todo: todoRowsOf(onPage).reduce(
+        (rows, row) => rows + row.items.length,
+        0,
+      ),
     },
     server: serverCounts,
   });
@@ -388,14 +381,12 @@ function useBuildInboxData(input: {
 
   return {
     alerts,
-    /** What the viewer answered last in a Conversation, while it is news. */
-    answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     /** The Automations that need attention are in, so To do is complete. */
     automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
-    /** The open row's items, held after a read shows them all closed. */
+    /** The open row's items, held after a read shows them closed. */
     closedElsewhere,
     conversationById,
     conversationRows,
@@ -424,6 +415,7 @@ function useBuildInboxData(input: {
     nowMs,
     /** Every pin, in the viewer's stored order. */
     pinned,
+    releaseHeld,
     signedIn,
     snoozedRows,
     snoozedRead: {

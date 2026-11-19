@@ -80,8 +80,8 @@ runtime, not the markers, enforces approval.
   milliseconds in model-read text.
 - An answer to a question that the model asked uses the ID the ask tool
   returned. Send the question again, at most 512 characters, then one
-  `Label (field_id): value` line for each field. A dismiss sends nothing: it
-  starts no Turn.
+  `Label (field_id): value` line for each field. A dismiss starts no Turn. The
+  next Turn gets it as a Conversation note.
 
 ### Escaping
 

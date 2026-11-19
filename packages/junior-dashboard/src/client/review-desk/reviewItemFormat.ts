@@ -1,11 +1,13 @@
 import * as z from "zod";
 import {
+  answeredChoices,
   normalizeUserInputAnswer,
   type ConversationReportEvent,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { withoutStandaloneUrl } from "../display-text/DisplayText";
+import type { Conversation } from "../types";
 
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
@@ -163,54 +165,41 @@ export function answerLine(
     .join(" · ");
 }
 
-/**
- * Say what the viewer answered, such as "You answered Hold", so a row shows
- * it in place of the ask. An answer with no choice, only text, is "You
- * replied".
- */
-export function viewerAnswerLine(
-  item: Pick<ReviewItemPayload, "answer" | "request">,
-): string | undefined {
-  if (!item.request || !item.answer) return undefined;
-  const { values } = normalizeUserInputAnswer(item.request, item.answer);
-  const choices = item.request.fields.flatMap((field) =>
-    field.kind === "text" ? [] : (values[field.id] ?? []),
-  );
+/** Say "You answered Hold" for picked options, or "You replied" for text. */
+function answeredLine(choices: readonly string[]): string {
   return choices.length > 0
     ? `You answered ${choices.join(", ")}`
     : "You replied";
 }
 
 /**
- * Say what the viewer last answered in a Conversation, from its closed
- * items newest closed first, until a later Message moves it on. The answer's
- * own Message has the close time, so it does not count as later.
+ * Say what the viewer answered, such as "You answered Hold", so a toast
+ * confirms it as it goes. An answer with no choice, only text, is "You
+ * replied".
+ */
+export function viewerAnswerLine(
+  item: Pick<ReviewItemPayload, "answer" | "request">,
+): string | undefined {
+  if (!item.request || !item.answer) return undefined;
+  return answeredLine(answeredChoices(item.request, item.answer));
+}
+
+/**
+ * Say what the viewer last answered in a Conversation, from the answer that
+ * its feed row carries, until a later Message moves it on. The answer's own
+ * Message has the close time, so it does not count as later.
  */
 export function conversationAnswerLine(
-  closed: readonly Pick<
-    ReviewItemPayload,
-    "addedByConversationId" | "answer" | "closedAt" | "closedBy" | "request"
-  >[],
-  conversation: { id: string; lastMessageAt?: string | undefined },
-  viewerEmail: string | undefined,
+  conversation: Pick<Conversation, "lastMessageAt" | "viewerAnswer">,
 ): string | undefined {
-  if (!viewerEmail) return undefined;
-  const since = conversation.lastMessageAt
-    ? Date.parse(conversation.lastMessageAt)
-    : undefined;
-  for (const item of closed) {
-    if (
-      item.addedByConversationId !== conversation.id ||
-      !item.closedAt ||
-      item.closedBy?.email !== viewerEmail
-    )
-      continue;
-    if (since !== undefined && since > Date.parse(item.closedAt))
-      return undefined;
-    const line = viewerAnswerLine(item);
-    if (line) return line;
-  }
-  return undefined;
+  const answer = conversation.viewerAnswer;
+  if (!answer) return undefined;
+  if (
+    conversation.lastMessageAt &&
+    Date.parse(conversation.lastMessageAt) > Date.parse(answer.closedAt)
+  )
+    return undefined;
+  return answeredLine(answer.choices);
 }
 
 /** The open Review items of the inbox, in the groups and order it shows. */
@@ -220,16 +209,17 @@ export type InboxGroups = {
 };
 
 /**
- * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
- * the bundle into the queue; other bundles are FYI and sort after it.
+ * The Review items of one root Conversation and its child agents: a stack of
+ * cards, each with its own actions. `needsYou` sorts the stack into the
+ * queue; other stacks are FYI and sort after it.
  */
 export type InboxBundle = {
   /**
-   * Names the row: the Conversation id for a Conversation bundle, or the
+   * Names the row: the Conversation id for a Conversation stack, or the
    * item id for a row that shows one item.
    */
   key: string;
-  /** The Conversation that added the items. */
+  /** The root Conversation whose stack shows the items (`rootConversationId`). */
   conversationId: string;
   /** Items in inbox order: questions first, then the oldest. */
   items: ReviewItemPayload[];
@@ -276,16 +266,16 @@ export function itemUpForGrabs(item: ReviewItemPayload): boolean {
 }
 
 /**
- * Group items into one bundle per Conversation. Bundles that need the viewer
- * come first, the one that waited longest at the top, so the order does not
- * change while the reader works. FYI bundles follow, oldest first.
+ * Group items into one stack per root Conversation. Stacks that need the
+ * viewer come first, the one that waited longest at the top, so the order
+ * does not change while the reader works. FYI stacks follow, oldest first.
  */
 export function inboxBundles(
   items: readonly ReviewItemPayload[],
 ): InboxBundle[] {
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of items) {
-    const key = item.addedByConversationId;
+    const key = item.rootConversationId;
     byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
   }
   const bundles = [...byConversation].map(([conversationId, group]) => {

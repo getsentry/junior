@@ -96,7 +96,7 @@ export function addMockReviewItemRoutes(
   app.delete("/inbox/snoozes", async (c) => {
     const body = inboxSnoozeSubjectSchema.safeParse(await c.req.json());
     if (!body.success) return errorResponse("Invalid snooze.", 400);
-    wakeMockRow(NOW_MS, body.data.conversationId);
+    wakeMockRow(NOW_MS, body.data);
     return new Response(null, { status: 204 });
   });
 }

@@ -3,7 +3,8 @@
 // time, and save evidence. Steps run in the order given.
 //
 // Usage:
-//   node browse.mjs --out DIR [--base URL] [--width PX] [--timeout MS] STEP...
+//   node browse.mjs --out DIR [--base URL] [--width PX] [--touch] [--timeout MS] STEP...
+// --touch emulates a phone: a touch screen at --width (use 390) by 844.
 // --timeout sets the wait of each step (default 30000). A live Turn can take
 // minutes, so give drives that wait for a reply 300000 or more.
 // Steps:
@@ -11,6 +12,9 @@
 //   --back NAME            Open the URL that an earlier --snap NAME saved in DIR.
 //   --click SELECTOR       Click a Playwright selector, such as 'role=button[name="Hold"]'.
 //   --fill SELECTOR=TEXT   Type TEXT into the element.
+//   --type SELECTOR=TEXT   Type TEXT into the element key by key, as a person does.
+//   --hover SELECTOR       Move the pointer over the element and leave it there.
+//   --tap SELECTOR         Tap the element. Needs --touch.
 //   --press KEY            Press a key on the focused element, such as Enter.
 //   --upload SELECTOR=PATH Set the file of a file input, such as 'role=button[name="Choose files"]'.
 //                          Repeat PATH with commas for several files.
@@ -48,10 +52,16 @@ let out;
 let base = "http://localhost:3000";
 let width = 1440;
 let timeout = 30_000;
+let touch = false;
 const steps = [];
 for (let i = 0; i < args.length; i += 2) {
   if (args[i] === "--idle") {
     steps.push(["idle", ""]);
+    i -= 1;
+    continue;
+  }
+  if (args[i] === "--touch") {
+    touch = true;
     i -= 1;
     continue;
   }
@@ -71,7 +81,11 @@ const log = (line) => {
 };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width, height: 900 } });
+const page = await browser.newPage({
+  viewport: { width, height: touch ? 844 : 900 },
+  hasTouch: touch,
+  isMobile: touch,
+});
 page.setDefaultTimeout(timeout);
 let failed = false;
 try {
@@ -87,7 +101,15 @@ try {
           .locator(value.slice(0, at))
           .first()
           .fill(value.slice(at + 1));
-      } else if (step === "press") await page.keyboard.press(value);
+      } else if (step === "type") {
+        const at = value.lastIndexOf("=");
+        await page
+          .locator(value.slice(0, at))
+          .first()
+          .pressSequentially(value.slice(at + 1));
+      } else if (step === "hover") await page.locator(value).first().hover();
+      else if (step === "tap") await page.locator(value).first().tap();
+      else if (step === "press") await page.keyboard.press(value);
       else if (step === "upload") {
         const at = value.lastIndexOf("=");
         await page

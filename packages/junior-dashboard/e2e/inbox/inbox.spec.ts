@@ -30,13 +30,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // One row per Conversation.
+    // One row, or one stack of rows, per Conversation.
     await expect(
       todo.getByRole("link", { name: new RegExp(checkout) }),
     ).toBeVisible();
     // A Conversation with no title is named after its newest item.
     await expect(
-      todo.getByRole("link", { name: new RegExp(audit.title) }),
+      todo
+        .locator("li[data-inbox-stack]")
+        .getByRole("link", { name: new RegExp(audit.title) })
+        .first(),
     ).toBeVisible();
     // The badge and To do count the same cards.
     const tab = page
@@ -60,7 +63,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todo.getByRole("list")).toHaveCount(0);
     await screenshot(page, "inbox-todo-collapsed", { view: "desktop" });
     await page.getByRole("button", { name: /^To do/ }).click();
-    await expect(todo.getByRole("list")).toBeVisible();
+    await expect(todo.getByRole("list").first()).toBeVisible();
   });
 
   test("each entry lists its own rows under its name", async ({
@@ -131,25 +134,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-automations", { lightTheme: true });
   });
 
-  test("a row answers its asks in place", async ({ dashboard, page }) => {
-    const actions = await mockReviewItems(page);
+  test("a row answers its ask in place", async ({ dashboard, page }) => {
+    const actions = await mockReviewItems(page, {
+      open: [rollout, license, audit],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    // A pill expands the row. The list stays where it is.
-    await todo.getByRole("button", { name: "2 Questions" }).first().click();
+    // Each ask has its own row, in its stack or alone.
+    const row = (item: { id: string }) =>
+      todo.locator(`li[data-inbox-row="todo:${item.id}"]`);
+    // A row click expands the row. The list stays where it is.
+    await row(audit).locator("[data-inbox-head]").first().click();
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks).toHaveCount(1);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 
-    // Each item gets its own answer form, so a choice does not carry over.
-    // The row is named after its newest open item, which changes as they close.
-    const bundle = page.getByRole("region", { name: /: asks$/ });
-    const licenseItem = bundle.getByRole("region", { name: license.title });
-    const auditItem = bundle.getByRole("region", { name: audit.title });
-    await licenseItem.getByRole("radio", { name: "Approve" }).click();
-    await expect(
-      auditItem.getByRole("radio", { name: "Approve" }),
-    ).not.toBeChecked();
+    const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
     await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
     await screenshot(page, "inbox-row-answer", {
@@ -165,14 +165,26 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
       id: audit.id,
     });
-    // The row stays open while it has items.
-    await expect(licenseItem).toBeVisible();
 
-    // The row's Dismiss closes every ask of the row. Its notice is FYI.
-    await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
+    // The license ask has its own form, so the audit's choice does not
+    // carry over, and its Dismiss closes only its own item.
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${audit.id}"]`),
+    ).toHaveCount(0);
+    const licenseRow = row(license);
+    const licenseItem = licenseRow.locator("[data-inbox-card]");
+    // Next opens it: alone in its Conversation now, still in its own row.
+    await expect(licenseRow).toHaveAttribute("data-expanded", "true");
+    await expect(licenseItem).toBeVisible();
+    await expect(
+      licenseItem.getByRole("radio", { name: "Reject" }),
+    ).not.toBeChecked();
+    await licenseItem
+      .getByRole("button", { name: "Dismiss", exact: true })
+      .click();
     await expect
-      .poll(() => actions.map((action) => action.id).sort())
-      .toEqual([audit.id, license.id].sort());
+      .poll(() => actions.map((action) => action.id))
+      .toEqual([audit.id, license.id]);
   });
 
   test("a sweep dismisses only FYI items, with an Undo", async ({
@@ -186,6 +198,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const teamAsk = {
       ...audit,
       addedByConversationId: "slack:C789:1770021600.000900",
+      rootConversationId: "slack:C789:1770021600.000900",
       assignedToEveryone: true,
       assignees: [],
       // Recent, so it shows in Today above the older Conversations.
@@ -506,7 +519,9 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
     const asks = todo.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    await expect(
+      todo.locator(`li[data-inbox-row="todo:${rollout.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is on screen.
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
@@ -548,7 +563,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(105);
   });
 
-  test("an open row's notice and questions leave Dismiss and its title to the row", async ({
+  test("each card of an open row keeps its own Dismiss, and an item row's head names it", async ({
     dashboard,
     page,
   }) => {
@@ -557,13 +572,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
     await expect(card).toContainText("FYI");
-    // The row's Dismiss closes it, and the item row's head names it.
-    await expect(asks.getByRole("button", { name: "Dismiss" })).toBeVisible();
-    await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    // The card's Dismiss closes it, and the item row's head names it.
+    await expect(
+      card.getByRole("button", { exact: true, name: "Dismiss" }),
+    ).toBeVisible();
     await expect(card.getByRole("heading")).toHaveCount(0);
 
     // A Conversation row's head names the Conversation, so the ask keeps its
-    // title.
+    // title. In the Inbox, these asks stack as rows; Conversations keeps the
+    // Conversation row.
     await page.goto(
       `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
     );
@@ -573,18 +590,19 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("heading", { name: prReady.title }),
     ).toBeVisible();
 
-    // Its questions leave Dismiss to the row's bar too, beside their Send.
+    // Each question keeps its own Dismiss beside its Send, and the row's
+    // bar has none.
     const row = page.getByRole("region", { name: /: asks$/ });
     for (const question of [license, audit]) {
       const card = row.getByRole("region", { name: question.title });
       await expect(card.getByRole("button", { name: "Send" })).toBeVisible();
-      await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(
-        0,
-      );
+      await expect(
+        card.getByRole("button", { exact: true, name: "Dismiss" }),
+      ).toHaveCount(1);
     }
     await expect(
       row.getByRole("button", { name: "Dismiss", exact: true }),
-    ).toHaveCount(1);
+    ).toHaveCount(3);
   });
 
   test("an item row's second line names its subject, not its own title", async ({
@@ -614,6 +632,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: [
         "GitHub asks you to review this pull request.",
         "https://github.com/getsentry/payments/pull/91",
@@ -658,6 +677,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const item = {
       ...prReview,
       addedByConversationId: "slack:CQA456:1770021600.000600",
+      rootConversationId: "slack:CQA456:1770021600.000600",
       body: "GitHub asks you to review this pull request.\n\nhttps://github.com/getsentry/payments/pull/91",
       id: "item-pr-card",
       kind: "notice" as const,

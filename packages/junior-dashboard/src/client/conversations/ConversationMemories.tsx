@@ -53,10 +53,9 @@ export function ConversationMemoryCard(props: {
 /** One memory with its full text, its visibility, and a jump to its Turn. */
 function MemoryCard(props: {
   entry: ConversationMemoryEntry;
-  onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
+  onSelect(entry: ConversationMemoryEntry): void;
 }) {
   const { entry } = props;
-  const { turnId } = entry;
   return (
     <li className="grid overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel">
       {/* Break long URLs so the card keeps the panel width. */}
@@ -69,17 +68,15 @@ function MemoryCard(props: {
         ) : (
           <span />
         )}
-        {turnId ? (
-          <Button
-            className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
-            onClick={() => props.onSelect({ ...entry, turnId })}
-            size="bare"
-            variant="ghost"
-          >
-            Go to message
-            <ArrowRight aria-hidden="true" size={13} />
-          </Button>
-        ) : null}
+        <Button
+          className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
+          onClick={() => props.onSelect(entry)}
+          size="bare"
+          variant="ghost"
+        >
+          Go to message
+          <ArrowRight aria-hidden="true" size={13} />
+        </Button>
       </div>
     </li>
   );
@@ -87,11 +84,11 @@ function MemoryCard(props: {
 
 /**
  * List every memory that a Conversation recalled or captured, with its full
- * text. Selecting one shows it in the transcript.
+ * text. Selecting one shows its Turn in the transcript.
  */
 export function ConversationMemoryEntries(props: {
   entries: ConversationMemoryEntry[];
-  onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
+  onSelect(entry: ConversationMemoryEntry): void;
 }) {
   const groups = (["recalled", "captured"] as const)
     .map((source) => ({

@@ -553,6 +553,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
       run.slack,
       run.state,
       (input) => readSandboxFileUpload(run.context.workspace, input),
+      run.context.conversationId,
       attachmentStore(run),
     );
   },

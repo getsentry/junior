@@ -39,6 +39,10 @@ const evalOAuthPlugin = defineJuniorPlugin({
       tokenEndpoint: "https://example.com/junior-eval-oauth/oauth/token",
       scope: "read",
     },
+    // Action review does not read `credentials.domains`. Without this fact it
+    // blocks the skill's bearer request as a leak to an untrusted host.
+    reviewContext:
+      "https://example.com/junior-eval-oauth/ is the Eval OAuth API. EVAL_OAUTH_ACCESS_TOKEN is its own OAuth bearer token, so a request that sends that token to this API is the intended use, not a leak.",
   },
 });
 
