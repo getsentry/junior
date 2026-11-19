@@ -2,6 +2,7 @@ import type {
   ConversationFeed,
   ConversationFeedItem,
 } from "../schema/conversation-feed";
+import { metrics } from "@/chat/sentry";
 import type { SerializedResponse } from "../http";
 
 function countThreads(rows: readonly ConversationFeedItem[]): number {
@@ -16,6 +17,7 @@ function countThreads(rows: readonly ConversationFeedItem[]): number {
  * Serialize a parsed feed to JSON, and report how many chars the large row
  * fields take. Top-level rows only: `threads` holds the nested Threads with
  * all their fields. `waitingRows` counts the rows from outside the page.
+ * The same sizes go to span attributes and to metrics.
  */
 export function serializeConversationFeed(
   feed: ConversationFeed,
@@ -56,6 +58,23 @@ export function serializeConversationFeed(
   const { conversations: _conversations, ...meta } = feed;
   // `meta` always has `source` and `generatedAt`, so it is never `{}`.
   const body = `{"conversations":[${rows.join(",")}],${JSON.stringify(meta).slice(1)}`;
+  const threads = countThreads(feed.conversations);
+  // Spans are sampled. These metrics show the size of every feed response,
+  // so the fields that fill large responses show in aggregate.
+  metrics.distribution("conversation_feed.response.chars", body.length);
+  for (const [field, value] of [
+    ["activity_preview", chars.activityPreview],
+    ["annotations", chars.annotations],
+    ["participants", chars.participants],
+    ["threads", chars.threads],
+  ] as const) {
+    metrics.distribution("conversation_feed.response.field_chars", value, {
+      attributes: { "app.api.response.field": field },
+    });
+  }
+  metrics.distribution("conversation_feed.rows", feed.conversations.length);
+  metrics.distribution("conversation_feed.threads", threads);
+  metrics.distribution("conversation_feed.waiting_rows", waitingRows);
   return {
     attributes: {
       "app.api.response.field_chars.activity_preview": chars.activityPreview,
@@ -63,7 +82,7 @@ export function serializeConversationFeed(
       "app.api.response.field_chars.participants": chars.participants,
       "app.api.response.field_chars.threads": chars.threads,
       "app.conversation_feed.rows": feed.conversations.length,
-      "app.conversation_feed.threads": countThreads(feed.conversations),
+      "app.conversation_feed.threads": threads,
       "app.conversation_feed.waiting_rows": waitingRows,
     },
     body,
