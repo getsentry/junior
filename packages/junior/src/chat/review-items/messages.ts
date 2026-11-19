@@ -7,6 +7,7 @@ import {
   appendAndEnqueueWebMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { addConversationNote } from "@/chat/conversations/notes";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -134,9 +135,12 @@ function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
 
 /**
  * Save a take or a dismiss as a handled Message in one Conversation. Neither
- * starts a Turn or reaches the model: neither is a decision. The dashboard
- * shows the Message from its record. A retry is safe, because the Message id
- * is the change key.
+ * starts a Turn or reaches the model as a Message: neither is a decision. The
+ * dashboard shows the Message from its record. A dismiss also adds a
+ * Conversation note, so the next Turn knows the item closed. Without it, the
+ * agent only has its own `addReviewItem` result and still treats the item as
+ * open. A retry is safe, because the Message id and the note key are the
+ * change key.
  */
 async function recordReviewItemChange(args: {
   change: RecordedChange;
@@ -146,6 +150,14 @@ async function recordReviewItemChange(args: {
 }): Promise<void> {
   const { change } = args;
   const messageId = recordedMessageId(args.item, change);
+  if (change.kind === "dismissed") {
+    await addConversationNote({
+      conversationId: args.conversationId,
+      createdAtMs: args.nowMs,
+      key: messageId,
+      text: `${personName(change.user)} dismissed review item "${args.item.title}" (${args.item.id}). It is closed with no answer. Do not treat it as open.`,
+    });
+  }
   await getConversationEventStore().append(args.conversationId, [
     {
       idempotencyKey: `message:${messageId}`,
