@@ -326,17 +326,42 @@ describe("Turn state", () => {
     ).resolves.toBe(true);
 
     await expect(readTurn()).resolves.toMatchObject({
-      state: "running",
+      state: "queued",
       stepSeq: 1,
       leaseEpoch: 2,
       attempts: 0,
-      leaseOwner: "worker-b",
+      leaseOwner: null,
+      leaseExpiresAt: null,
       endedAt: null,
     });
     await expect(loadHistory()).resolves.toEqual({
       types: ["assistant_message", "tool_result"],
       messages,
     });
+  });
+
+  it("lets a new claim take the next step at once, and fences out the old lease", async () => {
+    const first = (await claim("worker-a"))!;
+    await commitStep(fixture.sql, first, {
+      outcome: "continue",
+      messages: [toolCallReply(), toolResult()],
+    });
+
+    await expect(claim("worker-b")).resolves.toEqual({
+      turnId,
+      conversationId: CONVERSATION_ID,
+      stepSeq: 1,
+      leaseEpoch: 2,
+      attempts: 1,
+    });
+    const running = await readTurn();
+    expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
+
+    await expect(heartbeat(fixture.sql, first, LEASE_MS)).resolves.toBe(false);
+    await expect(commitStep(fixture.sql, first, finishedStep())).resolves.toBe(
+      false,
+    );
+    await expect(readTurn()).resolves.toEqual(running);
   });
 
   it("ends the Turn when the committed step completed it", async () => {
