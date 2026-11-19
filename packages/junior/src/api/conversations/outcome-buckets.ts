@@ -187,11 +187,16 @@ async function readBriefOutcomeRoots(
     .orderBy(desc(briefs.version))
     .limit(1)
     .as("latest_brief");
-  // Every root with a linked code change, read once for the anti-join.
+  // Every root with a linked code change, read once for the anti-join. One
+  // hash join on the unnested ids replaces a key lookup per listed id.
+  const changeIds = db
+    .select({ id: sql<string>`unnest(${changes.conversationIds})`.as("id") })
+    .from(changes)
+    .as("change_ids");
   const changeRoots = db
     .selectDistinct({ rootId: linkedRoot.as("root_id") })
-    .from(changes)
-    .innerJoin(linked, linksChange)
+    .from(changeIds)
+    .innerJoin(linked, eq(linked.conversationId, changeIds.id))
     .as("change_roots");
   return await db
     .select({
