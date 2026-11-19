@@ -13,6 +13,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import {
+  answeredChoices,
   automationListSchema,
   conversationDetailReportSchema,
   reviewItemActionSchema,
@@ -30,6 +31,10 @@ import {
   type ConversationSnapshot,
 } from "../conversations/queries";
 import { clearAnswerDraft } from "../components/answerDrafts";
+import {
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "../conversations/conversationFeedCache";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
@@ -440,6 +445,40 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
   if (restored) changeCounts(queryClient, item, 1);
 }
 
+/**
+ * Put the viewer's answer on its Conversation's feed rows, as the next feed
+ * read sends it, so a row says "You answered Hold" at once. The feed sends
+ * the answer on root rows only, so a Thread row keeps none.
+ */
+async function showAnswerOnFeedRows(
+  queryClient: QueryClient,
+  item: ReviewItemPayload,
+): Promise<void> {
+  if (!item.answer || !item.request || !item.closedAt) return;
+  const viewerAnswer = {
+    choices: answeredChoices(item.request, item.answer),
+    closedAt: item.closedAt,
+  };
+  const feeds = { queryKey: ["dashboard", "conversations"] };
+  // A feed read that started before the answer would overwrite the patch. A
+  // feed with no data yet keeps its first read.
+  await queryClient.cancelQueries({
+    ...feeds,
+    predicate: (query) => query.state.data !== undefined,
+  });
+  queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
+    feed
+      ? mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) =>
+            conversation.conversationId === item.addedByConversationId
+              ? { ...conversation, viewerAnswer }
+              : conversation,
+          ),
+        )
+      : feed,
+  );
+}
+
 /** How many Review item actions are in flight. */
 export function reviewItemActionsInFlight(queryClient: QueryClient): number {
   return queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY });
@@ -475,9 +514,11 @@ export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: (item) => {
+    onSuccess: async (item, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(reviewItemQueryKey(item.id), item);
+      if (args.body.action === "submit")
+        await showAnswerOnFeedRows(queryClient, item);
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>
