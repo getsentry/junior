@@ -1,4 +1,4 @@
-import { and, eq, exists, gte, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
@@ -28,8 +28,6 @@ import {
 } from "../reporting-window";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;
-/** Day ranges need the prior equal period too (90d + prior 90d). */
-const DAY_METRIC_LOOKBACK = 180;
 
 type Range = 1 | 7 | 30 | 90;
 
@@ -81,24 +79,75 @@ function rangeStart(nowMs: number, range: Range): Date {
     : trailingUtcDayWindow(nowMs, range).start;
 }
 
-/**
- * Sum one range of a person's spend: the current period, and the prior
- * period of equal length that ends where the current one starts.
- */
-function rangeSpendColumns(nowMs: number, range: Range) {
-  const start = rangeStart(nowMs, range);
-  const priorStart = new Date(
-    start.getTime() - (range === 1 ? 24 * HOUR_MS : range * DAY_MS),
+/** Start of the prior period of each range, of equal length. */
+function rangePriorStart(nowMs: number, range: Range): Date {
+  return new Date(
+    rangeStart(nowMs, range).getTime() -
+      (range === 1 ? 24 * HOUR_MS : range * DAY_MS),
   );
-  const current = sql`${metrics.occurredAt} >= ${start.toISOString()}::timestamptz`;
-  const prior = sql`${metrics.occurredAt} >= ${priorStart.toISOString()}::timestamptz
-    AND ${metrics.occurredAt} < ${start.toISOString()}::timestamptz`;
-  const sum = (metric: "cost_micro_usd" | "duration_ms", when: SQL) =>
-    sql`sum(${metrics.value}) FILTER (WHERE ${metrics.metric} = ${metric} AND ${when})`;
+}
+
+type SpendMetric = "cost_micro_usd" | "duration_ms";
+
+/**
+ * Sum one metric of one range: the current period and, for cost, the prior
+ * period. A column that does not apply to the metric is null, so the cost
+ * and duration branches of `identitySpend` have the same columns.
+ */
+function rangeSpendSums(nowMs: number, range: Range, metric: SpendMetric) {
+  const start = rangeStart(nowMs, range);
+  const sumWhere = (when: SQL | undefined) =>
+    sql<number | null>`sum(${metrics.value}) FILTER (WHERE ${when})`;
+  const none = sql<number | null>`NULL::double precision`;
+  const current = sumWhere(gte(metrics.occurredAt, start));
+  const prior = sumWhere(
+    and(
+      gte(metrics.occurredAt, rangePriorStart(nowMs, range)),
+      lt(metrics.occurredAt, start),
+    ),
+  );
+  const cost = metric === "cost_micro_usd";
   return {
-    costMicroUsd: microUsdSql(sum("cost_micro_usd", current)),
-    durationMs: sql<number>`COALESCE(${sum("duration_ms", current)}, 0)::double precision`,
-    priorCostMicroUsd: microUsdSql(sum("cost_micro_usd", prior)),
+    costMicroUsd: (cost ? current : none).as(`cost_micro_usd_${range}`),
+    durationMs: (cost ? none : current).as(`duration_ms_${range}`),
+    priorCostMicroUsd: (cost ? prior : none).as(
+      `prior_cost_micro_usd_${range}`,
+    ),
+  };
+}
+
+/**
+ * Sum each identity's spend in every range in one pass over the metric
+ * rows, grouped before any join. Cost and duration are separate branches,
+ * so each row checks only its own metric's periods, and duration rows are
+ * read only for the longest current period.
+ */
+function identitySpend(nowMs: number) {
+  const byIdentity = (metric: SpendMetric, since: Date) =>
+    getDb()
+      .select({
+        identityId: sql<string>`${metrics.actorIdentityId}`.as(
+          "identity_totals_id",
+        ),
+        1: rangeSpendSums(nowMs, 1, metric),
+        7: rangeSpendSums(nowMs, 7, metric),
+        30: rangeSpendSums(nowMs, 30, metric),
+        90: rangeSpendSums(nowMs, 90, metric),
+      })
+      .from(metrics)
+      .where(and(eq(metrics.metric, metric), gte(metrics.occurredAt, since)))
+      .groupBy(metrics.actorIdentityId);
+  return byIdentity("cost_micro_usd", rangePriorStart(nowMs, 90))
+    .unionAll(byIdentity("duration_ms", rangeStart(nowMs, 90)))
+    .as("person_identity_totals");
+}
+
+/** Sum one range of a person's spend over their identities. */
+function rangeSpendColumns(spend: ReturnType<typeof identitySpend>[Range]) {
+  return {
+    costMicroUsd: microUsdSql(sql`sum(${spend.costMicroUsd})`),
+    durationMs: sql<number>`COALESCE(sum(${spend.durationMs}), 0)::double precision`,
+    priorCostMicroUsd: microUsdSql(sql`sum(${spend.priorCostMicroUsd})`),
   };
 }
 
@@ -295,6 +344,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const sixHourWindow = trailingUtcSixHourWindow(nowMs);
   const range = personTurnRange();
   const counts = personRangeConversations(nowMs, start);
+  const spendByIdentity = identitySpend(nowMs);
   const rangeCount = (column: SQL.Aliased<number>) =>
     sql<number>`COALESCE(${column}, 0)::integer`;
   const [rows, activityDayRows, activityHourRows, activitySixHourRows, spend] =
@@ -320,27 +370,18 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
       getDb()
         .select({
           email: sql<string>`${juniorUsers.primaryEmailNormalized}`,
-          1: rangeSpendColumns(nowMs, 1),
-          7: rangeSpendColumns(nowMs, 7),
-          30: rangeSpendColumns(nowMs, 30),
-          90: rangeSpendColumns(nowMs, 90),
+          1: rangeSpendColumns(spendByIdentity[1]),
+          7: rangeSpendColumns(spendByIdentity[7]),
+          30: rangeSpendColumns(spendByIdentity[30]),
+          90: rangeSpendColumns(spendByIdentity[90]),
         })
-        .from(metrics)
+        .from(spendByIdentity)
         .innerJoin(
           juniorIdentities,
-          eq(juniorIdentities.id, metrics.actorIdentityId),
+          eq(juniorIdentities.id, spendByIdentity.identityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .where(
-          and(
-            verifiedActorWhere(),
-            inArray(metrics.metric, ["cost_micro_usd", "duration_ms"]),
-            gte(
-              metrics.occurredAt,
-              trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK).start,
-            ),
-          ),
-        )
+        .where(verifiedActorWhere())
         .groupBy(juniorUsers.id),
     ]);
 
