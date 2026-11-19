@@ -5,15 +5,6 @@ import { PageHeader } from "../../../components/layout/PageHeader";
 import { PageLayout } from "../../../components/layout/PageLayout";
 import { SectionIntro } from "../../../components/layout/SectionIntro";
 
-/** The Settings sections in page order, for the pane list. */
-export const settingsSections = [
-  { anchor: "general", label: "General" },
-  { anchor: "interface", label: "Interface" },
-  { anchor: "api-tokens", label: "API Tokens" },
-  { anchor: "identities", label: "Identities" },
-  { anchor: "mcp", label: "MCP" },
-];
-
 /**
  * Put the Settings sections on one scrolling page under the Settings
  * heading, like Android settings. The pane lists the sections.

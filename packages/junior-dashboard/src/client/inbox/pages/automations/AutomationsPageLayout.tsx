@@ -5,6 +5,7 @@ import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { PageLayout } from "../../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../../components/layout/SecondaryNavigation";
+import { NAV_PAGES, navAreaPages } from "../../../navPages";
 
 /**
  * Identify Automation routes whose list scrolls on its own beside a panel:
@@ -19,8 +20,8 @@ export function hasAutomationDetailsFrame(pathname: string): boolean {
 }
 
 const taskNavigationItems = [
-  { end: true, label: "Automations", to: "/automations" },
-  { label: "Runs", to: "/automations/runs" },
+  { ...NAV_PAGES.automations, end: true },
+  ...navAreaPages(NAV_PAGES.automations.to),
 ];
 
 /** Keep Automation navigation consistent across the list and runs. */
