@@ -8,8 +8,8 @@ import {
   googleFileRequest,
   MAX_CONTENT_CHARS,
   parseFileReference,
-  readGoogleFileMetadata,
 } from "./files";
+import { readRequesterFile } from "./file-access";
 import type { GoogleToolContext } from "./shared";
 import {
   presentationReferenceSchema,
@@ -74,7 +74,7 @@ export const readGoogleSlidesLayoutTool = definePluginTool({
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const ref = parseFileReference(input.presentation);
-    const file = await readGoogleFileMetadata(ctx, ref, ["presentation"]);
+    const file = await readRequesterFile(ctx, ref, ["presentation"]);
     const fields =
       input.fields && !/\brevisionId\b/.test(input.fields)
         ? `revisionId,${input.fields}`

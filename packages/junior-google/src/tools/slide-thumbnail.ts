@@ -3,11 +3,8 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import {
-  googleFileRequest,
-  parseFileReference,
-  readGoogleFileMetadata,
-} from "./files";
+import { googleFileRequest, parseFileReference } from "./files";
+import { readRequesterFile } from "./file-access";
 import type { GoogleToolContext } from "./shared";
 import { presentationReferenceSchema, slideObjectIdSchema } from "./slides";
 
@@ -54,7 +51,7 @@ export const getGoogleSlideThumbnailTool = definePluginTool({
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const ref = parseFileReference(input.presentation);
-    await readGoogleFileMetadata(ctx, ref, ["presentation"]);
+    await readRequesterFile(ctx, ref, ["presentation"]);
     const response = await googleFileRequest(ctx, ref, {
       operation: "google.slides.page.thumbnail",
       path: `/v1/presentations/${ref.fileId}/pages/${input.slide_object_id}/thumbnail`,

@@ -26,9 +26,13 @@ not use the Google credentials of the people it helps.
 7. Connect the account on **Admin → Google account** in the dashboard, or run
    `junior google connect`.
 
-Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable. Given a
-link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+Anyone who can talk to Junior can read the calendars that the Junior account
+can see. Share calendars with that account only when that is acceptable.
+Junior reads a Doc, Sheet, or Slides file, or its comments, only for a
+requester who can open it too. This is the check that link cards use: the
+file names the requester, anyone with the link can open it, or the
+requester's domain can open it and owns it. Access through a Google group
+does not count.
 One tool, `readGoogleFile`, reads all three. It takes the type from the link,
 or from Drive for a bare file id.
 Search finds only files that any employee could already find in Drive, and
@@ -56,8 +60,7 @@ Junior edits a Doc only for a requester who can edit it through their own
 email, their domain, or an editable link. Access through a Google group is not
 checked. The plugin enforces this for every change to an existing Drive file:
 each write operation declares how it checks the requester, and a file write
-fails unless the tool passes the file that the editor check returned. Anyone who can talk to Junior can read a Doc that Junior edits, if
-they give Junior its link. Junior makes the requester the owner of a Doc it
+fails unless the tool passes the file that the editor check returned. Junior makes the requester the owner of a Doc it
 creates, then removes its own access. Google emails the requester about the
 new ownership. Junior cannot read or edit that Doc again unless the requester
 shares it back. This only works for requesters in the same Workspace

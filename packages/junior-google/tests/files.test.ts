@@ -2,9 +2,11 @@ import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
-import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
+import { ACCOUNT_EMAIL, stubGoogleEnv, withReadCheck } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
+const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
+const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
 
 const REQUESTER = "alice@example.com";
 
@@ -25,7 +27,7 @@ function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
-    egress: { fetch },
+    egress: { fetch: withReadCheck(fetch, [DOC_ID, SHEET_ID, SLIDES_ID]) },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
@@ -201,6 +203,73 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     expect(unrevised).not.toHaveProperty("revision_id");
   });
 
+  it("reads a file only for a requester who can open it", async () => {
+    // Each requester opens the Doc through one kind of share, or none.
+    const shares: Record<string, string> = {
+      "alice@example.com": "'alice@example.com' in readers",
+      "carol@example.com": "visibility = 'domainWithLink'",
+      "eve@other.com": "visibility = 'domainWithLink'",
+      "link@other.com": "visibility = 'anyoneWithLink'",
+    };
+    const readAs = (email: string | undefined) => {
+      const fetch = vi.fn(
+        async (call: { operation: string; request: Request }) => {
+          const query = new URL(call.request.url).searchParams.get("q");
+          if (query !== null) {
+            const share = email ? shares[email] : undefined;
+            return Response.json({
+              files: share && query.includes(share) ? [{ id: DOC_ID }] : [],
+            });
+          }
+          if (call.operation === "google.drive.file.get") {
+            return Response.json(SEARCH_DOC);
+          }
+          if (call.operation === "google.docs.document.get") {
+            return Response.json({ revisionId: "rev-1" });
+          }
+          return new Response("# Q4 plan", {
+            headers: { "content-type": "text/markdown" },
+          });
+        },
+      );
+      const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
+        egress: { fetch },
+        users: {
+          resolveActor: async () => (email ? { user: { email } } : undefined),
+          resolveTimezone: async () => "America/Los_Angeles",
+        },
+      } as never);
+      return {
+        fetch,
+        read: () => run(tools, "readGoogleFile", { file: DOC_ID }),
+      };
+    };
+
+    for (const email of [
+      "alice@example.com",
+      "carol@example.com",
+      "link@other.com",
+    ]) {
+      await expect(readAs(email).read()).resolves.toMatchObject({
+        content: "# Q4 plan",
+      });
+    }
+    // A domain share opens the Doc only for the domain that owns it. A share
+    // with a group names nobody, so it does not count.
+    for (const email of ["eve@other.com", "eng-member@example.com"]) {
+      const { fetch, read } = readAs(email);
+      await expect(read()).rejects.toThrow(
+        `Only people who can open "Q4 plan" can ask you to read it, and ${email} cannot.`,
+      );
+      expect(fetch.mock.calls.map(([call]) => call.operation)).not.toContain(
+        "google.drive.file.export",
+      );
+    }
+    await expect(readAs(undefined).read()).rejects.toThrow(
+      "The requester's email is unknown",
+    );
+  });
+
   it("searches only with the requester's terms", async () => {
     const unknown = toolsFor(undefined);
     await expect(
@@ -311,8 +380,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {
-    const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
-    const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
     const { fetch, tools } = docsTools(
       Response.json({
         id: SHEET_ID,
@@ -432,8 +499,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
   });
 
   it("reads a Sheet with one range and Slides from a bare file id", async () => {
-    const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
-    const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
     const { fetch, tools } = docsTools(
       Response.json({
         id: SHEET_ID,

@@ -8,9 +8,10 @@ Workspace account, so the user connects nothing.
 
 - One connection serves every Google tool. An admin connects Junior's
   account once, and Calendar, Docs, Sheets, and Slides work from it.
-- Junior never changes a file for a person who could not change it
-  themselves. Junior's account can edit files that the requester cannot, and
-  that access must not let a requester do more than they could do alone.
+- Junior never reads or changes a file for a person who could not read or
+  change it themselves. Junior's account can open and edit files that the
+  requester cannot, and that access must not let a requester do more than
+  they could do alone.
 - Junior acts as its own account and never uses the Google credentials of
   the people it helps.
 - Google access goes only through the Google tools, which apply these rules.
@@ -38,9 +39,10 @@ Workspace account, so the user connects nothing.
   domains.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
-- Anyone who can talk to Junior can read a file that Junior's account can
-  open, if they give Junior its link. Share files with that account only when
-  that is acceptable.
+- Junior reads a file or its comments only for a requester who can open it
+  through their own email, their domain when that domain owns the file, or
+  a link that anyone can open.
+  Access through a Google group does not count.
 - Search finds only files that any employee could find in Drive, or that are
   shared with the requester by name. It hides files that nobody in the
   allowed domains owns, and it finds nothing for a requester outside them.
@@ -48,3 +50,9 @@ Workspace account, so the user connects nothing.
   the event.
 - Only an admin connects Junior's account. A requester cannot connect it or
   use their own account instead.
+
+## Gaps
+
+- A Slides edit can add a Sheets chart or a Drive video from a file that the
+  requester cannot open. This breaks "never reads a file for a person who
+  could not read it".

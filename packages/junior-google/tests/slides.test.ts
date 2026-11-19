@@ -2,7 +2,7 @@ import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
-import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
+import { ACCOUNT_EMAIL, stubGoogleEnv, withReadCheck } from "./fixture";
 
 const DECK_ID = "1DeCkIdAbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
 const DECK_LINK = `https://docs.google.com/presentation/d/${DECK_ID}/edit`;
@@ -20,7 +20,7 @@ function slidesTools(responses: Response[], curlExitCode = 0) {
   }));
   const readFile = vi.fn(async () => PNG);
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
-    egress: { fetch },
+    egress: { fetch: withReadCheck(fetch, [DECK_ID]) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
     users: {
       resolveActor: async () => ({

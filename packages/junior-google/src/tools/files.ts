@@ -146,10 +146,12 @@ export async function googleFileRequest(
 
 const driveFileSchema = z.object({
   capabilities: z.object({ canEdit: z.boolean().optional() }).optional(),
+  driveId: z.string().optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
   name: z.string(),
+  owners: z.array(z.object({ emailAddress: z.string().optional() })).optional(),
   webViewLink: z.string().optional(),
 });
 
@@ -168,7 +170,8 @@ export async function readGoogleFileMetadata(
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "capabilities(canEdit),id,mimeType,modifiedTime,name,webViewLink",
+      fields:
+        "capabilities(canEdit),driveId,id,mimeType,modifiedTime,name,owners(emailAddress),webViewLink",
       supportsAllDrives: "true",
     },
   });
