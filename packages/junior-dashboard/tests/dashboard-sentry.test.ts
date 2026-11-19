@@ -4,6 +4,9 @@ import {
   startInactiveSpan,
   type BrowserOptions,
 } from "@sentry/browser";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initDashboardSentry, sendFeedback } from "@dashboard/sentry";
@@ -201,5 +204,53 @@ describe("dashboard browser Sentry", () => {
         ],
       },
     ]);
+  });
+
+  it("records the compressed body size on fetch spans", async () => {
+    const body = gzipSync(JSON.stringify({ rows: "x".repeat(10_000) }));
+    const server = createServer((_request, response) => {
+      response.writeHead(200, {
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+      });
+      response.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as AddressInfo;
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+    });
+    const originalFetch = globalThis.fetch;
+    try {
+      initDashboardSentry("classic");
+      const client = getClient();
+      const spans: Span[] = [];
+      client?.on("beforeEnvelope", (envelope) => {
+        for (const [, payload] of envelope[1]) {
+          spans.push(...((payload as { items?: Span[] }).items ?? []));
+        }
+      });
+
+      const response = await fetch(`http://127.0.0.1:${port}/api/report`);
+      expect((await response.text()).length).toBeGreaterThan(10_000);
+      await vi.waitFor(async () => {
+        await client?.flush();
+        expect(
+          spans.find(
+            ({ attributes }) =>
+              (attributes["sentry.op"] as { value?: string })?.value ===
+              "http.client",
+          )?.attributes,
+        ).toMatchObject({
+          "http.response.body.size": { value: body.length },
+        });
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      server.close();
+    }
   });
 });

@@ -279,6 +279,53 @@ export function sendFeedback(
 }
 
 /**
+ * Add `http.response.body.size`, the compressed body size from resource
+ * timing, to each fetch span. Vercel compresses at the edge, so the server
+ * sees only the uncompressed size. The SDK ends a fetch span when its
+ * resource timing entry arrives, from a microtask of its own resource
+ * observer. This observer must start before that one, so its callback sets
+ * the size while the span is still open.
+ */
+function trackResponseBodySize(): {
+  onSpanEnd: (span: Span) => void;
+  onRequestSpanStart: (span: Span) => void;
+} {
+  // Fetch spans that wait for their resource timing entry, by URL.
+  const pending = new Map<string, Span[]>();
+  const remove = (url: string, span: Span) => {
+    const spans = pending.get(url)?.filter((item) => item !== span);
+    if (spans?.length) pending.set(url, spans);
+    else pending.delete(url);
+  };
+  try {
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const span = pending.get(entry.name)?.[0];
+        if (!span || !(entry instanceof PerformanceResourceTiming)) continue;
+        if (entry.initiatorType !== "fetch") continue;
+        remove(entry.name, span);
+        span.setAttribute("http.response.body.size", entry.encodedBodySize);
+      }
+    }).observe({ type: "resource" });
+  } catch {
+    // This browser has no resource timing. Fetch spans keep no size.
+    return { onRequestSpanStart: () => {}, onSpanEnd: () => {} };
+  }
+  return {
+    onRequestSpanStart: (span) => {
+      const url = spanToJSON(span).attributes["url.full"];
+      if (typeof url !== "string") return;
+      pending.set(url, [...(pending.get(url) ?? []), span]);
+    },
+    // A span whose entry never arrives ends after the SDK's wait.
+    onSpanEnd: (span) => {
+      const url = spanToJSON(span).attributes["url.full"];
+      if (typeof url === "string") remove(url, span);
+    },
+  };
+}
+
+/**
  * Send dashboard performance spans and reader feedback to the server's Sentry
  * project when the server provides a DSN. Error events and breadcrumbs stay
  * off: they could carry conversation content shown on the page. Every span
@@ -291,6 +338,8 @@ export function initDashboardSentry(ui: UiShell): void {
   const scope = getIsolationScope();
   scope.setTag("app.dashboard.ui", ui);
   scope.setAttribute("app.dashboard.ui", ui);
+  // Starts before the client, so before the SDK's resource observer.
+  const bodySize = trackResponseBodySize();
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
   // A client built directly bundles only the integrations listed here.
@@ -314,11 +363,14 @@ export function initDashboardSentry(ui: UiShell): void {
               }
             : options,
       }),
-      fetchTracingIntegration(),
+      fetchTracingIntegration({
+        onRequestSpanStart: bodySize.onRequestSpanStart,
+      }),
       linkedTracesIntegration(),
       longTasksIntegration(),
     ],
   });
+  client.on("spanEnd", bodySize.onSpanEnd);
   setCurrentClient(client);
   client.init();
 }
