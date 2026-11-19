@@ -232,10 +232,43 @@ export function doneSections(
  */
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
-function pullRequestState(item: ReviewItemPayload): string {
+function pullRequestState(
+  item: ReviewItemPayload,
+): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
+}
+
+// The GitHub plugin's text for each state names the pull request by its
+// number only (`junior-github` `showAction`). Under a head that shows the
+// state and the number, it says nothing new. Text that says more, such as
+// "#91 has new commits since you requested changes.", stays.
+const PULL_REQUEST_STATE_TEXT: Record<
+  (typeof PULL_REQUEST_STATES)[number],
+  (number: string) => string
+> = {
+  "Ready to merge": (number) =>
+    `${number} is approved, and GitHub says that it can merge.`,
+  "Review requested": (number) => `GitHub asks you to review ${number}.`,
+};
+
+/**
+ * Whether an item's text only says what its row's head shows: the pull
+ * request state and number of its title, as in "GitHub asks you to review
+ * #91." under "Review requested · #91". `text` leaves out the subject URL.
+ */
+export function textRepeatsHead(
+  item: ReviewItemPayload,
+  text: string,
+): boolean {
+  const state = pullRequestState(item);
+  if (state === "Other") return false;
+  const number = item.title.slice(item.title.indexOf(" · ") + 3);
+  return (
+    /^#\d+$/.test(number) &&
+    text.trim() === PULL_REQUEST_STATE_TEXT[state](number)
+  );
 }
 
 /**

@@ -12,7 +12,7 @@ import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { FoldedNotice } from "./FoldedNotice";
 import { Pill } from "./inboxAsks";
-import { inboxItemKind } from "./inboxModel";
+import { inboxItemKind, textRepeatsHead } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -44,7 +44,12 @@ export function InboxRowCard(props: {
   take?: string;
 }) {
   const { actions, item, onAction } = props;
-  const showBody = item.kind === "notice" || !item.request;
+  const text = reviewItemText(item);
+  // Text that only says the head's state and number shows in Slack, not
+  // here.
+  const showBody =
+    (item.kind === "notice" || !item.request) &&
+    !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
   // The card's own Snooze and Dismiss: they act on this item only.
   const cardActions =
@@ -133,7 +138,7 @@ export function InboxRowCard(props: {
             label={reviewItemTitleText(item)}
             lines={4}
             mentions={item.mentions}
-            text={reviewItemText(item)}
+            text={text}
           />
         ) : null}
         {item.subject ? (
