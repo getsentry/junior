@@ -598,6 +598,7 @@ test("Respond quotes into the message box under a question", async ({
     name: "Continue this conversation",
   });
   await expect(composer).toBeFocused();
-  await expect.poll(() => composer.innerText()).toContain(`> ${quote}`);
+  // The composer renders the quote.
+  await expect(composer.locator("blockquote")).toHaveText(quote);
   await expect(question).toBeVisible();
 });
