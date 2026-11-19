@@ -19,7 +19,6 @@ import {
   asc,
   eq,
   gt,
-  inArray,
   isNotNull,
   isNull,
   sql,
@@ -29,6 +28,7 @@ import {
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
 import { botConfig } from "@/chat/config";
+import { mapBounded } from "@/chat/fan-out";
 import { embedTexts, type ConversationModelCost } from "@/chat/core-model";
 import type { ConversationMetadata } from "@/chat/conversations/metadata/store";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -36,6 +36,7 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 // About 2,000 tokens, well inside the input limit of each supported model.
 const MAX_EMBEDDED_CHARS = 8_000;
 const BACKFILL_BATCH_SIZE = 32;
+const EMBEDDING_WRITE_CONCURRENCY = 4;
 
 /** Create the embedder of the configured model that charges its cost to `cost`. */
 export function createConversationEmbedder(args: {
@@ -85,54 +86,48 @@ function metadataText(title: string | null | undefined, summary: string) {
  * metadata. The share lock on the Conversation row holds until the insert
  * commits. Purge clears the metadata with an update before it deletes the
  * embeddings, so it either waits for this insert and then deletes it, or
- * runs first and this write skips the Conversation.
+ * runs first and this write skips the Conversation. Each Conversation gets
+ * its own transaction, so a write holds one row lock and cannot deadlock with
+ * a purge that locks a tree's rows in another order.
  */
 async function writeConversationEmbeddings(
   db: JuniorDatabase,
   rows: Array<{ item: MetadataItem; vector: number[] }>,
   batch: EmbeddingBatch,
 ): Promise<void> {
+  await mapBounded(
+    rows,
+    (row) => writeConversationEmbedding(db, row, batch),
+    EMBEDDING_WRITE_CONCURRENCY,
+  );
+}
+
+async function writeConversationEmbedding(
+  db: JuniorDatabase,
+  { item, vector }: { item: MetadataItem; vector: number[] },
+  batch: EmbeddingBatch,
+): Promise<void> {
   const table = juniorConversationEmbeddings;
   await db.transaction(async (tx) => {
-    const current = await tx
-      .select({
-        conversationId: juniorConversations.conversationId,
-        metadataThroughSeq: juniorConversations.metadataThroughSeq,
-      })
+    const [current] = await tx
+      .select({ metadataThroughSeq: juniorConversations.metadataThroughSeq })
       .from(juniorConversations)
-      .where(
-        inArray(
-          juniorConversations.conversationId,
-          rows.map(({ item }) => item.conversationId),
-        ),
-      )
-      .orderBy(asc(juniorConversations.conversationId))
+      .where(eq(juniorConversations.conversationId, item.conversationId))
       .for("share");
-    const throughSeqs = new Map(
-      current.map((row) => [row.conversationId, row.metadataThroughSeq]),
-    );
-    const kept = rows.filter(({ item }) => {
-      const throughSeq = throughSeqs.get(item.conversationId);
-      return (
-        throughSeq !== null &&
-        throughSeq !== undefined &&
-        throughSeq >= item.throughSeq
-      );
-    });
-    if (kept.length === 0) return;
+    const throughSeq = current?.metadataThroughSeq;
+    if (throughSeq === null || throughSeq === undefined) return;
+    if (throughSeq < item.throughSeq) return;
     await tx
       .insert(table)
-      .values(
-        kept.map(({ item, vector }) => ({
-          conversationId: item.conversationId,
-          dimensions: batch.dimensions,
-          embedding: vector,
-          legacyBriefVersion: null,
-          model: batch.model,
-          provider: batch.provider,
-          throughSeq: item.throughSeq,
-        })),
-      )
+      .values({
+        conversationId: item.conversationId,
+        dimensions: batch.dimensions,
+        embedding: vector,
+        legacyBriefVersion: null,
+        model: batch.model,
+        provider: batch.provider,
+        throughSeq: item.throughSeq,
+      })
       .onConflictDoUpdate({
         target: table.conversationId,
         set: {
