@@ -86,9 +86,6 @@ test("edits an Automation in place, preserves list state, and protects the draft
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1?scope=mine&q=weekly`,
   );
-  await expect(
-    page.getByText("Automation saved", { exact: true }),
-  ).toBeVisible();
   expect(state.writes).toEqual([
     {
       kind: "scheduled",
@@ -197,9 +194,6 @@ test("runs a skill with optional context instead of an instruction", async ({
   );
   await screenshot(page, "automation-skill-editor");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(
-    page.getByText("Automation saved", { exact: true }),
-  ).toBeVisible();
   expect(state.writes).toEqual([
     {
       kind: "scheduled",

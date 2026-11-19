@@ -25,9 +25,9 @@ import {
 import { conversationUsageCostExpr } from "../conversations/aggregate";
 import { decodePageCursor, encodePageCursor } from "../page-cursor";
 import {
-  codeOverviewReportSchema,
-  codePersonReportSchema,
   IDLE_CHANGE_DAYS,
+  type CodeOverviewReport,
+  type CodePersonReport,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -327,7 +327,9 @@ export function codeChangeReport(change: {
 }
 
 /** Read code activity created by Junior across installed code plugins. */
-export async function readCodeOverview(nowMs = Date.now()) {
+export async function readCodeOverview(
+  nowMs = Date.now(),
+): Promise<CodeOverviewReport> {
   const db = getDb();
   const changes = juniorCodeChanges;
   const repositories = juniorCodeRepositories;
@@ -406,7 +408,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
     costs.push(cost);
     repositoryCosts.set(change.repositoryId, costs);
   }
-  return codeOverviewReportSchema.parse({
+  return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
@@ -421,7 +423,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
-  });
+  };
 }
 
 /**
@@ -471,7 +473,7 @@ export async function readPersonCodeOverview(args: {
   cursor?: string | undefined;
   nowMs?: number;
   userId: string;
-}) {
+}): Promise<CodePersonReport> {
   const nowMs = args.nowMs ?? Date.now();
   const after = args.cursor
     ? decodePageCursor(
@@ -512,7 +514,7 @@ export async function readPersonCodeOverview(args: {
       .limit(PERSON_CHANGE_LIMIT),
   ]);
   const last = changes.at(-1);
-  return codePersonReportSchema.parse({
+  return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
@@ -535,7 +537,7 @@ export async function readPersonCodeOverview(args: {
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
-  });
+  };
 }
 
 /**

@@ -250,6 +250,9 @@ overrides:
 
 packageExtensionsChecksum: sha256-yO3rUISp2Y4ah1jg/R+Tkn/ZrTP8tMj6B0BkRdDGQqQ=
 
+patchedDependencies:
+  '@sentry/server-utils@11.14.0': 0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01
+
 importers:
 
   .:
@@ -443,7 +446,7 @@ importers:
         version: 11.14.0
       '@sentry/server-utils':
         specifier: 'catalog:'
-        version: 11.14.0
+        version: 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -14689,7 +14692,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -14798,7 +14801,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -14907,7 +14910,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0
       '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -15005,7 +15008,7 @@ snapshots:
       '@sentry/core': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
     transitivePeerDependencies:
       - rollup
       - webpack
@@ -15017,7 +15020,7 @@ snapshots:
       '@sentry/core': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       nitro: 3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
     transitivePeerDependencies:
       - rollup
@@ -15030,7 +15033,7 @@ snapshots:
       '@sentry/core': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       nitro: 3.0.260522-beta(jiti@2.7.0)
     transitivePeerDependencies:
       - rollup
@@ -15043,7 +15046,7 @@ snapshots:
       '@sentry/core': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
       nitro: 3.0.260522-beta
     transitivePeerDependencies:
       - rollup
@@ -15057,7 +15060,7 @@ snapshots:
       '@sentry/core': 11.14.0
       '@sentry/opentelemetry': 11.14.0(@opentelemetry/api@1.9.1)
       '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
     transitivePeerDependencies:
       - rollup
       - webpack
@@ -15085,9 +15088,9 @@ snapshots:
   '@sentry/server-runtime-injection@11.14.0':
     dependencies:
       '@sentry/core': 11.14.0
-      '@sentry/server-utils': 11.14.0
+      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
 
-  '@sentry/server-utils@11.14.0':
+  '@sentry/server-utils@11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@sentry/conventions': 0.33.0

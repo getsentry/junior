@@ -10,7 +10,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
-import { formatCostSummary, peoplePath } from "../../format";
+import { formatCostSummary } from "../../format";
+import { myProfilePage, NAV_PAGES } from "../../navPages";
 import { canSendFeedback } from "../../sentry";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { SIDEBAR_ROW_GRID_CLASS } from "../../components/layout/sidebarGrid";
@@ -267,6 +268,7 @@ export function ProfileMenu({
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
+  const profile = myProfilePage(email);
   // Without a DSN, the dashboard sends no feedback, so it offers none.
   const feedback = canSendFeedback();
   // The menu or the mobile sheet stays mounted under the dialog, so the
@@ -329,9 +331,9 @@ export function ProfileMenu({
 
   const menuLinks = (
     <>
-      <DropdownMenuLinkItem render={<Link to={peoplePath(email)} />}>
+      <DropdownMenuLinkItem render={<Link to={profile.to} />}>
         <UserRound aria-hidden="true" />
-        My profile
+        {profile.label}
       </DropdownMenuLinkItem>
       {pages.map((page) => {
         const Icon = navItemIcon(page.key);
@@ -343,14 +345,14 @@ export function ProfileMenu({
         );
       })}
       {identity.user.isAdmin ? (
-        <DropdownMenuLinkItem render={<Link to="/admin" />}>
+        <DropdownMenuLinkItem render={<Link to={NAV_PAGES.admin.to} />}>
           <ShieldCheck aria-hidden="true" />
-          Admin
+          {NAV_PAGES.admin.label}
         </DropdownMenuLinkItem>
       ) : null}
-      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+      <DropdownMenuLinkItem render={<Link to={NAV_PAGES.settings.to} />}>
         <Settings aria-hidden="true" />
-        Settings
+        {NAV_PAGES.settings.label}
       </DropdownMenuLinkItem>
       {feedback ? (
         <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
@@ -397,8 +399,8 @@ export function ProfileMenu({
     );
     return (
       <nav aria-label={`Account menu for ${name}`} className="grid gap-1">
-        <Link className={sheetItemClass} to={peoplePath(email)}>
-          My profile
+        <Link className={sheetItemClass} to={profile.to}>
+          {profile.label}
         </Link>
         {pages.map((page) => (
           <Link className={sheetItemClass} key={page.key} to={page.to}>
@@ -406,12 +408,12 @@ export function ProfileMenu({
           </Link>
         ))}
         {identity.user.isAdmin ? (
-          <Link className={sheetItemClass} to="/admin">
-            Admin
+          <Link className={sheetItemClass} to={NAV_PAGES.admin.to}>
+            {NAV_PAGES.admin.label}
           </Link>
         ) : null}
-        <Link className={sheetItemClass} to="/settings">
-          Settings
+        <Link className={sheetItemClass} to={NAV_PAGES.settings.to}>
+          {NAV_PAGES.settings.label}
         </Link>
         {feedback ? (
           <button

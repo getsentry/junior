@@ -16,7 +16,7 @@ import {
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Issue number."),
+    issue: z.number().int().positive().describe("Issue number."),
     body: z.string().trim().min(1).describe("Comment text."),
   })
   .strict();
@@ -57,7 +57,7 @@ export const gitHubCommentOnIssueTool = definePluginTool({
     const response = await githubApi(egress, {
       operation: "github.issue.comment.create",
       method: "POST",
-      path: `${repoPath(repo)}/issues/${input.number}/comments`,
+      path: `${repoPath(repo)}/issues/${input.issue}/comments`,
       body: { body: input.body },
     });
     if (!response.ok) {
@@ -73,7 +73,7 @@ export const gitHubCommentOnIssueTool = definePluginTool({
     return {
       target: "commentOnIssue",
       repo: repo.ref,
-      number: input.number,
+      number: input.issue,
       comment_id: comment.id,
       url: comment.html_url,
     };

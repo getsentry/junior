@@ -119,6 +119,12 @@
       }
     },
     {
+      "files": ["packages/junior/src/api/**/*.ts"],
+      "rules": {
+        "junior/no-response-schema-parse": "error"
+      }
+    },
+    {
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
         "junior/no-raw-sql-queries": "error",
