@@ -147,3 +147,38 @@ test("opens at the latest event when a link at open fails", async ({
   ).toBeInViewport();
   await screenshot(page, "conversation-failed-link-opens-at-latest");
 });
+
+test("opens a memory outside the loaded rows from the page around it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 120,
+    lastReadSeq: 119,
+  });
+  mock.pagedDetail = true;
+  // The shared memory mock says that event 13 captured two memories.
+  mock.memoryCaptureSeq = 13;
+  const pageRequests = recordPageRequests(page);
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("Transcript message 119 ")).toBeVisible();
+
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await details
+    .getByRole("button", { name: "1 recalled · 2 captured" })
+    .click();
+  await details
+    .getByRole("listitem")
+    .filter({ hasText: "Dashboard transcript events should remain" })
+    .getByRole("button", { name: "Go to message" })
+    .click();
+  // The capture has no row, so the message before it shows.
+  await expect(transcript.getByText("Transcript message 12 ")).toBeInViewport();
+  expect(pageRequests).toEqual(["?event=13"]);
+  await screenshot(page, "conversation-memory-opens-around-event");
+});

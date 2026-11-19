@@ -299,7 +299,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
-  test("keeps memories out of the transcript and lists them in details", async ({
+  test("keeps memories out of the transcript and jumps to their Turn", async ({
     page,
     dashboard,
   }) => {
@@ -324,6 +324,21 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText(/^(Captured|Recalled) \d+ memor/)).toHaveCount(
       0,
     );
+
+    // A memory jump shows its Turn, even when a search hides that row.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page.getByPlaceholder("Search transcript…").fill("no such text");
+    await details
+      .getByRole("listitem")
+      .filter({ hasText: "Dashboard transcript events should remain" })
+      .getByRole("button", { name: "Go to message" })
+      .click();
+    await expect(
+      page
+        .getByLabel("Conversation transcript")
+        .locator("[data-transcript-seq][data-highlighted]"),
+    ).toBeInViewport();
     await screenshot(page, "conversation-memory-list");
   });
 });

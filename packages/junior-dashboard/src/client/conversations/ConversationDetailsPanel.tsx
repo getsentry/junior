@@ -8,7 +8,10 @@ import {
   ConversationUsageBreakdown,
   hasConversationUsageBreakdown,
 } from "./ConversationUsageBreakdown";
-import type { ConversationMemoryList } from "./conversationMemory";
+import type {
+  ConversationMemoryEntry,
+  ConversationMemoryList,
+} from "./conversationMemory";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import {
   conversationParticipants,
@@ -27,6 +30,7 @@ export function ConversationDetailsPanel(props: {
   memoryList: ConversationMemoryList | undefined;
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
+  onSelectMemory(entry: ConversationMemoryEntry): void;
 }) {
   const { conversation, detail } = props;
   const participants = conversationParticipants(conversation);
@@ -56,6 +60,7 @@ export function ConversationDetailsPanel(props: {
       }
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
+      onSelectMemory={props.onSelectMemory}
       links={props.links}
       memoryList={props.memoryList}
       overview={

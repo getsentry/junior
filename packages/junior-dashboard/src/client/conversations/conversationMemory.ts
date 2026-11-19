@@ -3,6 +3,7 @@ import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
+import { markTranscriptRow } from "./useMessageLinkJump";
 
 const conversationMemoryListSchema = z
   .object({
@@ -51,6 +52,8 @@ export function useConversationMemories(conversationId: string) {
 /** One row of the Conversation memory list. */
 export type ConversationMemoryEntry = {
   memory: ConversationMemory;
+  /** The recall or capture event, where the transcript opens. */
+  seq: number;
   source: MemorySource;
 };
 
@@ -71,10 +74,33 @@ export function conversationMemoryEntries(
       const memory = byId.get(id);
       if (seen.has(key) || !memory) continue;
       seen.add(key);
-      entries.push({ memory, source: event.source });
+      entries.push({ memory, seq: event.seq, source: event.source });
     }
   }
   return entries;
+}
+
+/**
+ * Show the transcript row of a memory event's Turn. The event has no row, so
+ * this is the last row before it: the prompt of a recall, or the reply of a
+ * capture.
+ */
+export function showMemoryRow(root: Element | null, seq: number) {
+  // Only the rows of this Conversation's transcript count.
+  const transcript = root?.querySelector(
+    '[aria-label="Conversation transcript"]',
+  );
+  let row: Element | undefined;
+  // Rows are in seq order.
+  for (const candidate of transcript?.querySelectorAll(
+    "[data-transcript-seq]",
+  ) ?? []) {
+    if (Number(candidate.getAttribute("data-transcript-seq")) > seq) break;
+    row = candidate;
+  }
+  if (!row) return;
+  row.scrollIntoView({ block: "center" });
+  markTranscriptRow(row);
 }
 
 /** True for the memory plugin event that a Turn's capture emits. */

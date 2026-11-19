@@ -29,6 +29,7 @@ import {
 } from "../../conversations/ConversationMemories";
 import {
   conversationMemoryEntries,
+  type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import {
@@ -59,6 +60,8 @@ export function ConversationDetails(props: {
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
   onOpenSubagent(target: ConversationDrawerTarget): void;
+  /** Show the Turn that recalled or captured one memory. */
+  onSelectMemory(entry: ConversationMemoryEntry): void;
   overview: ReactNode;
   usage: ReactNode;
 }) {
@@ -125,6 +128,11 @@ export function ConversationDetails(props: {
         <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <ConversationMemoryEntries
             entries={conversationMemoryEntries(memoryList)}
+            onSelect={(entry) => {
+              // The transcript sits under a details sheet. Close it first.
+              if (!panel) props.onClose();
+              props.onSelectMemory(entry);
+            }}
           />
         </div>
       </DetailsPanel>

@@ -1,4 +1,4 @@
-import { BookmarkPlus, Brain, ChevronRight } from "lucide-react";
+import { ArrowRight, BookmarkPlus, Brain, ChevronRight } from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import { dashboardDisclosureChevronClass } from "../styles";
@@ -50,8 +50,11 @@ export function ConversationMemoryCard(props: {
   );
 }
 
-/** One memory with its full text and its visibility. */
-function MemoryCard(props: { entry: ConversationMemoryEntry }) {
+/** One memory with its full text, its visibility, and a jump to its Turn. */
+function MemoryCard(props: {
+  entry: ConversationMemoryEntry;
+  onSelect(entry: ConversationMemoryEntry): void;
+}) {
   const { entry } = props;
   return (
     <li className="grid overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel">
@@ -59,21 +62,33 @@ function MemoryCard(props: { entry: ConversationMemoryEntry }) {
       <p className="m-0 whitespace-pre-wrap px-3 py-2.5 text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
         {entry.memory.content}
       </p>
-      {entry.memory.visibility === "private" ? (
-        <div className="flex min-h-8 items-center border-t border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-1 text-xs text-dashboard-text-muted">
+      <div className="flex min-h-8 items-center justify-between gap-2 border-t border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-1 text-xs text-dashboard-text-muted">
+        {entry.memory.visibility === "private" ? (
           <PrivateMemoryIcon />
-        </div>
-      ) : null}
+        ) : (
+          <span />
+        )}
+        <Button
+          className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
+          onClick={() => props.onSelect(entry)}
+          size="bare"
+          variant="ghost"
+        >
+          Go to message
+          <ArrowRight aria-hidden="true" size={13} />
+        </Button>
+      </div>
     </li>
   );
 }
 
 /**
  * List every memory that a Conversation recalled or captured, with its full
- * text.
+ * text. Selecting one shows its Turn in the transcript.
  */
 export function ConversationMemoryEntries(props: {
   entries: ConversationMemoryEntry[];
+  onSelect(entry: ConversationMemoryEntry): void;
 }) {
   const groups = (["recalled", "captured"] as const)
     .map((source) => ({
@@ -101,6 +116,7 @@ export function ConversationMemoryEntries(props: {
               <MemoryCard
                 entry={entry}
                 key={`${entry.source}:${entry.memory.id}`}
+                onSelect={props.onSelect}
               />
             ))}
           </ol>

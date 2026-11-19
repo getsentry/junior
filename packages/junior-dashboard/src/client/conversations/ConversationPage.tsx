@@ -57,7 +57,7 @@ import {
   saveDetailsOpen,
   useDetailsStartOpen,
 } from "./conversationSidebarLayout";
-import { useConversationMemories } from "./conversationMemory";
+import { showMemoryRow, useConversationMemories } from "./conversationMemory";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { ConversationEventLogLoading } from "./ConversationEventLog";
 import {
@@ -199,8 +199,10 @@ export function ConversationPage(props: {
     );
   }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
+  // A memory chosen in details waits here until its transcript row renders.
+  const [memoryJumpSeq, setMemoryJumpSeq] = useState<number>();
   // The transcript mounts only rows near the viewport. The rows of the last
-  // outline jump stay mounted, so the jump finds its row.
+  // memory or outline jump stay mounted, so the jump finds its row.
   const [revealSeq, setRevealSeq] = useState<number>();
   // The docked question whose transcript row shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
@@ -213,6 +215,7 @@ export function ConversationPage(props: {
   );
   if (revealConversationId !== props.conversationId) {
     setRevealConversationId(props.conversationId);
+    setMemoryJumpSeq(undefined);
     setRevealSeq(undefined);
     setAskReveal(undefined);
   }
@@ -311,6 +314,7 @@ export function ConversationPage(props: {
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
     setStartAtLink(false);
+    setMemoryJumpSeq(undefined);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -468,13 +472,14 @@ export function ConversationPage(props: {
     view === "raw" ? "Back to conversation" : undefined,
     () => onViewChange("rich"),
   );
-  // A linked event or Turn can be outside the loaded rows. Then the
+  // A linked event, Turn, or memory can be outside the loaded rows. Then the
   // transcript opens at the page around it, which the server finds by the
   // event seq or Turn id. Only a new link does this, so a reader who jumps to
-  // the latest stays there.
+  // the latest stays there. Returns false when the loaded rows hold the link.
   const openLink = useEffectEvent((link: ConversationLink) => {
     const start = unheldLinkStart(history.data?.events, link);
     if (start) setLinkStart(start);
+    return Boolean(start);
   });
   const showQuestion = useCallback(
     (item: ReviewItemPayload, arrived: boolean) =>
@@ -524,6 +529,13 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
   }, [linkedTurnSeq, setSelectedEventSeq]);
+  // Show a chosen memory's Turn once the page around its event loads.
+  useEffect(() => {
+    if (memoryJumpSeq === undefined || !transcript || holdShown) return;
+    if (openLink({ event: memoryJumpSeq })) return;
+    showMemoryRow(pageRef.current, memoryJumpSeq);
+    setMemoryJumpSeq(undefined);
+  }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
@@ -602,6 +614,14 @@ export function ConversationPage(props: {
           memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
+          onSelectMemory={(entry) => {
+            // Memory rows show only in the Conversation view, and search
+            // can hide them.
+            if (view !== "rich") onViewChange("rich");
+            setSearch("");
+            setRevealSeq(entry.seq);
+            setMemoryJumpSeq(entry.seq);
+          }}
         />
       ) : null}
       {showEvent ? (
