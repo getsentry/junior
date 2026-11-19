@@ -1017,13 +1017,13 @@ describe("dashboard canonical-event components", () => {
       conversation([
         event(0, {
           type: "structured_event",
-          namespace: "memory",
-          name: "memories_captured",
+          namespace: "example",
+          name: "report_ready",
           version: 1,
           turnId: "turn-1",
           presentation: {
             icon: "brain",
-            title: "2 memories captured",
+            title: "Report ready",
           },
         }),
       ]),
@@ -1031,7 +1031,7 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain('data-transcript-rail-event="structured_event"');
     expect(html).toContain("lucide-brain");
-    expect(html).toContain("2 memories captured");
+    expect(html).toContain("Report ready");
   });
 
   it("renders delivered attachments as transcript media, not tool chrome", () => {

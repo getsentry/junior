@@ -57,14 +57,7 @@ import {
   saveDetailsOpen,
   useDetailsStartOpen,
 } from "./conversationSidebarLayout";
-import {
-  ConversationMemoryContext,
-  memoryAnchorKey,
-  useConversationMemories,
-  type ConversationMemoryState,
-  type MemoryJump,
-  type OpenMemoryPopover,
-} from "./conversationMemory";
+import { showMemoryRow, useConversationMemories } from "./conversationMemory";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { ConversationEventLogLoading } from "./ConversationEventLog";
 import {
@@ -201,26 +194,23 @@ export function ConversationPage(props: {
     );
   }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
-  const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
   // A memory chosen in details waits here until its transcript row renders.
-  const [memoryJump, setMemoryJump] = useState<MemoryJump>();
+  const [memoryJumpSeq, setMemoryJumpSeq] = useState<number>();
   // The transcript mounts only rows near the viewport. The rows of the last
-  // memory or outline jump stay mounted, so the jump finds its row and the
-  // popover keeps it.
+  // memory or outline jump stay mounted, so the jump finds its row.
   const [revealSeq, setRevealSeq] = useState<number>();
   // The docked question whose transcript row shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
   const [askReveal, setAskReveal] = useState<
     TranscriptAskReveal & { turnId?: string }
   >();
-  // The page stays mounted across Conversations. Memory state belongs to one.
-  const [memoryConversationId, setMemoryConversationId] = useState(
+  // The page stays mounted across Conversations. Reveal state belongs to one.
+  const [revealConversationId, setRevealConversationId] = useState(
     props.conversationId,
   );
-  if (memoryConversationId !== props.conversationId) {
-    setMemoryConversationId(props.conversationId);
-    setMemoryPopover(undefined);
-    setMemoryJump(undefined);
+  if (revealConversationId !== props.conversationId) {
+    setRevealConversationId(props.conversationId);
+    setMemoryJumpSeq(undefined);
     setRevealSeq(undefined);
     setAskReveal(undefined);
   }
@@ -287,14 +277,6 @@ export function ConversationPage(props: {
     setLinkStart(undefined);
   }, []);
   const memoryList = useConversationMemories(conversationId).data;
-  const memoryState = useMemo<ConversationMemoryState>(
-    () => ({
-      list: memoryList,
-      open: memoryPopover,
-      setOpen: setMemoryPopover,
-    }),
-    [memoryList, memoryPopover],
-  );
   const archive = useArchiveConversation(conversationId);
   const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
@@ -326,7 +308,7 @@ export function ConversationPage(props: {
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
     setStartAtLink(false);
-    setMemoryJump(undefined);
+    setMemoryJumpSeq(undefined);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -538,21 +520,13 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
   }, [linkedTurnSeq, setSelectedEventSeq]);
-  // Show a chosen memory at its transcript row, once the row renders.
+  // Show a chosen memory's Turn once the page around its event loads.
   useEffect(() => {
-    if (!memoryJump || !transcript) return;
-    const anchor = pageRef.current?.querySelector(
-      `[data-memory-anchor="${CSS.escape(memoryAnchorKey(memoryJump))}"]`,
-    );
-    if (anchor) {
-      anchor.scrollIntoView({ block: "center" });
-      setMemoryPopover(memoryJump);
-      setMemoryJump(undefined);
-    } else if (!holdShown && !openLink({ event: memoryJump.seq })) {
-      // The loaded rows hold the event, but no row shows the memory.
-      setMemoryJump(undefined);
-    }
-  }, [holdShown, memoryJump, transcript, view]);
+    if (memoryJumpSeq === undefined || !transcript || holdShown) return;
+    if (openLink({ event: memoryJumpSeq })) return;
+    showMemoryRow(pageRef.current, memoryJumpSeq);
+    setMemoryJumpSeq(undefined);
+  }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
@@ -628,7 +602,7 @@ export function ConversationPage(props: {
           detail={conversationDetail}
           highlightReview={reviewOpen}
           links={links}
-          memoryState={memoryState}
+          memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
           onSelectMemory={(entry) => {
@@ -637,12 +611,7 @@ export function ConversationPage(props: {
             if (view !== "rich") onViewChange("rich");
             setSearch("");
             setRevealSeq(entry.seq);
-            setMemoryJump({
-              memoryId: entry.memory.id,
-              seq: entry.seq,
-              source: entry.source,
-              turnId: entry.turnId,
-            });
+            setMemoryJumpSeq(entry.seq);
           }}
         />
       ) : null}
@@ -832,49 +801,47 @@ export function ConversationPage(props: {
                       data.
                     </div>
                   ) : null}
-                  <ConversationMemoryContext value={memoryState}>
-                    <ConversationCatchUpContext value={catchUp}>
-                      <Transcript
-                        hasPreviousPage={history.hasPreviousPage}
-                        historyError={history.historyError}
-                        historyVersion={history.historyVersion}
-                        lastReadSeq={detail.data?.readPosition?.lastReadSeq}
-                        live={live}
-                        loadingPreviousPage={history.isLoadingPreviousPage}
-                        newerHistory={history.newer}
-                        onLoadPreviousPage={history.loadPreviousPage}
-                        onRead={holdShown ? undefined : markRead}
-                        readEngaged={composerEngaged}
-                        onSelectedEventSeqChange={setSelectedEventSeq}
-                        // Sends and the thinking row belong after the latest event.
-                        pendingMessages={
-                          history.newer ? undefined : detail.inlineMessages
-                        }
-                        pinRequestVersion={pinRequestVersion}
-                        onShowQuestion={showQuestion}
-                        revealAsk={askReveal}
-                        linkedMessageId={linkedMessageId}
-                        revealSeq={revealSeq}
-                        responding={
-                          !detail.error &&
-                          !history.newer &&
-                          conversationIsResponding(detail.data)
-                        }
-                        onOpenSubagentTranscript={onOpenSubagentTranscript}
-                        search={search}
-                        onSearchChange={setSearch}
-                        searchMatch={searchMatch.index}
-                        onSearchMatches={searchMatch.setMatches}
-                        selectedEventSeq={selectedEventSeq}
-                        startAtLink={startAtLink}
-                        startAtUnread={startAtUnread}
-                        transcript={transcript}
-                        turnContextPanel={turnContextPanel}
-                        unread={holdShown ? undefined : readAtOpen.unread}
-                        view={view}
-                      />
-                    </ConversationCatchUpContext>
-                  </ConversationMemoryContext>
+                  <ConversationCatchUpContext value={catchUp}>
+                    <Transcript
+                      hasPreviousPage={history.hasPreviousPage}
+                      historyError={history.historyError}
+                      historyVersion={history.historyVersion}
+                      lastReadSeq={detail.data?.readPosition?.lastReadSeq}
+                      live={live}
+                      loadingPreviousPage={history.isLoadingPreviousPage}
+                      newerHistory={history.newer}
+                      onLoadPreviousPage={history.loadPreviousPage}
+                      onRead={holdShown ? undefined : markRead}
+                      readEngaged={composerEngaged}
+                      onSelectedEventSeqChange={setSelectedEventSeq}
+                      // Sends and the thinking row belong after the latest event.
+                      pendingMessages={
+                        history.newer ? undefined : detail.inlineMessages
+                      }
+                      pinRequestVersion={pinRequestVersion}
+                      onShowQuestion={showQuestion}
+                      revealAsk={askReveal}
+                      linkedMessageId={linkedMessageId}
+                      revealSeq={revealSeq}
+                      responding={
+                        !detail.error &&
+                        !history.newer &&
+                        conversationIsResponding(detail.data)
+                      }
+                      onOpenSubagentTranscript={onOpenSubagentTranscript}
+                      search={search}
+                      onSearchChange={setSearch}
+                      searchMatch={searchMatch.index}
+                      onSearchMatches={searchMatch.setMatches}
+                      selectedEventSeq={selectedEventSeq}
+                      startAtLink={startAtLink}
+                      startAtUnread={startAtUnread}
+                      transcript={transcript}
+                      turnContextPanel={turnContextPanel}
+                      unread={holdShown ? undefined : readAtOpen.unread}
+                      view={view}
+                    />
+                  </ConversationCatchUpContext>
                 </>
               )}
             </TranscriptColumn>

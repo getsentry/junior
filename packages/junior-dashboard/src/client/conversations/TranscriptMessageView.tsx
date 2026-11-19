@@ -28,7 +28,6 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SourceMark } from "./SourceMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
 import { formatMessageTimestamp } from "../time";
@@ -100,7 +99,6 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
-        <TranscriptRecalledMemories message={props.message} />
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}

@@ -177,9 +177,8 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     .filter({ hasText: "Dashboard transcript events should remain" })
     .getByRole("button", { name: "Go to message" })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
+  // The capture has no row, so the message before it shows.
+  await expect(transcript.getByText("Transcript message 12 ")).toBeInViewport();
   expect(pageRequests).toEqual(["?event=13"]);
   await screenshot(page, "conversation-memory-opens-around-event");
 });

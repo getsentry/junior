@@ -255,13 +255,8 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  // The capture shows under the reply that ends its Turn.
-  const captured = transcript.getByRole("button", {
-    name: "Captured 2 memories",
-  });
-  await expect(captured).toHaveCount(0);
 
-  // A memory jump mounts its far row before it scrolls there.
+  // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
@@ -275,14 +270,12 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     .getByRole("button", { name: "Go to message" })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
-  await expect(captured).toBeInViewport();
+    transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
+  ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
-  await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
   await page.keyboard.press("ControlOrMeta+f");

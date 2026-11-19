@@ -28,7 +28,7 @@ Preconditions:
 
 ## Gotchas
 
-- A Turn can finish inside the limit, and then the drive proves nothing about `host-limit`. Check `$RUN_DIR/dev.log` for `agent.turn.timed_out` and `conversation.work.yielded` for the Conversation. Without them, report the drive as not reached.
+- A Turn can finish inside the limit, and then the drive proves nothing about `host-limit`. Check `$RUN_DIR/telemetry.ndjson` for `agent.turn.timed_out` and `conversation.work.yielded` logs of the Conversation. Without them, report the drive as not reached.
 - One model call that takes longer than the time limit cannot finish in any slice. With `AGENT_TURN_TIMEOUT_MS=10000`, a prompt for one long answer restarts every 10 seconds and never replies. Use a prompt with short steps, as the recipe does.
 - A killed Turn waits for its work lease to expire before a new worker takes it. Expect 2 to 3 minutes of "is thinking…".
 - A kill after the reply shows but before the Turn ends tests a different window. `--when` kills as soon as `thinking.url.txt` exists, so `$E/killed` must not hold one from an earlier attempt. Note in the report whether the first reply had shown.

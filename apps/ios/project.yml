@@ -8,6 +8,21 @@ options:
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig
+fileGroups:
+  - README.md
+  - project.yml
+  - Makefile
+  - Brewfile
+  - Brewfile.ci
+  - Gemfile
+  - Gemfile.lock
+  - .ruby-version
+  - .swift-format
+  - oauth-client.json
+  - fastlane/Appfile
+  - fastlane/Fastfile
+  - fastlane/Matchfile
+  - scripts
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -41,6 +56,8 @@ targets:
         CFBundleDisplayName: Junior
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Only standard HTTPS, so TestFlight asks no export-compliance question.
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

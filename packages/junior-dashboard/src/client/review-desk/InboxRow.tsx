@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -609,6 +610,27 @@ function InboxRowBody(
         conversation={conversation}
       />
     ) : null;
+  // A click on the row does what the head link does, except on the links
+  // and buttons in it, such as pills, summary chips and images, or at the
+  // end of a text selection.
+  const rowClick = {
+    onAuxClick: (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.button !== 1 || !opens || onControl(event)) return;
+      openConversation(event.nativeEvent);
+    },
+    // A middle press would start the browser's autoscroll, not the new tab
+    // that its click opens.
+    onMouseDown: (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.button === 1 && opens && !onControl(event))
+        event.preventDefault();
+    },
+    onClick: (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.button !== 0 || onControl(event)) return;
+      if (!opens) return props.onToggle();
+      if (window.getSelection()?.isCollapsed === false) return;
+      openConversation(event.nativeEvent);
+    },
+  };
   return (
     <>
       <div
@@ -625,28 +647,10 @@ function InboxRowBody(
             className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-dashboard-accent"
           />
         ) : null}
-        {/* The head link is the row's keyboard target. A click anywhere else
-            on the head does what the link does, except on the links and
-            buttons in it, such as pills and summary chips, or at the end of
-            a text selection. */}
+        {/* The head link is the row's keyboard target. */}
         <div
           className={cn(inboxHeadGridClass(), "cursor-pointer", "pb-3")}
-          onAuxClick={(event) => {
-            if (event.button !== 1 || !opens || onControl(event)) return;
-            openConversation(event.nativeEvent);
-          }}
-          // A middle press would start the browser's autoscroll, not the
-          // new tab that its click opens.
-          onMouseDown={(event) => {
-            if (event.button === 1 && opens && !onControl(event))
-              event.preventDefault();
-          }}
-          onClick={(event) => {
-            if (event.button !== 0 || onControl(event)) return;
-            if (!opens) return props.onToggle();
-            if (window.getSelection()?.isCollapsed === false) return;
-            openConversation(event.nativeEvent);
-          }}
+          {...rowClick}
         >
           <span
             aria-label={
@@ -834,7 +838,10 @@ function InboxRowBody(
         {cards ? (
           // Under the title, on its left edge: the images first, at preview
           // size, then the linked work, links and files, one line each.
-          <div className="grid min-w-0 gap-3 pr-4 pb-3 pl-8">
+          <div
+            className="grid min-w-0 cursor-pointer gap-3 pr-4 pb-3 pl-8"
+            {...rowClick}
+          >
             {images ? (
               <InboxImageStrip
                 askToggle={{

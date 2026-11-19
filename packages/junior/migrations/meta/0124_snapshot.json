@@ -1,5 +1,5 @@
 {
-  "id": "9e2cc432-9911-443f-aa72-52b069179f4a",
+  "id": "e5548800-176a-4813-b15f-ad5ab28448ca",
   "prevId": "32dd3537-b73d-47f5-adf2-d4a355ec6f28",
   "version": "7",
   "dialect": "postgresql",
@@ -467,11 +467,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'public'"
+        },
         "public": {
           "name": "public",
           "type": "boolean",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -504,6 +512,28 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_artifacts_public_sha_uidx": {
+          "name": "junior_artifacts_public_sha_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_artifacts\".\"visibility\" = 'public'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -549,7 +579,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "junior_artifacts_visibility_check": {
+          "name": "junior_artifacts_visibility_check",
+          "value": "\"junior_artifacts\".\"visibility\" in ('conversation', 'internal', 'public')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.junior_attachment_uploads": {
@@ -4830,22 +4865,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_review_items_open_action_added_by_idx": {
-          "name": "junior_review_items_open_action_added_by_idx",
-          "columns": [
-            {
-              "expression": "added_by_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}

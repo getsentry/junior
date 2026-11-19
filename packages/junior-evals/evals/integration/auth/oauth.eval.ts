@@ -145,8 +145,9 @@ describe("OAuth Workflows", () => {
     // The turn does not wait for authorization again.
     expect(turnStates(reused)).toEqual(["succeeded"]);
     expect(identityChecks(reused)).not.toHaveLength(0);
-    // `/eval-oauth` gives the skill to the agent, so the agent does not load it.
-    expect(skillLoads("eval-oauth", paused, resumed, reused)).toEqual([]);
+    // `/eval-oauth` names the skill; the agent loads it before it acts. The
+    // next Turn can use the instructions that it already loaded.
+    expect(skillLoads("eval-oauth", paused)).not.toHaveLength(0);
   });
 
   test("when the person asks again before authorizing, the first link resumes the newest request", async ({
