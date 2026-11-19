@@ -66,7 +66,9 @@ attributes. Nested logs and spans inherit them.
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
+| History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |

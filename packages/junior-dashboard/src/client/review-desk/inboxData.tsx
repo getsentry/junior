@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
+import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -156,6 +157,10 @@ function useBuildInboxData(input: {
       ? [...open, linked]
       : open;
   }, [closing, linked, loaded]);
+  // The kept item is extra while no loaded page holds it: only the link
+  // keeps it in the list.
+  const includedExtra =
+    linked !== undefined && !loaded.some((item) => item.id === linked.id);
   // Before the first read, no item has left it. The viewer's own actions
   // did not close an item elsewhere.
   const missing = useMemo(
@@ -195,7 +200,7 @@ function useBuildInboxData(input: {
   const serverCounts = useInboxCountData(signedIn).data;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(nowMs);
+  const snoozes = useInboxSnoozes(nowMs, list);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
@@ -267,21 +272,25 @@ function useBuildInboxData(input: {
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
 
-  // In flight: every pin and every running Conversation. Running rows come
-  // first, a running pin with them, then the other pins in the viewer's
-  // order. Collapsed, every pin shows, each one click away, and running
-  // Conversations fill the rows left, up to IN_FLIGHT_LIMIT.
+  // In flight: every pin and every busy Conversation, whose tree waits on
+  // the viewer, works, or watches for an Event or Timer. Busy rows come
+  // first, a busy pin with them, then the other pins in the viewer's order.
+  // Collapsed, every pin shows, each one click away, and busy Conversations
+  // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
-  const running = conversations.filter(
-    (conversation) =>
-      conversation.status === "active" && !conversation.pinnedAt,
+  const busy = (conversation: Conversation) => {
+    const state = conversationDisplayState(conversation);
+    return state !== undefined && state !== "pinned";
+  };
+  const busyRows = conversations.filter(
+    (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
-  const inFlightFor = (unpinnedRunning: Conversation[]) => [
-    ...unpinnedRunning,
-    ...pinned.filter((conversation) => conversation.status === "active"),
-    ...pinned.filter((conversation) => conversation.status !== "active"),
+  const inFlightFor = (unpinnedBusy: Conversation[]) => [
+    ...unpinnedBusy,
+    ...pinned.filter(busy),
+    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   const todoAutomations = automations.filter(
@@ -352,12 +361,13 @@ function useBuildInboxData(input: {
     holdLeaving,
     holdOpenRow,
     includedId: linkedId,
+    includedExtra,
     includeItem,
     /** Every in-flight Conversation, in pane order. */
-    inFlight: inFlightFor(running),
-    /** Collapsed In flight: every pin, and running rows up to the limit. */
+    inFlight: inFlightFor(busyRows),
+    /** Collapsed In flight: every pin, and busy rows up to the limit. */
     inFlightCollapsed: inFlightFor(
-      running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+      busyRows.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
     ),
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.

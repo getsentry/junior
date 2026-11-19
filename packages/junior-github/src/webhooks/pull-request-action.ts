@@ -213,6 +213,8 @@ async function showAction(
       assigneeIdentityIds: [args.identityId],
       // The URL stands alone, so the dashboard shows the pull request as
       // one card that carries its title. The text names it by number only.
+      // The Inbox hides the review and merge text under a row head that
+      // says it, so keep it in step with `textRepeatsHead` there.
       body:
         action === "merge"
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`

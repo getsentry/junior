@@ -121,14 +121,15 @@ export function createJuniorApi(
 
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  const waitUntil: WaitUntilFn =
+    options.waitUntil ??
+    ((task) => vercelWaitUntil(typeof task === "function" ? task() : task));
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
       queue,
-      waitUntil:
-        options.waitUntil ??
-        ((task) => vercelWaitUntil(typeof task === "function" ? task() : task)),
+      waitUntil,
     }),
   );
   app.route(
@@ -149,7 +150,7 @@ export function createJuniorApi(
   app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
-  app.route("/api/people", createPeopleRoutes());
+  app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());

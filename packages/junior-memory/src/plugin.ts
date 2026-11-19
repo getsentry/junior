@@ -8,6 +8,7 @@ import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
   memoryArchiveTool,
+  memoryRestoreTool,
   memoryCreateTool,
   memoryListTool,
   memorySearchTool,
@@ -21,6 +22,7 @@ import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
 import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
@@ -85,6 +87,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
+      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],
@@ -145,6 +148,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           {
             createMemory: memoryCreateTool,
             archiveMemory: memoryArchiveTool,
+            restoreMemory: memoryRestoreTool,
             listMemories: memoryListTool,
             searchMemories: memorySearchTool,
           },
@@ -160,7 +164,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         }
         const reason =
           "Only a person's message in a public Conversation can write memory.";
-        return { createMemory: reason, archiveMemory: reason };
+        return {
+          createMemory: reason,
+          archiveMemory: reason,
+          restoreMemory: reason,
+        };
       },
       ...(!options.disableRecall
         ? {
@@ -176,6 +184,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 ...(ctx.locationId
                   ? { locationId: ctx.locationId }
                   : undefined),
+                loadHistory: ctx.loadHistory,
                 log: ctx.log,
                 reranker: ctx.reranker,
                 setSpanAttributes: ctx.setSpanAttributes,

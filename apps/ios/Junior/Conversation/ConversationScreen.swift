@@ -135,17 +135,15 @@ struct ConversationScreen: View {
             if model.olderCursor != nil {
               EarlierButton(loading: model.loadingEarlier) { Task { await model.loadEarlier(app) } }
             }
-            if model.messages.isEmpty, model.conversation?.status != .active {
+            if model.messages.isEmpty, model.conversation?.turnActive != true {
               Text("No messages yet.").type(.sm).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
             }
             ForEach(model.messages) { message in
               MessageRow(message: message, blocks: model.messageBlocks[message.seq])
                 .id(message.seq)
             }
-            switch model.conversation?.status {
-            case .active?: WorkingRow()
-            case let status? where status == .failed || status == .stopped: EndedRow(status: status)
-            default: EmptyView()
+            if model.conversation?.turnActive == true {
+              WorkingRow()
             }
             if let actionError = model.actionError {
               InlineError(text: actionError).padding(.leading, 32)
@@ -313,7 +311,7 @@ private struct ConversationComposer: View {
     model.state != nil && !model.sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  private var working: Bool { model.conversation?.status == .active }
+  private var working: Bool { model.conversation?.turnActive == true }
 
   var body: some View {
     ComposerDock(hasAbove: !model.queued.isEmpty || model.state?.authorization != nil) {

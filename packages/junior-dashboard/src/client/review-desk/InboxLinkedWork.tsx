@@ -8,6 +8,11 @@ import {
   MessageObjectsProvider,
   useResolvedObject,
 } from "../display-text/DisplayText";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -305,9 +310,9 @@ function shortRef(object: { key: string; label: string }): string {
   return hash >= 0 ? object.key.slice(hash) : object.label;
 }
 
-// A quiet card in one line: the title, or the label of work saved with no
-// title, then the short name in the status color. A label that repeats the
-// title shows once.
+// A quiet chip: the short name in the status color, with the title on
+// hover and in the chip's name. Work whose label repeats its title, such
+// as a web page, has no short name, so it shows its title.
 function WorkChip(props: { work: Annotation }) {
   const { work } = props;
   const tone = work.objectType
@@ -317,40 +322,23 @@ function WorkChip(props: { work: Annotation }) {
   const name = work.title ?? work.label;
   const ref = shortRef(work);
   const toneClass = tone ? objectToneClass[tone] : "text-dashboard-text-muted";
-  const content = repeatsTitle(ref, name) ? (
-    <span
-      className={cn(fadeOverflowClass, "tabular-nums", toneClass)}
-      data-status-tone={tone}
-      ref={fadeWhenOverflowing}
-    >
-      {name}
-    </span>
-  ) : (
+  const titled = !repeatsTitle(ref, name);
+  const content = (
     <>
+      {titled ? <span className="sr-only">{name} </span> : null}
       <span
-        className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
-        ref={fadeWhenOverflowing}
-      >
-        {name}
-      </span>
-      {/* Like a line's short name, it gives way after the title. */}
-      <span
-        className={cn(
-          fadeOverflowClass,
-          "max-w-full shrink-0 pl-1 tabular-nums",
-          toneClass,
-        )}
+        className={cn(fadeOverflowClass, "tabular-nums", toneClass)}
         data-status-tone={tone}
         ref={fadeWhenOverflowing}
       >
-        {ref}
+        {titled ? ref : name}
       </span>
     </>
   );
   const className =
     // A chip alone on its line shrinks and truncates its title.
     "inline-flex min-w-0 max-w-48 items-baseline rounded-sm font-sans text-xs no-underline";
-  return work.url ? (
+  const chip = work.url ? (
     <a
       className={cn(
         className,
@@ -367,6 +355,13 @@ function WorkChip(props: { work: Annotation }) {
     <span className={className} data-linked-work-chip="">
       {content}
     </span>
+  );
+  if (!titled) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipContent size="compact">{name}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -393,7 +388,7 @@ function WorkChipLine(props: { annotations: Annotation[] }) {
 
 /**
  * Linked work as one line of quiet links, newest first, each with its
- * title and its short name in its status color. Those that do not fit
+ * short name in its status color and its title on hover. Those that do not fit
  * become +N, so a Conversation with many pull requests keeps one line.
  */
 export function InboxLinkedWorkChips(props: { annotations: Annotation[] }) {

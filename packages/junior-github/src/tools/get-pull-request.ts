@@ -21,7 +21,7 @@ const SUMMARY_MAX_LENGTH = 300;
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
   })
   .strict();
 const checksSchema = z.object({
@@ -284,7 +284,7 @@ export const gitHubGetPullRequestTool = definePluginTool({
     const repo = parseRepo(input.repo);
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.get",
-      path: `${repoPath(repo)}/pulls/${input.number}`,
+      path: `${repoPath(repo)}/pulls/${input.pull_request}`,
     });
     if (!response.ok) {
       const message = `GitHub pull request lookup failed with HTTP ${response.status}`;

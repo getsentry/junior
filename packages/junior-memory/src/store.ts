@@ -55,6 +55,7 @@ import {
   type MemoryRuntimeContext,
   type MemorySourcePlatform,
 } from "./types";
+import { findArchivedWriteKeyMemory, retireMemoryRows } from "./lifecycle";
 import {
   deriveMemorySubject,
   publicMemoryScope,
@@ -67,6 +68,11 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const ADJUDICATION_CANDIDATE_LIMIT = 10;
 const ADJUDICATION_VECTOR_LIMIT = 5;
+/**
+ * Cosine distance cutoff for memories in other Conversations that a fact the
+ * Turn says changed may replace. Cosine 0.6 matches Lore's contradiction pairs.
+ */
+const CHANGED_FACT_MAX_DISTANCE = 0.4;
 /** Explicit search overfetch: keep a wider fusion window for tool/CLI search. */
 const SEARCH_RETRIEVAL_OVERFETCH = 4;
 /**
@@ -113,6 +119,12 @@ const createMemoryInputSchema = z
     expiresAtMs: numberSchema.optional(),
     idempotencyKey: nonEmptyStringSchema,
     kind: z.enum(MEMORY_KINDS),
+    /**
+     * Set by passive extraction when the Turn's evidence says the fact
+     * changed. Only then may a knowledge or procedure memory replace an
+     * older one, including one learned in another Conversation.
+     */
+    statesChange: z.boolean().optional(),
   })
   .strict();
 const listMemoriesInputSchema = z
@@ -255,6 +267,7 @@ export const memorySupersessionInputSchema = z
       .object({
         content: z.string().min(1),
         kind: z.enum(MEMORY_KINDS),
+        statesChange: z.boolean().optional(),
       })
       .strict(),
     existingMemories: memorySupersessionCandidatesSchema,
@@ -300,6 +313,8 @@ export interface CreateMemoryResult {
   memory: MemoryRecord;
   /** Memory ids made inactive by this write. */
   supersededIds?: string[];
+  /** Memories that this write archived because it states a changed fact. */
+  archived?: MemoryRecord[];
 }
 
 export type ListMemoriesInput = z.output<typeof listMemoriesInputSchema>;
@@ -856,8 +871,12 @@ async function recordMemorySignal(args: {
     );
 }
 
-/** Select semantic neighbors, then fill the window by recency for unembedded records. */
+/**
+ * Select semantic neighbors, then fill the window by recency for unembedded
+ * records. `acrossScope` adds close neighbors from other Conversations.
+ */
 async function listAdjudicationCandidates(args: {
+  acrossScope: boolean;
   db: MemoryDb;
   embedding?: MemoryEmbedding;
   kind: MemoryRecord["kind"];
@@ -886,12 +905,27 @@ async function listAdjudicationCandidates(args: {
       )
       .limit(ADJUDICATION_CANDIDATE_LIMIT)
   ).map(parseMemoryRow);
+  const scopeCandidates =
+    args.acrossScope && args.embedding
+      ? (
+          await searchVisibleVectorMemories({
+            db: args.db,
+            embedding: args.embedding,
+            filters: [
+              eq(juniorMemoryMemories.kind, args.kind),
+              eq(juniorMemoryMemories.subjectType, "conversation"),
+            ],
+            limit: ADJUDICATION_VECTOR_LIMIT,
+            maxDistance: CHANGED_FACT_MAX_DISTANCE,
+            nowMs: args.nowMs,
+          })
+        ).map(({ memory }) => memory)
+      : [];
   return [
     ...new Map(
-      [...vectorCandidates, ...recentCandidates].map((memory) => [
-        memory.id,
-        memory,
-      ]),
+      [...scopeCandidates, ...vectorCandidates, ...recentCandidates].map(
+        (memory) => [memory.id, memory],
+      ),
     ).values(),
   ].slice(0, ADJUDICATION_CANDIDATE_LIMIT);
 }
@@ -943,8 +977,8 @@ type AdjudicationResult =
 
 /**
  * Normalize a review decision to known duplicate or supersession targets.
- * Only user preferences can supersede. Uncertainty, invalid ids, and model
- * failure leave existing memories active.
+ * Only user preferences and facts that the Turn says changed can supersede.
+ * Uncertainty, invalid ids, and model failure leave existing memories active.
  */
 async function adjudicateCandidate(args: {
   allowSupersession: boolean;
@@ -953,6 +987,7 @@ async function adjudicateCandidate(args: {
   decider: MemorySupersessionDecider;
   kind: MemoryRecord["kind"];
   runtimeContext: MemoryRuntimeContext;
+  statesChange: boolean;
 }): Promise<AdjudicationResult> {
   const [firstCandidate, ...remainingCandidates] = args.candidates;
   if (!firstCandidate) {
@@ -971,6 +1006,7 @@ async function adjudicateCandidate(args: {
       candidate: {
         content: args.content,
         kind: args.kind,
+        ...(args.statesChange ? { statesChange: true } : undefined),
       },
       existingMemories,
       runtimeContext: args.runtimeContext,
@@ -1219,11 +1255,15 @@ async function searchHnswVectorRows(args: VectorSearchArgs) {
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
   embedding: MemoryEmbedding;
+  filters?: SQL[];
   limit: number;
   maxDistance?: number;
   nowMs: number;
 }): Promise<MemoryMatch[]> {
-  const searchArgs = { ...args, predicate: activeVisiblePredicate(args.nowMs) };
+  const searchArgs = {
+    ...args,
+    predicate: and(activeVisiblePredicate(args.nowMs), ...(args.filters ?? [])),
+  };
   // The public set is large, so the exact search is slow.
   const rows = hasHnswIndex(args.embedding)
     ? await searchHnswVectorRows(searchArgs)
@@ -1346,6 +1386,13 @@ export function createMemoryStore(
           ? { created: false, idempotent: true, memory: idempotent.memory }
           : { created: false, memory: idempotent.memory };
       }
+      const archivedWrite = await findArchivedWriteKeyMemory(db, {
+        idempotencyKey: input.idempotencyKey,
+        scope,
+      });
+      if (archivedWrite) {
+        return { created: false, memory: parseMemoryRow(archivedWrite) };
+      }
     }
 
     const exactDuplicate = await findExactDuplicateMemory({
@@ -1376,11 +1423,19 @@ export function createMemoryStore(
       }
     }
     let supersededIds: string[] = [];
+    // A preference replaces the same User's older value. A knowledge or
+    // procedure memory replaces an older fact only when the Turn says the fact
+    // changed, and then it may replace one from another Conversation.
+    const replacesPreference =
+      subjectType === "user" && input.kind === "preference";
+    const replacesChangedFact =
+      subjectType === "conversation" && input.statesChange === true;
     if (
       supersessionDecider &&
       (input.expiresAtMs === undefined || input.expiresAtMs > nowMs)
     ) {
       const candidates = await listAdjudicationCandidates({
+        acrossScope: replacesChangedFact,
         db,
         ...(candidateEmbedding ? { embedding: candidateEmbedding } : undefined),
         kind: input.kind,
@@ -1389,13 +1444,13 @@ export function createMemoryStore(
         subject,
       });
       const adjudication = await adjudicateCandidate({
-        allowSupersession:
-          subjectType === "user" && input.kind === "preference",
+        allowSupersession: replacesPreference || replacesChangedFact,
         candidates,
         content,
         decider: supersessionDecider,
         kind: input.kind,
         runtimeContext,
+        statesChange: replacesChangedFact,
       });
       if (adjudication.decision === "duplicate") {
         return await reuseDuplicateMemory({
@@ -1444,7 +1499,27 @@ export function createMemoryStore(
         .returning();
       const insertedMemory = inserted[0];
       if (!insertedMemory || supersededIds.length === 0) {
-        return { inserted, supersededIds: [] };
+        return { archived: [], inserted, supersededIds: [] };
+      }
+      if (replacesChangedFact) {
+        // Archive, so the old fact can be restored and shows why it went.
+        const archived = await retireMemoryRows(tx, {
+          auditKey: input.idempotencyKey ?? insertedMemory.id,
+          conversationId: runtimeContext.conversationId,
+          filters: [
+            eq(juniorMemoryMemories.kind, input.kind),
+            eq(juniorMemoryMemories.subjectType, "conversation"),
+          ],
+          ids: supersededIds,
+          nowMs,
+          reason: "superseded",
+          supersededById: insertedMemory.id,
+        });
+        return {
+          archived: archived.map(parseMemoryRow),
+          inserted,
+          supersededIds: [],
+        };
       }
       const superseded = await tx
         .update(juniorMemoryMemories)
@@ -1470,7 +1545,7 @@ export function createMemoryStore(
           .delete(juniorMemoryEmbeddings)
           .where(inArray(juniorMemoryEmbeddings.memoryId, idsToClean));
       }
-      return { inserted, supersededIds: idsToClean };
+      return { archived: [], inserted, supersededIds: idsToClean };
     });
     if (write.inserted[0]) {
       const memory = parseMemoryRow(write.inserted[0]);
@@ -1487,6 +1562,9 @@ export function createMemoryStore(
         memory,
         ...(write.supersededIds.length > 0
           ? { supersededIds: write.supersededIds }
+          : undefined),
+        ...(write.archived.length > 0
+          ? { archived: write.archived }
           : undefined),
       };
     }

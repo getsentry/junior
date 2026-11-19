@@ -34,7 +34,7 @@ final class ConversationModel {
   /// Polls fast while a Turn runs, messages wait, or a parked Turn waits for
   /// the viewer to connect an account.
   var isLive: Bool {
-    conversation?.status == .active || !(state?.pendingMessages.isEmpty ?? true) || state?.authorization != nil
+    conversation?.turnActive == true || !(state?.pendingMessages.isEmpty ?? true) || state?.authorization != nil
   }
 
   /// Pending messages that the transcript does not show yet.

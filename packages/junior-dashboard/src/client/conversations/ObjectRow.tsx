@@ -6,6 +6,7 @@ import {
 import { CircleAlert } from "lucide-react";
 
 import { ActorAvatar } from "../components/ActorAvatar";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
 import { ObjectAttachAction } from "./ObjectAttach";
@@ -91,8 +92,13 @@ export function ObjectRow(props: {
             {card.title}
           </span>
         )}
-        <span className="min-w-0 truncate text-xs text-dashboard-text-faint">
-          {reference}
+        <span className="flex min-w-0 items-baseline gap-1.5 text-xs text-dashboard-text-faint">
+          <span className="min-w-0 truncate">{reference}</span>
+          {/* Above the row's link, so a pointer gets the exact counts. */}
+          <ChangeSize
+            className="relative"
+            size={card.facts?.type === "code_change" ? card.facts : undefined}
+          />
         </span>
       </div>
       {card.warning ? (
