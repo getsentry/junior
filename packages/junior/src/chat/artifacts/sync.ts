@@ -173,6 +173,8 @@ export function createArtifactSync(args: {
   // Parallel tool calls save one at a time, so each save sees the list that
   // the one before it left.
   let pending: Promise<unknown> = Promise.resolve();
+  // Told to the agent with the next tool result after a failed restore.
+  let restoreNote: string | undefined;
 
   const liveRows = async () =>
     await db
@@ -332,9 +334,71 @@ export function createArtifactSync(args: {
     return skippedNote(skipped);
   };
 
+  /** Write live rows back, and return the files that now match them. */
+  const restoreFiles = async (
+    workspace: SandboxWorkspace,
+  ): Promise<Map<string, FileStat>> => {
+    const rows = await liveRows();
+    if (rows.length === 0) return new Map();
+    const listed = new Map(
+      (await listArtifactFiles(workspace)).map((file) => [file.path, file]),
+    );
+    const hashes = await hashArtifactFiles(
+      workspace,
+      rows.flatMap((row) =>
+        row.path && listed.get(row.path)?.bytes === row.bytes ? [row.path] : [],
+      ),
+    );
+    const restored = new Map<string, FileStat>();
+    const written: string[] = [];
+    for (const row of rows) {
+      const artifactPath = row.path && safeArtifactPath(row.path);
+      if (!artifactPath) continue;
+      const present = listed.get(artifactPath);
+      if (present && hashes.get(artifactPath) === row.sha256) {
+        restored.set(artifactPath, present);
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop -- One file in memory at a time.
+      const body = await storage.get(row.storageKey);
+      if (!body) {
+        logWarn("artifact.restore.skipped", {
+          "app.conversation.id": conversationId,
+          "error.type": "object_missing",
+        });
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop -- See the read above.
+      const content = Buffer.from(await new Response(body).arrayBuffer());
+      // oxlint-disable-next-line no-await-in-loop -- See the read above.
+      await workspace.writeFiles([
+        { content, path: sandboxPath(artifactPath) },
+      ]);
+      written.push(artifactPath);
+    }
+    if (written.length > 0) {
+      // A write gives the file a new modification time.
+      const relisted = new Map(
+        (await listArtifactFiles(workspace)).map((file) => [file.path, file]),
+      );
+      for (const artifactPath of written) {
+        const file = relisted.get(artifactPath);
+        if (file) restored.set(artifactPath, file);
+      }
+    }
+    return new Map(
+      [...restored].map(([artifactPath, file]) => [
+        artifactPath,
+        { bytes: file.bytes, mtime: file.mtime },
+      ]),
+    );
+  };
+
   return {
     async afterToolCall(toolName, workspace) {
-      if (!SAVE_TOOLS.has(toolName) || !known) return undefined;
+      const notice = restoreNote;
+      restoreNote = undefined;
+      if (!SAVE_TOOLS.has(toolName) || !known) return notice;
       const run = pending.then(async () => {
         if (!known) return undefined;
         try {
@@ -350,67 +414,23 @@ export function createArtifactSync(args: {
         }
       });
       pending = run;
-      return await run;
+      const saved = await run;
+      return notice && saved ? `${notice}\n\n${saved}` : (notice ?? saved);
     },
 
     async restore(workspace) {
       known = new Map();
-      const rows = await liveRows();
-      if (rows.length === 0) return;
-      const listed = new Map(
-        (await listArtifactFiles(workspace)).map((file) => [file.path, file]),
-      );
-      const hashes = await hashArtifactFiles(
-        workspace,
-        rows.flatMap((row) =>
-          row.path && listed.get(row.path)?.bytes === row.bytes
-            ? [row.path]
-            : [],
-        ),
-      );
-      const restored = new Map<string, FileStat>();
-      const written: string[] = [];
-      for (const row of rows) {
-        const artifactPath = row.path && safeArtifactPath(row.path);
-        if (!artifactPath) continue;
-        const present = listed.get(artifactPath);
-        if (present && hashes.get(artifactPath) === row.sha256) {
-          restored.set(artifactPath, present);
-          continue;
-        }
-        // oxlint-disable-next-line no-await-in-loop -- One file in memory at a time.
-        const body = await storage.get(row.storageKey);
-        if (!body) {
-          logWarn("artifact.restore.skipped", {
-            "app.conversation.id": conversationId,
-            "error.type": "object_missing",
-          });
-          continue;
-        }
-        // oxlint-disable-next-line no-await-in-loop -- See the read above.
-        const content = Buffer.from(await new Response(body).arrayBuffer());
-        // oxlint-disable-next-line no-await-in-loop -- See the read above.
-        await workspace.writeFiles([
-          { content, path: sandboxPath(artifactPath) },
-        ]);
-        written.push(artifactPath);
+      try {
+        known = await restoreFiles(workspace);
+      } catch (error) {
+        // Tools work without saved files, so a failed restore must not stop
+        // the Sandbox. The empty file list marks no row deleted, so the saved
+        // copies stay for the next restore.
+        logException(error, "artifact.restore.failed", {
+          "app.conversation.id": conversationId,
+        });
+        restoreNote = `Saved files in ${ARTIFACTS_DIR}/ could not be restored to this Sandbox, so some may be missing. Their saved copies are kept.`;
       }
-      if (written.length > 0) {
-        // A write gives the file a new modification time.
-        const relisted = new Map(
-          (await listArtifactFiles(workspace)).map((file) => [file.path, file]),
-        );
-        for (const artifactPath of written) {
-          const file = relisted.get(artifactPath);
-          if (file) restored.set(artifactPath, file);
-        }
-      }
-      known = new Map(
-        [...restored].map(([artifactPath, file]) => [
-          artifactPath,
-          { bytes: file.bytes, mtime: file.mtime },
-        ]),
-      );
     },
   };
 }

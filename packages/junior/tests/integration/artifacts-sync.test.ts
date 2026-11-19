@@ -171,4 +171,39 @@ describe("conversation artifacts", () => {
     expect((await rows()).map((row) => row.path)).toEqual(["small.txt"]);
     expect([...storage.objects.values()].map(String)).toEqual(["ok"]);
   });
+
+  it("keeps the Sandbox usable and the saved files when a restore fails", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const first = await newSandbox();
+    const firstRun = newRun(storage);
+    await firstRun.restore(first.workspace);
+    await first.write("artifacts/report.md", "# Report\n");
+    await firstRun.afterToolCall("bash", first.workspace);
+
+    const second = await newSandbox();
+    const secondRun = createArtifactSync({
+      conversationId: CONVERSATION_ID,
+      db: fixture.sql,
+      // Injected fault: attachment storage is unavailable for reads.
+      storage: {
+        ...storage,
+        get: async () => {
+          throw new Error("storage unavailable");
+        },
+      },
+    });
+    await secondRun.restore(second.workspace);
+
+    expect(
+      await secondRun.afterToolCall("readFile", second.workspace),
+    ).toContain("could not be restored");
+    await secondRun.afterToolCall("bash", second.workspace);
+    expect(await rows()).toEqual([
+      {
+        deleteRequestedAt: null,
+        path: "report.md",
+        visibility: "conversation",
+      },
+    ]);
+  });
 });

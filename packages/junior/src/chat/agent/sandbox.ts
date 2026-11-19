@@ -216,7 +216,9 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
           }
         }
         const result = await sandbox.tools.execute(params);
-        if (!options.artifacts || params.signal?.aborted) return result;
+        // Save even after an abort: the tool finished, and a later restore
+        // would put the old saved copy back over its changes.
+        if (!options.artifacts) return result;
         const note = await options.artifacts.afterToolCall(
           params.toolName,
           sandbox.workspace,
