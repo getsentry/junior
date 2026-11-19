@@ -47,3 +47,4 @@ Do not list behaviors. The verification map in
   "Inbox" in the dashboard.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
+- [Slack](./slack.md): requests in Slack, and who can start work there.
