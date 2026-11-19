@@ -420,6 +420,7 @@ export function createArtifactSync(args: {
 
     async restore(workspace) {
       known = new Map();
+      restoreNote = undefined;
       try {
         known = await restoreFiles(workspace);
       } catch (error) {
