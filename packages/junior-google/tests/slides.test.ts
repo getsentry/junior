@@ -1,3 +1,4 @@
+// oxlint-disable anti-slop/no-shape-in-symbol-names -- `shape` is a Slides API field.
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,6 +66,62 @@ function permissions(...items: Array<Record<string, string>>) {
   return Response.json({ permissions: items });
 }
 
+const PAGE_SIZE = {
+  height: { magnitude: 5143500, unit: "EMU" },
+  width: { magnitude: 9144000, unit: "EMU" },
+};
+
+/** A text shape at a position and size in points. */
+function textBox(
+  objectId: string,
+  box: { height: number; left: number; top: number; width: number },
+  text: string,
+  extra: { fontSize?: number; placeholder?: string } = {},
+) {
+  return {
+    objectId,
+    shape: {
+      ...(extra.placeholder
+        ? { placeholder: { type: extra.placeholder } }
+        : undefined),
+      text: {
+        textElements: text
+          ? [
+              {
+                textRun: {
+                  content: text,
+                  ...(extra.fontSize
+                    ? {
+                        style: {
+                          fontSize: { magnitude: extra.fontSize, unit: "PT" },
+                        },
+                      }
+                    : undefined),
+                },
+              },
+            ]
+          : [],
+      },
+    },
+    size: {
+      height: { magnitude: box.height * 12700, unit: "EMU" },
+      width: { magnitude: box.width * 12700, unit: "EMU" },
+    },
+    transform: {
+      scaleX: 1,
+      scaleY: 1,
+      translateX: box.left * 12700,
+      translateY: box.top * 12700,
+      unit: "EMU",
+    },
+  };
+}
+
+/** The deck read that updateGoogleSlides makes to check its edit. */
+function checkedDeck(...slides: Array<Record<string, unknown>>) {
+  return Response.json({ pageSize: PAGE_SIZE, slides });
+}
+
 describe("Google Slides tools", () => {
   beforeEach(() => stubGoogleEnv());
   afterEach(() => vi.unstubAllEnvs());
@@ -78,6 +135,7 @@ describe("Google Slides tools", () => {
         replies: [{ createSlide: { objectId: "s2" } }, {}],
         writeControl: { requiredRevisionId: "rev-2" },
       }),
+      checkedDeck({ objectId: "s1" }, { objectId: "s2" }),
     ]);
     const requests = [
       { createSlide: { insertionIndex: 1, objectId: "s2" } },
@@ -95,6 +153,7 @@ describe("Google Slides tools", () => {
       "google.drive.file.get",
       "google.drive.permissions.list",
       "google.slides.presentation.batchUpdate",
+      "google.slides.presentation.get",
     ]);
     expect(sent[2]?.url.href).toBe(
       `https://slides.googleapis.com/v1/presentations/${DECK_ID}:batchUpdate`,
@@ -109,7 +168,180 @@ describe("Google Slides tools", () => {
       revision_id: "rev-2",
       title: "Roadmap",
       url: DECK_LINK,
+      changed_slides: ["s2"],
+      issues: [],
     });
+  });
+
+  it("reports layout problems on the slides that an edit touched", async () => {
+    const longText =
+      "Every customer request goes through the retry path. ".repeat(6);
+    const { call } = slidesTools([
+      deckFile(),
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER }),
+      Response.json({
+        replies: [{ createSlide: { objectId: "s2" } }],
+        writeControl: { requiredRevisionId: "rev-2" },
+      }),
+      checkedDeck(
+        // Not touched by the edit, so its empty placeholder is not reported.
+        {
+          objectId: "s1",
+          pageElements: [
+            textBox(
+              "old_body",
+              { height: 200, left: 40, top: 100, width: 640 },
+              "",
+              { placeholder: "BODY" },
+            ),
+          ],
+        },
+        {
+          objectId: "s2",
+          pageElements: [
+            textBox(
+              "s2_title",
+              { height: 50, left: 40, top: 30, width: 640 },
+              "Retries hid timeouts",
+              { fontSize: 28, placeholder: "TITLE" },
+            ),
+            textBox(
+              "s2_body",
+              { height: 200, left: 40, top: 100, width: 640 },
+              "",
+              { placeholder: "BODY" },
+            ),
+            textBox(
+              "s2_box",
+              { height: 40, left: 40, top: 100, width: 300 },
+              longText,
+              { fontSize: 18 },
+            ),
+            textBox(
+              "s2_note",
+              { height: 20, left: 600, top: 395, width: 200 },
+              "Source: logs",
+              { fontSize: 9 },
+            ),
+            // A flipped box extends left from its translation and fits.
+            (() => {
+              const flipped = textBox(
+                "s2_flipped",
+                { height: 60, left: 680, top: 300, width: 200 },
+                "Two lines of text that wrap once",
+                { fontSize: 18 },
+              );
+              flipped.transform.scaleX = -1;
+              return flipped;
+            })(),
+          ],
+        },
+      ),
+    ]);
+
+    const result = await call("updateGoogleSlides", {
+      presentation: DECK_LINK,
+      requests: [
+        { createSlide: { slideLayoutReference: { layoutId: "layout_tb" } } },
+      ],
+      revision_id: "rev-1",
+    });
+
+    expect(result).toMatchObject({ changed_slides: ["s2"] });
+    const issues = (result as { issues: Array<Record<string, string>> }).issues;
+    expect(issues.map((issue) => [issue.element_id, issue.problem])).toEqual([
+      ["s2_body", "Empty BODY placeholder. Fill it or delete it."],
+      [
+        "s2_box",
+        expect.stringContaining("Text probably needs more height than its box"),
+      ],
+      ["s2_note", expect.stringContaining("Text is 9 pt.")],
+      ["s2_note", "Text box goes past the edge of the slide."],
+    ]);
+    expect(issues.every((issue) => issue.slide_id === "s2")).toBe(true);
+  });
+
+  it("refuses requests that would not do what they seem to, and explains a missing layout", async () => {
+    const input = { presentation: DECK_LINK, revision_id: "rev-1" };
+    const editor = () =>
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER });
+    const refused: Array<[Record<string, unknown>, string]> = [
+      [
+        {
+          updatePageElementTransform: {
+            applyMode: "ABSOLUTE",
+            objectId: "box",
+            transform: { translateX: 10, translateY: 10, unit: "PT" },
+          },
+        },
+        "an omitted scaleX or scaleY becomes 0",
+      ],
+      [
+        {
+          updateSlideProperties: {
+            fields: "layoutObjectId",
+            objectId: "s1",
+            slideProperties: { layoutObjectId: "layout_blank" },
+          },
+        },
+        "A slide's layout cannot change.",
+      ],
+    ];
+    for (const [request, message] of refused) {
+      const tools = slidesTools([deckFile(), editor()]);
+      await expect(
+        tools.call("updateGoogleSlides", { ...input, requests: [request] }),
+      ).rejects.toThrow(message);
+      expect((await tools.calls()).map((item) => item.operation)).not.toContain(
+        "google.slides.presentation.batchUpdate",
+      );
+    }
+
+    const missing = slidesTools([
+      deckFile(),
+      editor(),
+      Response.json(
+        {
+          error: {
+            message: "Invalid requests[0].createSlide: layout not found.",
+          },
+        },
+        { status: 400 },
+      ),
+    ]);
+    await expect(
+      missing.call("updateGoogleSlides", {
+        ...input,
+        requests: [
+          {
+            createSlide: {
+              slideLayoutReference: { predefinedLayout: "TITLE_AND_BODY" },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "use a layoutId from the layouts that readGoogleSlidesLayout returns",
+    );
+  });
+
+  it("says the edit applied when the check read fails", async () => {
+    const { call } = slidesTools([
+      deckFile(),
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER }),
+      Response.json({
+        replies: [{}],
+        writeControl: { requiredRevisionId: "rev-2" },
+      }),
+      Response.json({ error: { message: "backend" } }, { status: 500 }),
+    ]);
+    await expect(
+      call("updateGoogleSlides", {
+        presentation: DECK_LINK,
+        requests: [{ deleteObject: { objectId: "s1" } }],
+        revision_id: "rev-1",
+      }),
+    ).rejects.toThrow("The edit applied at revision rev-2, but reading");
   });
 
   it("refuses edits that either account cannot make, and malformed requests", async () => {
@@ -168,7 +400,13 @@ describe("Google Slides tools", () => {
     };
 
     const shared = slidesTools(
-      [deckFile(), editor(), sheetFile(), Response.json({ replies: [{}] })],
+      [
+        deckFile(),
+        editor(),
+        sheetFile(),
+        Response.json({ replies: [{}] }),
+        checkedDeck(),
+      ],
       0,
       [DECK_ID, SHEET_ID],
     );
@@ -252,7 +490,7 @@ describe("Google Slides tools", () => {
     const [, deck] = await outline.calls();
     expect(deck?.url.pathname).toBe(`/v1/presentations/${DECK_ID}`);
     expect(deck?.url.searchParams.get("fields")).toMatch(
-      /^revisionId,pageSize,slides\(objectId,/,
+      /^revisionId,pageSize,layouts\(objectId,.*\),slides\(objectId,/,
     );
 
     const slide = slidesTools([

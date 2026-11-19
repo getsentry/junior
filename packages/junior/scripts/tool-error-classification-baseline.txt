@@ -41,6 +41,7 @@ packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requeste
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Google returned a slide thumbnail outside ${THUMBNAIL_HOST_SUFFIX}.`, );
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Could not download the slide thumbnail: ${download.stderr.trim() || `curl exited with ${download.exitCode}`}`, );
 packages/junior-google/src/tools/shared.ts	throw new Error( `${input.operation} changes a file, so it needs the file that requireEditableFile checked.`, );
+packages/junior-google/src/tools/update-slides.ts	throw new Error( `The edit applied${after ? ` at revision ${after}` : ""}, but reading the changed slides to check them failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");
