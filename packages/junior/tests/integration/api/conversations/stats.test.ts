@@ -15,7 +15,11 @@ import {
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
-import { measureSql, expectSqlBudget } from "../../../fixtures/sql-budget";
+import {
+  expectNoFullScan,
+  expectSqlBudget,
+  measureSql,
+} from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 
 describe("conversation stats API", () => {
@@ -297,10 +301,23 @@ describe("conversation stats API", () => {
       }
 
       // One round of hour-grained reads when the report is not cached.
-      const response = await expectSqlBudget(
+      const response = await expectNoFullScan(
         () =>
-          createJuniorApi().request("http://localhost/api/conversations/stats"),
-        { statements: 5, serialRounds: 1 },
+          expectSqlBudget(
+            () =>
+              createJuniorApi().request(
+                "http://localhost/api/conversations/stats",
+              ),
+            { statements: 5, serialRounds: 1 },
+          ),
+        {
+          "outcome change roots": {
+            table: "junior_code_changes",
+            statement: '"change_roots"',
+            reason:
+              "outcome-buckets.ts finds the roots of every code change. Remove this when a fix bounds that read.",
+          },
+        },
       );
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());

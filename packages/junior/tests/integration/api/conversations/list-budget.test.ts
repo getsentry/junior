@@ -19,6 +19,7 @@ import {
   recordSlackRoot,
 } from "../../../fixtures/conversation-status";
 import { expectResponseBudget } from "../../../fixtures/response-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
 
@@ -166,7 +167,11 @@ describe("conversation list API response budget", () => {
     }
 
     const response = await expectResponseBudget(
-      () => fixture.request("/api/conversations?include=links,media"),
+      () =>
+        expectSqlBudget(
+          () => fixture.request("/api/conversations?include=links,media"),
+          { statements: 18, serialRounds: 3 },
+        ),
       // Pins and waiting rows are not paged, so the body has no budget.
       {
         // A row's own fields, plus its activity preview, which holds the

@@ -1,5 +1,5 @@
 {
-  "id": "d923b8d1-f198-4278-9257-acc6707629eb",
+  "id": "de0b7922-760f-4aea-b229-3baf89a3f410",
   "prevId": "4bf676d4-c49c-4f8d-ba11-823eae4b5806",
   "version": "7",
   "dialect": "postgresql",
@@ -2135,6 +2135,27 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_briefs_created_at_idx": {
+          "name": "junior_conversation_briefs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversation_briefs_search_idx": {
           "name": "junior_conversation_briefs_search_idx",
           "columns": [
@@ -3835,60 +3856,6 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_hourly_stats": {
-      "name": "junior_hourly_stats",
-      "schema": "",
-      "columns": {
-        "hour": {
-          "name": "hour",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "namespace": {
-          "name": "namespace",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "metric": {
-          "name": "metric",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "junior_hourly_stats_hour_namespace_metric_name_pk": {
-          "name": "junior_hourly_stats_hour_namespace_metric_name_pk",
-          "columns": [
-            "hour",
-            "namespace",
-            "metric",
-            "name"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

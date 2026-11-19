@@ -187,10 +187,13 @@ export type {
   ConversationDeliveryResponse,
 } from "./schema/conversation-delivery";
 export {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -271,6 +274,9 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  mentionablePersonSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   PERSON_CARD_RECENT_LIMIT,
   personCardReportSchema,
   personalSpendReportSchema,
@@ -298,7 +304,9 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   ActorWindowMetrics,
+  MentionablePerson,
   PeopleActivityDayReport,
+  PeopleSearchReport,
   PersonalSpendReport,
   PersonCardReport,
   PersonParams,
@@ -461,5 +469,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

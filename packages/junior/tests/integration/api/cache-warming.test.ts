@@ -1,4 +1,4 @@
-import { expectSqlBudget } from "../../fixtures/sql-budget";
+import { expectNoFullScan, expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -166,9 +166,11 @@ describe("cache warming API", () => {
     });
 
     // One read of the stats rows of the range, however many days it spans.
-    const response = await expectSqlBudget(
-      () => person.request(`${BASE_URL}/api/cache-warming/savings?days=7`),
-      { statements: 1, serialRounds: 1 },
+    const response = await expectNoFullScan(() =>
+      expectSqlBudget(
+        () => person.request(`${BASE_URL}/api/cache-warming/savings?days=7`),
+        { statements: 1, serialRounds: 1 },
+      ),
     );
     expect(response.status).toBe(200);
     const report = cacheWarmingSavingsReportSchema.parse(await response.json());

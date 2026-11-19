@@ -5,10 +5,7 @@ import {
 } from "@/chat/cache-warming/savings";
 import { microUsdToUsd } from "@/db/micro-usd";
 import { readStats } from "@/stats";
-import {
-  cacheWarmingSavingsReportSchema,
-  type CacheWarmingSavingsReport,
-} from "../schema/cache-warming";
+import { type CacheWarmingSavingsReport } from "../schema/cache-warming";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -63,7 +60,7 @@ export async function readCacheWarmingSavings(
   const live = savingsTotals(
     stats.filter((stat) => !historyDates.has(stat.date)),
   );
-  return cacheWarmingSavingsReportSchema.parse({
+  return {
     days: dayTotals.map(({ date, totals }) => ({
       date,
       ...savingsUsd(totals),
@@ -77,5 +74,5 @@ export async function readCacheWarmingSavings(
       effectiveness: oracle > 0 ? net / oracle : null,
       historyDays: historyDates.size,
     },
-  });
+  };
 }
