@@ -141,6 +141,61 @@ describe("conversation tree state", () => {
     });
   });
 
+  it("rolls a grandchild up to its root and parent, not to a sibling", async () => {
+    const fixture = await createStatusFixture();
+    const rootId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000450",
+    );
+    const otherRootId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000460",
+    );
+    const args = {
+      conversationStore: fixture.conversationStore,
+      destination: SLACK_DESTINATION,
+      queue: fixture.queue,
+      state: fixture.state,
+    };
+    const parent = await spawnChildAgent({
+      ...args,
+      parentConversationId: rootId,
+      idempotencyKey: "tree-depth-parent",
+    });
+    const sibling = await spawnChildAgent({
+      ...args,
+      parentConversationId: rootId,
+      idempotencyKey: "tree-depth-sibling",
+    });
+    const grandchild = await spawnChildAgent({
+      ...args,
+      parentConversationId: parent.childConversationId,
+      idempotencyKey: "tree-depth-grandchild",
+    });
+    for (const child of [parent, sibling, grandchild]) {
+      fixture.queue.takeMessageFor(child.childConversationId);
+    }
+
+    await addItem(grandchild.childConversationId, ACTION_ITEM);
+
+    await expect(fixture.feedTree(rootId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await expect(fixture.tree(rootId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await expect(fixture.tree(parent.childConversationId)).resolves.toEqual({
+      treeState: "needs_you",
+      watching: false,
+    });
+    // The sibling's own spawned Turn still waits in the queue.
+    await expect(fixture.tree(sibling.childConversationId)).resolves.toEqual({
+      treeState: "working",
+      watching: false,
+    });
+    await expect(fixture.feedTree(otherRootId)).resolves.toEqual(DONE);
+  });
+
   it("needs the viewer for their own sign-in waits anywhere in the tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
