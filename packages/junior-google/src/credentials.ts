@@ -37,16 +37,35 @@ const GRANT_NAME = "account";
 // Renew leases a little before Google's access token expires.
 const LEASE_SAFETY_MS = 60_000;
 
+/**
+ * How a write operation checks that the requester may make the change.
+ *
+ * - `file-editor`: changes an existing Drive file. `googleApiRequest` refuses
+ *   it unless the tool passes the file from `requireEditableFile`, which
+ *   checks that the requester could edit the file themselves.
+ * - `own-calendar`: changes Junior's own calendar. The event tools check that
+ *   Junior organizes the event and that the requester is invited.
+ * - `creates`: creates a file that Junior's account owns.
+ */
+type WriteCheck = "file-editor" | "own-calendar" | "creates";
+
+type GoogleOperationRule = { host: string; method: string; path: RegExp } & (
+  | { access: "read" }
+  | { access: "write"; writeCheck: WriteCheck }
+);
+
 /** Google API operations that plugin tools may perform. */
 export const GOOGLE_OPERATIONS = {
   "google.calendar.event.create": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/calendars\/primary\/events$/,
   },
   "google.calendar.event.delete": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
@@ -59,6 +78,7 @@ export const GOOGLE_OPERATIONS = {
   },
   "google.calendar.event.update": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "PATCH",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
@@ -77,12 +97,14 @@ export const GOOGLE_OPERATIONS = {
   },
   "google.docs.document.batchUpdate": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_DOCS_API_DOMAIN,
     method: "POST",
     path: /^\/v1\/documents\/[A-Za-z0-9_-]+:batchUpdate$/,
   },
   "google.docs.document.create": {
     access: "write",
+    writeCheck: "creates",
     host: GOOGLE_DOCS_API_DOMAIN,
     method: "POST",
     path: /^\/v1\/documents$/,
@@ -127,18 +149,21 @@ export const GOOGLE_OPERATIONS = {
   // OAuth client created.
   "google.drive.permission.create": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
   },
   "google.drive.file.delete": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
   },
   "google.drive.permission.delete": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions\/[A-Za-z0-9_-]+$/,
@@ -175,6 +200,7 @@ export const GOOGLE_OPERATIONS = {
   },
   "google.slides.presentation.batchUpdate": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_SLIDES_API_DOMAIN,
     method: "POST",
     path: /^\/v1\/presentations\/[A-Za-z0-9_-]+:batchUpdate$/,
@@ -185,10 +211,7 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/v1\/presentations\/[A-Za-z0-9_-]+$/,
   },
-} as const satisfies Record<
-  string,
-  { access: "read" | "write"; host: string; method: string; path: RegExp }
->;
+} as const satisfies Record<string, GoogleOperationRule>;
 
 export type GoogleOperation = keyof typeof GOOGLE_OPERATIONS;
 

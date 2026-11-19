@@ -88,7 +88,11 @@ async function requireRequesterCanEdit(
   );
 }
 
-/** A file that the requester and Junior's account may both edit. */
+/**
+ * A file that the requester may change through Junior's account. Write
+ * operations on existing files need one; see `writeCheck` in
+ * `credentials.ts`.
+ */
 export interface EditableFile {
   ref: FileReference;
   title: string;
@@ -110,4 +114,16 @@ export async function requireEditableFile(
   }
   await requireRequesterCanEdit(ctx, ref, FILE_NOUNS[type]);
   return { ref, title: metadata.name, webViewLink: metadata.webViewLink };
+}
+
+/**
+ * Mark a file that the current tool call just created with Junior's account.
+ * Only `createGoogleDoc` uses it: the requester becomes the owner before the
+ * call ends, and the Doc is deleted if that fails.
+ */
+export function newEditableFile(
+  ref: FileReference,
+  title: string,
+): EditableFile {
+  return { ref, title, webViewLink: undefined };
 }

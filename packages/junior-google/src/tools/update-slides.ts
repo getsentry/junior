@@ -96,6 +96,7 @@ export const updateGoogleSlidesTool = definePluginTool({
         requests: input.requests,
         writeControl: { requiredRevisionId: input.revision_id },
       },
+      editable: file,
       operation: "google.slides.presentation.batchUpdate",
       path: `/v1/presentations/${file.ref.fileId}:batchUpdate`,
     });

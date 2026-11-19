@@ -8,6 +8,7 @@ import {
 import * as z from "zod";
 import { emailDomain } from "../config";
 import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
+import type { EditableFile } from "./editable-file";
 
 /** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
@@ -107,6 +108,8 @@ export async function googleApiRequest(
   ctx: Pick<GoogleToolContext, "egress">,
   input: {
     body?: unknown;
+    /** Required by operations that change an existing file. */
+    editable?: EditableFile;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -115,6 +118,19 @@ export async function googleApiRequest(
   },
 ): Promise<{ body: unknown; status: number }> {
   const rule = GOOGLE_OPERATIONS[input.operation];
+  // Junior's account can edit files that the requester cannot. Every change
+  // to an existing file must name the file that `requireEditableFile`
+  // checked, so no tool can skip the requester check.
+  const editedFileId = input.editable?.ref.fileId;
+  if (
+    "writeCheck" in rule &&
+    rule.writeCheck === "file-editor" &&
+    (!editedFileId || !input.path.includes(`/${editedFileId}`))
+  ) {
+    throw new Error(
+      `${input.operation} changes a file, so it needs the file that requireEditableFile checked.`,
+    );
+  }
   const url = new URL(`https://${rule.host}${input.path}`);
   for (const [key, value] of Object.entries(input.query ?? {})) {
     for (const item of [value].flat()) {

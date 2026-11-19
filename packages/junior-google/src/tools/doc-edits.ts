@@ -5,7 +5,7 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { convertMarkdown, type ConvertedMarkdown } from "./doc-markdown";
-import { requireEditableFile } from "./editable-file";
+import { requireEditableFile, type EditableFile } from "./editable-file";
 import {
   fileReferenceSchema,
   googleFileRequest,
@@ -96,11 +96,7 @@ const docSchema = z.object({
 type DocParagraph = z.infer<typeof docParagraphSchema>;
 
 /** A Doc that the requester and Junior's account may both edit. */
-interface EditableDoc {
-  ref: FileReference;
-  title: string;
-  url: string;
-}
+type EditableDoc = EditableFile & { url: string };
 
 /**
  * Check that Junior's account and the requester can both edit a Doc. Only the
@@ -111,11 +107,7 @@ export async function requireEditableDoc(
   document: string,
 ): Promise<EditableDoc> {
   const file = await requireEditableFile(ctx, document, "document");
-  return {
-    ref: file.ref,
-    title: file.title,
-    url: file.webViewLink ?? docUrl(file.ref.fileId),
-  };
+  return { ...file, url: file.webViewLink ?? docUrl(file.ref.fileId) };
 }
 
 /** Read the body layout that index-based edits need. */
@@ -284,17 +276,18 @@ export function revisionAfterUpdate(body: unknown): string | undefined {
  */
 export async function batchUpdateDoc(
   ctx: GoogleToolContext,
-  ref: FileReference,
+  doc: EditableFile,
   requests: unknown[],
   revisionId?: string,
 ): Promise<unknown> {
-  const response = await googleFileRequest(ctx, ref, {
+  const response = await googleFileRequest(ctx, doc.ref, {
     body: {
       requests,
       ...(revisionId && { writeControl: { requiredRevisionId: revisionId } }),
     },
+    editable: doc,
     operation: "google.docs.document.batchUpdate",
-    path: `/v1/documents/${ref.fileId}:batchUpdate`,
+    path: `/v1/documents/${doc.ref.fileId}:batchUpdate`,
   });
   return response.body;
 }

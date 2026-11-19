@@ -6,6 +6,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { getGoogleAccount, saveGoogleAccount } from "../src/store";
+import { newEditableFile } from "../src/tools/editable-file";
+import { googleApiRequest } from "../src/tools/shared";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
@@ -21,6 +23,32 @@ function grantFor(request: EgressHookContext["request"]) {
 }
 
 describe("Google egress policy", () => {
+  it("refuses a change to an existing file without the file that the requester check returned", async () => {
+    const fetch = vi.fn(async () => Response.json({}));
+    const path = "/v1/presentations/1DeCkIdAbCdEfGh:batchUpdate";
+    const edit = (editable?: ReturnType<typeof newEditableFile>) =>
+      googleApiRequest(
+        { egress: { fetch } },
+        {
+          body: { requests: [] },
+          ...(editable ? { editable } : undefined),
+          operation: "google.slides.presentation.batchUpdate",
+          path,
+        },
+      );
+
+    await expect(edit()).rejects.toThrow(
+      "google.slides.presentation.batchUpdate changes a file, so it needs the file that requireEditableFile checked.",
+    );
+    await expect(
+      edit(newEditableFile({ fileId: "1OtHeRfIlEiDxyz" }, "Other")),
+    ).rejects.toThrow("needs the file that requireEditableFile checked");
+    expect(fetch).not.toHaveBeenCalled();
+
+    await edit(newEditableFile({ fileId: "1DeCkIdAbCdEfGh" }, "Roadmap"));
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("gives the account only to declared plugin operations", () => {
     // Sandbox commands carry no operation.
     expect(() =>

@@ -1,6 +1,7 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GoogleOperation } from "../credentials";
+import type { EditableFile } from "./editable-file";
 import {
   googleApiError,
   googleApiRequest,
@@ -120,6 +121,7 @@ export async function googleFileRequest(
   file: FileReference,
   input: {
     body?: unknown;
+    editable?: EditableFile;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;

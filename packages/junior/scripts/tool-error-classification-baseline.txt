@@ -40,6 +40,7 @@ packages/junior-google/src/tools/create-doc.ts	throw new Error( deleted ? `Could
 packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`, { cause: error }, );
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Google returned a slide thumbnail outside ${THUMBNAIL_HOST_SUFFIX}.`, );
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Could not download the slide thumbnail: ${download.stderr.trim() || `curl exited with ${download.exitCode}`}`, );
+packages/junior-google/src/tools/shared.ts	throw new Error( `${input.operation} changes a file, so it needs the file that requireEditableFile checked.`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");
