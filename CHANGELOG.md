@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.310.0
+
+Users gain clearer artifact visibility and safer public-channel automation, while skills, dashboard navigation, documentation, and focused testing become more predictable.
+
+### New Features ✨
+
+- (artifacts) Add a visibility column to replace the public flag by @thomasjiangcy with @sentry-junior in [#3740](https://github.com/getsentry/junior/pull/3740)
+- (automations) Let web Conversations create Automations for a public Slack channel by @dcramer with @sentry-junior in [#3731](https://github.com/getsentry/junior/pull/3731)
+- (slack) Make Junior read-only in Slack Connect channels by @dcramer with @sentry-junior in [#3713](https://github.com/getsentry/junior/pull/3713)
+
+### Bug Fixes 🐛
+
+- (skills) Unlock and show every manual-only skill a message invokes by @dcramer with @sentry-junior in [#3642](https://github.com/getsentry/junior/pull/3642)
+
+### Documentation 📚
+
+- (agents) Minimize visual noise in UI by @dcramer with @sentry-junior in [#3736](https://github.com/getsentry/junior/pull/3736)
+
+### Internal Changes 🔧
+
+- (dashboard) Keep memories out of the transcript by @dcramer with @sentry-junior in [#3733](https://github.com/getsentry/junior/pull/3733)
+- (ios) Qol improvements by @armcknight and @claude in [#3725](https://github.com/getsentry/junior/pull/3725)
+
 ## 0.309.0
 
 Users get broader dashboard and mobile workflows, more reliable integrations and reviews, clearer setup guidance, and safer, faster internal processing.
