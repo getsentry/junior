@@ -115,6 +115,10 @@ export const juniorReviewItems = pgTable(
       table.automationId,
       table.status,
     ),
+    // A feed row reads the viewer's newest answer in its Conversation.
+    index("junior_review_items_answered_idx")
+      .on(table.addedByConversationId, table.closedByUserId, table.closedAt)
+      .where(sql`${table.answer} is not null`),
   ],
 );
 

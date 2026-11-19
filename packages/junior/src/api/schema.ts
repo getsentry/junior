@@ -13,6 +13,7 @@ export {
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
+  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -122,6 +123,7 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
