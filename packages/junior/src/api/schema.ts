@@ -451,5 +451,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

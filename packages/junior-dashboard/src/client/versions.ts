@@ -1,6 +1,10 @@
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { type Versions, versionsSchema } from "@sentry/junior/api/schema";
+import {
+  type Versions,
+  VERSIONS_CONVERSATION_LIMIT,
+  versionsSchema,
+} from "@sentry/junior/api/schema";
 
 import {
   type ConversationSnapshot,
@@ -31,10 +35,7 @@ const VERSIONS_POLL_MS = 5_000;
  */
 const AWAY_AFTER_MS = 5 * 60_000;
 
-/**
- * Poll interval while the reader is away, the same as the old idle detail
- * poll. Input checks at once.
- */
+/** Poll interval while the reader is away. Input checks at once. */
 const AWAY_POLL_MS = 10_000;
 
 /**
@@ -66,6 +67,37 @@ function movedFeedInputs(previous: string, next: string) {
 }
 
 /**
+ * List the Conversations whose idle detail is on screen, the open one first,
+ * up to the cap of one read. A live detail polls by itself, and a detail
+ * with no data has nothing to compare.
+ */
+function onScreenConversationIds(
+  client: QueryClient,
+  openConversationId: string | undefined,
+) {
+  const ids: string[] = [];
+  for (const query of client.getQueryCache().findAll({
+    queryKey: ["conversation"],
+  })) {
+    const [, conversationId, read] = query.queryKey;
+    if (typeof conversationId !== "string" || read !== "detail") continue;
+    const detail = client.getQueryData<ConversationSnapshot>(
+      conversationDetailQueryKey(conversationId),
+    );
+    if (
+      query.getObserversCount() === 0 ||
+      !detail ||
+      conversationDetailIsLive(detail)
+    ) {
+      continue;
+    }
+    if (conversationId === openConversationId) ids.unshift(conversationId);
+    else ids.push(conversationId);
+  }
+  return ids.slice(0, VERSIONS_CONVERSATION_LIMIT);
+}
+
+/**
  * Refresh the reads whose token moved since the last poll. Only mounted
  * queries refetch. The first poll of a tab sets the baseline: a change that
  * lands between a read and that poll waits for the next change or focus.
@@ -74,7 +106,7 @@ function refreshChangedReads(
   client: QueryClient,
   previous: Versions | undefined,
   next: Versions,
-  conversationId: string | undefined,
+  conversationIds: readonly string[],
 ) {
   const moved = (field: (typeof TAB_TOKENS)[number]) =>
     previous !== undefined && previous[field] !== next[field];
@@ -98,51 +130,57 @@ function refreshChangedReads(
       queryKey: ["dashboard", "personal-spend"],
     });
   }
-  if (!conversationId) return;
-  // The detail carries the token that it was built from, so this needs no
-  // baseline. A live detail polls by itself.
-  const detailKey = conversationDetailQueryKey(conversationId);
-  const detail = client.getQueryState<ConversationSnapshot>(detailKey);
-  if (
-    !detail?.data ||
-    detail.fetchStatus === "fetching" ||
-    conversationDetailIsLive(detail.data)
-  ) {
-    return;
-  }
-  // Every server detail has a token. A token that is gone means the
-  // Conversation is gone, and the refresh shows that.
-  const token = detail.data.conversationVersion;
-  if (token !== undefined && token !== next.conversation) {
-    void client.invalidateQueries({ exact: true, queryKey: detailKey });
+  // Each detail carries the token that it was built from, so this needs no
+  // baseline.
+  for (const conversationId of conversationIds) {
+    const detailKey = conversationDetailQueryKey(conversationId);
+    const detail = client.getQueryState<ConversationSnapshot>(detailKey);
+    if (
+      !detail?.data ||
+      detail.fetchStatus === "fetching" ||
+      conversationDetailIsLive(detail.data)
+    ) {
+      continue;
+    }
+    // Every server detail has a token. A token that is gone means the
+    // Conversation is gone, and the refresh shows that.
+    const token = detail.data.conversationVersion;
+    if (
+      token !== undefined &&
+      token !== next.conversationDetails[conversationId]
+    ) {
+      void client.invalidateQueries({ exact: true, queryKey: detailKey });
+    }
   }
 }
 
 /**
  * Poll one cheap change check for the whole tab, in place of separate polls
- * of the feed, spend, Review items, and the idle open Conversation.
+ * of the feed, spend, Review items, and each idle Conversation on screen.
  */
 export function useVersionsPoll(
   conversationId: string | undefined,
   enabled: boolean,
 ) {
   const lastInputAtMs = useRef(Date.now());
-  // The open Conversation changes the request, not the cached tokens, so it
-  // stays out of the key. The detail token is compared with the detail.
+  // The Conversations on screen change the request, not the cached tokens,
+  // so they stay out of the key. Each detail token is compared with its
+  // detail.
   // oxlint-disable-next-line @tanstack/query/exhaustive-deps
   const { refetch } = useQuery({
     enabled,
     queryKey: VERSIONS_QUERY_KEY,
     queryFn: async ({ client, signal }) => {
       const previous = client.getQueryData<Versions>(VERSIONS_QUERY_KEY);
+      const conversationIds = onScreenConversationIds(client, conversationId);
       const next = await fetchDashboardJson(
         versionsSchema,
-        conversationId
-          ? `/api/versions?${new URLSearchParams({ conversationId })}`
+        conversationIds.length
+          ? `/api/versions?${new URLSearchParams({ conversationIds: conversationIds.join(",") })}`
           : "/api/versions",
         signal,
       );
-      refreshChangedReads(client, previous, next, conversationId);
+      refreshChangedReads(client, previous, next, conversationIds);
       return next;
     },
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
