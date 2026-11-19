@@ -24,7 +24,7 @@ function loadedSkills(conversation: Conversation): unknown[] {
 }
 
 describe("Skill Invocation Control", () => {
-  test("injects a user-callable skill when the user explicitly names it", async ({
+  test("loads a user-callable skill when the user explicitly names it", async ({
     run,
   }) => {
     const conversation = await run(
@@ -43,8 +43,8 @@ describe("Skill Invocation Control", () => {
       }),
     );
 
-    // The skill name already put the skill in the turn.
-    expect(loadedSkills(conversation)).not.toContain("weather-lookup");
+    // Naming the skill injects nothing; the agent loads it.
+    expect(loadedSkills(conversation)).toContain("weather-lookup");
   });
 
   test("auto-selects an available skill when contextually relevant", async ({
