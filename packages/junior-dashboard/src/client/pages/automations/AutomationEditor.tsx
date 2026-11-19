@@ -11,7 +11,6 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldError, FieldLabel } from "../../components/ui/field";
-import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
@@ -37,7 +36,6 @@ export function AutomationEditor(props: {
   summary: AutomationSummary;
   returnPath: string;
 }) {
-  const toast = useToastManager();
   const [original, setOriginal] = useState(props.automation);
   const [draft, setDraft] = useState(() =>
     createAutomationDraft(props.automation),
@@ -85,11 +83,6 @@ export function AutomationEditor(props: {
     onSuccess: async (updated) => {
       allowLeave.current = true;
       await refreshChangedAutomation(queryClient, updated);
-      toast.add({
-        title: "Automation saved",
-        description: "Changes apply to future work.",
-        type: "success",
-      });
       void navigate(props.returnPath);
     },
     onError: (error) => {

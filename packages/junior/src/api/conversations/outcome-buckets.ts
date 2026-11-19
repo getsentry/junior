@@ -36,6 +36,15 @@ const linksChange = sql`${linked.conversationId} = any(${changes.conversationIds
 // own root.
 const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.conversationId})`;
 
+/** A root Conversation active in the window, with its whole tree. */
+export interface WindowRoot {
+  lastActivityAt: Date;
+  rootId: string;
+  /** Conversations that reference the root. A root references itself. */
+  treeConversations: number;
+  treeCostUsd: number;
+}
+
 /**
  * Count outcomes per UTC hour, with the conversation cost that produced
  * them. An outcome is one of:
@@ -51,15 +60,11 @@ const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.c
  * with no linked Conversation has an unknown cost, not a zero cost, so it is
  * left out instead of making the mean look cheaper.
  */
-export async function readOutcomeBuckets(
-  db: JuniorDatabase,
-  options: { start: Date; end: Date },
-): Promise<OutcomeBucket[]> {
-  const [merges, briefRoots] = await Promise.all([
-    readWindowMerges(db, options),
-    readBriefOutcomeRoots(db, options),
-  ]);
-
+export function outcomeBuckets(reads: {
+  briefRoots: ReadonlyArray<{ rootId: string }>;
+  merges: ReadonlyArray<WindowMerge>;
+  windowRoots: ReadonlyArray<WindowRoot>;
+}): OutcomeBucket[] {
   const buckets = new Map<string, OutcomeBucket>();
   const bucketAt = (instant: Date) => {
     const date = instant.toISOString().slice(0, 13);
@@ -80,7 +85,7 @@ export async function readOutcomeBuckets(
   // A change linked to several roots is one outcome that takes a share of
   // each root's cost.
   const changeCosts = new Map<string, { costUsd: number; mergedAt: Date }>();
-  for (const merge of merges) {
+  for (const merge of reads.merges) {
     const share = merge.treeCostUsd / merge.rootMerges;
     const change = changeCosts.get(merge.changeId);
     if (change) change.costUsd += share;
@@ -97,12 +102,57 @@ export async function readOutcomeBuckets(
     bucket.outcomes += 1;
     bucket.outcomeCostUsd += change.costUsd;
   }
-  for (const root of briefRoots) {
+  // Brief roots are window roots. The reads run at the same time, so a root
+  // that entered the window between them has no tree read and is left out.
+  const windowRoots = new Map(
+    reads.windowRoots.map((root) => [root.rootId, root]),
+  );
+  for (const { rootId } of reads.briefRoots) {
+    const root = windowRoots.get(rootId);
+    if (!root) continue;
     const bucket = bucketAt(root.lastActivityAt);
     bucket.outcomes += 1;
     bucket.outcomeCostUsd += root.treeCostUsd;
   }
   return [...buckets.values()];
+}
+
+/**
+ * Read each root Conversation active in the window, with the size and cost
+ * of its tree. One join reads every tree, so a stats read does not look up
+ * each tree on its own.
+ */
+export async function readWindowRoots(
+  db: JuniorDatabase,
+  options: { start: Date; end: Date },
+): Promise<WindowRoot[]> {
+  const roots = juniorConversations;
+  // A root without the reference is still part of its own tree.
+  const unreferencedRootCost = sql`CASE
+    WHEN ${roots.rootConversationId} IS DISTINCT FROM ${roots.conversationId}
+      THEN COALESCE(${conversationUsageCostExpr(roots.usage)}, 0)
+    ELSE 0
+  END`;
+  return await db
+    .select({
+      lastActivityAt: roots.lastActivityAt,
+      rootId: roots.conversationId,
+      treeConversations: sql<number>`count(${tree.conversationId})::integer`,
+      treeCostUsd: sql<number>`(
+        coalesce(sum(${conversationUsageCostExpr(tree.usage)}), 0)
+          + ${unreferencedRootCost}
+      )::double precision`,
+    })
+    .from(roots)
+    .leftJoin(tree, eq(tree.rootConversationId, roots.conversationId))
+    .where(
+      and(
+        isNull(roots.parentConversationId),
+        gte(roots.lastActivityAt, options.start),
+        lte(roots.lastActivityAt, options.end),
+      ),
+    )
+    .groupBy(roots.conversationId);
 }
 
 /** The summed usage cost of the Conversation tree of `rootId`. */
@@ -120,11 +170,13 @@ function treeCostUsd(db: JuniorDatabase, rootId: SQLWrapper) {
   return sql<number>`(${cost})::double precision`;
 }
 
+type WindowMerge = Awaited<ReturnType<typeof readWindowMerges>>[number];
+
 /**
  * Merged code changes in the window, one row per linked root, with the
  * merged changes of all time of that root, so each merge gets its share.
  */
-async function readWindowMerges(
+export async function readWindowMerges(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ) {
@@ -170,7 +222,11 @@ async function readWindowMerges(
   );
 }
 
-async function readBriefOutcomeRoots(
+/**
+ * Window roots with no linked code change whose latest Brief is `done` or
+ * `answered`.
+ */
+export async function readBriefOutcomeRoots(
   db: JuniorDatabase,
   options: { start: Date; end: Date },
 ) {
@@ -178,7 +234,10 @@ async function readBriefOutcomeRoots(
   const briefs = juniorConversationBriefs;
   const latestBrief = db
     .select({
-      status: sql<string | null>`${briefs.content}->'outcome'->>'status'`.as(
+      // The content loads only for a row without the status column.
+      status: sql<
+        string | null
+      >`coalesce(${briefs.outcomeStatus}, ${briefs.content}->'outcome'->>'status')`.as(
         "status",
       ),
     })
@@ -194,11 +253,7 @@ async function readBriefOutcomeRoots(
     .innerJoin(linked, linksChange)
     .as("change_roots");
   return await db
-    .select({
-      lastActivityAt: roots.lastActivityAt,
-      rootId: roots.conversationId,
-      treeCostUsd: treeCostUsd(db, roots.conversationId),
-    })
+    .select({ rootId: roots.conversationId })
     .from(roots)
     .innerJoinLateral(latestBrief, sql`true`)
     .leftJoin(changeRoots, eq(changeRoots.rootId, roots.conversationId))

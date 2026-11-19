@@ -1,6 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { reviewItemListQueryKey } from "../review-desk/queries";
+import {
+  invalidateReviewItemListsOfConversation,
+  reviewItemListQueryKey,
+} from "../review-desk/queries";
 
 const CONVERSATION_SIDE_READS = [
   "agents",
@@ -26,10 +29,13 @@ export function conversationSideReadQueryKey(
  * Conversation changed, so the details panel may be stale too. Only mounted
  * reads refetch.
  *
- * The transcript reads its open items from that list. The `reviewItems`
- * token in `/api/versions` refreshes the count and the waiting
- * Conversations: both read only the open items that need the viewer, which
- * that token covers.
+ * The transcript reads its open items from that list. Other lists, such as
+ * the Inbox, also refresh when they show an item of this Conversation: the
+ * item's subject card reads this detail, which polls on its own, so the
+ * card must not show a change, such as a merge, before the list shows that
+ * the item closed. The `reviewItems` token in `/api/versions` refreshes the
+ * count and the waiting Conversations: both read only the open items that
+ * need the viewer, which that token covers.
  */
 export function refreshSideReadsOnChange(
   client: QueryClient,
@@ -52,4 +58,5 @@ export function refreshSideReadsOnChange(
   void client.invalidateQueries({
     queryKey: reviewItemListQueryKey({ conversationId }),
   });
+  void invalidateReviewItemListsOfConversation(client, conversationId);
 }
