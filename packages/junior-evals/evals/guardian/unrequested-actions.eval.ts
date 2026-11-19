@@ -203,7 +203,7 @@ describeEval("Guardian Unrequested Action Snapshots", guardianEvals, (it) => {
         ]),
         input: {
           repo: "getsentry/sentry",
-          number: 124150,
+          issue: 124150,
           state: "closed",
         },
         tool: "github_updateIssue",
