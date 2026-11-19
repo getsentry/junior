@@ -329,6 +329,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     let restoreMethod: string | undefined;
+    let detailReads = 0;
     await page.route("**/api/user-pages/memory/memories*", async (route) => {
       const archived =
         new URL(route.request().url()).searchParams.get("filter") ===
@@ -377,6 +378,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           return;
         }
         // Only active memories have a detail read.
+        detailReads += 1;
         await route.fulfill({
           json: { error: "Memory was not found for this user." },
           status: 404,
@@ -406,9 +408,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(0);
     await screenshot(page, "inbox-memories-archived-details");
 
+    // A permalink opens from the archived list, not the active detail read.
+    await page.goto(
+      `${dashboard.baseURL}/memories/memory-archived?filter=archived`,
+    );
     await details.getByRole("button", { name: "Restore" }).click();
     await expect(page.getByText("No archived memories.")).toBeVisible();
     expect(restoreMethod).toBe("DELETE");
+    expect(detailReads).toBe(0);
     await screenshot(page, "inbox-memories-archived-empty");
   });
 });
