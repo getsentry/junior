@@ -4,6 +4,7 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "@dashboard/lib/utils";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
@@ -76,15 +77,18 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
  * A live card can attach its object to the Conversation. A saved card tells
  * when Junior fetched its facts. With `fill`, the card fills the height of
- * its container and its body scrolls.
+ * its container and its body scrolls. `children` end the body, such as the
+ * recent activity of a person.
  */
 export function ObjectCard({
   card,
+  children,
   className,
   fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  children?: ReactNode;
   className?: string;
   fill?: boolean | undefined;
   live?: boolean | undefined;
@@ -262,6 +266,7 @@ export function ObjectCard({
             {card.warning}
           </p>
         )}
+        {children}
       </div>
       {(card.url || fetchedAt || attachable) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">

@@ -12,10 +12,11 @@ import {
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
-  assigneeLabel,
   reviewItemPath,
   reviewItemStatusLabel,
+  reviewItemTitleText,
 } from "./reviewItemFormat";
+import { ReviewItemAssignees, ReviewItemTitle } from "./ReviewItemPeople";
 
 /**
  * Show one Review item as a card: its title, status, description, and the
@@ -28,7 +29,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
   const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
     <section
-      aria-label={`Review item: ${item.title}`}
+      aria-label={`Review item: ${reviewItemTitleText(item)}`}
       className={cn(
         "my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden font-sans text-sm text-dashboard-text",
         dashboardMessageCardClass,
@@ -59,13 +60,13 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
             </StatusChip>
           </div>
           <h3 className="m-0 break-words text-base font-semibold leading-snug">
-            {item.title}
+            <ReviewItemTitle item={item} links />
           </h3>
         </div>
       </header>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         <ReviewItemObjects conversationId={item.addedByConversationId}>
-          <DisplayText text={item.body} />
+          <DisplayText mentions={item.mentions} text={item.body} />
         </ReviewItemObjects>
         <div className="border-t border-dashboard-border pt-4">
           <ReviewItemActions item={item} />
@@ -80,7 +81,13 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
           <ArrowRight aria-hidden="true" size={14} />
         </Link>
         <span className="min-w-0 truncate text-dashboard-text-muted">
-          {assigned ? `Assigned to ${assigneeLabel(item)}` : "Unassigned"}
+          {assigned ? (
+            <>
+              Assigned to <ReviewItemAssignees item={item} />
+            </>
+          ) : (
+            "Unassigned"
+          )}
         </span>
       </footer>
     </section>

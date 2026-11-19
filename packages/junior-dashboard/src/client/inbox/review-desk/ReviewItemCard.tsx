@@ -12,10 +12,14 @@ import { DisplayText } from "../../display-text/DisplayText";
 import { ReviewItemActions } from "../../review-desk/ReviewItemActions";
 import { ReviewItemObjects } from "../../review-desk/ReviewItemObjects";
 import {
-  assigneeLabel,
   inboxItemPath,
   reviewItemStatusLabel,
+  reviewItemTitleText,
 } from "../../review-desk/reviewItemFormat";
+import {
+  ReviewItemAssignees,
+  ReviewItemTitle,
+} from "../../review-desk/ReviewItemPeople";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 /**
@@ -29,7 +33,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
   const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
     <section
-      aria-label={`Review item: ${item.title}`}
+      aria-label={`Review item: ${reviewItemTitleText(item)}`}
       className={cn(
         "my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden font-sans text-sm text-dashboard-text",
         dashboardMessageCardClass,
@@ -54,13 +58,13 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
             </StatusChip>
           </div>
           <h3 className="m-0 break-words text-base font-semibold leading-snug">
-            {item.title}
+            <ReviewItemTitle item={item} links />
           </h3>
         </div>
       </header>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         <ReviewItemObjects conversationId={item.addedByConversationId}>
-          <DisplayText text={item.body} />
+          <DisplayText mentions={item.mentions} text={item.body} />
         </ReviewItemObjects>
         <div className="border-t border-dashboard-border pt-4">
           <ReviewItemActions item={item} />
@@ -78,7 +82,13 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
           className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
           ref={fadeWhenOverflowing}
         >
-          {assigned ? `Assigned to ${assigneeLabel(item)}` : "Unassigned"}
+          {assigned ? (
+            <>
+              Assigned to <ReviewItemAssignees item={item} />
+            </>
+          ) : (
+            "Unassigned"
+          )}
         </span>
       </footer>
     </section>
