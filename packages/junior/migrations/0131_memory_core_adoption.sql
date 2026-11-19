@@ -1,9 +1,10 @@
 -- Memory moved from the @sentry/junior-memory plugin into core. A database
--- that ran the plugin already has these tables, and this migration leaves
--- them and the plugin journal unchanged. A fresh database gets the final
--- Memory schema. Columns keep the order that the plugin migrations made.
--- Stop on a database that has only part of the plugin migrations, so that the
--- plugin data changes never run out of order.
+-- that ran the plugin already has these tables. This migration keeps their
+-- data and the plugin journal unchanged, and adds only the schema of plugin
+-- migrations 0015 and 0016, which change no data. A fresh database gets the
+-- final Memory schema. Columns keep the order that the plugin migrations made.
+-- Stop on a database that did not run the plugin migrations through 0014, the
+-- last one that changes data, so that those changes never run out of order.
 -- The journal query is dynamic because PL/pgSQL plans a static query before
 -- the to_regclass check runs.
 DO $$
@@ -76,5 +77,13 @@ CREATE TABLE IF NOT EXISTS "junior_memory_signals" (
 	"observed_at_ms" bigint NOT NULL,
 	CONSTRAINT "junior_memory_signals_memory_id_signal_idempotency_key_pk" PRIMARY KEY("memory_id","signal","idempotency_key"),
 	CONSTRAINT "junior_memory_signals_memory_id_junior_memory_memories_id_fk" FOREIGN KEY ("memory_id") REFERENCES "public"."junior_memory_memories"("id") ON DELETE cascade ON UPDATE no action,
-	CONSTRAINT "junior_memory_signals_signal_check" CHECK ("junior_memory_signals"."signal" IN ('duplicate'))
+	CONSTRAINT "junior_memory_signals_signal_check" CHECK ("junior_memory_signals"."signal" IN ('duplicate', 'contradicted', 'superseded'))
 );
+--> statement-breakpoint
+-- Plugin migration 0015 widened this check. Replace it here, so a database
+-- that ran the plugin only through 0014 gets the same check, and every
+-- database ends with the same constraint. The new check only allows more
+-- values, so NOT VALID skips the scan and still checks every new write.
+ALTER TABLE "junior_memory_signals" DROP CONSTRAINT IF EXISTS "junior_memory_signals_signal_check";
+--> statement-breakpoint
+ALTER TABLE "junior_memory_signals" ADD CONSTRAINT "junior_memory_signals_signal_check" CHECK ("junior_memory_signals"."signal" IN ('duplicate', 'contradicted', 'superseded')) NOT VALID;

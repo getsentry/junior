@@ -4621,7 +4621,7 @@
       "checkConstraints": {
         "junior_memory_signals_signal_check": {
           "name": "junior_memory_signals_signal_check",
-          "value": "\"junior_memory_signals\".\"signal\" IN ('duplicate')"
+          "value": "\"junior_memory_signals\".\"signal\" IN ('duplicate', 'contradicted', 'superseded')"
         }
       },
       "isRLSEnabled": false
