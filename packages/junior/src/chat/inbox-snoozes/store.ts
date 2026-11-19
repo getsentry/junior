@@ -73,6 +73,21 @@ export function inboxSnoozesVersion(userId: string): SQL<string> {
 }
 
 /**
+ * Serialize all of one User's snooze changes for the rest of the
+ * transaction. Overlapping snoozes then replace in turn instead of failing
+ * on the unique index, and a wake sees the snoozes that a replace made. An
+ * item can be in the rows of more than one root, so a lock per row is not
+ * enough.
+ */
+async function lockUserSnoozes(
+  tx: Pick<JuniorDatabase, "execute">,
+  userId: string,
+): Promise<void> {
+  const lockKey = `junior:inbox-snooze:${userId}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+}
+
+/**
  * Snooze Review items for one User. Each item gets its own snooze with a
  * timer wake trigger. A new item in the row is not snoozed, so it shows by
  * itself. The User's earlier snooze on an item is cancelled. The caller
@@ -87,12 +102,8 @@ export async function snoozeInboxItems(
     userId: string;
   },
 ): Promise<string[]> {
-  // Serialize all of one User's snoozes, so overlapping requests replace in
-  // turn instead of failing on the unique index. An item can be in the rows
-  // of more than one root, so a lock per row is not enough.
-  const lockKey = `junior:inbox-snooze:${input.userId}`;
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+    await lockUserSnoozes(tx, input.userId);
     await tx
       .update(juniorInboxSnoozes)
       .set({ state: "cancelled" })
@@ -146,16 +157,19 @@ export async function unsnoozeInboxRow(
         ? eq(juniorReviewItems.id, input.reviewItemId)
         : reviewItemInRow(input.rootConversationId),
     );
-  await db
-    .update(juniorInboxSnoozes)
-    .set({ state: "woken" })
-    .where(
-      and(
-        eq(juniorInboxSnoozes.userId, input.userId),
-        inArray(juniorInboxSnoozes.reviewItemId, items),
-        eq(juniorInboxSnoozes.state, "snoozed"),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await lockUserSnoozes(tx, input.userId);
+    await tx
+      .update(juniorInboxSnoozes)
+      .set({ state: "woken" })
+      .where(
+        and(
+          eq(juniorInboxSnoozes.userId, input.userId),
+          inArray(juniorInboxSnoozes.reviewItemId, items),
+          eq(juniorInboxSnoozes.state, "snoozed"),
+        ),
+      );
+  });
 }
 
 /**
