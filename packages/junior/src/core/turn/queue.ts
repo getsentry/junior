@@ -9,7 +9,6 @@ import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
   type QueueMessageMetadata,
-  type QueueProvider,
 } from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
@@ -56,8 +55,8 @@ const turnStepSign = {
 export async function publishTurnStep(
   turnId: string,
   options: { delayMs?: number; idempotencyKey?: string } = {},
-  queue: Pick<QueueProvider, "messagingSystem" | "send"> = getQueueProvider(),
 ): Promise<void> {
+  const queue = getQueueProvider();
   await withSpan(
     "queue.publish",
     {
