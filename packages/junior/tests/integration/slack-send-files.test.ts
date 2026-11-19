@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { AttachmentWrite } from "@/chat/attachments/storage";
+import { pauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   closeDb,
@@ -142,6 +143,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     const result = await executeTool(tool, {
@@ -176,6 +178,7 @@ describe("Slack sendFiles", () => {
         createContext("share the generated image"),
         createToolState(),
         createMaterializeFile({ [generatedFile.path]: imageBytes }),
+        "conversation-test",
       );
 
     const result = await executeTool(createTool(), { files: [generatedFile] });
@@ -207,6 +210,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     const result = await executeTool(tool, {
@@ -233,6 +237,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     await executeTool(tool, {
@@ -254,6 +259,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     const result = await executeTool(tool, {
@@ -281,6 +287,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     const result = await executeTool(tool, {
@@ -326,8 +333,8 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      conversationId,
       {
-        conversationId,
         db: getSqlExecutor(),
         storage,
       },
@@ -347,8 +354,8 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      conversationId,
       {
-        conversationId,
         db: getSqlExecutor(),
         storage,
       },
@@ -408,6 +415,62 @@ describe("Slack sendFiles", () => {
     });
   });
 
+  it("keeps files in the Conversation without posting to a detached thread", async () => {
+    const conversationId = "conversation-detached";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        channelId: "C123",
+        platform: "slack",
+        teamId: "T123",
+      },
+      nowMs: Date.parse("2026-08-12T17:00:00.000Z"),
+      source: "slack",
+      title: "Detached conversation",
+      visibility: "private",
+    });
+    await pauseConversationDelivery(conversationId);
+    const createTool = (attachments?: {
+      db: ReturnType<typeof getSqlExecutor>;
+      storage: ReturnType<typeof createMemoryAttachmentStorage>;
+    }) =>
+      createSlackSendFilesTool(
+        createContext("attach the report"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        conversationId,
+        attachments,
+      );
+    const input = { files: [{ path: "/tmp/report.txt" }] };
+
+    const result = await executeTool(
+      createTool({
+        db: getSqlExecutor(),
+        storage: createMemoryAttachmentStorage(),
+      }),
+      input,
+      { toolCallId: "call-detached" },
+    );
+    await expect(executeTool(createTool(), input)).rejects.toThrow(
+      "detached from Slack",
+    );
+
+    expect(result.attachment_refs).toEqual([
+      { id: expect.any(String), filename: "report.txt" },
+    ]);
+    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toEqual([]);
+    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual(
+      [],
+    );
+    const history =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(
+      history.filter((event) => event.data.type === "attachments_delivered"),
+    ).toHaveLength(1);
+  });
+
   it("does not re-upload or mint a second delivery item on a cached retry", async () => {
     const conversationId = "conversation-cached-send";
     await getConversationStore().recordActivity({
@@ -430,8 +493,8 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      conversationId,
       {
-        conversationId,
         db: getSqlExecutor(),
         storage,
       },
@@ -503,8 +566,8 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      conversationId,
       {
-        conversationId,
         db: getSqlExecutor(),
         storage,
       },
@@ -530,8 +593,8 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      conversationId,
       {
-        conversationId,
         db: getSqlExecutor(),
         storage,
       },
@@ -574,8 +637,8 @@ describe("Slack sendFiles", () => {
         createMaterializeFile({
           "/tmp/report.txt": Buffer.from("report body"),
         }),
+        "missing-conversation",
         {
-          conversationId: "missing-conversation",
           db: fixture.sql,
           storage,
         },
@@ -605,6 +668,7 @@ describe("Slack sendFiles", () => {
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(files),
+      "conversation-test",
     );
 
     await executeTool(tool, {
@@ -627,6 +691,7 @@ describe("Slack sendFiles", () => {
       createMaterializeFile({
         "/tmp/report.txt": Buffer.from("report body"),
       }),
+      "conversation-test",
     );
 
     await executeTool(tool, {
@@ -649,6 +714,7 @@ describe("Slack sendFiles", () => {
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),
+      "conversation-test",
     );
 
     await expect(
@@ -666,6 +732,7 @@ describe("Slack sendFiles", () => {
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),
+      "conversation-test",
     );
 
     expect(() => tool.prepareArguments?.({})).toThrow(/files/);
