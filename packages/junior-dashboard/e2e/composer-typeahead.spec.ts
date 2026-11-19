@@ -100,9 +100,12 @@ test("an earlier row cannot be inserted while the next search loads", async ({
   // matches Avery, by a name the menu may not show.
   await page.route("**/api/people/search?*", () => {});
   await composer.pressSequentially("e");
-  await expect(people).toBeHidden();
+  await expect(people).toHaveAttribute("aria-busy", "true");
+  // Neither inserts the earlier row nor sends the half-typed mention.
   await composer.press("Tab");
+  await composer.press("Enter");
   await expect(composer.locator("[data-mention]")).toHaveCount(0);
+  await expect(composer).toHaveText("@ave");
 });
 
 test("a person without a People page still has a card with Invite", async ({

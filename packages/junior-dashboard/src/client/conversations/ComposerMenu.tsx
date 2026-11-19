@@ -48,12 +48,15 @@ export type ComposerTypeahead = {
 
 /**
  * Suggest rows while the reader types a reference. Focus stays in the text
- * box: arrows move, Enter or Tab inserts, Escape closes.
+ * box: arrows move, Enter or Tab inserts, Escape closes. While `pending`,
+ * the rows are from an earlier query: Enter and Tab do nothing, so they
+ * neither insert a stale row nor send the message.
  */
 export function ComposerMenu<Row>(props: {
   children(row: Row): ReactNode;
   label: string;
   onSelect(row: Row): void;
+  pending?: boolean | undefined;
   rowKey(row: Row): string;
   rows: readonly Row[];
   typeahead: ComposerTypeahead;
@@ -65,7 +68,7 @@ export function ComposerMenu<Row>(props: {
   const open = typeahead.query !== undefined && rows.length > 0;
   const active = Math.min(activeIndex, rows.length - 1);
   const optionId = (index: number) => `${listboxId}-${index}`;
-  const { onSelect } = props;
+  const { onSelect, pending } = props;
 
   // A new query starts at the first row.
   const [lastQuery, setLastQuery] = useState(typeahead.query);
@@ -95,7 +98,7 @@ export function ComposerMenu<Row>(props: {
           setActiveIndex((active - 1 + rows.length) % rows.length);
           return true;
         case "select":
-          onSelect(rows[active]!);
+          if (!pending) onSelect(rows[active]!);
           return true;
         case "close":
           typeahead.dismiss();
@@ -104,7 +107,7 @@ export function ComposerMenu<Row>(props: {
           return false;
       }
     });
-  }, [active, onSelect, open, rows, typeahead]);
+  }, [active, onSelect, open, pending, rows, typeahead]);
 
   // A text box supports these. `aria-expanded` needs the combobox role.
   useEffect(() => {
@@ -143,6 +146,7 @@ export function ComposerMenu<Row>(props: {
   if (!open || !placement) return null;
   return createPortal(
     <div
+      aria-busy={pending}
       aria-label={props.label}
       className="thin-scrollbar fixed z-50 overflow-y-auto overscroll-contain rounded-lg border border-input bg-secondary p-1.5 shadow-lg"
       id={listboxId}
@@ -164,7 +168,7 @@ export function ComposerMenu<Row>(props: {
           key={props.rowKey(row)}
           onClick={() => {
             typeahead.holdOpen(false);
-            onSelect(row);
+            if (!pending) onSelect(row);
           }}
           onMouseMove={
             index === active ? undefined : () => setActiveIndex(index)

@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { peopleSearchReportSchema } from "@sentry/junior/api/schema";
 import { ActorAvatar } from "../components/ActorAvatar";
@@ -23,6 +23,7 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
   )?.conversationId;
   const search = useQuery({
     enabled: query.length > 0,
+    placeholderData: keepPreviousData,
     queryKey: ["dashboard", "people", "search", conversationId, query],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -35,14 +36,13 @@ export function ComposerPeopleMenu(props: { typeahead: ComposerTypeahead }) {
       ),
     staleTime: PEOPLE_SEARCH_STALE_MS,
   });
-  // No rows from an earlier query while the next one loads, so Enter
-  // cannot insert a person the text no longer names. Only the API knows
-  // which names it matched.
   const rows = query ? (search.data?.people ?? []) : [];
   return (
     <ComposerMenu
       label="People"
       onSelect={(person) => props.typeahead.insert({ person })}
+      // Only the API knows which names an earlier row matched.
+      pending={search.isPlaceholderData}
       rowKey={(person) => person.slackUserId}
       rows={rows}
       typeahead={props.typeahead}
