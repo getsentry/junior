@@ -560,6 +560,7 @@ async function executeAgentRunInPrivacyContext(
       ? savedTurnMessages(existingSessionRecord, turnStart)
       : [];
     const currentTurnMessages = savedTurn.map(({ message }) => message);
+    const promptSaved = existingSessionRecord?.promptSaved === true;
     const guardianIntentParts = savedTurn.flatMap(({ message, provenance }) => {
       if (!isRequesterInstruction(provenance)) {
         return [];
@@ -695,6 +696,7 @@ async function executeAgentRunInPrivacyContext(
       context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingTurnMessages: currentTurnMessages,
+      promptSaved,
       resumedFromSessionRecord,
       turnId,
       userContentParts,
@@ -828,6 +830,7 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnMessages: currentTurnMessages,
       priorPiMessages,
+      promptSaved,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
       run,
@@ -1387,6 +1390,7 @@ async function executeAgentRunInPrivacyContext(
             timestamp: promptTimestamp,
           };
           if (shouldPromptAgent) {
+            runResume.markPromptAdded();
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint(
                 [

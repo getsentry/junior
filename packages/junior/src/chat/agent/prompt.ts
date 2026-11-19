@@ -125,6 +125,8 @@ export interface PromptTurnContext {
 interface PromptReplayArgs {
   /** Saved messages of this Turn, from `savedTurnMessages`. */
   existingTurnMessages: PiMessage[];
+  /** From `TurnRecord.promptSaved`. */
+  promptSaved: boolean;
   resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
@@ -533,8 +535,7 @@ function checkpointedPrompt(args: {
 // A resumed slice continues its checkpointed prompt. A redelivered prompt
 // reuses its checkpointed copy. Only a new prompt gets new Turn context.
 function planPromptReplay(args: PromptReplayArgs) {
-  const hasPromptCheckpoint =
-    args.resumedFromSessionRecord && args.existingTurnMessages.length > 0;
+  const hasPromptCheckpoint = args.resumedFromSessionRecord && args.promptSaved;
   const shouldPromptAgent =
     !args.resumedFromSessionRecord || !hasPromptCheckpoint;
   const replayedPrompt =
@@ -632,6 +633,7 @@ export async function assemblePrompt(args: {
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnMessages: PiMessage[];
   priorPiMessages?: PiMessage[] | undefined;
+  promptSaved: boolean;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
   /** From `turnBehavior`. */

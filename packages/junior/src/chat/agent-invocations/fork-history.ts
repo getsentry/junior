@@ -1,4 +1,4 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import {
@@ -6,6 +6,7 @@ import {
   openConversationProjection,
 } from "@/chat/conversations/projection";
 import { contextProvenance } from "@/chat/conversations/provenance";
+import { getSqlExecutor } from "@/chat/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentInvocation } from "./types";
@@ -64,10 +65,28 @@ async function loadForkHistory(
   return forkHistoryFrom(parent.messages, invocation.parentToolCallId);
 }
 
+async function hasTurnStarted(conversationId: string): Promise<boolean> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "turn_started"),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /**
  * Commit the start history of a fork child before its first Turn starts, so
  * the history is below the Turn start. A child that already has agent
- * history, such as on a retry, commits nothing.
+ * history, such as on a retry, commits nothing. A child whose Turn already
+ * started commits nothing too: the history would be Turn messages, and a
+ * parent `reply` in it would read as the Turn's answer. Only a worker that
+ * committed fork history after the Turn start leaves such a child.
  */
 export async function commitForkHistory(
   args: Pick<
@@ -78,7 +97,10 @@ export async function commitForkHistory(
   const child = await openConversationProjection({
     conversationId: args.childConversationId,
   });
-  if (child.messages.length > 0) {
+  if (
+    child.messages.length > 0 ||
+    (await hasTurnStarted(args.childConversationId))
+  ) {
     return;
   }
   const messages = await loadForkHistory(args);

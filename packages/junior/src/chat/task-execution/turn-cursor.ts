@@ -50,7 +50,6 @@ import type {
 } from "@/chat/conversations/store";
 import { withSpan } from "@/chat/logging";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
-import { savedTurnMessages } from "./turn-membership";
 import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
@@ -165,6 +164,12 @@ export interface TurnRecord {
   cumulativeUsage?: AgentTurnUsage | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean | undefined;
+  /**
+   * The Turn's prompt is in its committed history. A slice that paused
+   * before its prompt has saved Turn messages, such as steering or an
+   * authorization note, but still adds the prompt when it resumes.
+   */
+  promptSaved?: boolean | undefined;
   /** Times recovery resumed this turn after its worker stopped checking in. */
   lostWorkerResumeCount?: number | undefined;
   dispatchId?: string | undefined;
@@ -327,6 +332,7 @@ const storedTurnRecordSchema = z
     errorMessage: z.string().optional(),
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnLimitWrappedUp: z.boolean().optional(),
+    promptSaved: z.boolean().optional(),
     lostWorkerResumeCount: z.number().int().nonnegative().optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
@@ -490,6 +496,12 @@ interface ConversationRuntimeMetrics {
   cumulativeUsage?: AgentTurnUsage | undefined;
 }
 
+// A deployed worker that predates `promptSaved` writes `turnStartSeq` only
+// once the prompt is saved.
+function storedPromptSaved(stored: StoredTurnRecord): boolean | undefined {
+  return stored.promptSaved ?? (stored.turnStartSeq !== undefined || undefined);
+}
+
 function materializeTurnRecord(
   stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
@@ -517,6 +529,7 @@ function materializeTurnRecord(
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
       turnLimitWrappedUp: stored.turnLimitWrappedUp,
+      promptSaved: storedPromptSaved(stored),
       lostWorkerResumeCount: stored.lostWorkerResumeCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
@@ -662,6 +675,7 @@ function buildStoredRecord(args: {
   traceContext?: TraceContext | undefined;
   cumulativeToolCallCount?: number | undefined;
   turnLimitWrappedUp?: boolean | undefined;
+  promptSaved?: boolean | undefined;
   lostWorkerResumeCount?: number | undefined;
 }): StoredTurnRecord {
   const nowMs = Date.now();
@@ -682,6 +696,7 @@ function buildStoredRecord(args: {
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
+      promptSaved: args.promptSaved,
       lostWorkerResumeCount: args.lostWorkerResumeCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
@@ -837,6 +852,7 @@ async function writeTurnState(
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
+        promptSaved: args.existing.promptSaved,
         lostWorkerResumeCount: args.existing.lostWorkerResumeCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
@@ -868,6 +884,7 @@ export async function upsertTurnRecord(args: {
   cumulativeToolCallCount?: number | undefined;
   cumulativeUsage?: AgentTurnUsage | undefined;
   turnLimitWrappedUp?: boolean | undefined;
+  promptSaved?: boolean | undefined;
   lostWorkerResumeCount?: number | undefined;
   destination?: Destination | undefined;
   dispatchId?: string | undefined;
@@ -982,23 +999,16 @@ async function upsertTurnRecordLocked(
           turnSource?.kind === "slack" ||
           turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
+  const promptSaved =
+    args.promptSaved === true ||
+    (existingRecord !== undefined && storedPromptSaved(existingRecord));
   // TODO(dcramer): Remove the stored turnStartSeq field one release after
   // Turn membership moved to the `turn_started` seq. A deployed worker reads
   // it as the seq before the Turn's first message, and sends the prompt
-  // again without it, so write it once the record holds a Turn message.
-  const turnStart = await loadTurnStart(args.conversationId, args.turnId);
-  const turnStartSeq =
-    turnStart &&
-    savedTurnMessages(
-      {
-        piMessageProvenance: commit.provenance,
-        piMessageSeqs: commit.messageSeqs,
-        piMessages: commit.messages,
-      },
-      turnStart,
-    ).length > 0
-      ? turnStart.seq
-      : undefined;
+  // again without it, so write it once the prompt is saved.
+  const turnStartSeq = promptSaved
+    ? (await loadTurnStart(args.conversationId, args.turnId))?.seq
+    : undefined;
 
   const turnActor = existingRecord?.actor ?? args.actor;
   // The Turn keeps the Identity of its starting Actor. An event Turn runs as
@@ -1049,6 +1059,7 @@ async function upsertTurnRecordLocked(
           existingRecord?.cumulativeToolCallCount,
         turnLimitWrappedUp:
           args.turnLimitWrappedUp ?? existingRecord?.turnLimitWrappedUp,
+        promptSaved: promptSaved || undefined,
         lostWorkerResumeCount:
           args.lostWorkerResumeCount ?? existingRecord?.lostWorkerResumeCount,
         dispatchId,

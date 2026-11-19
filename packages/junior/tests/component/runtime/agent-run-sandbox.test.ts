@@ -316,6 +316,7 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
             piMessageSeqs: sessionRecordPiMessages.value.map(
               (_, index) => index + 1,
             ),
+            promptSaved: true,
           }
         : undefined,
   }),

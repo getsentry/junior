@@ -486,6 +486,7 @@ describe("plugin prompt hook composition", () => {
           timestamp: Date.now(),
         },
       ] as never,
+      promptSaved: true,
       resumeReason: "timeout",
       errorMessage: "timed out",
     });

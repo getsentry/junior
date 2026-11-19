@@ -105,6 +105,7 @@ export function createResumeState(args: ResumeStateArgs) {
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
+  let promptSaved = false;
   let turnContexts: PluginTurnContext[] = [];
   // Event seq of each committed agent message, by position. A slice only
   // appends to its messages, so a message past the end is not committed yet:
@@ -138,6 +139,7 @@ export function createResumeState(args: ResumeStateArgs) {
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
+    ...(promptSaved ? { promptSaved } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -180,6 +182,10 @@ export function createResumeState(args: ResumeStateArgs) {
       return messages.filter((_, index) =>
         this.isTurnMessageAt(messages, index),
       );
+    },
+    /** Save the prompt as part of the Turn from the next checkpoint on. */
+    markPromptAdded(): void {
+      promptSaved = true;
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;

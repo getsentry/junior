@@ -1338,6 +1338,7 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: messages,
+      promptSaved: true,
       resumeReason: "yield",
       errorMessage: "Agent turn yielded at a safe boundary",
     });

@@ -104,6 +104,8 @@ interface TurnCheckpointWrite {
   cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean | undefined;
+  /** This slice added the Turn's prompt to the saved messages. */
+  promptSaved?: boolean | undefined;
   /** Times recovery resumed this turn after a lost worker; survives later writes. */
   lostWorkerResumeCount?: number | undefined;
   trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
@@ -236,6 +238,7 @@ function sharedWrite(
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      promptSaved: args.promptSaved,
       lostWorkerResumeCount:
         args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),

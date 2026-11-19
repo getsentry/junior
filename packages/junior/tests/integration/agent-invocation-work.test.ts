@@ -660,6 +660,15 @@ describe("agent invocation conversation work", () => {
       expected: resumed,
     },
     {
+      // A worker that committed fork history after the Turn start stopped
+      // before it committed any. The history must not join the Turn.
+      name: "a fork child whose Turn started before its history",
+      fork: true,
+      turnStartedFirst: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
       name: "a stopped child",
       stopBeforeWake: true,
       runs: 1,
@@ -685,6 +694,7 @@ describe("agent invocation conversation work", () => {
       failedResumes = 0,
       runs,
       stopBeforeWake = false,
+      turnStartedFirst = false,
     }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
@@ -724,6 +734,12 @@ describe("agent invocation conversation work", () => {
         const { childConversationId } = created;
         if (earlierAnswer) {
           await prepareSummarizedHistory(childConversationId);
+        }
+        if (turnStartedFirst) {
+          await recordTurnStart(
+            childConversationId,
+            getAgentInvocationTurnId(created.invocationId),
+          );
         }
         // Child results also wake the parent. This test runs only the child.
         const processChild = async (softYieldAfterMs?: number) =>
