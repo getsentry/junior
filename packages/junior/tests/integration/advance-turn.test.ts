@@ -420,6 +420,63 @@ describe("advanceTurn", () => {
     },
   );
 
+  it("queues the Turn again when the invocation throws, so the retry runs the step at once", async () => {
+    const executed: string[] = [];
+    await advance(prepareWith([sendCallReply()]).prepare);
+    const failure = new Error("The system prompt could not be built");
+
+    await expect(advance(() => Promise.reject(failure))).rejects.toBe(failure);
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 1,
+      attempts: 1,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    });
+    const retry = vi.fn(prepareWith([], [sendTool(executed)]).prepare);
+    await advance(retry);
+    expect(retry).toHaveBeenCalledWith(
+      expect.objectContaining({ stepSeq: 1, attempts: 2 }),
+    );
+    // The retry is a replay, so it skips the tool that must not run twice.
+    expect(executed).toEqual([]);
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 2,
+    });
+  });
+
+  it.each([
+    ["cancelled", () => cancelTurn(fixture.sql, turnId)],
+    [
+      "taken over",
+      () =>
+        claimTurn(fixture.sql, {
+          turnId,
+          owner: "worker-b",
+          leaseMs: LEASE_MS,
+        }),
+    ],
+  ])(
+    "leaves a Turn that was %s alone when the invocation throws",
+    async (_change, interrupt) => {
+      let changed: Awaited<ReturnType<typeof readTurn>> | undefined;
+      const failure = new Error("The system prompt could not be built");
+      const prepare = async () => {
+        await interrupt();
+        changed = await readTurn();
+        throw failure;
+      };
+
+      // The lease of this invocation has expired, so a redelivery can claim it.
+      await expect(advance(prepare, EXPIRED_LEASE_MS)).rejects.toBe(failure);
+
+      await expect(readTurn()).resolves.toEqual(changed);
+      await expect(loadHistory()).resolves.toEqual([]);
+    },
+  );
+
   it("runs a tool that must not run twice on the first attempt of its step", async () => {
     const executed: string[] = [];
     await advance(prepareWith([sendCallReply()]).prepare);
