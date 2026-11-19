@@ -14,7 +14,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const expand = () =>
       page
         .getByRole("region", { name: "To do" })
-        .getByRole("button", { name: "Question" })
+        .locator('[aria-controls^="inbox-row-"]')
         .first()
         .click();
 
