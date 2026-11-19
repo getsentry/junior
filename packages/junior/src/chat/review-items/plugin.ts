@@ -1,3 +1,5 @@
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
 import type {
   PluginReviewItems,
@@ -141,6 +143,14 @@ export function createPluginReviewItems(args: {
       // Undefined means a concurrent upsert added the item first.
       if (item) {
         await show(item.id);
+        // An action item means the Conversation now waits on a person.
+        if (item.kind === "action") {
+          await publishConversationStatus(
+            conversationId,
+            { type: "waiting", reviewItemId: item.id },
+            { queue: getVercelConversationWorkQueue() },
+          );
+        }
       }
     },
     async close(input) {

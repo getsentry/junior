@@ -87,7 +87,8 @@ never lets one Conversation read another.
 
 - `messageAgent`, `searchConversationEvents`, `readConversationEvent`, and
   `watchEvents` on a `conversation` resource use `canAccessConversation`.
-  A Watch Event of a Conversation holds only its status, not its content.
+  A Conversation Watch checks again at each delivery and fails closed. Its
+  Events hold only status, not content.
 - `searchConversations` finds Conversations whose root is public or is at
   the Destination of the requester's root. It finds child agents only when
   asked. It never finds the requester's own tree. Its results include the

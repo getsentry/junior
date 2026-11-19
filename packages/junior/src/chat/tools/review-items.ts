@@ -548,7 +548,7 @@ export function createAddReviewItemTool(
       if (item.kind === "action") {
         await publishConversationStatus(
           context.conversationId,
-          { type: "review_item_opened", reviewItemId: item.id },
+          { type: "waiting", reviewItemId: item.id },
           {
             queue:
               context.conversationWorkQueue ?? getVercelConversationWorkQueue(),

@@ -4,8 +4,10 @@
  * waits on a person, or stops. No Event is terminal: the Watch lasts until
  * it expires or is stopped, so it reports every Turn.
  *
- * The Events hold status only. The watcher reads the content with
- * `readConversationEvent`, which applies the access rule again.
+ * Only a Conversation that may read the target watches it, under
+ * `policies/conversation-access.md`. Delivery checks again and fails closed,
+ * because visibility can change. The Events hold status only. The watcher
+ * reads the content with `readConversationEvent`.
  */
 import type { Event, SubscribableResource } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
@@ -13,21 +15,22 @@ import {
   CORE_EVENT_NAMESPACE,
   type EventRegistrationInput,
 } from "@/chat/events/catalog";
+import { canReadConversation } from "@/chat/conversations/event-access";
 import { ingestEvent } from "@/chat/events/ingest";
+import { findMatchingWatches } from "@/chat/events/store";
 import { logException } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 export const CONVERSATION_RESOURCE_TYPE = "conversation";
-export const CONVERSATION_TURN_COMPLETED_EVENT = "conversation.turn.completed";
-export const CONVERSATION_TURN_FAILED_EVENT = "conversation.turn.failed";
-export const CONVERSATION_REVIEW_ITEM_OPENED_EVENT =
-  "conversation.review_item.opened";
+export const CONVERSATION_COMPLETED_EVENT = "conversation.completed";
+export const CONVERSATION_FAILED_EVENT = "conversation.failed";
+export const CONVERSATION_WAITING_EVENT = "conversation.waiting";
 export const CONVERSATION_STOPPED_EVENT = "conversation.stopped";
 
 const CONVERSATION_EVENTS = [
-  CONVERSATION_TURN_COMPLETED_EVENT,
-  CONVERSATION_TURN_FAILED_EVENT,
-  CONVERSATION_REVIEW_ITEM_OPENED_EVENT,
+  CONVERSATION_COMPLETED_EVENT,
+  CONVERSATION_FAILED_EVENT,
+  CONVERSATION_WAITING_EVENT,
   CONVERSATION_STOPPED_EVENT,
 ];
 
@@ -75,7 +78,7 @@ type ConversationStatus =
       outcome: "success" | "no_reply" | "cancelled" | "blocked";
     }
   | { type: "turn_failed"; turnId: string; failureCode: string }
-  | { type: "review_item_opened"; reviewItemId: string }
+  | { type: "waiting"; reviewItemId: string }
   | { type: "stopped"; stoppedAtMs: number };
 
 function statusEvent(
@@ -95,7 +98,7 @@ function statusEvent(
       return {
         ...base,
         eventKey: `${key}:turn:${status.turnId}`,
-        eventType: CONVERSATION_TURN_COMPLETED_EVENT,
+        eventType: CONVERSATION_COMPLETED_EVENT,
         trustedSummary: `The Conversation ended a Turn: ${status.outcome}.`,
         data: { conversationId, outcome: status.outcome },
       };
@@ -103,15 +106,15 @@ function statusEvent(
       return {
         ...base,
         eventKey: `${key}:turn:${status.turnId}`,
-        eventType: CONVERSATION_TURN_FAILED_EVENT,
+        eventType: CONVERSATION_FAILED_EVENT,
         trustedSummary: `A Turn of the Conversation failed: ${status.failureCode}.`,
         data: { conversationId, failureCode: status.failureCode },
       };
-    case "review_item_opened":
+    case "waiting":
       return {
         ...base,
         eventKey: `${key}:review_item:${status.reviewItemId}`,
-        eventType: CONVERSATION_REVIEW_ITEM_OPENED_EVENT,
+        eventType: CONVERSATION_WAITING_EVENT,
         trustedSummary: "The Conversation waits on a person.",
         data: { conversationId, reviewItemId: status.reviewItemId },
       };
@@ -120,16 +123,18 @@ function statusEvent(
         ...base,
         eventKey: `${key}:stopped:${status.stoppedAtMs}`,
         eventType: CONVERSATION_STOPPED_EVENT,
-        trustedSummary: "A person stopped the Conversation.",
+        trustedSummary: "The Conversation stopped.",
         data: { conversationId },
       };
   }
 }
 
 /**
- * Deliver one status Event of a Conversation to the Watches on it. The work
- * that the Event reports already happened, so a failed delivery is logged
- * and never fails that work. A retry delivers the same Event key once.
+ * Deliver one status Event of a Conversation to the Watches that may still
+ * read it. `skip` runs only when a Watch matches, so a Conversation that no
+ * one watches pays one Watch index read. The work that the Event reports
+ * already happened, so a failed delivery is logged and never fails that
+ * work. A retry delivers the same Event key once.
  */
 export async function publishConversationStatus(
   conversationId: string,
@@ -137,13 +142,24 @@ export async function publishConversationStatus(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
+    skip?: () => Promise<boolean>;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
   const event = statusEvent(conversationId, status, nowMs);
   try {
+    const watches = await findMatchingWatches({
+      eventType: event.eventType,
+      identifier: conversationId,
+      namespace: event.namespace,
+      nowMs,
+      state: options.state,
+    });
+    if (watches.length === 0 || (await options.skip?.())) return;
     await ingestEvent(event, {
+      admit: async (watch) =>
+        await canReadConversation(watch.conversationId, conversationId),
       nowMs,
       queue: options.queue,
       state: options.state,

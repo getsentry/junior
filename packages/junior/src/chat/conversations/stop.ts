@@ -4,7 +4,6 @@ import {
   stopChildAgentsBelow,
 } from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
-import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -89,6 +88,7 @@ export async function stopConversation(args: {
     await markConversationsStopped([args.conversationId], {
       cancelWatches: false,
       nowMs: stoppedAtMs,
+      queue: args.queue,
       state: args.state,
     });
     await dropOwnUnreadLoopReplies(args.conversationId, args.state);
@@ -114,11 +114,6 @@ export async function stopConversation(args: {
         state: args.state,
       });
     }
-    await publishConversationStatus(
-      args.conversationId,
-      { type: "stopped", stoppedAtMs },
-      { nowMs, queue: args.queue, state: args.state },
-    );
     return result;
   } catch (error) {
     if (args.message && !stopSaved) {

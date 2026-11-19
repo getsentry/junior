@@ -5,6 +5,7 @@ import type {
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
 import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { isEventInboundMessageId } from "@/chat/events/notification";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -62,11 +63,13 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   private async publish(
     input: { conversationId: string; createdAtMs: number },
     status: Parameters<typeof publishConversationStatus>[1],
+    skip?: () => Promise<boolean>,
   ): Promise<void> {
     if (!this.watchQueue) return;
     await publishConversationStatus(input.conversationId, status, {
       nowMs: input.createdAtMs,
       queue: this.watchQueue(),
+      ...(skip ? { skip } : undefined),
     });
   }
 
@@ -116,11 +119,23 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
-    await this.publish(input, {
-      type: "turn_completed",
-      outcome: input.outcome,
-      turnId: input.turnId,
-    });
+    // A Turn that only Watch Events started reports nothing, so a watcher
+    // is not woken for each Event that the Conversation itself watches.
+    await this.publish(
+      input,
+      { type: "turn_completed", outcome: input.outcome, turnId: input.turnId },
+      async () => {
+        const inputs = await this.loadInputMessageIds(
+          input.conversationId,
+          input.turnId,
+        );
+        return (
+          inputs !== undefined &&
+          inputs.length > 0 &&
+          inputs.every(isEventInboundMessageId)
+        );
+      },
+    );
   }
 
   /** Record a classified failure once. Do not store raw error text. */

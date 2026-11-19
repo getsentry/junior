@@ -22,7 +22,11 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorDestinations,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
@@ -177,12 +181,21 @@ describe("Lead", () => {
     );
   });
 
-  it("watches the Conversations that it may read and hears every status", async () => {
+  it("watches only the Conversations that it may read", async () => {
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
     const ana = await signedInViewer("lead-watch@example.com");
     const bo = await signedInViewer("lead-watch-other@example.com");
     const lead = await getLeadConversation(ana);
+    const boLead = await getLeadConversation(bo);
+    const boWork = await createAndEnqueueConversation(
+      {
+        actor: webActorFromUser(bo),
+        idempotencyKey: "lead-watch-bo",
+        message: "Check the other deploy.",
+      },
+      { queue: harness.queue, state: harness.state },
+    );
     const started = (await createStartConversationTool({
       conversationId: lead.conversationId,
       conversationWorkQueue: harness.queue,
@@ -194,71 +207,112 @@ describe("Lead", () => {
       conversation_id: string;
       subscribable: { identifier: string; namespace: string; type: string };
     };
+    // startConversation offers the Watch. It does not make one.
     expect(started.subscribable).toMatchObject({
       identifier: started.conversation_id,
       namespace: "junior",
       type: "conversation",
     });
-    // Drop the start of the new root, so only Watch Events stay queued.
-    harness.queue.takeMessageFor(started.conversation_id);
 
-    const watch = (identifier: string) =>
+    const watch = (watcher: string, identifier: string) =>
       createWatchEventsTool(
-        { conversationId: lead.conversationId } as ToolRuntimeContext,
+        { conversationId: watcher } as ToolRuntimeContext,
         getEventCatalog(),
       ).execute!(
         {
           events: [
-            "conversation.turn.completed",
-            "conversation.turn.failed",
+            "conversation.completed",
+            "conversation.failed",
             "conversation.stopped",
           ],
           identifier,
           intent: "Tell the person when the deploy check is done.",
           label: "Deploy check",
-          namespace: started.subscribable.namespace,
-          resource_type: started.subscribable.type,
+          namespace: "junior",
+          resource_type: "conversation",
         },
-        { toolCallId: `call-watch-${identifier}` },
+        { toolCallId: `call-watch-${watcher}-${identifier}` },
       );
-    await watch(started.subscribable.identifier);
-    // Another person's private Lead is not readable, so it is not watchable.
-    const boLead = await getLeadConversation(bo);
-    await expect(watch(boLead.conversationId)).rejects.toThrow(
-      `Conversation events are not accessible: ${boLead.conversationId}`,
-    );
+    // The same tree, and a public root, are readable.
+    await expect(
+      watch(lead.conversationId, lead.conversationId),
+    ).resolves.toMatchObject({ subscription_status: "active" });
+    await watch(lead.conversationId, started.conversation_id);
+    await watch(boWork.conversationId, started.conversation_id);
+    // A private Conversation in another tree and Destination is not, and
+    // a missing one gets the same error.
+    for (const [watcher, target] of [
+      [lead.conversationId, boLead.conversationId],
+      [boWork.conversationId, lead.conversationId],
+      [lead.conversationId, "local:web:missing"],
+    ] as const) {
+      await expect(watch(watcher, target)).rejects.toThrow(
+        `Conversation is not accessible: ${target}`,
+      );
+    }
 
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
       { watchQueue: () => harness.queue },
     );
-    // No status Event ends the Watch, so the Lead hears each one.
-    await lifecycle.complete({
-      conversationId: started.conversation_id,
-      createdAtMs: Date.now(),
-      outcome: "success",
-      turnId: "root-turn-1",
-    });
+    const endTurn = async (turnId: string, inputMessageIds: string[]) => {
+      await lifecycle.start({
+        conversationId: started.conversation_id,
+        createdAtMs: Date.now(),
+        inputMessageIds,
+        surface: "internal",
+        turnId,
+      });
+      await lifecycle.complete({
+        conversationId: started.conversation_id,
+        createdAtMs: Date.now(),
+        outcome: "success",
+        turnId,
+      });
+    };
+    const heard = async (conversationId: string) =>
+      (
+        await getConversationWorkState({ conversationId, state: harness.state })
+      )?.messages.map((message) => message.input.text) ?? [];
+
+    // No status Event ends the Watch, so the watchers hear each one. A Turn
+    // that only the root's own Watch Events started reports nothing.
+    await endTurn("root-turn-1", ["person-message-1"]);
+    await endTurn("root-turn-2", ["event:resub_1:github:pr:1"]);
     await lifecycle.fail({
       conversationId: started.conversation_id,
       createdAtMs: Date.now(),
       failureCode: "agent_run_failed",
-      turnId: "root-turn-2",
+      turnId: "root-turn-3",
     });
     await stopConversation({
       conversationId: started.conversation_id,
       queue: harness.queue,
       state: harness.state,
     });
-
-    const work = await getConversationWorkState({
-      conversationId: lead.conversationId,
-      state: harness.state,
-    });
-    expect(work?.messages.map((message) => message.input.text)).toEqual([
-      expect.stringContaining("conversation.turn.completed"),
-      expect.stringContaining("conversation.turn.failed"),
+    const statuses = [
+      expect.stringContaining("conversation.completed"),
+      expect.stringContaining("conversation.failed"),
       expect.stringContaining("conversation.stopped"),
+    ];
+    expect(await heard(lead.conversationId)).toEqual(statuses);
+    expect(await heard(boWork.conversationId)).toEqual([
+      expect.stringContaining("Check the other deploy."),
+      ...statuses,
     ]);
+
+    // Delivery checks access again and fails closed: once the root is
+    // private, no other tree hears it.
+    const [root] = await getDb()
+      .select({ destinationId: juniorConversations.destinationId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, started.conversation_id));
+    await getDb()
+      .update(juniorDestinations)
+      .set({ visibility: "private" })
+      .where(eq(juniorDestinations.id, root!.destinationId!));
+    await endTurn("root-turn-4", ["person-message-4"]);
+    expect(await heard(lead.conversationId)).toEqual(statuses);
+    expect(await heard(boWork.conversationId)).toHaveLength(4);
   });
 });

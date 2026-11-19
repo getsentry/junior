@@ -14,6 +14,29 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /**
+ * Whether work in `requesterConversationId` may read `conversationId`. A
+ * missing target is not readable. A requester that is not stored yet
+ * reaches only public targets.
+ */
+export async function canReadConversation(
+  requesterConversationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const access = await readConversationAccessFromSql(getDb(), [
+    requesterConversationId,
+    conversationId,
+  ]);
+  const target = access.get(conversationId);
+  return (
+    target !== undefined &&
+    canAccessConversation({
+      requester: access.get(requesterConversationId) ?? { visibility: null },
+      target,
+    })
+  );
+}
+
+/**
  * Throw a repairable tool error unless the active context may read the event
  * log of `conversationId`. "Not found" and "no access" get the same error, so
  * the error does not show that a private Conversation exists.
@@ -25,23 +48,11 @@ export async function assertCanReadConversationEvents(
   const notAccessible = new ToolInputError(
     `Conversation events are not accessible: ${conversationId}`,
   );
-  const [access, target] = await Promise.all([
-    readConversationAccessFromSql(getDb(), [
-      context.conversationId,
-      conversationId,
-    ]),
+  const [readable, target] = await Promise.all([
+    canReadConversation(context.conversationId, conversationId),
     getConversationStore().get({ conversationId }),
   ]);
-  const targetAccess = access.get(conversationId);
-  if (
-    !target ||
-    !targetAccess ||
-    !canAccessConversation({
-      // A requester that is not stored yet reaches only public targets.
-      requester: access.get(context.conversationId) ?? { visibility: null },
-      target: targetAccess,
-    })
-  ) {
+  if (!readable || !target) {
     throw notAccessible;
   }
   if (target.transcriptPurgedAtMs !== undefined) {

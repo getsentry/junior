@@ -11,7 +11,7 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { assertCanReadConversationEvents } from "@/chat/conversations/event-access";
+import { canReadConversation } from "@/chat/conversations/event-access";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
@@ -160,11 +160,15 @@ export function createWatchEventsTool(
         resourceType: input.resource_type,
       });
       // A Watch on a Conversation reads its status, so it needs read access.
+      // "Not found" and "no access" get the same error.
       if (
         input.namespace === CORE_EVENT_NAMESPACE &&
-        input.resource_type === CONVERSATION_RESOURCE_TYPE
+        input.resource_type === CONVERSATION_RESOURCE_TYPE &&
+        !(await canReadConversation(context.conversationId, identifier))
       ) {
-        await assertCanReadConversationEvents(context, identifier);
+        throw new ToolInputError(
+          `Conversation is not accessible: ${identifier}`,
+        );
       }
       const nowMs = Date.now();
       const subscription = await createWatch({

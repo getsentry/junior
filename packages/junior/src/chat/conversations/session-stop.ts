@@ -11,6 +11,9 @@ import {
   renderEventBatchInputs,
 } from "@/chat/events/notification";
 import { cancelSubscriptions } from "@/chat/events/store";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { getEventBatchDelayMs } from "@/chat/task-execution/mailbox-turn";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
@@ -41,6 +44,8 @@ export async function markConversationsStopped(
   options: {
     cancelWatches: boolean;
     nowMs?: number;
+    /** Delivers the stop to the Watches on each Conversation. */
+    queue?: ConversationWorkQueue | undefined;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
@@ -53,7 +58,7 @@ export async function markConversationsStopped(
     );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
-  await getSqlExecutor()
+  const stopped = await getSqlExecutor()
     .db()
     .update(juniorConversations)
     .set({ stoppedAt, detailVersion: nextDetailVersion })
@@ -65,7 +70,16 @@ export async function markConversationsStopped(
           lt(juniorConversations.stoppedAt, stoppedAt),
         ),
       ),
-    );
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await mapBounded(stopped, ({ conversationId }) =>
+    publishConversationStatus(
+      conversationId,
+      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
+      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+    ),
+  );
 }
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
