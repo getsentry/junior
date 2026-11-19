@@ -33,7 +33,7 @@ export async function webTurnInputs(
       const text = message.text.trim();
       return [
         ...(message.leadTask
-          ? [{ kind: "runtime" as const, text: message.leadTask }]
+          ? [{ kind: "agent" as const, text: message.leadTask }]
           : []),
         ...(text ? [{ kind: "person" as const, text }] : []),
       ];

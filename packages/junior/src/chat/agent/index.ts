@@ -66,7 +66,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
-  getUserMessageInstructionText,
+  getUserMessageRequestText,
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -568,7 +568,7 @@ async function executeAgentRunInPrivacyContext(
         if (!isRequesterInstruction(currentTurnProvenance[index])) {
           return [];
         }
-        const text = getUserMessageInstructionText(message);
+        const text = getUserMessageRequestText(message);
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {

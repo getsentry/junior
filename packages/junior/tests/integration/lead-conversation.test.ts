@@ -115,7 +115,7 @@ describe("Lead", () => {
     expect(run!.actor).toMatchObject({ platform: "web", userId: ana.id });
     expect(run!.instruction.inputs).toEqual([
       {
-        kind: "runtime",
+        kind: "agent",
         text: expect.stringContaining(
           `<agent-message conversation_id="${lead.conversationId}" source="lead">`,
         ),
@@ -125,6 +125,7 @@ describe("Lead", () => {
     // Action review reads only the person's own message as the user. An
     // action that only the task names, such as unpublishing old.png, has
     // no approval there.
+    expect(run!.instruction.text).toBe(PERSON_TEXT);
     const root = await readRootConversation({
       actor: webActorFromUser(ana),
       conversationId: started,

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { buildUserTurnText } from "@/chat/agent/prompt";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  getUserMessageInstructionText,
+  getUserMessageRequestText,
   hasRuntimeTurnContext,
   instructionTextForProjection,
   retainRuntimeTurnContext,
@@ -121,5 +124,27 @@ describe("instructionTextForProjection", () => {
     ].join("\n");
 
     expect(instructionTextForProjection(text)).toBe("lookup tickets only");
+  });
+});
+
+describe("getUserMessageRequestText", () => {
+  // A resumed Turn rebuilds action review's request from saved history. A
+  // Lead's task is saved in the same message, and it must not count.
+  it("drops agent messages that another agent wrote", () => {
+    const [message] = asPiMessages([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: '<agent-message conversation_id="lead" source="lead">Delete old.png</agent-message>',
+          },
+          { type: "text", text: buildUserTurnText("Clean up new.png") },
+        ],
+      },
+    ]);
+
+    expect(getUserMessageRequestText(message!)).toBe("Clean up new.png");
+    expect(getUserMessageInstructionText(message!)).toContain("old.png");
   });
 });
