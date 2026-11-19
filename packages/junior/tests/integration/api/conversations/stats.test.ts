@@ -169,20 +169,22 @@ describe("conversation stats API", () => {
         updatedAtMs: childAt.getTime(),
       });
       const eventStore = createSqlConversationEventStore(fixture.sql);
-      await eventStore.append("slack:C1:recent", [
-        {
-          createdAtMs: Date.parse("2026-06-15T11:52:00.000Z"),
-          data: {
-            type: "guardian_action_reviewed",
-            turnId: "turn-recent",
-            toolCallId: "tool-allow",
-            toolName: "publishReport",
-            costUsd: 0.001,
-            decision: "allow",
-            riskLevel: "low",
-            userAuthorization: "high",
-          },
+      const allowReview = {
+        createdAtMs: Date.parse("2026-06-15T11:52:00.000Z"),
+        data: {
+          type: "guardian_action_reviewed",
+          turnId: "turn-recent",
+          toolCallId: "tool-allow",
+          toolName: "publishReport",
+          costUsd: 0.001,
+          decision: "allow",
+          riskLevel: "low",
+          userAuthorization: "high",
         },
+        idempotencyKey: "review-allow",
+      } as const;
+      await eventStore.append("slack:C1:recent", [
+        allowReview,
         {
           createdAtMs: Date.parse("2026-06-15T11:53:00.000Z"),
           data: {
@@ -197,6 +199,8 @@ describe("conversation stats API", () => {
           },
         },
       ]);
+      // A retried append stores no second event, so it counts no review.
+      await eventStore.append("slack:C1:recent", [allowReview]);
       await eventStore.append("advisor:child", [
         {
           createdAtMs: Date.parse("2026-06-15T11:56:00.000Z"),
