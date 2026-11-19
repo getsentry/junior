@@ -890,6 +890,20 @@
       "when": 1795066026189,
       "tag": "0126_artifact_drop_public",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1795066711486,
+      "tag": "0127_artifact_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1795066724447,
+      "tag": "0128_artifact_path_index",
+      "breakpoints": true
     }
   ]
 }

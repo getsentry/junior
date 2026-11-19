@@ -56,7 +56,8 @@ import { planToolExposure } from "@/chat/tool-exposure";
 import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { createArtifactSync } from "@/chat/artifacts/sync";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import type { PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
@@ -141,6 +142,7 @@ export async function createRunSandbox(
   const workspace = args.state.sandboxRef?.workspaceId
     ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
     : undefined;
+  const attachmentStorage = args.run.environment?.attachmentStorage;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
     workspace,
@@ -152,6 +154,13 @@ export async function createRunSandbox(
     credentialEgress: args.run.credentialContext,
     credentialAuditSource: credentialAuditSource(args.run.source),
     actor: args.currentActor,
+    artifacts: attachmentStorage
+      ? createArtifactSync({
+          conversationId: args.run.conversationId,
+          db: getSqlExecutor(),
+          storage: attachmentStorage,
+        })
+      : undefined,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
