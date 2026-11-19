@@ -71,8 +71,8 @@ describe("public artifact route", () => {
     expect(row).toMatchObject({
       conversationId: OWNER_CONVERSATION_ID,
       deleteRequestedAt: null,
-      public: true,
       storageKey: `artifacts/${filename}`,
+      visibility: "public",
     });
   });
 

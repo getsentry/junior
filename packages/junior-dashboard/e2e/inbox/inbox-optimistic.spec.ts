@@ -22,11 +22,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     {
       ...license,
       addedByConversationId: "slack:CLICENSE:1770003600.000400",
+      rootConversationId: "slack:CLICENSE:1770003600.000400",
       createdAt: "2026-08-07T08:10:00.000Z",
     },
     {
       ...audit,
       addedByConversationId: "slack:CAUDIT:1770003600.000500",
+      rootConversationId: "slack:CAUDIT:1770003600.000500",
       createdAt: "2026-08-07T08:20:00.000Z",
     },
     { ...prReview, createdAt: "2026-08-07T08:30:00.000Z" },
@@ -34,10 +36,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   const [buttons, form, other, plain] = asks;
 
   const row = (page: Page, ask: (typeof asks)[number]) =>
-    page.locator(`li[data-inbox-row="todo:${ask.addedByConversationId}"]`);
+    page.locator(`li[data-inbox-row="todo:${ask.id}"]`);
   const open = async (page: Page, ask: (typeof asks)[number]) => {
     await row(page, ask)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await expect(row(page, ask)).toHaveAttribute("data-expanded", "true");
@@ -46,7 +48,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
-  // A row's Done: the Dismiss in its action bar, which closes every item.
+  // A row's Dismiss: its card's own, which closes the row's one ask.
   const rowDone = (page: Page, ask: (typeof asks)[number]) =>
     row(page, ask).getByRole("button", { exact: true, name: "Dismiss" }).last();
 
@@ -87,7 +89,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row(page, other!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, form!)).toHaveCount(0);
 
-    // Dismiss on the row bar.
+    // The card's own Dismiss.
     await rowDone(page, other!).click();
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, other!)).toHaveCount(0);
@@ -128,7 +130,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row is last again, and it opens again: the viewer did not move on.
     await expect(rows.last()).toHaveAttribute(
       "data-inbox-row",
-      `todo:${plain!.addedByConversationId}`,
+      `todo:${plain!.id}`,
     );
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
@@ -238,9 +240,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link", { name: /^Snoozed/ })
       .click();
     const snoozed = (ask: (typeof asks)[number]) =>
-      page.locator(`li[data-inbox-row="${ask.addedByConversationId}"]`);
+      page.locator(`li[data-inbox-row="${ask.id}"]`);
     await snoozed(buttons!)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();

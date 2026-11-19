@@ -162,6 +162,7 @@ describe("slack channel tools", () => {
         createMaterializeFile({
           "/tmp/shared.txt": Buffer.from("shared update"),
         }),
+        "conversation-test",
       ),
       { files: [{ path: "/tmp/shared.txt" }] },
     );

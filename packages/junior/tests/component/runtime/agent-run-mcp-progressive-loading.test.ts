@@ -628,7 +628,7 @@ vi.mock("@/chat/skills", async (importOriginal) => {
     discoverSkills: async () => [DEMO_SKILL],
     findSkillByName: () => null,
     loadSkillsByName: loadSkillsByNameMock,
-    parseSkillInvocation: () => null,
+    parseSkillInvocations: () => [],
   };
 });
 
