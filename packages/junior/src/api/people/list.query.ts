@@ -39,6 +39,22 @@ function emptyDirectoryDay(date: string): PeopleActivityDayReport {
   return { activePeople: 0, conversations: 0, date };
 }
 
+type ActivityUnit = "day" | "hour" | "six_hour";
+
+/** Pick one series from activity rows, without the unit. */
+function activitySeries(
+  rows: (PeopleActivityDayReport & { unit: string })[],
+  unit: ActivityUnit,
+): PeopleActivityDayReport[] {
+  return rows
+    .filter((row) => row.unit === unit)
+    .map(({ activePeople, conversations, date }) => ({
+      activePeople,
+      conversations,
+      date,
+    }));
+}
+
 function directoryActivityDays(
   rows: PeopleActivityDayReport[],
   nowMs: number,
@@ -121,51 +137,88 @@ function rangeWindow(
 }
 
 /**
- * Count active people and root Conversations in each bucket from one row per
- * Turn. The time bound applies to the metric rows before any join.
+ * Count active people and root Conversations in each bucket of each series,
+ * from one read of the Turns since `since`. The time bound applies to the
+ * metric rows before any join. Six-hour buckets roll up hour buckets.
+ *
+ * Each count is a hashed `DISTINCT` of (bucket, person) or (bucket, root)
+ * pairs, which costs less than sorting for `COUNT(DISTINCT)`.
  */
-function activityRows(since: Date, unit: "day" | "hour" | "six_hour") {
+function activityRows(since: Date, read: "day" | "hour") {
   const utc = sql`(${metrics.occurredAt} AT TIME ZONE 'UTC')`;
-  const bucket =
-    unit === "six_hour"
-      ? sql<Date>`date_trunc('day', ${utc}) + FLOOR(EXTRACT(HOUR FROM ${utc}) / 6) * INTERVAL '6 hours'`
-      : sql<Date>`date_trunc(${sql.raw(`'${unit}'`)}, ${utc})`;
-  const format = unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
-  // One row per bucket, person, and root, so the outer counts stay small.
+  const readBucket = sql<Date>`date_trunc(${sql.raw(`'${read}'`)}, ${utc})`;
+  // One row per bucket, person, and root, so the counts read few rows.
   const turns = getDb()
-    .select({
-      bucket: bucket.as("activity_bucket"),
-      userId: sql<string>`${juniorUsers.id}`.as("activity_user_id"),
-      rootConversationId: conversationRootId.as("activity_root_id"),
-    })
-    .from(metrics)
-    .innerJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, metrics.actorIdentityId),
-    )
-    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .innerJoin(
-      juniorConversations,
-      eq(juniorConversations.conversationId, metrics.conversationId),
-    )
-    .where(
-      and(
-        verifiedActorWhere(),
-        // Every Run writes one `duration_ms` row.
-        eq(metrics.metric, "duration_ms"),
-        gte(metrics.occurredAt, since),
-      ),
-    )
-    .groupBy(bucket, juniorUsers.id, conversationRootId)
-    .as("activity_turns");
-  return getDb()
-    .select({
-      activePeople: sql<number>`COUNT(DISTINCT ${turns.userId})::int`,
-      conversations: sql<number>`COUNT(DISTINCT ${turns.rootConversationId})::int`,
-      date: sql<string>`TO_CHAR(${turns.bucket}, ${sql.raw(`'${format}'`)})`,
-    })
-    .from(turns)
-    .groupBy(turns.bucket);
+    .$with("activity_turns")
+    .as(
+      getDb()
+        .select({
+          bucket: readBucket.as("activity_bucket"),
+          userId: sql<string>`${juniorUsers.id}`.as("activity_user_id"),
+          rootConversationId: conversationRootId.as("activity_root_id"),
+        })
+        .from(metrics)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, metrics.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .innerJoin(
+          juniorConversations,
+          eq(juniorConversations.conversationId, metrics.conversationId),
+        )
+        .where(
+          and(
+            verifiedActorWhere(),
+            // Every Run writes one `duration_ms` row.
+            eq(metrics.metric, "duration_ms"),
+            gte(metrics.occurredAt, since),
+          ),
+        )
+        .groupBy(readBucket, juniorUsers.id, conversationRootId),
+    );
+  const unitCounts = (unit: ActivityUnit) => {
+    const bucket =
+      unit === "six_hour"
+        ? sql<Date>`date_trunc('day', ${turns.bucket}) + FLOOR(EXTRACT(HOUR FROM ${turns.bucket}) / 6) * INTERVAL '6 hours'`
+        : sql<Date>`${turns.bucket}`;
+    const pairs = (kind: "people" | "conversations", id: SQL) =>
+      getDb()
+        .selectDistinct({
+          bucket: bucket.as("pair_bucket"),
+          kind: sql<string>`${kind}::text`.as("pair_kind"),
+          id: sql<string>`${id}`.as("pair_id"),
+        })
+        .from(turns);
+    const allPairs = pairs("people", sql`${turns.userId}`)
+      .unionAll(pairs("conversations", sql`${turns.rootConversationId}`))
+      .as("activity_pairs");
+    const format = unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
+    return getDb()
+      .select({
+        unit: sql<ActivityUnit>`${unit}::text`.as("activity_unit"),
+        activePeople:
+          sql<number>`(count(*) FILTER (WHERE ${allPairs.kind} = 'people'))::int`.as(
+            "activity_people",
+          ),
+        conversations:
+          sql<number>`(count(*) FILTER (WHERE ${allPairs.kind} = 'conversations'))::int`.as(
+            "activity_conversations",
+          ),
+        date: sql<string>`TO_CHAR(${allPairs.bucket}, ${sql.raw(`'${format}'`)})`.as(
+          "activity_date",
+        ),
+      })
+      .from(allPairs)
+      .groupBy(allPairs.bucket);
+  };
+  const counts =
+    read === "day"
+      ? unitCounts("day").as("activity_counts")
+      : unitCounts("hour")
+          .unionAll(unitCounts("six_hour"))
+          .as("activity_counts");
+  return getDb().with(turns).select().from(counts);
 }
 
 /**
@@ -293,11 +346,15 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const { end, start } = trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
   const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
   const sixHourWindow = trailingUtcSixHourWindow(nowMs);
+  // One hour read serves the hour and six-hour series.
+  const hourlySince = new Date(
+    Math.min(hourWindow.start.getTime(), sixHourWindow.start.getTime()),
+  );
   const range = personTurnRange();
   const counts = personRangeConversations(nowMs, start);
   const rangeCount = (column: SQL.Aliased<number>) =>
     sql<number>`COALESCE(${column}, 0)::integer`;
-  const [rows, activityDayRows, activityHourRows, activitySixHourRows, spend] =
+  const [rows, activityDayRows, activityHourAndSixHourRows, spend] =
     await Promise.all([
       getDb()
         .select({
@@ -315,8 +372,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         .from(range)
         .leftJoin(counts, eq(counts.userId, range.userId)),
       activityRows(start, "day"),
-      activityRows(hourWindow.start, "hour"),
-      activityRows(sixHourWindow.start, "six_hour"),
+      activityRows(hourlySince, "hour"),
       getDb()
         .select({
           email: sql<string>`${juniorUsers.primaryEmailNormalized}`,
@@ -367,9 +423,18 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   });
 
   return {
-    activityDays: directoryActivityDays(activityDayRows, nowMs),
-    activityHours: directoryActivityHours(activityHourRows, nowMs),
-    activitySixHours: directoryActivitySixHours(activitySixHourRows, nowMs),
+    activityDays: directoryActivityDays(
+      activitySeries(activityDayRows, "day"),
+      nowMs,
+    ),
+    activityHours: directoryActivityHours(
+      activitySeries(activityHourAndSixHourRows, "hour"),
+      nowMs,
+    ),
+    activitySixHours: directoryActivitySixHours(
+      activitySeries(activityHourAndSixHourRows, "six_hour"),
+      nowMs,
+    ),
     generatedAt: new Date(nowMs).toISOString(),
     people: people.sort(
       (left, right) =>
