@@ -38,19 +38,20 @@ export async function conversation(
   });
 }
 
-/** Add an open action item for these assignees. */
+/** Add an open action item for these assignees, linked to more Conversations. */
 export async function addItem(
   conversationId: string,
   assignees: User[],
   title: string,
   visibility: "private" | "public" = "public",
+  linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
     addedByConversationId: conversationId,
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
-    conversationIds: [conversationId],
+    conversationIds: [conversationId, ...linkedConversationIds],
     dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
