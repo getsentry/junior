@@ -6,7 +6,6 @@ import {
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
-  useSystemData,
 } from "../api";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { LoadingView } from "../components/LoadingView";
@@ -48,7 +47,7 @@ import {
 } from "../components/layout/AreaSidebar";
 import { paneRowForPath } from "../components/layout/paneRows";
 import { useNewAutomationAction } from "../pages/automations/newAutomation";
-import { InboxDataProvider } from "../review-desk/inboxData";
+import { InboxDataProvider, useInboxData } from "../review-desk/inboxData";
 import { InboxNav } from "../review-desk/InboxNav";
 import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
@@ -74,6 +73,7 @@ import {
   SystemRouteLoading,
 } from "../pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
+import { SystemRoute } from "../pages/system/SystemRoute";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -95,12 +95,10 @@ import {
   inboxViewOfPath,
   parseInboxView,
 } from "../review-desk/inboxModel";
-import { useInboxTodoCount } from "../review-desk/inboxQueries";
 import { useInboxTabCount } from "../review-desk/inboxTabIcon";
 import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
 import { useVersionsPoll } from "../versions";
-import type { DashboardCoreData } from "../types";
 import { getDashboardAgentName } from "../agentName";
 
 // Pages outside the conversation workspace load on first visit, so the
@@ -138,11 +136,6 @@ const PersonProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
-  })),
-);
-const SystemPage = lazy(() =>
-  import("../pages/system/SystemPage").then((module) => ({
-    default: module.SystemPage,
   })),
 );
 const WorkspaceFormPage = lazy(() =>
@@ -304,7 +297,8 @@ function Shell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const inboxCount = useInboxTodoCount(loggedIn);
+  // To do's own count, so the header and the tab match its cards.
+  const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
@@ -948,27 +942,6 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
       replace
       to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
     />
-  );
-}
-
-function SystemRoute(props: { coreData: DashboardCoreData }) {
-  const query = useSystemData(props.coreData);
-  if (!query.data && !query.error) {
-    return (
-      <SystemRouteLoading
-        description="Runtime health, model usage, and loaded capabilities."
-        label="Loading system"
-        title="System"
-        variant="overview"
-      />
-    );
-  }
-  return query.data ? (
-    <SystemPage data={query.data} />
-  ) : (
-    <SystemPageLayout>
-      <LoadingView label={query.error?.message ?? "System unavailable"} />
-    </SystemPageLayout>
   );
 }
 

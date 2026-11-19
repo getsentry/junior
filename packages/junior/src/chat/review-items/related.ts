@@ -1,16 +1,19 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorReviewItemConversations, juniorReviewItems } from "@/db/schema";
 import { reviewItemVisibleTo, type ReviewItemReader } from "./access";
 import type { ReviewItem } from "./store";
 
-// Each read scans at most this many candidate items for one page, and each
-// item keeps at most `RELATED_ITEM_LIMIT` of them. The scan is newest
-// first, so a busy subject drops its oldest items, not the page's items.
-const RELATED_SCAN_LIMIT = 200;
+// Each item keeps at most this many related items, newest first.
 const RELATED_ITEM_LIMIT = 10;
+// The reads keep this many of the newest candidates for each subject id,
+// subject URL, and linked Conversation, so a busy subject cannot crowd out
+// the other items on the page. One more than the item limit, because an
+// item can be a candidate for its own subject.
+const RELATED_CANDIDATE_LIMIT = RELATED_ITEM_LIMIT + 1;
 
 /** Other open work on the same subject or linked work as one item. */
 export interface RelatedReviewWork {
@@ -43,6 +46,11 @@ function openVisible(reader: ReviewItemReader): SQL {
   )!;
 }
 
+/** Rank the candidates in each group, newest first. */
+function newestInGroup(group: AnyPgColumn) {
+  return sql<number>`row_number() over (partition by ${group} order by ${juniorReviewItems.createdAt} desc, ${juniorReviewItems.id} desc)`;
+}
+
 const candidateColumns = {
   createdAt: juniorReviewItems.createdAt,
   id: juniorReviewItems.id,
@@ -72,52 +80,91 @@ export async function readRelatedReviewWork(
     ...new Set(open.flatMap((item) => item.subject?.url ?? [])),
   ];
   const linkIds = [...new Set(open.flatMap(linkedWork))];
+  const subjectRanks = db
+    .select({
+      ...candidateColumns,
+      idRank: newestInGroup(juniorReviewItems.subjectId).as("id_rank"),
+      urlRank: newestInGroup(juniorReviewItems.subjectUrl).as("url_rank"),
+    })
+    .from(juniorReviewItems)
+    .where(
+      and(
+        openVisible(reader),
+        or(
+          ...(subjectIds.length > 0
+            ? [inArray(juniorReviewItems.subjectId, subjectIds)]
+            : []),
+          ...(subjectUrls.length > 0
+            ? [inArray(juniorReviewItems.subjectUrl, subjectUrls)]
+            : []),
+        ),
+      ),
+    )
+    .as("subject_ranks");
+  const linkRanks = db
+    .select({
+      ...candidateColumns,
+      conversationId: juniorReviewItemConversations.conversationId,
+      rank: newestInGroup(juniorReviewItemConversations.conversationId).as(
+        "link_rank",
+      ),
+    })
+    .from(juniorReviewItemConversations)
+    .innerJoin(
+      juniorReviewItems,
+      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .where(
+      and(
+        inArray(juniorReviewItemConversations.conversationId, linkIds),
+        openVisible(reader),
+      ),
+    )
+    .as("link_ranks");
   const [bySubject, byLink, access] = await Promise.all([
     subjectIds.length > 0 || subjectUrls.length > 0
       ? db
-          .select(candidateColumns)
-          .from(juniorReviewItems)
+          .select({
+            createdAt: subjectRanks.createdAt,
+            id: subjectRanks.id,
+            subjectId: subjectRanks.subjectId,
+            subjectUrl: subjectRanks.subjectUrl,
+            title: subjectRanks.title,
+          })
+          .from(subjectRanks)
           .where(
-            and(
-              openVisible(reader),
-              or(
-                ...(subjectIds.length > 0
-                  ? [inArray(juniorReviewItems.subjectId, subjectIds)]
-                  : []),
-                ...(subjectUrls.length > 0
-                  ? [inArray(juniorReviewItems.subjectUrl, subjectUrls)]
-                  : []),
-              ),
+            or(
+              ...(subjectIds.length > 0
+                ? [
+                    and(
+                      inArray(subjectRanks.subjectId, subjectIds),
+                      lte(subjectRanks.idRank, RELATED_CANDIDATE_LIMIT),
+                    ),
+                  ]
+                : []),
+              ...(subjectUrls.length > 0
+                ? [
+                    and(
+                      inArray(subjectRanks.subjectUrl, subjectUrls),
+                      lte(subjectRanks.urlRank, RELATED_CANDIDATE_LIMIT),
+                    ),
+                  ]
+                : []),
             ),
           )
-          .orderBy(
-            desc(juniorReviewItems.createdAt),
-            desc(juniorReviewItems.id),
-          )
-          .limit(RELATED_SCAN_LIMIT)
       : [],
     linkIds.length > 0
       ? db
           .select({
-            ...candidateColumns,
-            conversationId: juniorReviewItemConversations.conversationId,
+            conversationId: linkRanks.conversationId,
+            createdAt: linkRanks.createdAt,
+            id: linkRanks.id,
+            subjectId: linkRanks.subjectId,
+            subjectUrl: linkRanks.subjectUrl,
+            title: linkRanks.title,
           })
-          .from(juniorReviewItemConversations)
-          .innerJoin(
-            juniorReviewItems,
-            eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
-          )
-          .where(
-            and(
-              inArray(juniorReviewItemConversations.conversationId, linkIds),
-              openVisible(reader),
-            ),
-          )
-          .orderBy(
-            desc(juniorReviewItems.createdAt),
-            desc(juniorReviewItems.id),
-          )
-          .limit(RELATED_SCAN_LIMIT)
+          .from(linkRanks)
+          .where(lte(linkRanks.rank, RELATED_CANDIDATE_LIMIT))
       : [],
     readConversationAccessFromSql(db, linkIds, viewer),
   ]);
