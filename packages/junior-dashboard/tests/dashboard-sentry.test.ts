@@ -206,14 +206,25 @@ describe("dashboard browser Sentry", () => {
     ]);
   });
 
-  it("records the compressed body size on fetch spans", async () => {
-    const body = gzipSync(JSON.stringify({ rows: "x".repeat(10_000) }));
+  it("records each compressed body size on its own fetch span", async () => {
+    // Two requests to one URL overlap, and the first one finishes last.
+    const bodies = [
+      gzipSync(JSON.stringify({ rows: "x".repeat(10_000) })),
+      gzipSync(JSON.stringify({ rows: "y" })),
+    ];
+    let requests = 0;
     const server = createServer((_request, response) => {
-      response.writeHead(200, {
-        "content-encoding": "gzip",
-        "content-type": "application/json",
-      });
-      response.end(body);
+      const body = bodies[requests++];
+      setTimeout(
+        () => {
+          response.writeHead(200, {
+            "content-encoding": "gzip",
+            "content-type": "application/json",
+          });
+          response.end(body);
+        },
+        body === bodies[0] ? 100 : 0,
+      );
     });
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
@@ -234,19 +245,27 @@ describe("dashboard browser Sentry", () => {
         }
       });
 
-      const response = await fetch(`http://127.0.0.1:${port}/api/report`);
-      expect((await response.text()).length).toBeGreaterThan(10_000);
+      const url = `http://127.0.0.1:${port}/api/report`;
+      const first = fetch(url).then((response) => response.text());
+      await vi.waitFor(() => expect(requests).toBe(1));
+      await Promise.all([
+        first,
+        fetch(url).then((response) => response.text()),
+      ]);
       await vi.waitFor(async () => {
         await client?.flush();
-        expect(
-          spans.find(
+        const fetchSpans = spans
+          .filter(
             ({ attributes }) =>
               (attributes["sentry.op"] as { value?: string })?.value ===
               "http.client",
-          )?.attributes,
-        ).toMatchObject({
-          "http.response.body.size": { value: body.length },
-        });
+          )
+          .sort((a, b) => a.start_timestamp - b.start_timestamp);
+        expect(fetchSpans.map(({ attributes }) => attributes)).toMatchObject(
+          bodies.map((body) => ({
+            "http.response.body.size": { value: body.length },
+          })),
+        );
       });
     } finally {
       globalThis.fetch = originalFetch;

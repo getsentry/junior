@@ -300,9 +300,21 @@ function trackResponseBodySize(): {
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        const span = pending.get(entry.name)?.[0];
-        if (!span || !(entry instanceof PerformanceResourceTiming)) continue;
+        if (!(entry instanceof PerformanceResourceTiming)) continue;
         if (entry.initiatorType !== "fetch") continue;
+        // Requests to one URL can overlap and finish in any order. An entry
+        // belongs to the last span that started before its fetch started.
+        const fetchStart = (performance.timeOrigin + entry.startTime) / 1000;
+        let span: Span | undefined;
+        let spanStart = 0;
+        for (const item of pending.get(entry.name) ?? []) {
+          const start = spanToJSON(item).start_timestamp;
+          if (start <= fetchStart && start >= spanStart) {
+            span = item;
+            spanStart = start;
+          }
+        }
+        if (!span) continue;
         remove(entry.name, span);
         span.setAttribute("http.response.body.size", entry.encodedBodySize);
       }
