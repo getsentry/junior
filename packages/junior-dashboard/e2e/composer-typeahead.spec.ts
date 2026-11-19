@@ -193,7 +193,12 @@ test("a pasted Slack mention becomes a mention", async ({
     PUBLIC_CONVERSATION_ID,
   );
   await composer.pressSequentially("ask first");
+  // A key pressed before the editor applies the typed text loses its move.
+  await expect(composer).toHaveText("ask first");
   for (let step = 0; step < 6; step++) await composer.press("ArrowLeft");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.anchorOffset))
+    .toBe(3);
   await page.evaluate(() => {
     const data = new DataTransfer();
     data.setData("text/plain", " <@U456>");
