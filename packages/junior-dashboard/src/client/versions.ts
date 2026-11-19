@@ -98,6 +98,32 @@ function onScreenConversationIds(
 }
 
 /**
+ * Read again each detail on screen whose last read failed. No timer polls
+ * an idle detail, and a detail with no good read has no token to compare, so
+ * this check is its retry.
+ */
+function retryFailedDetails(client: QueryClient) {
+  for (const query of client.getQueryCache().findAll({
+    queryKey: ["conversation"],
+  })) {
+    const [, conversationId, read] = query.queryKey;
+    if (
+      typeof conversationId !== "string" ||
+      read !== "detail" ||
+      query.getObserversCount() === 0 ||
+      query.state.status !== "error" ||
+      query.state.fetchStatus === "fetching"
+    ) {
+      continue;
+    }
+    void client.invalidateQueries({
+      exact: true,
+      queryKey: conversationDetailQueryKey(conversationId),
+    });
+  }
+}
+
+/**
  * Refresh the reads whose token moved since the last poll. Only mounted
  * queries refetch. The first poll of a tab sets the baseline: a change that
  * lands between a read and that poll waits for the next change or focus.
@@ -181,6 +207,7 @@ export function useVersionsPoll(
         signal,
       );
       refreshChangedReads(client, previous, next, conversationIds);
+      retryFailedDetails(client);
       return next;
     },
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.

@@ -261,4 +261,63 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     await expect(card.getByText("merged", { exact: true })).toBeVisible();
     expect(detailReads).toBe(settled + 1);
   });
+
+  test("a card whose Conversation read failed reads it again @new", async ({
+    page,
+    dashboard,
+  }) => {
+    const releaseId = "slack:CQA456:1770021600.000600";
+    const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
+    const item = {
+      ...prReview,
+      addedByConversationId: releaseId,
+      id: "item-pr-versions-retry",
+      rootConversationId: releaseId,
+    };
+    let failing = true;
+    let detailReads = 0;
+    let checks = 0;
+    // Let each answered check finish, and the reads it starts begin.
+    const tick = async () => {
+      const count = checks;
+      await page.clock.fastForward(5_000);
+      await expect.poll(() => checks).toBeGreaterThan(count);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
+    };
+    await page.route("**/api/versions*", async (route) => {
+      await route.fulfill({
+        json: {
+          conversationDetails: {},
+          conversations: "mock",
+          reviewItems: "mock",
+          spend: "mock",
+        },
+      });
+      checks += 1;
+    });
+    await page.route(
+      (url) => url.pathname === detailPath,
+      async (route) => {
+        detailReads += 1;
+        // A transient server error.
+        if (failing) {
+          await route.fulfill({ json: { error: "busy" }, status: 503 });
+          return;
+        }
+        await route.fallback();
+      },
+    );
+    await mockReviewItems(page, { open: [item] });
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await rowHead(page, item.title).click();
+    await expect.poll(() => detailReads).toBeGreaterThan(0);
+    // The reads that mounting the row starts are done after one check.
+    await tick();
+
+    // Once the server answers again, the next check reads the detail.
+    failing = false;
+    const settled = detailReads;
+    await tick();
+    await expect.poll(() => detailReads).toBeGreaterThan(settled);
+  });
 });
