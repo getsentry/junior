@@ -3,6 +3,7 @@
 // the Turn. A write that loses its lease changes nothing, so the invocation
 // stops and the new lease holder owns the Turn. While the step runs, the
 // invocation checks its lease and aborts the step when the lease is lost.
+// When the invocation throws, it queues the Turn again for the queue's retry.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -13,6 +14,7 @@ import {
   commitStep,
   failTurn,
   holdsLease,
+  releaseTurn,
   type ClaimedTurn,
   type TurnLease,
 } from "@/core/turn/state";
@@ -51,6 +53,29 @@ export async function advanceTurn(
   if (!claim) {
     return;
   }
+  try {
+    await runClaimedStep(executor, claim, options.prepare);
+  } catch (error) {
+    // The queue retries the message. With a live lease, the retry would claim
+    // nothing and the Turn would stay running.
+    try {
+      await releaseTurn(executor, claim);
+    } catch (releaseError) {
+      // The first error caused the failure, so it reaches the caller. The
+      // lease expires, and then a retry can claim the Turn.
+      logException(releaseError, "turn.release.failed", {
+        "app.turn.id": claim.turnId,
+      });
+    }
+    throw error;
+  }
+}
+
+async function runClaimedStep(
+  executor: JuniorSqlDatabase,
+  claim: ClaimedTurn,
+  prepare: AdvanceTurnOptions["prepare"],
+): Promise<void> {
   const events = await createSqlConversationEventStore(
     executor,
   ).loadCurrentHistory(claim.conversationId);
@@ -58,7 +83,7 @@ export async function advanceTurn(
     "app.turn.step_seq": claim.stepSeq,
     "gen_ai.conversation.id": claim.conversationId,
   });
-  const prepared = await options.prepare(claim);
+  const prepared = await prepare(claim);
   const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
     messages: projectConversationEvents(events).messages,

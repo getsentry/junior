@@ -5,7 +5,8 @@
 //     │   ◀─────────────    │  ↺ claimTurn (lease expired)
 //     │   commitStep        │
 //     │   (continue),       │                failTurn
-//     │   reclaimExpired    ├──────────────────────────▶ failed
+//     │   releaseTurn,      ├──────────────────────────▶ failed
+//     │   reclaimExpired    │
 //     │   (lease expired)   │
 //     │     cancelTurn      │   cancelTurn
 //     └─────────────────────┴──────────────────────────▶ cancelled
@@ -21,6 +22,7 @@
 // | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
 // | completeTurn           | running, fenced       |             |          |          | cleared  |
 // | failTurn               | running, fenced       |             |          |          | cleared  |
+// | releaseTurn            | running, fenced       |             |          |          | cleared  |
 // | cancelTurn             | queued or running     | +1          |          |          | cleared  |
 // | reclaimExpired         | running, expired      |             |          |          | cleared  |
 //
@@ -214,6 +216,29 @@ export async function failTurn(
       leaseExpiresAt: null,
       updatedAt: sql`now()`,
       endedAt: sql`now()`,
+    })
+    .where(leaseFence(lease))
+    .returning({ id: juniorTurns.id });
+  return rows.length > 0;
+}
+
+/**
+ * Queues a running Turn again after its invocation failed, so the queue's
+ * retry can claim the step at once. The failed attempt still counts. False
+ * when the lease is lost.
+ */
+export async function releaseTurn(
+  executor: JuniorSqlDatabase,
+  lease: TurnLease,
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .update(juniorTurns)
+    .set({
+      state: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
     })
     .where(leaseFence(lease))
     .returning({ id: juniorTurns.id });
