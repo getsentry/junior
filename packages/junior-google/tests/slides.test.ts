@@ -15,6 +15,8 @@ function slidesTools(
   responses: Response[],
   curlExitCode = 0,
   readableIds: readonly string[] = [DECK_ID],
+  /** Sandbox files by path. Any other path reads as the PNG stub. */
+  files: Record<string, Uint8Array | null> = {},
 ) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
@@ -23,7 +25,9 @@ function slidesTools(
     stderr: cmd === "curl" && curlExitCode ? "403 Forbidden" : "",
     stdout: "",
   }));
-  const readFile = vi.fn(async () => PNG);
+  const readFile = vi.fn(async (path: string) =>
+    path in files ? (files[path] ?? null) : PNG,
+  );
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch: withReadCheck(fetch, readableIds) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
@@ -38,13 +42,16 @@ function slidesTools(
     const tool = tools[name];
     return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
   };
-  /** Operation, URL, and JSON body of each Google request, in order. */
+  /** Operation, URL, and body of each Google request, in order. */
   const calls = async () =>
     Promise.all(
       fetch.mock.calls.map(async ([request]) => ({
-        body: request.request.body
-          ? await request.request.clone().json()
-          : undefined,
+        body: !request.request.body
+          ? undefined
+          : request.request.headers.get("content-type")?.includes("json")
+            ? await request.request.clone().json()
+            : new Uint8Array(await request.request.clone().arrayBuffer()),
+        contentType: request.request.headers.get("content-type"),
         operation: request.operation as string,
         url: new URL(request.request.url),
       })),
@@ -342,6 +349,248 @@ describe("Google Slides tools", () => {
         revision_id: "rev-1",
       }),
     ).rejects.toThrow("The edit applied at revision rev-2, but reading");
+  });
+
+  describe("sandbox images", () => {
+    const GRID = `${SANDBOX_ROOT}/slides/grid.png`;
+    const UPLOAD_ID = "1UpLoAdEdGrIdPnG";
+    const LINK = `https://drive.google.com/uc?id=${UPLOAD_ID}&export=download`;
+    const GRID_PNG = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
+    ]);
+    const editor = () =>
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER });
+    const uploaded = () =>
+      Response.json({ id: UPLOAD_ID, webContentLink: LINK });
+    const shared = () => Response.json({ id: "anyoneWithLink" });
+    const deleted = () => new Response(null, { status: 204 });
+    const createGrid = {
+      createImage: {
+        elementProperties: { pageObjectId: "s1" },
+        objectId: "grid",
+        url: GRID,
+      },
+    };
+    const input = (requests: Array<Record<string, unknown>>) => ({
+      presentation: DECK_LINK,
+      requests,
+      revision_id: "rev-1",
+    });
+
+    it("inserts a sandbox image from a Drive upload that is shared by link only during the edit", async () => {
+      const { call, calls } = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          uploaded(),
+          shared(),
+          Response.json({
+            replies: [{ createImage: { objectId: "grid" } }, {}, {}],
+            writeControl: { requiredRevisionId: "rev-2" },
+          }),
+          deleted(),
+          checkedDeck({ objectId: "s1" }),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+      );
+      const logo = {
+        replaceImage: {
+          imageObjectId: "logo",
+          url: "https://example.com/logo.png",
+        },
+      };
+      const swap = { replaceImage: { imageObjectId: "old_grid", url: GRID } };
+
+      await expect(
+        call("updateGoogleSlides", input([createGrid, logo, swap])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
+
+      const sent = await calls();
+      expect(sent.map((item) => item.operation)).toEqual([
+        "google.drive.file.get",
+        "google.drive.permissions.list",
+        "google.drive.file.create",
+        "google.drive.permission.create",
+        "google.slides.presentation.batchUpdate",
+        "google.drive.file.delete",
+        "google.slides.presentation.get",
+      ]);
+      const [, , upload, share, edit, remove] = sent;
+      expect(upload?.url.href).toBe(
+        "https://www.googleapis.com/upload/drive/v3/files?fields=id%2CwebContentLink&uploadType=media",
+      );
+      expect(upload?.body).toEqual(GRID_PNG);
+      expect(upload?.contentType).toBe("image/png");
+      // The egress policy gives the account to the upload.
+      expect(
+        googlePlugin().hooks!.grantForEgress!({
+          request: {
+            method: "POST",
+            operation: "google.drive.file.create",
+            url: upload!.url.href,
+          },
+        } as never),
+      ).toMatchObject({ access: "write" });
+      expect(share?.url.pathname).toBe(
+        `/drive/v3/files/${UPLOAD_ID}/permissions`,
+      );
+      expect(share?.body).toEqual({ role: "reader", type: "anyone" });
+      expect(edit?.body).toEqual({
+        requests: [
+          { createImage: { ...createGrid.createImage, url: LINK } },
+          logo,
+          { replaceImage: { imageObjectId: "old_grid", url: LINK } },
+        ],
+        writeControl: { requiredRevisionId: "rev-1" },
+      });
+      expect(remove?.url.pathname).toBe(`/drive/v3/files/${UPLOAD_ID}`);
+    });
+
+    it("refuses a path outside the sandbox or a file that Google cannot insert, before any upload", async () => {
+      const huge = new Uint8Array(50_000_000);
+      huge.set(GRID_PNG);
+      const refused: Array<[string, Uint8Array | null, string]> = [
+        ["/etc/grid.png", GRID_PNG, "normalized absolute path under /sandbox"],
+        [
+          `${SANDBOX_ROOT}/../etc/grid.png`,
+          GRID_PNG,
+          "normalized absolute path under /sandbox",
+        ],
+        [GRID, null, `No sandbox file at ${GRID}.`],
+        [
+          GRID,
+          new TextEncoder().encode("<svg/>"),
+          "is not a PNG, JPEG, or GIF",
+        ],
+        [GRID, huge, "Google Slides takes images under 50 MB"],
+      ];
+      for (const [path, file, message] of refused) {
+        const tools = slidesTools([deckFile(), editor()], 0, [DECK_ID], {
+          [path]: file,
+        });
+        await expect(
+          tools.call(
+            "updateGoogleSlides",
+            input([{ createImage: { ...createGrid.createImage, url: path } }]),
+          ),
+        ).rejects.toThrow(message);
+        expect((await tools.calls()).map((item) => item.operation)).toEqual([
+          "google.drive.file.get",
+          "google.drive.permissions.list",
+        ]);
+      }
+    });
+
+    it("deletes every upload when an image, the link share, or the edit fails", async () => {
+      // The second image is refused, but the first was already uploaded.
+      const PHOTO = `${SANDBOX_ROOT}/photo.jpg`;
+      const partial = slidesTools(
+        [deckFile(), editor(), uploaded(), shared(), deleted()],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG, [PHOTO]: new Uint8Array([1, 2, 3]) },
+      );
+      await expect(
+        partial.call(
+          "updateGoogleSlides",
+          input([
+            createGrid,
+            { createImage: { ...createGrid.createImage, url: PHOTO } },
+          ]),
+        ),
+      ).rejects.toThrow(`${PHOTO} is not a PNG, JPEG, or GIF.`);
+      expect(
+        (await partial.calls()).map((item) => item.operation).slice(2),
+      ).toEqual([
+        "google.drive.file.create",
+        "google.drive.permission.create",
+        "google.drive.file.delete",
+      ]);
+
+      // Workspace sharing settings can forbid links that anyone can open.
+      const blocked = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          uploaded(),
+          Response.json(
+            {
+              error: {
+                errors: [{ reason: "invalidSharingRequest" }],
+                message: 'Bad Request. User message: "ACL change not allowed."',
+              },
+            },
+            { status: 400 },
+          ),
+          deleted(),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+      );
+      await expect(
+        blocked.call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow(
+        `ACL change not allowed.". Google Slides fetches an image only from a link that anyone can open, and the Workspace sharing settings of ${ACCOUNT_EMAIL} may not allow that link. Use a public image URL instead.`,
+      );
+      expect((await blocked.calls()).at(-1)?.operation).toBe(
+        "google.drive.file.delete",
+      );
+
+      const refused = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          uploaded(),
+          shared(),
+          Response.json(
+            {
+              error: {
+                message:
+                  "Invalid requests[0].createImage: Access to the provided image was forbidden.",
+              },
+            },
+            { status: 400 },
+          ),
+          deleted(),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+      );
+      await expect(
+        refused.call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("Access to the provided image was forbidden.");
+      expect(
+        (await refused.calls()).map((item) => item.operation).slice(-2),
+      ).toEqual([
+        "google.slides.presentation.batchUpdate",
+        "google.drive.file.delete",
+      ]);
+    });
+
+    it("says the edit applied when an upload could not be deleted", async () => {
+      const { call } = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          uploaded(),
+          shared(),
+          Response.json({ replies: [{}] }),
+          Response.json({ error: { message: "backend" } }, { status: 500 }),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+      );
+      await expect(
+        call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow(
+        `The edit applied. Deleting the uploaded image grid.png (${UPLOAD_ID}) failed: Google google.drive.file.delete failed with HTTP 500: backend. Anyone with its link can still open it; delete it from the Drive of ${ACCOUNT_EMAIL}.`,
+      );
+    });
   });
 
   it("refuses edits that either account cannot make, and malformed requests", async () => {

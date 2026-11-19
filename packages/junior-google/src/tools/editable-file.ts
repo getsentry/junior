@@ -144,8 +144,8 @@ export async function requireEditableFile(
 
 /**
  * Mark a file that the current tool call just created with Junior's account.
- * Only `createGoogleDoc` uses it: the requester becomes the owner before the
- * call ends, and the Doc is deleted if that fails.
+ * `createGoogleDoc` hands its Doc to the requester before the call ends, or
+ * deletes it. `updateGoogleSlides` deletes its uploaded images.
  */
 export function newEditableFile(
   ref: FileReference,

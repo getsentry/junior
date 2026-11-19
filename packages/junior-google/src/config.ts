@@ -24,7 +24,8 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  *   edit, through the Docs API. It gives no access to other Drive files and
  *   cannot change sharing.
  * - `drive.file`: make the requester the owner of a Doc that Junior created,
- *   then remove Junior's own access. It only covers files this OAuth client
+ *   then remove Junior's own access. Upload a sandbox image for a Slides
+ *   edit, share it by link, and delete it. It only covers files this OAuth client
  *   created, so it cannot change sharing on other files. Full `drive` is not
  *   needed.
  * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and

@@ -39,6 +39,9 @@ Workspace account, so the user connects nothing.
   domains.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
+- A Sandbox image that Junior puts in a presentation is shared with anyone
+  who has its link only while the edit runs. Then Junior deletes it, so the
+  link that the deck keeps opens nothing.
 - Junior reads a file or its comments only for a requester who can open it
   through their own email, their domain when that domain owns the file, or
   a link that anyone can open.
