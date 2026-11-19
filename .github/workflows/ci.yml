@@ -36,6 +36,7 @@ jobs:
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -45,9 +46,13 @@ jobs:
         id: filter
         with:
           filters: |
+            # The iOS workflows run only the iOS jobs, so a change to them
+            # runs none of these. `workflows` still lints them.
             ci:
               - .github/workflows/**
               - .github/actions/**
+              - "!.github/workflows/ios.yml"
+              - "!.github/workflows/ios-beta.yml"
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
@@ -69,6 +74,12 @@ jobs:
               - packages/junior/**
               - packages/junior-plugin-api/**
               - packages/junior-search/**
+            # ios.yml tests the app. Listing it keeps an iOS change from
+            # counting as unknown, which runs every job.
+            ios:
+              - apps/ios/**
+              - .github/workflows/ios.yml
+              - .github/workflows/ios-beta.yml
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -118,6 +129,9 @@ jobs:
               - scripts/publish-github-release*.mjs
               - packages/*/package.json
               - packages/docs/**
+            workflows:
+              - .github/workflows/**
+              - .github/actions/**
 
   release-check:
     name: check / release config
@@ -638,7 +652,7 @@ jobs:
     name: lint / workflows
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       contents: read
     steps:
