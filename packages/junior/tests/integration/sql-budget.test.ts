@@ -1,7 +1,8 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
-import { measureSql } from "../fixtures/sql-budget";
+import { juniorConversationMetrics } from "@/db/schema";
+import { expectNoFullScan, measureSql } from "../fixtures/sql-budget";
 
 describe("SQL budget measurement", () => {
   afterEach(async () => {
@@ -31,5 +32,38 @@ describe("SQL budget measurement", () => {
       executor.transaction(() => executor.query("select 1")),
     );
     expect(budget).toEqual({ statements: 3, serialRounds: 3 });
+  });
+
+  it("finds a statement that reads a named table in full", async () => {
+    const metrics = juniorConversationMetrics;
+    const tables = ["junior_conversation_metrics"];
+    // No index holds `value` for every metric, so the sum reads the table.
+    await expect(
+      expectNoFullScan(
+        () =>
+          getDb()
+            .select({ total: sql`sum(${metrics.value})` })
+            .from(metrics),
+        tables,
+      ),
+    ).rejects.toThrow(/statement 0 reads junior_conversation_metrics in full/);
+    // With seq scans off, a count reads a whole index instead.
+    await expect(
+      expectNoFullScan(
+        () =>
+          getDb()
+            .select({ count: sql`count(*)` })
+            .from(metrics),
+        tables,
+      ),
+    ).rejects.toThrow(/reads junior_conversation_metrics in full/);
+    await expectNoFullScan(
+      () =>
+        getDb()
+          .select({ total: sql`sum(${metrics.value})` })
+          .from(metrics)
+          .where(eq(metrics.actorIdentityId, "identity-1")),
+      tables,
+    );
   });
 });
