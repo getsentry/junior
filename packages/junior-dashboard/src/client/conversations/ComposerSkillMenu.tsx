@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -85,9 +86,10 @@ export function ComposerSkillMenu(props: { typeahead: ComposerTypeahead }) {
 
   // The menu sits beside the composer, which it needs the width of. The
   // card sits on its reference, and follows it when the box or the page
-  // scrolls. Both follow the layout.
+  // scrolls. Both follow the layout. Place before paint, so a card that
+  // replaces the menu never shows in the menu's spot first.
   const { referenceRect } = typeahead;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!shown || !textbox) return;
     const place = () => {
       const reference = open ? undefined : referenceRect();
