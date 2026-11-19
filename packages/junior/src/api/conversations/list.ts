@@ -54,9 +54,9 @@ import {
 import {
   conversationIsActiveSql,
   conversationStatusSql,
+  conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
-import { conversationFeedSchema } from "../schema/conversation-feed";
 import type {
   ConversationFeed,
   ConversationFeedInclude,
@@ -385,6 +385,11 @@ export function conversationFeedVersionQuery(
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
       status: conversationStatusSql(juniorConversations).as("status"),
+      // The root's own wait on the viewer can start while its status
+      // already reads `needs_input` for someone else.
+      waitsOnViewer: conversationWaitsOnUserSql(juniorConversations, userId).as(
+        "waits_on_viewer",
+      ),
       title: juniorConversations.title,
       activity: shownActivityMinute(
         juniorConversations.executionStatus,
@@ -430,7 +435,7 @@ export function conversationFeedVersionQuery(
     order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
     pin: byRow(page.pinnedAt, page.pinPosition),
     title: byRow(page.title, page.channelName),
-    status: byRow(page.status),
+    status: byRow(page.status, page.waitsOnViewer),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
     threads: byRow(page.threads),
@@ -491,6 +496,8 @@ export async function readConversationFeedFromSql(
     /** Extra row content that costs a query. */
     include?: readonly ConversationFeedInclude[];
     limit?: number;
+    /** Receives how many waiting rows from outside the page were added. */
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
@@ -551,7 +558,9 @@ export async function readConversationFeedFromSql(
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
   if (pinsFirst && !cursor) {
-    rows.push(...(await waitingRowsOutsidePage(db, filter, rows, include)));
+    const waitingRows = await waitingRowsOutsidePage(db, filter, rows, include);
+    options.onWaitingRows?.(waitingRows.length);
+    rows.push(...waitingRows);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -781,12 +790,14 @@ export async function readConversationFeed(
     codeRepositoryId?: string;
     cursor?: string;
     include?: readonly ConversationFeedInclude[];
+    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     status?: "active" | "archived";
     viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
-  return conversationFeedSchema.parse(
-    await readConversationFeedFromSql(options),
-  );
+  // Not parsed here: each caller's edge validates what it sends. The HTTP
+  // route parses the feed in `jsonResponse`, and the MCP SDK checks
+  // `structuredContent` against the tool's output schema.
+  return readConversationFeedFromSql(options);
 }

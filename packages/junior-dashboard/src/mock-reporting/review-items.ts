@@ -328,7 +328,8 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
         objectType: "code_change",
-        title: "Retry a canary stage once on a lost agent",
+        // As the GitHub plugin names it, with its number.
+        title: "Retry a canary stage once on a lost agent (#418)",
         url: "https://github.com/getsentry/sentaur/pull/418",
       },
       title: "Review requested · #418",

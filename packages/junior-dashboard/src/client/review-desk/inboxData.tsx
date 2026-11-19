@@ -194,6 +194,10 @@ function useBuildInboxData(input: {
       ? [...open, linked]
       : open;
   }, [closing, linked, linkedAwake, loaded]);
+  // The kept item is extra while no loaded page holds it: only the link
+  // keeps it in the list.
+  const includedExtra =
+    linked !== undefined && !loaded.some((item) => item.id === linked.id);
   // Before the first read, no item has left it. The viewer's own actions
   // did not close an item elsewhere.
   const missing = useMemo(
@@ -404,6 +408,7 @@ function useBuildInboxData(input: {
     holdLeaving,
     holdOpenRow,
     includedId: linkedId,
+    includedExtra,
     includeItem,
     /** Every in-flight Conversation, in pane order. */
     inFlight: inFlightFor(busyRows),

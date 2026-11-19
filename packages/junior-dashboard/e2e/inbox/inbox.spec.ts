@@ -571,8 +571,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
-    await expect(card).toContainText("FYI");
-    // The card's Dismiss closes it, and the item row's head names it.
+    // The card's Dismiss closes it. The item row's head names it and its
+    // kind, so the card says neither again.
+    await expect(card).not.toContainText("FYI");
     await expect(
       card.getByRole("button", { exact: true, name: "Dismiss" }),
     ).toBeVisible();

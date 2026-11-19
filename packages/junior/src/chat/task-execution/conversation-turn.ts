@@ -102,7 +102,11 @@ import {
   webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
+import {
+  instructionActorFor,
+  instructionForInputs,
+  turnRequestText,
+} from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -250,10 +254,17 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(
-          messages,
-          await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
+        const rendered = await eventReviewItemInputs(messages);
+        for (const { message, requestText } of resolved.batch) {
+          if (requestText) {
+            rendered.set(message.inboundMessageId, {
+              kind: "runtime",
+              text: message.input.text.trim(),
+              requestText,
+            });
+          }
+        }
+        inputs = renderEventBatchInputs(messages, rendered);
         eventMeta = eventBatchMessageMeta(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
@@ -317,7 +328,15 @@ export function createConversationTurnWorker(
       );
       userMessageId = userMessage.id;
       inputs = savedMessageIsEvent
-        ? [{ kind: "runtime", text: userMessage.text }]
+        ? [
+            {
+              kind: "runtime",
+              text: userMessage.text,
+              ...(userMessage.meta?.requestText
+                ? { requestText: userMessage.meta.requestText }
+                : undefined),
+            },
+          ]
         : await webTurnInputs(
             turnInputs.map((message) => ({
               reviewItemChange: message.meta?.reviewItemChanges?.[0],
@@ -490,6 +509,9 @@ export function createConversationTurnWorker(
           }
           // An Event batch saves one Message with the rendered Events.
           if (webInputMessages.length === 0) {
+            const requestText = turnRequestText({
+              instruction: instructionInputs,
+            });
             upsertConversationMessage(conversation, {
               id: userMessageId,
               role: "user",
@@ -501,6 +523,7 @@ export function createConversationTurnWorker(
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,
+                ...(requestText ? { requestText } : undefined),
                 ...eventMeta,
               },
             });

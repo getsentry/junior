@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { CONVERSATION_FEED_PAGE_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
@@ -91,10 +92,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-ask-kind",
       "Ready to merge",
     );
-    // The changes the pills name get no chip of their own.
-    await expect(row.locator("[data-linked-work-chip]")).toHaveText([
-      "Return 429 before parsing oversized envelopes#44",
-    ]);
+    // The changes the pills name get no chip of their own. A chip shows
+    // its number, and names its title, which shows on hover.
+    const chip = row.getByRole("link", {
+      name: "Return 429 before parsing oversized envelopes #44",
+    });
+    await expect(row.locator("[data-linked-work-chip]")).toHaveCount(1);
+    await expect(chip).toHaveAttribute("data-linked-work-chip", "");
+    await chip.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "Return 429 before parsing oversized envelopes",
+    );
 
     // An FYI says so in words too. To do leaves it out, so Conversations
     // shows it.
@@ -133,6 +141,30 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
+    // The preview holds only the first 400 chars of the message, so give
+    // the row a short one with a mention and a pull request.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{
+            conversationId: string;
+            activityPreview?: { text: string };
+          }>;
+        };
+        for (const row of feed.conversations) {
+          if (
+            row.conversationId === RELEASE_CONVERSATION_ID &&
+            row.activityPreview
+          ) {
+            row.activityPreview.text =
+              "<@U123> asks for a review of https://github.com/getsentry/payments/pull/91";
+          }
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = page
       .getByRole("region", { name: "Conversations" })
@@ -271,7 +303,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
+        // Request the full page because this test changes it.
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONVERSATION_FEED_PAGE_VERSION_HEADER]: "",
+          },
+        });
         const feed = (await response.json()) as {
           conversations: Array<{ displayTitle: string }>;
         };

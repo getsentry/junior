@@ -47,6 +47,7 @@ import {
   paneRowRoot,
   type PaneRow,
 } from "./paneRows";
+import { NAV_PAGES } from "../../navPages";
 
 const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 
@@ -446,7 +447,7 @@ function PaneNavHeader(props: { newAction: PaneNewAction }) {
             toolbarControlBoxClass,
             "block shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           )}
-          to="/"
+          to={NAV_PAGES.inbox.to}
         >
           <JuniorLogo size="sm" />
         </Link>

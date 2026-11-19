@@ -2,6 +2,15 @@ import * as z from "zod";
 
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
+
+/** A code change's size as its provider counts it. Unknown parts stay unset. */
+export const codeChangeSizeSchema = z.strictObject({
+  changedFiles: count.optional(),
+  additions: count.optional(),
+  deletions: count.optional(),
+});
+export type CodeChangeSize = z.output<typeof codeChangeSizeSchema>;
+
 const duration = z.number().finite().nonnegative();
 
 // A Junior image path. Browsers never load a third-party image URL.
@@ -40,6 +49,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
       .strictObject({ passed: count, failed: count, pending: count })
       .optional(),
     mergeable: z.boolean().optional(),
+    // The same counts as `codeChangeSizeSchema`.
     changedFiles: count.optional(),
     additions: count.optional(),
     deletions: count.optional(),

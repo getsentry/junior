@@ -28,7 +28,7 @@ describe("commentOnIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 2888, body: "Concerns below." },
+        { repo: "getsentry/junior", issue: 2888, body: "Concerns below." },
         { toolCallId: "comment" },
       ),
     ).resolves.toEqual({
@@ -60,7 +60,7 @@ describe("commentOnIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 2888, body: "Concerns below." },
+        { repo: "getsentry/junior", issue: 2888, body: "Concerns below." },
         { toolCallId: "missing" },
       ),
     ).rejects.toThrow("GitHub issue comment failed with HTTP 404: Not Found");
