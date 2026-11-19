@@ -86,6 +86,7 @@ attributes. Nested logs and spans inherit them.
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
+| Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
