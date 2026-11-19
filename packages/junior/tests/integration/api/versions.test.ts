@@ -207,15 +207,25 @@ describe("versions API", () => {
       title: "Approve",
       visibility: "private",
     });
+    // An open item is a status input, so the detail moves too. The feed row
+    // moves from `working` to `needs_input`, which outranks it.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual(["reviewItems"]);
+    expect(changed(withPin, withItem)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
     await closeReviewItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual(["reviewItems"]);
+    expect(changed(withItem, closed)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
     // minute in the past, so the Events below stay in the spend window and

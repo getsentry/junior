@@ -27,7 +27,6 @@ import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import { Spinner } from "../components/ui/spinner";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
-import { visualStatusForConversation } from "../format";
 import {
   ConversationCast,
   useConversationDensity,
@@ -93,6 +92,7 @@ import {
   fadeTextClass,
   fadeWhenOverflowing,
 } from "../textFade";
+import { conversationTurnIsActive } from "../conversations/turnActivity";
 import { ReviewItemTitle } from "./ReviewItemPeople";
 import { reviewItemTitleText } from "./reviewItemFormat";
 
@@ -448,7 +448,6 @@ function ConversationInboxRow(
               onArchived={showArchived}
               onRowAction={props.onRowAction}
               selected={props.selected}
-              waiting={false}
             />
           ))}
           {toggle || actionsBelow ? (
@@ -599,7 +598,7 @@ function InboxRowBody(
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
   const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversation?.status === "active";
+  const running = conversationTurnIsActive(conversation);
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
@@ -821,7 +820,7 @@ function InboxRowBody(
               {conversation ? (
                 <ConversationStatusText
                   isPrivate={conversation.visibility === "private"}
-                  status={visualStatusForConversation(conversation)}
+                  status={conversation.status}
                 />
               ) : null}
               {pinned ? (

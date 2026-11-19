@@ -125,7 +125,7 @@ describe("object links API", () => {
       label: "Plan the private launch",
       objectType: "conversation",
       plugin: "junior",
-      status: "idle",
+      status: "done",
       title: "Plan the private launch",
       url: CONVERSATION_URL,
     });

@@ -198,7 +198,9 @@ export type Conversation = {
   participants?: ConversationSummaryReport["participants"] | undefined;
   sentryTraceUrl?: string | undefined;
   startedAt: string;
-  status: ConversationSummaryReport["status"];
+  status: ConversationStatus;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;
@@ -229,7 +231,8 @@ export type SystemPluginsData = {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle" | "stopped";
+/** The status of one Conversation's own work, as the API derives it. */
+export type ConversationStatus = ConversationSummaryReport["status"];
 
 export type CodeBlock = {
   code: string;

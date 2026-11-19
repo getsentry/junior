@@ -35,6 +35,7 @@ import {
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
+import { conversationTurnIsActive } from "../conversations/turnActivity";
 
 /** A Conversation row, with what it asks of the viewer when it asks. */
 export type ConversationRow = {
@@ -276,12 +277,12 @@ function useBuildInboxData(input: {
   );
   const running = conversations.filter(
     (conversation) =>
-      conversation.status === "active" && !conversation.pinnedAt,
+      conversationTurnIsActive(conversation) && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedRunning: Conversation[]) => [
     ...unpinnedRunning,
-    ...pinned.filter((conversation) => conversation.status === "active"),
-    ...pinned.filter((conversation) => conversation.status !== "active"),
+    ...pinned.filter((conversation) => conversationTurnIsActive(conversation)),
+    ...pinned.filter((conversation) => !conversationTurnIsActive(conversation)),
   ];
 
   const todoAutomations = automations.filter(
