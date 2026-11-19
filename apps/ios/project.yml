@@ -15,6 +15,7 @@ fileGroups:
   - project.yml
   - Makefile
   - Brewfile
+  - Brewfile.ci
   - Gemfile
   - Gemfile.lock
   - .ruby-version

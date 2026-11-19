@@ -32,8 +32,8 @@ jobs:
       - name: Test JuniorKit
         working-directory: apps/ios/Packages/JuniorKit
         run: swift test
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
       # The same configuration that the TestFlight lane signs and uploads.
       - name: Build Release for device
         run: >-
@@ -50,8 +50,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
       - name: Start the mock MCP server
         run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
       # Build before the boot, then boot one simulator for the UI tests and
