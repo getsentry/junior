@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { eq } from "drizzle-orm";
 import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
@@ -183,12 +184,17 @@ export async function syncReviewItemSlackCards(args: {
           // shares the thread of its parent, so an item linked to both shows
           // one card. The row names the Conversation whose routing found the
           // thread.
-          const [linked, carded] = await Promise.all([
-            Promise.all(item.conversationIds.map(resolveCardThread)),
-            Promise.all(
-              rows.map((row) => resolveCardThread(row.conversationId)),
-            ),
-          ]);
+          const conversationIds = [
+            ...new Set([
+              ...item.conversationIds,
+              ...rows.map((row) => row.conversationId),
+            ]),
+          ];
+          const resolved = await mapBounded(conversationIds, resolveCardThread);
+          const threadOf = (conversationId: string) =>
+            resolved[conversationIds.indexOf(conversationId)];
+          const linked = item.conversationIds.map(threadOf);
+          const carded = rows.map((row) => threadOf(row.conversationId));
           const linkedThreads = new Map<string, CardThread>();
           for (const thread of linked) {
             if (thread && !linkedThreads.has(threadKey(thread))) {
@@ -207,12 +213,10 @@ export async function syncReviewItemSlackCards(args: {
           // A detached thread gets no new card. A card that it already has
           // still changes in place, so it does not show a stale state.
           const missing = (
-            await Promise.all(
-              uncarded.map(async (thread) =>
-                (await isConversationDeliveryPaused(thread.conversationId))
-                  ? []
-                  : [thread],
-              ),
+            await mapBounded(uncarded, async (thread) =>
+              (await isConversationDeliveryPaused(thread.conversationId))
+                ? []
+                : [thread],
             )
           ).flat();
           const results = await Promise.allSettled([

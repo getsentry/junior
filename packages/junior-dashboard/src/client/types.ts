@@ -11,7 +11,6 @@ import type {
   ActorIdentity,
   ConversationReportMessageEvent,
   ConversationFeedItem,
-  ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -168,6 +167,9 @@ export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
   /** The latest Brief's status, summary, and intent, when visible. */
   brief?: ConversationFeedItem["brief"] | undefined;
+  /** The newest stored files, when private content is visible. */
+  media?: ConversationFeedItem["media"] | undefined;
+  links?: ConversationFeedItem["links"] | undefined;
   annotations?: ConversationSummaryReport["annotations"] | undefined;
   sidebarAnnotations?:
     | ConversationSummaryReport["sidebarAnnotations"]
@@ -217,10 +219,7 @@ export type DashboardCoreData = {
   me: Identity;
 };
 
-export type SystemData = DashboardCoreData & {
-  conversationStats?: ConversationStatsReport;
-  conversationStatsError: boolean;
-  conversationStatsLoading: boolean;
+export type SystemPluginsData = {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;

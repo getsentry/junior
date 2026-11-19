@@ -1,3 +1,4 @@
+import { renderTag } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -53,9 +54,7 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
 
 const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
 
-<personality>
-${JUNIOR_PERSONALITY}
-</personality>
+${renderTag("personality", {}, [JUNIOR_PERSONALITY])}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
@@ -103,6 +102,7 @@ async function shrinkImage(
       fit: "inside",
       withoutEnlargement: true,
     });
+    // oxlint-disable-next-line no-await-in-loop -- Try a smaller edge only when the one before is too large.
     const { data, info } = await (
       hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
     ).toBuffer({ resolveWithObject: true });
@@ -145,6 +145,7 @@ async function fitImagesToRequest(images: InputImage[]): Promise<{
       remainingBytes -= image.data.byteLength;
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each share uses the bytes that the images before it left.
     const smaller = await shrinkImage(image, share);
     fitted[index] = smaller.image;
     remainingBytes -= smaller.image.data.byteLength;
@@ -213,6 +214,7 @@ export function createImageGenerateTool(
     execute: async ({ prompt, images = [] }) => {
       const model = options.modelId;
       const sourceImages = await Promise.all(
+        // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 4 images.
         images.map(async (path) => ({
           path,
           ...(await readSandboxImage(

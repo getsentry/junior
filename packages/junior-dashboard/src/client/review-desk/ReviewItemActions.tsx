@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type {
   ReviewItemActionBody,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { clearAnswerDraft } from "../components/answerDrafts";
 import { InlineError } from "../components/InlineError";
 import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useReviewItemAction } from "./queries";
+import { useFailedReviewItemAnswer, useReviewItemAction } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -70,25 +72,56 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The review desk and the side panel use it.
+ * closed. The review desk and the side panel use it. A caller that shows
+ * its own Dismiss turns this one off. `onAction` takes the actions in its
+ * place and reports their failures itself. An answer that failed shows
+ * again in the form.
  */
-export function ReviewItemActions(props: { item: ReviewItemPayload }) {
+export function ReviewItemActions(props: {
+  dismiss?: boolean;
+  /** More actions after Take and Dismiss, such as an Inbox card's Snooze. */
+  extra?: ReactNode;
+  item: ReviewItemPayload;
+  onAction?(body: ReviewItemActionBody): Promise<void>;
+  /** The take button's label, or false to leave it out. */
+  take?: string | false;
+}) {
   const { item } = props;
   const action = useReviewItemAction();
+  const draft = useFailedReviewItemAnswer(item.id);
   const [error, setError] = useState<string>();
   const [unsent, setUnsent] = useState(false);
+  // `onAction` sends without `action`, so it keeps its own pending state.
+  const [sending, setSending] = useState(false);
   useReportUnsentAnswer(item, unsent);
+  // An item can close elsewhere, such as in Slack, with answers unsent here.
+  useEffect(() => {
+    if (item.status !== "open") clearAnswerDraft(item.id);
+  }, [item.id, item.status]);
 
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct) {
     return (
-      <p className="m-0 text-sm text-dashboard-text-muted">
-        Only an assignee can act on this item.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="m-0 text-sm text-dashboard-text-muted">
+          Only an assignee can act on this item.
+        </p>
+        {props.extra ? (
+          <div className="flex flex-wrap gap-1 sm:ml-auto">{props.extra}</div>
+        ) : null}
+      </div>
     );
   }
 
   async function run(body: ReviewItemActionBody) {
+    if (props.onAction) {
+      setSending(true);
+      try {
+        return await props.onAction(body);
+      } finally {
+        setSending(false);
+      }
+    }
     setError(undefined);
     try {
       await action.mutateAsync({ body, id: item.id });
@@ -98,25 +131,30 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
+  const dismiss = props.dismiss ?? true;
+  const take = item.canTake ? (props.take ?? "Take") : false;
   // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
-      {item.canTake ? (
+      {take ? (
         <Button
-          disabled={action.isPending}
+          disabled={action.isPending || sending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
           variant="ghost"
         >
-          Take
+          {take}
         </Button>
       ) : null}
-      <Button
-        disabled={action.isPending}
-        onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="ghost"
-      >
-        Dismiss
-      </Button>
+      {dismiss ? (
+        <Button
+          disabled={action.isPending || sending}
+          onClick={() => void run({ action: "dismiss" }).catch(() => {})}
+          variant="ghost"
+        >
+          Dismiss
+        </Button>
+      ) : null}
+      {props.extra}
     </>
   );
 
@@ -127,7 +165,9 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
           <div className="font-medium">
             <DisplayText text={item.request.question} />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
+            draft={draft}
             onUnsentChange={setUnsent}
             onSubmit={(answer) =>
               run({
@@ -143,13 +183,13 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             secondaryActions={secondaryActions}
           />
         </div>
-      ) : (
+      ) : take || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>
         </div>
-      )}
+      ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
   );

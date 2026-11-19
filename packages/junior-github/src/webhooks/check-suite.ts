@@ -1,6 +1,7 @@
 /**
  * GitHub check suite events.
  */
+import pLimit from "p-limit";
 import type {
   EventInput,
   EventPublisher,
@@ -25,6 +26,9 @@ import {
   pullRequestTargets,
 } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
+
+// Pull requests that one check suite delivery loads at once.
+const PULL_REQUEST_LOAD_CONCURRENCY = 5;
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -764,6 +768,7 @@ async function loadAllCheckSuitesPassed(args: {
   let totalCount = 0;
   for (let page = 1; page <= MAX_CHECK_SUITE_PAGES; page += 1) {
     const response = checkSuitesListResponseSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging once every check suite is read.
       await githubRequest(
         "https://api.github.com",
         `/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repoName)}/commits/${args.headSha}/check-suites?per_page=100&page=${page}`,
@@ -893,8 +898,9 @@ export async function loadCheckSuiteFacts(args: {
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
       });
-      const loaded = await Promise.all(
-        target.pullRequestNumbers.map(async (number) => {
+      const loaded = await pLimit(PULL_REQUEST_LOAD_CONCURRENCY).map(
+        target.pullRequestNumbers,
+        async (number) => {
           try {
             const response = await githubRequest(
               "https://api.github.com",
@@ -918,7 +924,7 @@ export async function loadCheckSuiteFacts(args: {
             }
             return undefined;
           }
-        }),
+        },
       );
       const pullRequestFactsByNumber: Record<
         number,

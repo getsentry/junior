@@ -131,9 +131,9 @@ function isSlackApiMethod(value: string): value is SlackApiMethod {
 
 function normalizeHeaders(headers: Headers): Record<string, string> {
   const normalized: Record<string, string> = {};
-  headers.forEach((value, key) => {
+  for (const [key, value] of headers) {
     normalized[key.toLowerCase()] = value;
-  });
+  }
   return normalized;
 }
 
@@ -195,17 +195,17 @@ async function parseSlackApiRequestBody(
     const form = await request.formData();
     const parsed: Record<string, unknown> = {};
 
-    form.forEach((value, key) => {
+    for (const [key, value] of form) {
       if (typeof value === "string") {
         assignBodyValue(parsed, key, value);
-        return;
+        continue;
       }
       assignBodyValue(parsed, key, {
         name: value.name,
         size: value.size,
         type: value.type,
       });
-    });
+    }
 
     return parsed;
   }

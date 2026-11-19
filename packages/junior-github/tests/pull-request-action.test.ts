@@ -3,6 +3,7 @@ import type {
   PluginConversationReviewItems,
   PluginRoute,
 } from "@sentry/junior-plugin-api";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +16,7 @@ import { mswServer } from "./msw";
 
 const PULL_URL = "https://github.com/getsentry/junior/pull/946";
 const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
+const BOT_USER_ID = 264270552;
 
 let delivery = 0;
 
@@ -63,7 +65,9 @@ function checkSuiteCompleted() {
   );
 }
 
-function reviewSubmitted(state: "approved" | "changes_requested") {
+function reviewSubmitted(
+  state: "approved" | "changes_requested" | "commented",
+) {
   return signedRequest(
     {
       action: "submitted",
@@ -101,13 +105,20 @@ function pullRequestAction(action: string, merged = false) {
 interface GitHubState {
   autoMerge?: boolean;
   draft: boolean;
+  /** The commit at the head of the pull request. */
+  headSha?: string;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
   holdNextPullRead?: Promise<void>;
   merged: boolean;
   requestedReviewers?: string[];
-  reviews: Array<{ state: string; user: { login: string } }>;
+  reviews: Array<{
+    commit_id?: string;
+    id?: number;
+    state: string;
+    user: { login: string };
+  }>;
   state: "closed" | "open";
 }
 
@@ -137,6 +148,7 @@ function mockGitHub(github: GitHubState, requests: string[]) {
             ? { enabled_by: { login: "someone" }, merge_method: "squash" }
             : null,
           draft: github.draft,
+          head: { sha: github.headSha ?? "head-1" },
           html_url: PULL_URL,
           mergeable_state: mergeableState,
           merged: github.merged,
@@ -145,6 +157,7 @@ function mockGitHub(github: GitHubState, requests: string[]) {
           ),
           state: github.state,
           title: "Add the review desk notice",
+          user: { id: BOT_USER_ID },
         });
       },
     ),
@@ -163,6 +176,54 @@ function mockGitHub(github: GitHubState, requests: string[]) {
         );
       },
     ),
+    // The feedback tool reads one review, and sets its reaction.
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/pulls/946/reviews/:id",
+      ({ params }) => {
+        const review = github.reviews.find(
+          (item) => item.id === Number(params["id"]),
+        );
+        return HttpResponse.json({ ...review, node_id: `PRR_${review?.id}` });
+      },
+    ),
+    http.post("https://api.github.com/graphql", () =>
+      HttpResponse.json({ data: { node: { reactionGroups: [] } } }),
+    ),
+    // GitHub asks the reviewers again, as it does for a real request.
+    http.post(
+      "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
+      async ({ request }) => {
+        const { reviewers } = (await request.json()) as { reviewers: string[] };
+        requests.push(`request ${reviewers.join(",")}`);
+        github.requestedReviewers = [
+          ...(github.requestedReviewers ?? []),
+          ...reviewers,
+        ];
+        return HttpResponse.json({}, { status: 201 });
+      },
+    ),
+  );
+}
+
+/** Mark one review body addressed with the feedback tool, as Junior does. */
+async function markReviewAddressed(reviewId: number): Promise<void> {
+  const tool = bindPluginTool(
+    githubPlugin().hooks!.tools!()["updatePullRequestFeedback"],
+    {
+      egress: { fetch: async ({ request }) => await fetch(request) },
+      log: { error() {}, info() {}, warn() {} },
+      users: { replaceSlackMentions: async (value: unknown) => value },
+    } as never,
+  );
+  await tool.execute(
+    {
+      comment_id: reviewId,
+      comment_kind: "review_body",
+      pull_request: 946,
+      repo: "getsentry/junior",
+      status: "addressed",
+    },
+    { toolCallId: `addressed-${reviewId}` },
   );
 }
 
@@ -329,7 +390,7 @@ describe("next action item", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `**Add the review desk notice** (#946) is approved, and GitHub says that it can merge: ${PULL_URL}`,
+          body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
@@ -349,11 +410,12 @@ describe("next action item", () => {
       expect(calls).toEqual([notice]);
 
       // GitHub has not computed the merge state after a push. Two reads
-      // stay unknown, so nothing changes, and a later event decides.
+      // stay unknown, so nothing changes, and a later event decides. Both
+      // pages of reviews still load, for a change request by the requester.
       requests.length = 0;
       github.mergeableStates = [null, "unknown"];
       await webhook.handler(pullRequestAction("synchronize"));
-      expect(requests).toEqual(["pull", "pull"]);
+      expect(requests).toEqual(["pull", "pull", "reviews", "reviews"]);
       expect(calls).toEqual([notice]);
 
       // The second read has the merge state: the new checks still run.
@@ -391,12 +453,10 @@ describe("next action item", () => {
       await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toEqual(notice);
 
-      // With auto-merge on, GitHub merges it, so the notice closes and no
-      // reviews load. Turning auto-merge off brings the notice back.
+      // With auto-merge on, GitHub merges it, so the notice closes. Turning
+      // auto-merge off brings the notice back.
       github.autoMerge = true;
-      requests.length = 0;
       await webhook.handler(pullRequestAction("auto_merge_enabled"));
-      expect(requests).toEqual(["pull"]);
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
@@ -516,7 +576,7 @@ describe("next action item", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `GitHub asks you to review **Add the review desk notice** (#946): ${PULL_URL}`,
+          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
@@ -562,6 +622,196 @@ describe("next action item", () => {
       await fixture.close();
     }
   });
+
+  it("asks the requester again after a push that follows their change request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: { title: "Review requested · #946" },
+      });
+
+      // The requester asks for changes, so GitHub stops asking them.
+      github.requestedReviewers = [];
+      github.reviews = [
+        {
+          commit_id: "head-1",
+          id: 301,
+          state: "CHANGES_REQUESTED",
+          user: { login: "requester" },
+        },
+      ];
+      await webhook.handler(reviewSubmitted("changes_requested"));
+      const ended = {
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The review request ended.",
+          status: "done",
+        },
+        kind: "close",
+      };
+      expect(calls.at(-1)).toEqual(ended);
+
+      // Junior pushes the fix. The requester's change request is on an older
+      // commit, so the review is wanted again with no new GitHub request.
+      github.headSha = "head-2";
+      await webhook.handler(pullRequestAction("synchronize"));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `#946 has new commits since you requested changes.\n\n${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject: {
+            id: PULL_URL,
+            title: "Add the review desk notice (#946)",
+            url: PULL_URL,
+          },
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      });
+
+      // Junior marks the change request addressed, and asks its author to
+      // review again. GitHub then asks for the review, so the item stays.
+      requests.length = 0;
+      await markReviewAddressed(301);
+      expect(requests).toEqual(["pull", "reviews", "request requester"]);
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toHaveLength(3);
+
+      // The approval ends the review.
+      github.requestedReviewers = [];
+      github.reviews.push({
+        commit_id: "head-2",
+        id: 302,
+        state: "APPROVED",
+        user: { login: "requester" },
+      });
+      await webhook.handler(reviewSubmitted("approved"));
+      expect(calls.at(-1)).toEqual(ended);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("asks the requester again when a change request is addressed with no push", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: [],
+      reviews: [
+        {
+          commit_id: "head-1",
+          id: 301,
+          state: "CHANGES_REQUESTED",
+          user: { login: "requester" },
+        },
+      ],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      // The change request is on the head commit, so nothing is new yet.
+      await webhook.handler(reviewSubmitted("changes_requested"));
+      expect(calls).toEqual([]);
+
+      // Junior answers without a push, such as when the code was already
+      // right. GitHub asks the requester again, and the item comes back.
+      await markReviewAddressed(301);
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          kind: "upsert",
+          notice: expect.objectContaining({
+            body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it.each([
+    {
+      name: "an approval",
+      reviews: [{ id: 301, state: "APPROVED" }],
+      webhookState: "approved" as const,
+    },
+    {
+      name: "a comment",
+      reviews: [{ id: 301, state: "COMMENTED" }],
+      webhookState: "commented" as const,
+    },
+    {
+      // With auto-merge on, a push after the approval can merge with no
+      // other person, so asking again would only bother the requester.
+      autoMerge: true,
+      name: "an approval that follows a change request",
+      reviews: [
+        { id: 301, state: "CHANGES_REQUESTED" },
+        { id: 302, state: "APPROVED" },
+      ],
+      webhookState: "approved" as const,
+    },
+  ])(
+    "does not ask the requester again after $name",
+    async ({ autoMerge, reviews, webhookState }) => {
+      const fixture = await createGitHubFixture();
+      const calls: ReviewItemCall[] = [];
+      const requests: string[] = [];
+      const github: GitHubState = {
+        autoMerge,
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        requestedReviewers: [],
+        reviews: reviews.map((review) => ({
+          ...review,
+          commit_id: "head-1",
+          user: { login: "requester" },
+        })),
+        state: "open",
+      };
+      mockGitHub(github, requests);
+      try {
+        await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+        const webhook = route(fixture, calls);
+        await webhook.handler(reviewSubmitted(webhookState));
+        await markReviewAddressed(301);
+        github.headSha = "head-2";
+        await webhook.handler(pullRequestAction("synchronize"));
+        expect(requests).not.toContain("request requester");
+        expect(calls).toEqual([]);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   it("reads nothing from GitHub for a pull request with no requester Conversation", async () => {
     const fixture = await createGitHubFixture();

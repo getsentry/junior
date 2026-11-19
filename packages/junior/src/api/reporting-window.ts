@@ -174,9 +174,3 @@ export function sumUtcHoursIntoSixHours<T extends { date: string }>(args: {
     rows: bySix,
   });
 }
-
-/** PostgreSQL TO_CHAR pattern for UTC day keys. */
-export const PG_UTC_DAY = "YYYY-MM-DD";
-
-/** PostgreSQL TO_CHAR pattern for UTC hour keys. */
-export const PG_UTC_HOUR = 'YYYY-MM-DD"T"HH24';

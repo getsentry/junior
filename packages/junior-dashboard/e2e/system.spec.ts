@@ -1,5 +1,6 @@
 import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "./request-budget";
 import { screenshot } from "./screenshot";
 
 /** Vary outcomes so the running cost lines move. */
@@ -135,6 +136,23 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
   await screenshot(page, "system-plugin-github", { view: "desktop" });
+});
+
+test("loads the System overview within its request budget", async ({
+  page,
+  dashboard,
+}) => {
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/system`);
+      await expect(page.getByText("Conversation activity")).toBeVisible();
+      await expect(
+        page.getByText("Net savings", { exact: true }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 2 },
+  );
 });
 
 test("lists Workspaces with the baseline snapshot", async ({
@@ -314,11 +332,9 @@ test("shows what cache warming saved in the range", async ({
   await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
   await expect(panel.getByText("Effectiveness", { exact: true })).toBeVisible();
   await expect(
-    panel.getByText(/of possible savings had no warm state/),
+    panel.getByText(/of possible savings on live days had no warm state/),
   ).toBeVisible();
-  await expect(
-    panel.getByText(/Excludes 8 days without warmup cost/),
-  ).toBeVisible();
+  await expect(panel.getByText(/Includes 4 days from history/)).toBeVisible();
   await expect(
     panel.getByLabel("Cache warming net savings and effectiveness per day"),
   ).toBeVisible();

@@ -25,12 +25,17 @@ import {
   itemNeedsUser,
   reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
+  type ReviewItemReader,
 } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
   readReviewItemForUser,
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
+import {
+  readRelatedReviewWork,
+  type RelatedReviewWork,
+} from "@/chat/review-items/related";
 import {
   countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
@@ -43,6 +48,7 @@ import {
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import { readItemRoots } from "./item-roots";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -151,9 +157,16 @@ function subjectPayload(
 }
 
 /** Build the API payload of one Review item for its viewer. */
-function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
+function reviewItemPayload(
+  item: ReviewItem,
+  viewer: User,
+  roots: Awaited<ReturnType<typeof readItemRoots>>,
+  related: RelatedReviewWork | undefined,
+): ReviewItemPayload {
+  const root = roots.get(item.addedByConversationId);
   return {
     addedByConversationId: item.addedByConversationId,
+    ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
     body: item.body,
@@ -164,6 +177,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
+    rootConversationId: root?.rootConversationId ?? item.addedByConversationId,
     status: item.status,
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
@@ -174,9 +188,32 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(related &&
+    (related.items.length > 0 || related.conversationIds.length > 0)
+      ? { related }
+      : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
+}
+
+/**
+ * Build the payloads of a page of items, with the root of each one and the
+ * related work of the open ones. Each read covers the page.
+ */
+async function reviewItemPayloads(
+  items: readonly ReviewItem[],
+  viewer: User,
+  reader: ReviewItemReader,
+): Promise<ReviewItemPayload[]> {
+  const db = getDb();
+  const [roots, related] = await Promise.all([
+    readItemRoots(db, items, viewer),
+    readRelatedReviewWork(db, reader, viewer, items),
+  ]);
+  return items.map((item) =>
+    reviewItemPayload(item, viewer, roots, related.get(item.id)),
+  );
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -243,7 +280,7 @@ export function createReviewItemRoutes(services: {
         const page = closed.slice(0, query.limit);
         const last = page.at(-1);
         return jsonResponse(reviewItemListSchema, {
-          items: page.map((item) => reviewItemPayload(item, viewer)),
+          items: await reviewItemPayloads(page, viewer, reader),
           ...(closed.length > query.limit && last
             ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
@@ -282,8 +319,10 @@ export function createReviewItemRoutes(services: {
       const page = open.slice(0, query.limit);
       const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
-        items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
-          reviewItemPayload(item, viewer),
+        items: await reviewItemPayloads(
+          [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
+          viewer,
+          reader,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -360,7 +399,12 @@ export function createReviewItemRoutes(services: {
           viewer,
           context.req.valid("param").id,
         );
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
+        );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }
@@ -385,7 +429,12 @@ export function createReviewItemRoutes(services: {
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
         });
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
+        );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }

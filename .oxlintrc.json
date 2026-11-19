@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "extends": ["./tools/oxlint/type-aware.json"],
+  "extends": [
+    "./tools/oxlint/type-aware.json",
+    "./tools/oxlint/await-in-loop.json"
+  ],
   "plugins": [
     "eslint",
     "typescript",
@@ -85,6 +88,7 @@
       }
     ],
     "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
@@ -118,13 +122,25 @@
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
         "junior/no-raw-sql-queries": "error",
-        "junior/no-regex-url-parsing": "error"
+        "junior/no-regex-url-parsing": "error",
+        "junior/no-value-switch": "error"
       }
     },
     {
       "files": ["packages/*/src/**"],
       "rules": {
-        "junior/no-service-fallback": "error"
+        "junior/bounded-fan-out": "error",
+        "junior/no-service-fallback": "error",
+        "junior/prefer-map-bounded": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-evals/src/fixture/**",
+        "packages/junior-testing/src/**"
+      ],
+      "rules": {
+        "junior/bounded-fan-out": "off"
       }
     },
     {
@@ -135,6 +151,44 @@
       ],
       "rules": {
         "junior/no-service-fallback": "off"
+      }
+    },
+    {
+      "files": ["packages/junior/src/**/*.ts", "packages/junior-*/src/**/*.ts"],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "error",
+        "junior/no-prompt-tag-matching": "error",
+        "junior/no-prompt-text-escapes": "error",
+        "junior/prompt-tag-attributes": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-dashboard/**",
+        "packages/junior-evals/**",
+        "packages/junior-plugin-api/src/prompt-tags.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-tag-matching": "off",
+        "junior/no-prompt-text-escapes": "off",
+        "junior/prompt-tag-attributes": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/api/html.ts",
+        "packages/junior/src/api/acp/authorization-page.ts",
+        "packages/junior/src/api/mcp/oauth/consent-page.ts",
+        "packages/junior/src/api/mcp/oauth/page.ts",
+        "packages/junior/src/handlers/oauth-html.ts",
+        "packages/junior/src/chat/slack/tool-support/canvas/html.ts",
+        "packages/junior/src/chat/slack/mrkdwn.ts",
+        "packages/junior-google/src/setup-routes.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-text-escapes": "off"
       }
     },
     {

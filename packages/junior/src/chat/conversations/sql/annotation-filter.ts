@@ -1,6 +1,5 @@
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
-import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationAnnotations,
   juniorConversations,
@@ -60,29 +59,4 @@ export function treeHasAnnotationKey(
       annotationKeyMatches(key),
     )}
   )`;
-}
-
-/** Return the IDs in `conversationIds` that have an Annotation with `key`. */
-export async function conversationIdsWithAnnotation(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-  key: string,
-): Promise<Set<string>> {
-  if (conversationIds.length === 0) {
-    return new Set();
-  }
-  const rows = await db
-    .selectDistinct({
-      conversationId: juniorConversationAnnotations.conversationId,
-    })
-    .from(juniorConversationAnnotations)
-    .where(
-      and(
-        inArray(juniorConversationAnnotations.conversationId, [
-          ...conversationIds,
-        ]),
-        annotationKeyMatches(key),
-      ),
-    );
-  return new Set(rows.map((row) => row.conversationId));
 }

@@ -64,10 +64,6 @@ const agentDispatchMailboxMetadataSchema = z
 
 export const AGENT_DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-interface DurableDispatchTurnResult extends DispatchTurnResult {
-  hasResumableRun?: boolean;
-}
-
 type DispatchRoutingContext = Pick<
   DispatchTurnContext,
   "credentialContext" | "dispatch" | "surface"
@@ -121,6 +117,7 @@ export interface AgentDispatchConversationWorkerOptions {
       checkIn?: () => Promise<boolean>;
     },
   ) => Promise<void>;
+  /** Returns undefined when the runtime reported no outcome. */
   runTurn: (
     dispatch: DispatchRecord,
     hooks: {
@@ -128,7 +125,7 @@ export interface AgentDispatchConversationWorkerOptions {
       shouldYield?: () => boolean;
       checkIn?: () => Promise<boolean>;
     },
-  ) => Promise<DispatchTurnResult>;
+  ) => Promise<DispatchTurnResult | undefined>;
 }
 
 /** Build the stable mailbox work item for one agent dispatch. */
@@ -298,7 +295,7 @@ export async function resolveAgentDispatchId(
 
 async function readDispatchTurnResult(
   dispatch: DispatchRecord,
-): Promise<DurableDispatchTurnResult> {
+): Promise<DispatchTurnResult> {
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
   const storedSession = await getTurnRecord(conversationId, turnId);
@@ -327,26 +324,32 @@ async function readDispatchTurnResult(
     };
   }
   if (!session) {
-    return {};
+    return { outcome: "not_started" };
   }
-  if (session.state === "paused") {
-    return { hasResumableRun: true, outcome: "awaiting_resume" };
+  switch (session.state) {
+    case "paused":
+      return { outcome: "awaiting_resume" };
+    case "running":
+      return { outcome: "still_running" };
+    case "completed":
+      return { outcome: "completed" };
+    case "abandoned":
+    case "failed":
+      // A failure that ends the dispatch records its outcome above. Any
+      // other failure, such as a thrown runtime error, can run again.
+      return {
+        ...(errorMessage ? { errorMessage } : undefined),
+        outcome: "retryable",
+      };
   }
-  if (session.state === "running") {
-    return { hasResumableRun: true };
-  }
-  if (session.state !== "completed") {
-    return {};
-  }
-  return {
-    outcome: "completed",
-    ...(resultMessageTs ? { resultMessageTs } : undefined),
-  };
 }
 
 async function projectDispatchTurnResult(
   dispatchId: string,
-  result: DispatchTurnResult,
+  result: Exclude<
+    DispatchTurnResult,
+    { outcome: "retryable" | "still_running" }
+  >,
 ): Promise<void> {
   switch (result.outcome) {
     case "awaiting_resume":
@@ -370,7 +373,9 @@ async function projectDispatchTurnResult(
     case "completed":
       await markDispatchCompleted(dispatchId, result.resultMessageTs);
       break;
-    case undefined:
+    case "not_started":
+      // Without a turn record, nothing can advance this dispatch.
+      await markDispatchFailed(dispatchId, "Dispatch turn record is missing");
       break;
   }
 }
@@ -497,7 +502,11 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
     try {
-      const resumesDurableTurn = durableResult.hasResumableRun === true;
+      // A running turn under this conversation lease lost its worker, so
+      // resume recovers it like a paused turn.
+      const resumesDurableTurn =
+        durableResult.outcome === "awaiting_resume" ||
+        durableResult.outcome === "still_running";
       if (resumesDurableTurn && context.attempt.messages.length > 0) {
         // A durable run proves the original input was already committed. The
         // mailbox item is only a redelivery wake-up and must not restart it.
@@ -511,25 +520,27 @@ export function createAgentDispatchConversationWorker(
         });
         result = await readDispatchTurnResult(dispatch);
       } else {
-        const runtimeResult = await options.runTurn(dispatch, {
-          ack: acknowledge,
-          shouldYield: context.shouldYield,
-          checkIn: context.checkIn,
-        });
-        result = runtimeResult.outcome
-          ? runtimeResult
-          : {
-              ...runtimeResult,
-              ...(await readDispatchTurnResult(dispatch)),
-            };
+        result =
+          (await options.runTurn(dispatch, {
+            ack: acknowledge,
+            shouldYield: context.shouldYield,
+            checkIn: context.checkIn,
+          })) ?? (await readDispatchTurnResult(dispatch));
       }
-      if (!result.outcome) {
+      // This worker holds the conversation lease, so no other worker runs
+      // the turn. Throw so the retry budget caps another attempt.
+      if (result.outcome === "still_running") {
         throw new Error(
-          `Dispatch turn ${dispatch.id} returned without a durable outcome`,
+          `Dispatch turn ${dispatch.id} is still running after its attempt`,
+        );
+      }
+      if (result.outcome === "retryable") {
+        throw new Error(
+          result.errorMessage ?? `Dispatch turn ${dispatch.id} failed`,
         );
       }
       await projectDispatchTurnResult(dispatch.id, result);
-      if (result.outcome && !acknowledged) {
+      if (!acknowledged) {
         await acknowledge();
       }
       return result.outcome === "awaiting_resume" && context.shouldYield()

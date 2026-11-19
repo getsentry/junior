@@ -29,6 +29,7 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useComposerSkillMenu } from "./ComposerSkillMenu";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 import { getDashboardAgentName } from "../agentName";
 
@@ -280,6 +281,11 @@ export const ConversationComposer = memo(function ConversationComposer(
     scheduleDraftStorage();
   };
 
+  const skillMenu = useComposerSkillMenu(textareaRef, (text) => {
+    setMessage(text);
+    syncTextareaHeight();
+  });
+
   const replaceMessage = (draft: ConversationDraft) => {
     draftRef.current = draft;
     const textarea = textareaRef.current;
@@ -446,6 +452,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   }));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (skillMenu.handleKeyDown(event)) return;
     if (
       enterSends &&
       event.key === "Enter" &&
@@ -459,6 +466,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
+      {skillMenu.menu}
       {props.error || fileError ? (
         <div
           aria-live="polite"
@@ -567,12 +575,16 @@ export const ConversationComposer = memo(function ConversationComposer(
           inputMode="text"
           maxLength={32_000}
           defaultValue={initialDraft.text}
+          {...skillMenu.textboxProps}
+          onBlur={skillMenu.blur}
           onChange={(event) => {
             setMessage(event.target.value);
             syncTextareaHeight();
+            skillMenu.edit();
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
+          onSelect={skillMenu.sync}
           placeholder={
             props.placeholder ?? `Message ${getDashboardAgentName()}…`
           }

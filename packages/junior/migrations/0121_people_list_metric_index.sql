@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_metrics_turn_metric_occurred_at_idx" ON "junior_conversation_metrics" USING btree ("metric","occurred_at","actor_identity_id","conversation_id","value") WHERE "junior_conversation_metrics"."metric" IN ('duration_ms', 'total_tokens', 'cost_micro_usd');

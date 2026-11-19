@@ -88,6 +88,7 @@ export async function readBoundedOAuthErrorBody(
   let text = "";
 
   try {
+    /* oxlint-disable no-await-in-loop -- Stream chunks arrive one at a time. */
     while (
       bytesRead < MAX_OAUTH_ERROR_BODY_BYTES &&
       reads < MAX_OAUTH_ERROR_BODY_READS
@@ -108,6 +109,7 @@ export async function readBoundedOAuthErrorBody(
         return text + decoder.decode();
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     await reader.cancel();
     return text + decoder.decode();

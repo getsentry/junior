@@ -27,15 +27,15 @@ export function transcriptAnswerLinks(
 ): TranscriptAnswerLink[] {
   const askIndexes = new Map<string, number>();
   const links: TranscriptAnswerLink[] = [];
-  rows.forEach((row, index) => {
-    if (row.kind !== "entry") return;
+  for (const [index, row] of rows.entries()) {
+    if (row.kind !== "entry") continue;
     const { entry } = row;
     if (entry.kind === "tool") {
       const itemId = reviewItemIdFromToolCall(entry.part);
       if (itemId !== undefined) askIndexes.set(itemId, index);
-      return;
+      continue;
     }
-    if (entry.kind !== "message" || entry.message.eventType) return;
+    if (entry.kind !== "message" || entry.message.eventType) continue;
     for (const change of entry.message.reviewItemChanges ?? []) {
       const askIndex = askIndexes.get(change.reviewItemId);
       if (change.kind !== "submitted" || askIndex === undefined) continue;
@@ -46,7 +46,7 @@ export function transcriptAnswerLinks(
         lane: 0,
       });
     }
-  });
+  }
   // A link takes the first lane that is free at its question.
   const laneEnds: number[] = [];
   for (const link of [...links].sort((a, b) => a.askIndex - b.askIndex)) {

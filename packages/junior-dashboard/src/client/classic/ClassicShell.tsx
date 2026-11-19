@@ -6,7 +6,6 @@ import {
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
-  useSystemData,
 } from "../api";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { LoadingView } from "../components/LoadingView";
@@ -41,6 +40,7 @@ import {
   SystemRouteLoading,
 } from "../pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
+import { SystemRoute } from "../pages/system/SystemRoute";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -57,10 +57,8 @@ import {
   ReviewDeskPage,
 } from "../review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "../review-desk/queries";
-import { useInboxTabIcon } from "../review-desk/inboxTabIcon";
-import { useDocumentTitleCount } from "../documentTitle";
+import { useInboxTabCount } from "../review-desk/inboxTabIcon";
 import { useVersionsPoll } from "../versions";
-import type { DashboardCoreData } from "../types";
 import { getDashboardAgentName } from "../agentName";
 
 // Pages outside the conversation workspace load on first visit, so the
@@ -98,11 +96,6 @@ const PersonProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("../pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
-  })),
-);
-const SystemPage = lazy(() =>
-  import("../pages/system/SystemPage").then((module) => ({
-    default: module.SystemPage,
   })),
 );
 const WorkspaceFormPage = lazy(() =>
@@ -211,8 +204,7 @@ export function ClassicShell() {
       conversationDisplayTitle(mobileConversation))
     : undefined;
   const reviewCount = useReviewItemCountData(loggedIn).data?.needsViewer;
-  useDocumentTitleCount(reviewCount);
-  useInboxTabIcon(reviewCount);
+  useInboxTabCount(reviewCount);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
     loggedIn,
@@ -774,26 +766,5 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
       replace
       to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
     />
-  );
-}
-
-function SystemRoute(props: { coreData: DashboardCoreData }) {
-  const query = useSystemData(props.coreData);
-  if (!query.data && !query.error) {
-    return (
-      <SystemRouteLoading
-        description="Runtime health, model usage, and loaded capabilities."
-        label="Loading system"
-        title="System"
-        variant="overview"
-      />
-    );
-  }
-  return query.data ? (
-    <SystemPage data={query.data} />
-  ) : (
-    <SystemPageLayout>
-      <LoadingView label={query.error?.message ?? "System unavailable"} />
-    </SystemPageLayout>
   );
 }

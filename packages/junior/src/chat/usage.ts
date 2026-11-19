@@ -1,7 +1,5 @@
-import { usageCostSchema, usageSchema } from "@/usage-schema";
+import { usageSchema } from "@/usage-schema";
 import type { Usage, UsageCost } from "@/usage-schema";
-
-export const agentTurnCostSchema = usageCostSchema;
 
 /** Estimated USD cost reported by pi-ai for one or more model calls. */
 export type AgentTurnCost = UsageCost;

@@ -26,8 +26,8 @@ import {
 } from "./ConversationMemories";
 import {
   conversationMemoryEntries,
-  useConversationMemoryState,
   type ConversationMemoryEntry,
+  type ConversationMemoryList,
 } from "./conversationMemory";
 import { ConversationPlan } from "./ConversationPlan";
 import {
@@ -56,16 +56,17 @@ export function ConversationDetails(props: {
   highlightReview: boolean;
   identity: ReactNode;
   links: ConversationLink[];
+  memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
   onOpenSubagent(target: ConversationDrawerTarget): void;
-  /** Show one memory where its Turn recalled or captured it. */
-  onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
+  /** Show the Turn that recalled or captured one memory. */
+  onSelectMemory(entry: ConversationMemoryEntry): void;
   overview: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
-  const memoryList = useConversationMemoryState()?.list;
+  const { memoryList } = props;
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -166,7 +167,7 @@ export function ConversationDetails(props: {
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         {parent ? (
-          <DetailsCard flat title="Parent">
+          <DetailsCard title="Parent">
             <DetailsRow
               icon={<CornerLeftUp aria-hidden="true" size={14} />}
               title={parent.label}
@@ -193,7 +194,6 @@ export function ConversationDetails(props: {
           // work and what Junior waits on read as one list.
           <DetailsCard
             count={props.links.length || watches.length}
-            flat
             title={props.links.length > 0 ? "Linked work" : "Waiting on"}
           >
             {props.links.length > 0 ? (
@@ -227,13 +227,11 @@ export function ConversationDetails(props: {
           />
         ) : null}
         {props.overview != null ? (
-          <DetailsCard flat>{props.overview}</DetailsCard>
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {props.usage}
         {props.identity != null ? (
-          <DetailsCard flat title="Participants">
-            {props.identity}
-          </DetailsCard>
+          <DetailsCard title="Participants">{props.identity}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard

@@ -5,10 +5,11 @@
  * model never reads status prose. `policies/prompt-markers.md` owns the
  * tags.
  */
+import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstruction } from "@/chat/agent/types";
 import { getDb } from "@/chat/db";
-import { escapeTagText, renderTag } from "@/chat/input-tags";
+import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ReviewItemChangeRecord } from "./change-record";
@@ -78,14 +79,13 @@ export async function savedInputInstruction(args: {
 export async function eventReviewItemInputs(
   messages: readonly InboundMessage[],
 ): Promise<Map<string, string>> {
-  const rendered = await Promise.all(
-    messages.map(
-      async (message) =>
-        [
-          message.inboundMessageId,
-          await loadReviewItemInput(message.input.reviewItemChange),
-        ] as const,
-    ),
+  const rendered = await mapBounded(
+    messages,
+    async (message) =>
+      [
+        message.inboundMessageId,
+        await loadReviewItemInput(message.input.reviewItemChange),
+      ] as const,
   );
   return new Map(
     rendered.flatMap(([id, text]) => (text ? [[id, text] as const] : [])),

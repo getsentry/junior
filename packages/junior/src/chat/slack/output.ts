@@ -1,5 +1,5 @@
 import type { PluginMarkdownFormat } from "@/chat/plugins/agent-hooks";
-import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
+import { isTableRow, normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
 // Slack recommends at most 4,000 characters of message text, and all markdown
 // blocks in one payload share a 12,000 character limit.
@@ -73,12 +73,51 @@ function takePrefix(
   return { prefix, rest: text.slice(prefix.length).trimStart() };
 }
 
+/**
+ * Keep a pipe table readable when a split lands inside it. Each post renders
+ * on its own, so rows without the header and delimiter rows show as text.
+ * Move a table that starts mid-post to the next post. Repeat the header rows
+ * when one table is longer than a post.
+ */
+function splitOutsideTable(
+  text: string,
+  prefix: string,
+  rest: string,
+): { chunk: string; rest: string } {
+  const lines = prefix.split("\n");
+  // A blank line between the split rows means two tables, not one.
+  const gap = text.slice(prefix.length, text.length - rest.length);
+  if (
+    !isTableRow(lines.at(-1) ?? "") ||
+    !isTableRow(rest) ||
+    /\n\s*\n/.test(gap)
+  ) {
+    return { chunk: prefix, rest };
+  }
+
+  let start = lines.length - 1;
+  while (start > 0 && isTableRow(lines[start - 1] ?? "")) {
+    start--;
+  }
+  const before = lines.slice(0, start).join("\n").trimEnd();
+  const table = lines.slice(start);
+  if (before) {
+    return { chunk: before, rest: `${table.join("\n")}\n${rest}` };
+  }
+  // Repeat the header only when this post also has data rows, so every post
+  // moves the reply forward.
+  if (table.length <= 2) {
+    return { chunk: prefix, rest };
+  }
+  return { chunk: prefix, rest: `${table.slice(0, 2).join("\n")}\n${rest}` };
+}
+
 /** Take one post that fits the budget, closing a code fence it leaves open. */
 function takeChunk(text: string): { chunk: string; rest: string } {
   let { prefix, rest } = takePrefix(text, MAX_INLINE_CHARS);
   let carryover = getFenceContinuation(prefix);
   if (!carryover) {
-    return { chunk: prefix, rest };
+    return splitOutsideTable(text, prefix, rest);
   }
 
   ({ prefix, rest } = takePrefix(

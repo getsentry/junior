@@ -363,16 +363,11 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const inConversation = new Set<string>();
-  for (const conversationId of new Set(args.conversationIds)) {
-    for (const id of await conversationParticipantUserIds(
-      getDb(),
-      conversationId,
-      others,
-    )) {
-      inConversation.add(id);
-    }
-  }
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    args.conversationIds,
+    others,
+  );
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

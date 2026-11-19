@@ -2,6 +2,7 @@ import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { jsonResponse, throwApiError } from "../http";
+import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
@@ -129,7 +130,7 @@ import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
-  options: WebInputServices,
+  options: WebInputServices & { waitUntil: WaitUntilFn },
 ): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
   // Files go to attachment storage first, so a Message body holds only text
@@ -163,7 +164,10 @@ export function createConversationRoutes(
   );
 
   app.get("/stats", async () =>
-    jsonResponse(conversationStatsReportSchema, await readConversationStats()),
+    jsonResponse(
+      conversationStatsReportSchema,
+      await readConversationStats({ waitUntil: options.waitUntil }),
+    ),
   );
 
   app.post(

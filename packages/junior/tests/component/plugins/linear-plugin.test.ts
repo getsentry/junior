@@ -22,4 +22,21 @@ describe("Linear plugin package", () => {
     expect(serviceAccountAllows(manifest, { tool: "get_issue" })).toBe(true);
     expect(serviceAccountAllows(manifest, { tool: "save_issue" })).toBe(false);
   });
+
+  it("passes install review context to the manifest", () => {
+    const registration = linearPlugin({
+      reviewContext: "Issues in team PY sync to a public GitHub repository.",
+    });
+    const manifest = parseInlinePluginManifest(
+      {
+        ...registration.manifest,
+        configKeys: registration.manifest.configKeys ?? [],
+      },
+      "/plugins/linear",
+    );
+
+    expect(manifest.reviewContext).toBe(
+      "Issues in team PY sync to a public GitHub repository.",
+    );
+  });
 });

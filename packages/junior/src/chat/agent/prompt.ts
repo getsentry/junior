@@ -15,11 +15,6 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
-  sandboxSkillDir,
-  sandboxSkillFile,
-  sandboxSkillPathResolution,
-} from "@/chat/sandbox/paths";
-import {
   buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
@@ -53,13 +48,18 @@ import {
   toCanonicalInputMessage,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import { escapeXml } from "@/chat/xml";
+import {
+  escapeTagText,
+  renderTag,
+  startsWithTag,
+} from "@sentry/junior-plugin-api";
+import { renderThreadContext, THREAD_CONTEXT_TAGS } from "@/chat/input-tags";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
@@ -143,20 +143,13 @@ interface PromptReplayArgs {
  *
  * Producers already emit `<thread-context>`. Only wrap plain unstructured
  * background text so ambient messages never look like more instruction.
+ * Other people wrote that text, so it is escaped.
  */
 function renderThreadContextForPrompt(context: string): string {
-  if (
-    /^<(?:thread-context|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
-      context,
-    )
-  ) {
+  if (startsWithTag(context, THREAD_CONTEXT_TAGS)) {
     return context;
   }
-  return [
-    '<thread-context authority="evidence-only">',
-    context,
-    "</thread-context>",
-  ].join("\n");
+  return renderThreadContext([escapeTagText(context)]);
 }
 
 /** Render the current actor's instruction without host-owned thread context. */
@@ -215,19 +208,6 @@ function renderInputParts(instruction: AgentInstruction): string[] {
   );
 }
 
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
-  return [
-    "<skill>",
-    `<name>${escapeXml(skill.name)}</name>`,
-    `<path>${escapeXml(sandboxSkillFile(skill.name))}</path>`,
-    `<working_directory>${escapeXml(sandboxSkillDir(skill.name))}</working_directory>`,
-    `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
-    skill.body,
-    "</skill>",
-  ].join("\n");
-}
-
 /** Redact image data from prompt content parts for observability. */
 export function toObservablePromptPart(
   part: UserContentPart,
@@ -247,14 +227,12 @@ export function toObservablePromptPart(
 }
 
 function buildOmittedImageAttachmentNotice(count: number): string {
-  return [
-    "<omitted-image-attachments>",
+  return renderTag("omitted-image-attachments", {}, [
     `count: ${count}`,
     "Slack included image attachments with this turn, but this runtime cannot analyze images because no vision model is configured.",
     "Do not claim that no image was attached.",
     "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
-    "</omitted-image-attachments>",
-  ].join("\n");
+  ]);
 }
 
 function buildUserTurnInput(args: {
@@ -654,7 +632,6 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  explicitSkill: Skill | null;
   /** Saved leading capability sections, from `loadLeadingSystemSections`. */
   leadingSystemSections?: SystemSections | undefined;
   priorPiMessages?: PiMessage[] | undefined;
@@ -798,14 +775,6 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.explicitSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
-          },
-        ]
-      : []),
     ...(agentsInstructions
       ? [{ type: "text" as const, text: agentsInstructions }]
       : []),

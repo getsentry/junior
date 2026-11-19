@@ -97,9 +97,9 @@ async function writeResponse(
 ): Promise<void> {
   target.statusCode = response.status;
   target.statusMessage = response.statusText;
-  response.headers.forEach((value, key) => {
+  for (const [key, value] of response.headers) {
     target.setHeader(key, value);
-  });
+  }
 
   if (!response.body) {
     target.end();
@@ -109,6 +109,7 @@ async function writeResponse(
   const reader = response.body.getReader();
   try {
     for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- Each chunk is read after the chunk before.
       const next = await reader.read();
       if (next.done) break;
       target.write(next.value);
@@ -322,6 +323,7 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
   const deadline = Date.now() + PUBLIC_HEALTH_TIMEOUT_MS;
   let lastError: unknown;
+  /* oxlint-disable no-await-in-loop -- Poll until the proxy answers or the deadline passes. */
   while (Date.now() < deadline) {
     try {
       const response = await fetch(
@@ -336,6 +338,7 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  /* oxlint-enable no-await-in-loop */
   throw new Error(
     `Eval egress proxy was not publicly reachable at ${baseUrl}: ${
       lastError instanceof Error ? lastError.message : String(lastError)
@@ -372,6 +375,7 @@ export async function startEvalEgress(
     const configPath = path.join(configDir, "config.yml");
     await writeFile(configPath, "{}\n", "utf8");
     const errors: Error[] = [];
+    /* oxlint-disable no-await-in-loop -- Try the next tunnel only after the attempt before fails. */
     for (let attempt = 1; attempt <= QUICK_TUNNEL_ATTEMPTS; attempt += 1) {
       const startedAt = Date.now();
       tunnel = spawn(
@@ -423,6 +427,7 @@ export async function startEvalEgress(
         }
       }
     }
+    /* oxlint-enable no-await-in-loop */
     throw new AggregateError(
       errors,
       `Eval egress failed after ${QUICK_TUNNEL_ATTEMPTS} Quick Tunnel attempts`,

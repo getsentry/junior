@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
+  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
@@ -159,6 +160,55 @@ it("combines open, merged, and closed pull requests into conversation work", asy
       "conversation-merged",
       "conversation-open",
       "conversation-shared",
+    ]);
+  } finally {
+    await fixture.close();
+  }
+});
+
+it("links a Junior pull request to every issue its body names", async () => {
+  const fixture = await createGitHubFixture();
+  try {
+    const route = webhookRoute(fixture);
+    const footer = pullRequestPayload().pull_request.body;
+    const withBody = (action: string, body: string) =>
+      pullRequestPayload({
+        action,
+        pull_request: { ...pullRequestPayload().pull_request, body },
+      });
+    await route.handler(
+      signedRequest(
+        withBody(
+          "opened",
+          `Fixes #12 and closes getsentry/Other#34.\n\n${footer}`,
+        ),
+      ),
+    );
+    // An edit adds a new issue and keeps the rows it already has.
+    await route.handler(
+      signedRequest(
+        withBody(
+          "edited",
+          `Fixes #12, #13, and getsentry/other#34.\n\n${footer}`,
+        ),
+      ),
+    );
+
+    const rows = await fixture
+      .db()
+      .select()
+      .from(juniorGitHubPullRequestIssues);
+    expect(
+      rows
+        .map(
+          (row) =>
+            `${row.pullRequestId} ${row.issueRepositoryFullName}#${row.issueNumber}`,
+        )
+        .sort(),
+    ).toEqual([
+      "1001 getsentry/junior#12",
+      "1001 getsentry/junior#13",
+      "1001 getsentry/other#34",
     ]);
   } finally {
     await fixture.close();
@@ -3108,7 +3158,7 @@ describe("GitHub-owned pull request outcomes", () => {
           state.set(key, value);
         },
         async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
-          return await run();
+          return { acquired: true, value: await run() };
         },
       },
     } as any;

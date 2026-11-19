@@ -59,6 +59,9 @@ test("links to saved objects show as a titled link, a hover card, and a row", as
   page,
   dashboard,
 }) => {
+  // The screenshot uses this size. A resize would move the link from under
+  // the pointer and close the hover card.
+  await page.setViewportSize(desktop);
   await page.route("**/api/images/payments-91-after**", (route) =>
     route.fulfill({ status: 404 }),
   );
@@ -627,6 +630,55 @@ test("a Sentry monitor link resolves to a titled link, a monitor row, and a hove
     await expect(preview).toContainText(text);
   }
   await screenshot(page, "conversation-sentry-monitor-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry alert link resolves to a titled link, an alert row, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const link = linksParagraph(page).getByRole("link", {
+    name: "New checkout feedback",
+  });
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://acme.sentry.io/monitors/alerts/6363564/",
+  );
+  // The reply also links to it on its own line, which shows a compact row.
+  const card = page.getByRole("region", {
+    name: "Sentry alert: New checkout feedback",
+  });
+  await expect(card).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-alert-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  const preview = card.nth(1);
+  for (const text of [
+    "Enabled",
+    "Project",
+    "junior",
+    "When",
+    "First seen · Feedback · app.feedback.topic is new_checkout",
+    "Notifies",
+    "Email member, Slack #checkout-feedback",
+    "Last triggered",
+  ]) {
+    await expect(preview).toContainText(text);
+  }
+  await screenshot(page, "conversation-sentry-alert-link", {
     lightTheme: true,
     view: "desktop",
   });

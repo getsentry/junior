@@ -37,6 +37,7 @@ import {
   selectionMarkdown,
 } from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 const HIGHLIGHT_NAME = "quick-question";
 const STARTER_PROMPTS = ["Explain this", "Is this right?", "What's the risk?"];
@@ -322,10 +323,7 @@ function useKeepQuickQuestion() {
         `/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
         {},
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSuccess: () => invalidateConversationFeeds(queryClient),
   });
 }
 

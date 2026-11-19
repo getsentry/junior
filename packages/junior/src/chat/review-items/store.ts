@@ -25,10 +25,7 @@ import {
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -39,6 +36,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -80,9 +78,14 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  /**
+   * The stored root of the Conversation that added the item. Only a search
+   * sets it; unset means unknown.
+   */
+  addedByRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -100,7 +103,7 @@ export interface ReviewItemContent {
   body: string;
   conversationIds: string[];
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
@@ -729,8 +732,18 @@ export async function searchReviewItems(
   filters: ReviewItemFilters,
 ): Promise<ReviewItem[]> {
   const rows = await db
-    .select()
+    .select({
+      item: juniorReviewItems,
+      addedByRootConversationId: juniorConversations.rootConversationId,
+    })
     .from(juniorReviewItems)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItems.addedByConversationId,
+      ),
+    )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
@@ -747,7 +760,14 @@ export async function searchReviewItems(
             : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
-  return await hydrate(db, rows);
+  const items = await hydrate(
+    db,
+    rows.map((row) => row.item),
+  );
+  return items.map((item, index) => ({
+    ...item,
+    addedByRootConversationId: rows[index]!.addedByRootConversationId,
+  }));
 }
 
 /** One open Review item that a Conversation waits on a User for. */

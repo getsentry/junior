@@ -19,7 +19,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 
-import { useAutomationData } from "../../api";
+import { automationKeys, useAutomationData } from "../../api";
 import { Button } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -257,7 +257,7 @@ function AutomationEditMode(props: { automation: AutomationSummary }) {
   const { automation } = props;
   const location = useLocation();
   const edit = useQuery({
-    queryKey: ["dashboard", "automations", "edit", automation.id],
+    queryKey: automationKeys.edit(automation.id),
     retry: false,
     queryFn: ({ signal }) =>
       fetchDashboardJson(

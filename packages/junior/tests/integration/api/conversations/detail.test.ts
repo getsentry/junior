@@ -1,4 +1,5 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
@@ -61,8 +62,9 @@ describe("conversation detail API", () => {
     });
 
     const app = createJuniorApi();
-    const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}`,
+    const detailResponse = await expectSqlBudget(
+      () => app.request(`http://localhost/api/conversations/${conversationId}`),
+      { statements: 14, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),

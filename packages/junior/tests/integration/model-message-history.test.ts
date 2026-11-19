@@ -7,10 +7,8 @@ import {
 import { connectedState } from "@/chat/cache-warming/request";
 import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import { botConfig } from "@/chat/config";
-import {
-  commitMessages,
-  loadLeadingSystemSections,
-} from "@/chat/conversations/projection";
+import { commitMessages } from "@/chat/conversations/projection";
+import { loadLeadingSystemSections } from "@/chat/conversations/leading-system-sections";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";

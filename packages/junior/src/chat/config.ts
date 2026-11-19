@@ -359,7 +359,7 @@ function readBotConfig(
       env["AI_VISION_MODEL"] === undefined
         ? DEFAULT_VISION_MODEL_ID
         : validateGatewayModelId(env["AI_VISION_MODEL"]),
-    maxAgentDepth: 0,
+    maxAgentDepth: 1,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
@@ -492,7 +492,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 0, lets only the root Conversation start child agents.
+   * default, 1, lets a child of the root start child agents, and those
+   * cannot start more. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
@@ -661,10 +662,6 @@ export function getSlackClientId(): string | undefined {
 
 export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
-}
-
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
 }
 
 // ---------------------------------------------------------------------------

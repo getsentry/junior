@@ -23,5 +23,6 @@ export function runEvalWork<T>(operation: () => Promise<T>): Promise<T> {
 export async function drainEvalWork(context: object): Promise<void> {
   const pending = (context as WorkOwner)[pendingWork];
   if (!pending?.size) return;
+  // oxlint-disable-next-line no-await-in-loop -- Settled work can start more work, so check again until none is left.
   while (pending.size) await Promise.allSettled(pending);
 }

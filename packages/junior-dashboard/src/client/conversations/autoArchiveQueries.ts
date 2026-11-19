@@ -7,6 +7,7 @@ import {
 
 import { patch, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /** Turn auto-archive on or off for one conversation and the viewer. */
 export function useSetConversationAutoArchive(conversationId: string) {
@@ -45,9 +46,7 @@ export function useArchiveDoneConversations() {
         {},
       ),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      await invalidateConversationFeeds(queryClient);
     },
   });
 }

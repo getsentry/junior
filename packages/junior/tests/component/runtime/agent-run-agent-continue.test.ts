@@ -277,7 +277,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";

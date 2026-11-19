@@ -10,6 +10,7 @@ import {
 import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
 import { REVIEW_ITEMS_QUERY_KEY } from "./review-desk/queries";
+import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
 
@@ -26,7 +27,7 @@ const VERSIONS_POLL_MS = 5_000;
 
 /**
  * A reader with no input for this long is away: the tab can be visible on
- * another screen, but nobody acts on it. Hidden tabs do not poll at all.
+ * another screen, but nobody acts on it.
  */
 const AWAY_AFTER_MS = 5 * 60_000;
 
@@ -35,6 +36,12 @@ const AWAY_AFTER_MS = 5 * 60_000;
  * poll. Input checks at once.
  */
 const AWAY_POLL_MS = 10_000;
+
+/**
+ * Poll interval while the tab is hidden. It keeps the count in the tab title
+ * and on the tab icon about a minute fresh, at a low cost.
+ */
+const HIDDEN_POLL_MS = 60_000;
 
 const READER_INPUT_EVENTS = [
   "focus",
@@ -79,13 +86,15 @@ function refreshChangedReads(
   );
   // Waiting Conversations outside the newest page join the feed.
   if (moved("conversations") || moved("reviewItems")) {
-    void client.invalidateQueries({ queryKey: ["dashboard", "conversations"] });
+    void invalidateConversationFeeds(client);
   }
   if (moved("reviewItems")) {
+    // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The token does not say which item moved, and each row reads its own item.
     void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
   }
   if (moved("spend")) {
     void client.invalidateQueries({
+      exact: true,
       queryKey: ["dashboard", "personal-spend"],
     });
   }
@@ -136,10 +145,16 @@ export function useVersionsPoll(
       refreshChangedReads(client, previous, next, conversationId);
       return next;
     },
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
     refetchInterval: () =>
-      readerIsAway(lastInputAtMs.current) ? AWAY_POLL_MS : VERSIONS_POLL_MS,
+      document.visibilityState !== "visible"
+        ? HIDDEN_POLL_MS
+        : readerIsAway(lastInputAtMs.current)
+          ? AWAY_POLL_MS
+          : VERSIONS_POLL_MS,
+    refetchIntervalInBackground: true,
     retry: false,
-    // Hidden tabs do not poll. Check at once when the tab shows again.
+    // Check at once when the tab shows again.
     staleTime: 0,
   });
   useEffect(() => {

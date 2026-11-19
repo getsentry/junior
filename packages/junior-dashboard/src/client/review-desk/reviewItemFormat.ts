@@ -5,9 +5,23 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { withoutStandaloneUrl } from "../display-text/DisplayText";
+
 /** Return the review desk route that selects one item. */
 export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
+}
+
+/**
+ * Return the new UI's Inbox route that expands one item's row: Done for a
+ * closed item. The route names the entry, because phones show the entries
+ * at `/`.
+ */
+export function inboxItemPath(
+  item: Pick<ReviewItemPayload, "id" | "status">,
+): string {
+  const view = item.status === "open" ? "inbox" : "done";
+  return `/?view=${view}&item=${encodeURIComponent(item.id)}`;
 }
 
 /**
@@ -21,6 +35,18 @@ export function reviewItemSubjectHref(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Return the text of an item without a bare URL to its subject, for a
+ * surface that shows the subject's own card.
+ */
+export function reviewItemText(
+  item: Pick<ReviewItemPayload, "body" | "subject">,
+): string {
+  return item.subject?.url
+    ? withoutStandaloneUrl(item.body, item.subject.url)
+    : item.body;
 }
 
 /** Name the state of an item: what it needs while open, or how it closed. */
@@ -137,10 +163,82 @@ export function answerLine(
     .join(" · ");
 }
 
+/**
+ * Say what the viewer answered, such as "You answered Hold", so a row shows
+ * it in place of the ask. An answer with no choice, only text, is "You
+ * replied".
+ */
+export function viewerAnswerLine(
+  item: Pick<ReviewItemPayload, "answer" | "request">,
+): string | undefined {
+  if (!item.request || !item.answer) return undefined;
+  const { values } = normalizeUserInputAnswer(item.request, item.answer);
+  const choices = item.request.fields.flatMap((field) =>
+    field.kind === "text" ? [] : (values[field.id] ?? []),
+  );
+  return choices.length > 0
+    ? `You answered ${choices.join(", ")}`
+    : "You replied";
+}
+
+/**
+ * Say what the viewer last answered in a Conversation, from its closed
+ * items newest closed first, until a later Message moves it on. The answer's
+ * own Message has the close time, so it does not count as later.
+ */
+export function conversationAnswerLine(
+  closed: readonly Pick<
+    ReviewItemPayload,
+    "addedByConversationId" | "answer" | "closedAt" | "closedBy" | "request"
+  >[],
+  conversation: { id: string; lastMessageAt?: string | undefined },
+  viewerEmail: string | undefined,
+): string | undefined {
+  if (!viewerEmail) return undefined;
+  const since = conversation.lastMessageAt
+    ? Date.parse(conversation.lastMessageAt)
+    : undefined;
+  for (const item of closed) {
+    if (
+      item.addedByConversationId !== conversation.id ||
+      !item.closedAt ||
+      item.closedBy?.email !== viewerEmail
+    )
+      continue;
+    if (since !== undefined && since > Date.parse(item.closedAt))
+      return undefined;
+    const line = viewerAnswerLine(item);
+    if (line) return line;
+  }
+  return undefined;
+}
+
 /** The open Review items of the inbox, in the groups and order it shows. */
 export type InboxGroups = {
   fyi: ReviewItemPayload[];
   needsYou: ReviewItemPayload[];
+};
+
+/**
+ * The Review items of one root Conversation and its child agents: a stack of
+ * cards, each with its own actions. `needsYou` sorts the stack into the
+ * queue; other stacks are FYI and sort after it.
+ */
+export type InboxBundle = {
+  /**
+   * Names the row: the Conversation id for a Conversation stack, or the
+   * item id for a row that shows one item.
+   */
+  key: string;
+  /** The root Conversation whose stack shows the items (`rootConversationId`). */
+  conversationId: string;
+  /** Items in inbox order: questions first, then the oldest. */
+  items: ReviewItemPayload[];
+  /** The item added last, which the collapsed bundle shows. */
+  newest: ReviewItemPayload;
+  needsYou: boolean;
+  /** When the first item that needs the viewer arrived, or the first item. */
+  waitingSince: string;
 };
 
 /** Inbox order: action items first, then the oldest, then the item id. */
@@ -149,6 +247,74 @@ function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
   const age = Date.parse(a.createdAt) - Date.parse(b.createdAt);
   if (age !== 0) return age;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * True when an item waits on the viewer, as the server's waiting rule says:
+ * an open action item assigned to them, not to Everyone. A plugin ask, such
+ * as `Ready to merge · #42`, is an action item with no `request`.
+ */
+export function itemNeedsViewer(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    !item.assignedToEveryone
+  );
+}
+
+/**
+ * True when an open ask is for Everyone, so anyone can answer or take it.
+ * It waits on no one, so it is up for grabs instead of in To do.
+ */
+export function itemUpForGrabs(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    item.assignedToEveryone
+  );
+}
+
+/**
+ * Group items into one stack per root Conversation. Stacks that need the
+ * viewer come first, the one that waited longest at the top, so the order
+ * does not change while the reader works. FYI stacks follow, oldest first.
+ */
+export function inboxBundles(
+  items: readonly ReviewItemPayload[],
+): InboxBundle[] {
+  const byConversation = new Map<string, ReviewItemPayload[]>();
+  for (const item of items) {
+    const key = item.rootConversationId;
+    byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
+  }
+  const bundles = [...byConversation].map(([conversationId, group]) => {
+    const sorted = [...group].sort(inboxOrder);
+    const waiting = sorted.filter(itemNeedsViewer);
+    const newest = sorted.reduce((latest, item) =>
+      Date.parse(item.createdAt) > Date.parse(latest.createdAt) ? item : latest,
+    );
+    const since = Math.min(
+      ...(waiting.length > 0 ? waiting : sorted).map((item) =>
+        Date.parse(item.createdAt),
+      ),
+    );
+    return {
+      conversationId,
+      items: sorted,
+      key: conversationId,
+      newest,
+      needsYou: waiting.length > 0,
+      waitingSince: new Date(since).toISOString(),
+    };
+  });
+  return bundles.sort(
+    (a, b) =>
+      Number(b.needsYou) - Number(a.needsYou) ||
+      Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
+      a.conversationId.localeCompare(b.conversationId),
+  );
 }
 
 /**

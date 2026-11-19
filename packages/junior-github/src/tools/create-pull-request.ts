@@ -42,7 +42,10 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
-import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
+import {
+  checkPullRequestDescription,
+  PULL_REQUEST_BODY_RULES,
+} from "../tool-support/pull-request-description.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -62,6 +65,7 @@ class GitHubPullRequestCreateRejectedError extends Error {
   }
 }
 
+const BODY_DESCRIPTION = `Pull request body. ${PULL_REQUEST_BODY_RULES}`;
 const REVIEWERS_DESCRIPTION =
   "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, the tool asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
 
@@ -81,8 +85,7 @@ const createPullRequestInputSchema = Type.Object(
     }),
     body: Type.Optional(
       Type.String({
-        description:
-          "Pull request body. The runtime appends the conversation footer.",
+        description: BODY_DESCRIPTION,
       }),
     ),
     draft: Type.Optional(
@@ -107,12 +110,7 @@ const createPullRequestToolInputSchema = z
     title: z.string().describe("Pull request title."),
     head: z.string().describe("Head branch or owner:branch ref."),
     base: z.string().describe("Base branch."),
-    body: z
-      .string()
-      .describe(
-        "Pull request body. The runtime appends the conversation footer.",
-      )
-      .optional(),
+    body: z.string().describe(BODY_DESCRIPTION).optional(),
     draft: z
       .boolean()
       .describe("Whether to open the pull request as a draft.")
@@ -570,7 +568,7 @@ export function createGitHubPullRequestTool(
       );
       const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
       const key = `createPullRequest:${conversationId}:${toolCallId}`;
-      return await ctx.state.withLock(
+      const attempt = await ctx.state.withLock(
         `${key}:lock`,
         GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS,
         async () => {
@@ -700,6 +698,12 @@ export function createGitHubPullRequestTool(
           );
         },
       );
+      if (!attempt.acquired) {
+        throw new Error(
+          "GitHub pull request creation for this tool call is already running; refusing to create a duplicate pull request.",
+        );
+      }
+      return attempt.value;
     },
   });
 }

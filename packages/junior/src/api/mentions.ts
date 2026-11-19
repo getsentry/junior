@@ -37,14 +37,15 @@ export async function resolveMentions(
     mentionedSlackUserIds(source.texts),
   );
   const idsByTenant = new Map<string | undefined, Set<string>>();
-  sources.forEach((source, index) => {
-    if (idsBySource[index]!.length === 0) return;
+  for (const [index, source] of sources.entries()) {
+    if (idsBySource[index]!.length === 0) continue;
     const ids = idsByTenant.get(source.tenantId) ?? new Set<string>();
     for (const id of idsBySource[index]!) ids.add(id);
     idsByTenant.set(source.tenantId, ids);
-  });
+  }
   const peopleByTenant = new Map(
     await Promise.all(
+      // oxlint-disable-next-line junior/bounded-fan-out -- One read per workspace.
       [...idsByTenant].map(
         async ([tenantId, ids]) =>
           [

@@ -75,6 +75,49 @@ describe("load_skill tool", () => {
     });
   });
 
+  it("names the manual-only skills that the loaded skill makes loadable", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-load-skill-"),
+    );
+    await fs.writeFile(
+      path.join(skillRoot, "SKILL.md"),
+      [
+        "---",
+        "name: launch-review",
+        "description: Review a launch",
+        "---",
+        "",
+        "Run $launch-checks, then $brief.",
+      ].join("\n"),
+      "utf8",
+    );
+    const review: SkillMetadata = {
+      name: "launch-review",
+      description: "Review a launch",
+      skillPath: skillRoot,
+      references: ["launch-checks", "brief"],
+    };
+    const checks: SkillMetadata = {
+      name: "launch-checks",
+      description: "Run launch checks",
+      skillPath: "/tmp/launch-checks",
+      disableModelInvocation: true,
+    };
+    const brief: SkillMetadata = {
+      name: "brief",
+      description: "Brief",
+      skillPath: "/tmp/brief",
+    };
+    const tool = createLoadSkillTool([review, checks, brief]);
+
+    const result = await tool.execute!({ skill_name: "launch-review" }, {
+      toolCallId: "tool-call-3",
+      messages: [],
+    } as any);
+
+    expect(result).toMatchObject({ loadable_skills: ["launch-checks"] });
+  });
+
   it("rejects an unknown skill name", async () => {
     const availableSkills = await discoverSkills();
     const tool = createLoadSkillTool(availableSkills);

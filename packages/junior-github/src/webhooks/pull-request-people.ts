@@ -87,6 +87,7 @@ async function forEachCommit(
   visit: (commit: { coAuthorEmails: string[]; login?: string }) => void,
 ): Promise<void> {
   for (let page = 1; page <= MAX_PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first short page.
     const commits = commitPageSchema.parse(await loadPage(page, PAGE_SIZE));
     for (const commit of commits) {
       visit({
@@ -131,10 +132,10 @@ export async function loadGitHubPullRequestPeople(args: {
     }
   };
 
-  args.logins.forEach(addLogin);
+  for (const login of args.logins) addLogin(login);
   await forEachCommit(args.loadPage, (commit) => {
     if (commit.login) addLogin(commit.login);
-    commit.coAuthorEmails.forEach(addEmail);
+    for (const email of commit.coAuthorEmails) addEmail(email);
   });
   return [...people.values()].slice(0, MAX_PEOPLE);
 }
@@ -157,7 +158,9 @@ export async function loadGitHubPullRequestAuthors(args: {
   };
   await forEachCommit(args.loadPage, (commit) => {
     add(commit.login);
-    commit.coAuthorEmails.forEach((email) => add(noreplyLogin(email)));
+    for (const email of commit.coAuthorEmails) {
+      add(noreplyLogin(email));
+    }
   });
   return [...authors.values()].slice(0, MAX_PEOPLE);
 }

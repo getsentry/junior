@@ -160,6 +160,7 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "name", manifest.name);
   setDefined(result, "display-name", manifest.displayName);
   setDefined(result, "description", manifest.description);
+  setDefined(result, "review-context", manifest.reviewContext);
   setDefined(
     result,
     "config-keys",
@@ -169,6 +170,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "api-headers", manifest.apiHeaders);
   setDefined(result, "command-env", manifest.commandEnv);
   setDefined(result, "env-vars", manifest.envVars);
+  setDefined(
+    result,
+    "tools-send-no-credential",
+    manifest.toolsSendNoCredential,
+  );
   setDefined(
     result,
     "credentials",

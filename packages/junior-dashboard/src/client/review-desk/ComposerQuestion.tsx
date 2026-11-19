@@ -26,6 +26,7 @@ import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 
 /** Lets the message box send the picks of the docked questions. */
@@ -255,6 +256,8 @@ export function ComposerQuestion(props: {
   return (
     <MessageCard
       aria-label={`Question: ${item.title}`}
+      // Esc here dismisses the question, so it does not leave the page.
+      data-escape-scope=""
       className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
       onKeyDown={onKeyDown}
       ref={(node) => {
@@ -392,6 +395,7 @@ function DockedQuestion(props: {
           <div className="font-medium [&_p]:my-0">
             <DisplayText text={item.request.question} />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             docked
             ref={props.formRef}

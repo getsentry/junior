@@ -1,3 +1,4 @@
+import { automationCardStatus } from "@/chat/automations/result";
 import { automationTaskText } from "@/chat/automations/task";
 import type { SlackEvent } from "@slack/types";
 import * as z from "zod";
@@ -47,12 +48,12 @@ function renderAutomationDetails(
   const url = getDashboardTaskLink(automation.id);
   if (!url) return undefined;
 
-  const status =
-    automation.kind === "scheduled"
-      ? automation.status
-      : automation.trigger.problems.length === 0
-        ? "ready"
-        : "unavailable";
+  const { status, warning } = automationCardStatus({
+    status: automation.status,
+    statusReason: automation.statusReason,
+    triggerProblems:
+      automation.kind === "event" ? automation.trigger.problems : undefined,
+  });
   // Item entities use custom_fields only. Do not add task-specific fields.
   const fields: DetailField[] = [textField("status", "Status", status)];
   const { task } = automation;
@@ -96,16 +97,12 @@ function renderAutomationDetails(
         long: true,
       },
     );
-    if (trigger.problems.length > 0) {
-      fields.push({
-        ...textField(
-          "warning",
-          "Needs attention",
-          ["Trigger unavailable.", ...trigger.problems].join(" "),
-        ),
-        long: true,
-      });
-    }
+  }
+  if (warning) {
+    fields.push({
+      ...textField("warning", "Needs attention", warning),
+      long: true,
+    });
   }
   const lastRun = dateField(
     "last_run",

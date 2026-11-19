@@ -62,13 +62,14 @@ import {
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
+  recordFailedDispatchTurn,
   type PausedTurnRequest,
   type PausedTurns,
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveConversationRouting,
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
+  resolveTurnResumeRouting,
+  type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
@@ -385,29 +386,7 @@ async function failPausedTurn(args: {
   });
   if (!failed) return;
 
-  if (failed.dispatchId) {
-    try {
-      const routing = await resolveTurnSessionRouting({
-        conversationId: args.conversationId,
-      });
-      await recordTurnSummary({
-        conversationId: args.conversationId,
-        destination: routing.destination,
-        dispatchId: failed.dispatchId,
-        dispatchOutcome: "failed",
-        turnId: failed.turnId,
-        sliceId: failed.sliceId,
-        source: routing.source,
-        state: "failed",
-        surface: failed.surface,
-      });
-    } catch (error) {
-      logException(error, "agent.continue.dispatch_failure_summary.failed", {
-        "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.summary.turnId,
-      });
-    }
-  }
+  await recordFailedDispatchTurn(failed);
 }
 
 /**
@@ -581,8 +560,9 @@ async function runPausedTurnInContext(
         const locationConfiguration =
           getLocationConfigurationService(destination);
         const sandboxRef = getPersistedSandboxState(currentState);
-        const routing = await resolveTurnSessionRouting({
+        const routing = await resolveTurnResumeRouting({
           conversationId: payload.conversationId,
+          dispatchId,
         });
         const source = routing.source;
         const routingDestination = routing.destination;
@@ -798,10 +778,11 @@ async function failStrandedTurnWithFallback(args: {
     }
     replyAttribution = dispatch.replyAttribution;
   }
-  let routing: RequiredTurnSessionRouting;
+  let routing: TurnResumeRouting;
   try {
-    routing = await resolveTurnSessionRouting({
+    routing = await resolveTurnResumeRouting({
       conversationId: args.conversationId,
+      dispatchId: failed.dispatchId,
     });
   } catch (error) {
     logException(error, "agent.turn.stranded_session.routing_unavailable", {
@@ -901,6 +882,7 @@ async function runNextPausedTurnInContext(
     summaries = await listTurnSummaries(conversationId);
   }
 
+  /* oxlint-disable no-await-in-loop -- Run the first paused Turn that can resume, and stop there. */
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
@@ -944,6 +926,7 @@ async function runNextPausedTurnInContext(
       errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   return false;
 }

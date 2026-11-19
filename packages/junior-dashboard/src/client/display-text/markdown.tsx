@@ -17,7 +17,7 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
-import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
+import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
@@ -53,13 +53,19 @@ import {
  * with the object title, or a chip for a person. The first bare URL alone in
  * a top-level paragraph shows the full card, or only the thumbnail of a
  * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows.
+ * earlier text of the same message already shows. Inline mode shows links
+ * only with `chips`, outside a link or a button. With `paragraphs` too, it
+ * keeps the text's paragraphs, line breaks, and lists.
  */
 export function MarkdownText(props: {
   chat?: boolean | undefined;
+  /** Inline mode: show links, with object titles and person chips. */
+  chips?: boolean | undefined;
   compact?: boolean | undefined;
   document?: boolean;
   inline?: boolean;
+  /** Inline mode with chips: keep paragraphs, line breaks, and lists. */
+  paragraphs?: boolean | undefined;
   shownCardUrls?: readonly string[];
   text: string;
 }): ReactNode {
@@ -71,8 +77,20 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={
+          props.paragraphs
+            ? PARAGRAPH_CHIP_COMPONENTS
+            : props.chips
+              ? INLINE_CHIP_COMPONENTS
+              : INLINE_COMPONENTS
+        }
+        remarkPlugins={
+          props.paragraphs
+            ? [remarkGfm, remarkBreaks, remarkBareUrlStops]
+            : props.chips
+              ? [remarkGfm, remarkBareUrlStops]
+              : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -405,6 +423,30 @@ const INLINE_COMPONENTS: Components = {
   ul: InlineContainer,
 };
 
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
+};
+
+// Plain block boxes, not grids, so a line clamp counts the lines in them.
+const PARAGRAPH_CLASS = "m-0 min-w-0 [&:not(:first-child)]:mt-1.5";
+
+const PARAGRAPH_CHIP_COMPONENTS: Components = {
+  ...INLINE_CHIP_COMPONENTS,
+  li: ({ children }) => <li className="min-w-0">{renderText(children)}</li>,
+  ol: ({ children, start }) => (
+    <ol className={cn(PARAGRAPH_CLASS, "list-decimal pl-5")} start={start}>
+      {children}
+    </ol>
+  ),
+  p: ({ children }) => (
+    <p className={PARAGRAPH_CLASS}>{renderText(children)}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className={cn(PARAGRAPH_CLASS, "list-disc pl-5")}>{children}</ul>
+  ),
+};
+
 function alignClass(align: unknown): string | undefined {
   if (align === "center") return "text-center";
   if (align === "right") return "text-right";
@@ -564,6 +606,7 @@ function ObjectAnchor(props: {
   reserveHeight?: boolean;
 }) {
   const { bare, children, ...link } = props;
+  const className = useAnchorClass();
   if (bare && link.card.objectType === "person") {
     return <PersonLink {...link} />;
   }
@@ -571,7 +614,7 @@ function ObjectAnchor(props: {
     return <ObjectTitleLink {...link} />;
   }
   return (
-    <ObjectLinkPreview {...link} className={ANCHOR_CLASS}>
+    <ObjectLinkPreview {...link} className={className}>
       {children}
     </ObjectLinkPreview>
   );
@@ -583,11 +626,12 @@ function PlainAnchor(props: {
   observe?: RefCallback<HTMLAnchorElement>;
   onPointerEnter?: () => void;
 }) {
+  const className = useAnchorClass();
   const scheme = props.href.slice(0, 6).toLowerCase();
   if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
     return (
       <a
-        className={ANCHOR_CLASS}
+        className={className}
         href={props.href}
         onPointerEnter={props.onPointerEnter}
         ref={props.observe}
@@ -598,7 +642,7 @@ function PlainAnchor(props: {
   }
   return (
     <OutboundLink
-      className={ANCHOR_CLASS}
+      className={className}
       href={props.href}
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}

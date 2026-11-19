@@ -36,6 +36,11 @@ export default defineConfig({
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        pluginApiPackageRoot,
+        "src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",

@@ -103,9 +103,11 @@ async function settleCalls(pending: Set<Promise<void>>): Promise<void> {
     timer = setTimeout(done, CALL_SETTLE_GRACE_MS);
   });
   const settled = (async () => {
+    /* oxlint-disable no-await-in-loop -- New calls can start while earlier ones settle. */
     while (pending.size > 0) {
       await Promise.allSettled(pending);
     }
+    /* oxlint-enable no-await-in-loop */
   })();
   try {
     await Promise.race([settled, grace]);
@@ -488,7 +490,7 @@ export async function runCodeModeScript(
     // Each waiting call gets this failure through its own review.
     void reviews.catch(() => undefined);
 
-    accepted.forEach(({ call, host, tool }, index) => {
+    for (const [index, { call, host, tool }] of accepted.entries()) {
       const submission = submissions[index]!;
       track(
         runCall(host, call, tool, async (action) => {
@@ -496,7 +498,7 @@ export async function runCodeModeScript(
           return (await reviews).get(action.toolCallId)!;
         }).finally(() => submission.resolve(undefined)),
       );
-    });
+    }
   };
 
   const sandbox = new CodemodeSandbox();

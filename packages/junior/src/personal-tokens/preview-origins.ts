@@ -6,6 +6,7 @@
  * that it creates, with the email of each person who asked for it. Only those
  * people can send a token to it, and only until their record expires.
  */
+import { mapBounded } from "@/chat/fan-out";
 import { runBestEffort } from "@/chat/logging";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -48,11 +49,8 @@ export async function renewPreviewOrigins(
   await runBestEffort(async () => {
     const owner = await resolveOwner();
     if (!owner) return;
-    await Promise.all(
-      urls.map(
-        async (url) =>
-          await recordPreviewOrigin({ ownerEmail: owner.email, url }),
-      ),
+    await mapBounded(urls, (url) =>
+      recordPreviewOrigin({ ownerEmail: owner.email, url }),
     );
   }, "sandbox.preview_origin.renew.failed");
 }
