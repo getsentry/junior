@@ -1,6 +1,7 @@
 /** Where a new or moved Automation delivers, for the Automation tools. */
 import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
+import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
 import {
   checkSlackChannelReadAccess,
@@ -30,35 +31,33 @@ interface ToolDestination {
 }
 
 /**
- * Return the Slack workspace of the caller. A Conversation with no Slack
- * Location, such as a web Conversation, uses the workspace of the caller's
- * linked Slack account.
+ * Return the Slack workspace of a new Destination. A Conversation with no
+ * Slack Location, such as a web Conversation, binds no workspace token, so
+ * Slack calls use the single bot token. It can reach only that token's
+ * workspace, and only for a caller with a linked Slack account there.
  */
-function requireCallerTeamId(
+async function requireDestinationTeamId(
   context: AutomationToolContext,
   caller: AutomationToolCaller,
-): SlackTeamId {
+): Promise<SlackTeamId> {
   if (context.destination) {
     const teamId = parseSlackTeamId(context.destination.teamId);
     if (!teamId) throw new ToolInputError("Slack workspace is unavailable.");
     return teamId;
   }
-  const teamIds = [
-    ...new Set(
-      caller.viewer.identities.flatMap((identity) =>
-        identity.provider === "slack" && identity.providerTenantId
-          ? [identity.providerTenantId]
-          : [],
-      ),
-    ),
-  ];
-  const teamId =
-    teamIds.length === 1 ? parseSlackTeamId(teamIds[0]) : undefined;
+  const teamId = parseSlackTeamId(await resolveBotSlackTeamId());
   if (!teamId) {
     throw new ToolInputError(
-      teamIds.length > 1
-        ? "Your account is linked to more than one Slack workspace. Ask from the Slack channel or DM where the automation should deliver."
-        : "An automation delivers to Slack, and your account has no linked Slack account. Link Slack, or ask from the Slack channel or DM where it should deliver.",
+      "No Slack workspace can be chosen from this conversation. Ask from the Slack channel where the automation should deliver.",
+    );
+  }
+  const linked = caller.viewer.identities.some(
+    (identity) =>
+      identity.provider === "slack" && identity.providerTenantId === teamId,
+  );
+  if (!linked) {
+    throw new ToolInputError(
+      "An automation delivers to Slack, and your account has no linked Slack account in this workspace. Link Slack, or ask from the Slack channel where it should deliver.",
     );
   }
   return teamId;
@@ -82,7 +81,7 @@ export async function resolveToolDestination(
       visibility: context.visibility,
     };
   }
-  const teamId = requireCallerTeamId(context, caller);
+  const teamId = await requireDestinationTeamId(context, caller);
   const { channelId, channelName } = await resolveSlackChannelRef({
     field: "destination",
     value,

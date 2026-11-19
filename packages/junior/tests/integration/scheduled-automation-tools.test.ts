@@ -47,6 +47,7 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import {
+  authTestOk,
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
@@ -2489,6 +2490,11 @@ describe("Scheduled automation tool wiring via createTools", () => {
       await expect(createFromWeb()).rejects.toThrow(
         "This Conversation has no channel or DM that an Automation can deliver to.",
       );
+      // Web Turns bind no workspace token, so the channel must be in the
+      // workspace of Junior's bot token.
+      queueSlackApiResponse("auth.test", {
+        body: authTestOk({ teamId: TEAM_ID }),
+      });
       await expect(createFromWeb("dm")).rejects.toThrow(
         "Unknown `destination` `dm`.",
       );
