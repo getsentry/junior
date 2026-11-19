@@ -1,8 +1,8 @@
 // The state changes of a Turn. Each arrow is one function in this file.
 //
-//            claimTurn                      completeTurn
-//   queued ─────────────▶ running ─────────────────────▶ completed
-//     │   ◀─────────────    │  ↺ heartbeat
+//            claimTurn            completeTurn, commitStep (completed)
+//   queued ─────────────▶ running ─────────────────────────────────▶ completed
+//     │   ◀─────────────    │  ↺ heartbeat, commitStep (continue)
 //     │   reclaimExpired    │                failTurn
 //     │   (lease expired)   ├──────────────────────────▶ failed
 //     │                     │
@@ -12,19 +12,29 @@
 // A Turn starts as queued. completed, failed and cancelled are final: no
 // function changes them.
 //
-// | Change         | Turn must be      | lease_epoch | attempts | Lease    |
-// | -------------- | ----------------- | ----------- | -------- | -------- |
-// | claimTurn      | queued            | +1          | +1       | set      |
-// | heartbeat      | running, fenced   |             |          | extended |
-// | completeTurn   | running, fenced   |             |          | cleared  |
-// | failTurn       | running, fenced   |             |          | cleared  |
-// | cancelTurn     | queued or running | +1          |          | cleared  |
-// | reclaimExpired | running, expired  |             |          | cleared  |
+// | Change                 | Turn must be      | lease_epoch | attempts | step_seq | Lease    |
+// | ---------------------- | ----------------- | ----------- | -------- | -------- | -------- |
+// | claimTurn              | queued            | +1          | +1       |          | set      |
+// | heartbeat              | running, fenced   |             |          |          | extended |
+// | commitStep (continue)  | running, fenced   |             | 0        | +1       | kept     |
+// | commitStep (completed) | running, fenced   |             | 0        | +1       | cleared  |
+// | completeTurn           | running, fenced   |             |          |          | cleared  |
+// | failTurn               | running, fenced   |             |          |          | cleared  |
+// | cancelTurn             | queued or running | +1          |          |          | cleared  |
+// | reclaimExpired         | running, expired  |             |          |          | cleared  |
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
 // `false`. Lease times use the database clock, so hosts agree on expiry.
+//
+// commitStep takes the Conversation lock before it touches the Turn row. A
+// writer that needs both takes them in this order, so writers cannot deadlock.
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import {
+  appendStepMessages,
+  withConversationEventLock,
+} from "@/core/turn/history-bridge";
+import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
 
@@ -33,6 +43,7 @@ export type TurnLease = { turnId: string; leaseEpoch: number };
 
 /** A Turn that one invocation claimed to run its next step. */
 export type ClaimedTurn = TurnLease & {
+  conversationId: string;
   stepSeq: number;
   /** Claims of this step so far, including this one. */
   attempts: number;
@@ -75,6 +86,7 @@ export async function claimTurn(
     .returning({
       turnId: juniorTurns.id,
       leaseEpoch: juniorTurns.leaseEpoch,
+      conversationId: juniorTurns.conversationId,
       stepSeq: juniorTurns.stepSeq,
       attempts: juniorTurns.attempts,
     });
@@ -94,6 +106,54 @@ export async function heartbeat(
     .where(holdsLease(lease))
     .returning({ id: juniorTurns.id });
   return rows.length > 0;
+}
+
+/**
+ * Commits a step in one transaction: it appends the step's messages to the
+ * Conversation history and moves the Turn to its next step, or ends it when
+ * the step completed the Turn. False when the lease is lost, and then nothing
+ * is written.
+ */
+export async function commitStep(
+  executor: JuniorSqlDatabase,
+  turn: TurnLease & { conversationId: string },
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+): Promise<boolean> {
+  const nextStep = {
+    stepSeq: sql`${juniorTurns.stepSeq} + 1`,
+    attempts: 0,
+    updatedAt: sql`now()`,
+  };
+  return executor.transaction(() =>
+    withConversationEventLock(executor, turn.conversationId, async () => {
+      const rows = await executor
+        .db()
+        .update(juniorTurns)
+        .set(
+          step.outcome === "completed"
+            ? {
+                ...nextStep,
+                state: "completed",
+                leaseOwner: null,
+                leaseExpiresAt: null,
+                endedAt: sql`now()`,
+              }
+            : nextStep,
+        )
+        .where(
+          and(
+            holdsLease(turn),
+            eq(juniorTurns.conversationId, turn.conversationId),
+          ),
+        )
+        .returning({ id: juniorTurns.id });
+      if (rows.length === 0) {
+        return false;
+      }
+      await appendStepMessages(executor, turn.conversationId, step.messages);
+      return true;
+    }),
+  );
 }
 
 /** Ends a running Turn as completed. False when the lease is lost. */

@@ -1,9 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import {
   cancelTurn,
   claimTurn,
+  commitStep,
   completeTurn,
   failTurn,
   heartbeat,
@@ -20,6 +27,7 @@ import {
   type LocalJuniorSqlFixture,
 } from "../../../fixtures/sql";
 
+const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const LEASE_MS = 60_000;
 // A lease that has expired by the next statement.
 const EXPIRED_LEASE_MS = 0;
@@ -39,7 +47,7 @@ describe("Turn state", () => {
       providerTenantId: "T123",
       updatedAt: new Date(),
     });
-    turnId = await insertQueuedTurn("slack:C123:1718123456.000000");
+    turnId = await insertQueuedTurn(CONVERSATION_ID);
   });
 
   afterEach(async () => {
@@ -70,6 +78,16 @@ describe("Turn state", () => {
     return turn!;
   }
 
+  async function loadHistory() {
+    const events = await createSqlConversationEventStore(
+      fixture.sql,
+    ).loadCurrentHistory(CONVERSATION_ID);
+    return {
+      types: events.map((event) => event.data.type),
+      messages: projectConversationEvents(events).messages,
+    };
+  }
+
   function claim(owner = "worker-a", leaseMs = LEASE_MS) {
     return claimTurn(fixture.sql, { turnId, owner, leaseMs });
   }
@@ -79,7 +97,13 @@ describe("Turn state", () => {
 
     const winners = claims.filter((claimed) => claimed !== undefined);
     expect(winners).toEqual([
-      { turnId, stepSeq: 0, leaseEpoch: 1, attempts: 1 },
+      {
+        turnId,
+        conversationId: CONVERSATION_ID,
+        stepSeq: 0,
+        leaseEpoch: 1,
+        attempts: 1,
+      },
     ]);
     const turn = await readTurn();
     // The losing claim wrote nothing, so each counter went up once.
@@ -129,6 +153,7 @@ describe("Turn state", () => {
     const reclaimed = await claim("worker-b");
     expect(reclaimed).toEqual({
       turnId,
+      conversationId: CONVERSATION_ID,
       stepSeq: 0,
       leaseEpoch: 2,
       attempts: 2,
@@ -237,4 +262,141 @@ describe("Turn state", () => {
     await expect(claim()).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(cancelled);
   });
+
+  it("commits a step: appends its messages and moves the Turn to the next step", async () => {
+    // A retried step: the commit resets attempts.
+    await claim("worker-a", EXPIRED_LEASE_MS);
+    await reclaimExpired(fixture.sql);
+    const claimed = (await claim("worker-b"))!;
+    expect(claimed).toMatchObject({ leaseEpoch: 2, attempts: 2 });
+    const messages = [toolCallReply(), toolResult()];
+
+    await expect(
+      commitStep(fixture.sql, claimed, { outcome: "continue", messages }),
+    ).resolves.toBe(true);
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "running",
+      stepSeq: 1,
+      leaseEpoch: 2,
+      attempts: 0,
+      leaseOwner: "worker-b",
+      endedAt: null,
+    });
+    await expect(loadHistory()).resolves.toEqual({
+      types: ["assistant_message", "tool_result"],
+      messages,
+    });
+  });
+
+  it("ends the Turn when the committed step completed it", async () => {
+    const claimed = (await claim())!;
+    const messages = [finalReply()];
+
+    await expect(
+      commitStep(fixture.sql, claimed, { outcome: "completed", messages }),
+    ).resolves.toBe(true);
+
+    const completed = await readTurn();
+    expect(completed).toMatchObject({
+      state: "completed",
+      stepSeq: 1,
+      leaseEpoch: 1,
+      attempts: 0,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    });
+    expect(completed.endedAt).toBeInstanceOf(Date);
+    await expect(loadHistory()).resolves.toEqual({
+      types: ["assistant_message"],
+      messages,
+    });
+  });
+
+  it("rejects a commit after reclaim or with a stale lease_epoch, and appends nothing", async () => {
+    const stale = (await claim("worker-a", EXPIRED_LEASE_MS))!;
+    await reclaimExpired(fixture.sql);
+    const queued = await readTurn();
+
+    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
+      false,
+    );
+    await expect(readTurn()).resolves.toEqual(queued);
+
+    await claim("worker-b");
+    const running = await readTurn();
+    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
+      false,
+    );
+    await expect(readTurn()).resolves.toEqual(running);
+    await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
+  });
+
+  it("rejects a commit after cancel, and appends nothing", async () => {
+    const claimed = (await claim())!;
+    await cancelTurn(fixture.sql, turnId);
+    const cancelled = await readTurn();
+
+    await expect(
+      commitStep(fixture.sql, claimed, finishedStep()),
+    ).resolves.toBe(false);
+    await expect(readTurn()).resolves.toEqual(cancelled);
+    await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
+  });
 });
+
+function reply(
+  content: AssistantMessage["content"],
+  stopReason: AssistantMessage["stopReason"],
+): AssistantMessage {
+  return {
+    role: "assistant",
+    content,
+    api: "anthropic-messages",
+    provider: "anthropic",
+    model: "claude-test",
+    usage: {
+      input: 10,
+      output: 5,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 15,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason,
+    timestamp: 1_718_123_456_000,
+  };
+}
+
+function toolCallReply() {
+  return reply(
+    [
+      {
+        type: "toolCall",
+        id: "call-1",
+        name: "lookup",
+        arguments: { query: "turns" },
+      },
+    ],
+    "toolUse",
+  );
+}
+
+function toolResult(): ToolResultMessage {
+  return {
+    role: "toolResult",
+    toolCallId: "call-1",
+    toolName: "lookup",
+    content: [{ type: "text", text: "3 Turns" }],
+    isError: false,
+    timestamp: 1_718_123_457_000,
+  };
+}
+
+function finalReply() {
+  return reply([{ type: "text", text: "There are 3 Turns." }], "stop");
+}
+
+function finishedStep() {
+  return { outcome: "completed" as const, messages: [finalReply()] };
+}
