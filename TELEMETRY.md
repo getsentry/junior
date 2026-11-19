@@ -89,6 +89,7 @@ attributes. Nested logs and spans inherit them.
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
+| Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
 
 ## Trace Shape
