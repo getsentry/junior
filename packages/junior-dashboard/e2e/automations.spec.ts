@@ -5,7 +5,7 @@ import { mockAutomationCollection } from "../src/mock-reporting/automation-colle
 import { NOW } from "../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import type { Page } from "@playwright/test";
 
 /** One option in a filter of the Automations filter panel or sheet. */
@@ -62,7 +62,8 @@ test("opens scheduled and event automations in the native Automations view", asy
         lastProgressAt: NOW,
         lastSeenAt: NOW,
         startedAt: NOW,
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "internal",
       }),
     });
@@ -170,9 +171,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
   );
   const recentDetails = page.getByRole("dialog");
-  await expect(
-    recentDetails.getByText("completed", { exact: true }),
-  ).toBeVisible();
+  await expect(recentDetails.getByText("done", { exact: true })).toBeVisible();
   // Details show the run's Conversation, not only its numbers.
   await expect(
     recentDetails.getByText("Scheduled operation completed successfully."),
@@ -873,7 +872,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await page.route("**/api/automations/event-2/executions", (route) =>
     route.fulfill({
       json: {
-        automation: report.automations.find((item) => item.id === "event-2"),
         executions: [],
         executionDays: [],
         truncated: false,
@@ -935,6 +933,9 @@ test("groups automations by what needs attention on the landing page", async ({
   await expect(
     page.getByRole("button", { name: "Expand instruction", exact: true }),
   ).toBeVisible();
+  // The screenshot uses this size. A resize would move the pointer off the
+  // chart and close its tooltip.
+  await page.setViewportSize(desktop);
   await page
     .getByRole("region", { name: "Recent runs" })
     .getByRole("img")

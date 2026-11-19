@@ -21,7 +21,12 @@
  * in the same way, so it never drops the skipped events.
  */
 import { useEffect, useMemo, useRef } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useInfiniteQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   conversationEventPageSchema,
   type ConversationDetailReport,
@@ -35,7 +40,14 @@ import {
   buildUnreadConversationTranscript,
   conversationHistoryVersion,
 } from "./transcript";
-import { turnStartedEventSeq } from "./conversationRoutes";
+import {
+  CONVERSATION_EVENT_PARAM,
+  CONVERSATION_MESSAGE_PARAM,
+  CONVERSATION_TURN_PARAM,
+  messageEventSeq,
+  parseConversationEventSeq,
+  turnStartedEventSeq,
+} from "./conversationRoutes";
 
 /** The transcript to show and how to load more of it. */
 export type TranscriptHistory = {
@@ -58,11 +70,12 @@ export type TranscriptHistory = {
 
 /**
  * The row that the transcript opens at: the `unreadCursor` of the read
- * position, or a linked event seq or Turn id.
+ * position, or a linked event seq, Turn id, or Message id.
  */
 export type HistoryStart =
   | { around: string }
   | { event: string }
+  | { message: string }
   | { turn: string };
 
 /**
@@ -83,7 +96,12 @@ export function useHistoryAround(input: {
   startPage?: ConversationEventPage;
 }): (TranscriptHistory & { isPending: boolean }) | undefined {
   const { conversationId, detail, onShowLatest, onStartFailed, start } = input;
-  const startKey = start ? Object.entries(start)[0]?.join(":") : undefined;
+  const startKey = start ? historyStartKey(start) : undefined;
+  const queryClient = useQueryClient();
+  // A prefetched page opens the transcript at once, with no pending render.
+  const startPage =
+    input.startPage ??
+    (start ? cachedStartPage(queryClient, conversationId, start) : undefined);
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -103,14 +121,17 @@ export function useHistoryAround(input: {
     // before the latest page.
     gcTime: 0,
     queryKey: ["conversation", conversationId, "around", startKey, "newer"],
+    // The page around the start joins a prefetch of it that is in flight.
     queryFn: ({ pageParam, signal }) =>
-      readConversationEventsFrom(conversationId, pageParam, signal),
+      "after" in pageParam
+        ? readConversationEventsFrom(conversationId, pageParam, signal)
+        : queryClient.fetchQuery(startPageQuery(conversationId, pageParam)),
     // Without the cast, TanStack Query infers the page param from this value.
     // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
     initialPageParam: (start ?? { around: "" }) as NewerPageParam,
     // The page that came with the detail. Without it, the query reads it.
-    ...(input.startPage && start
-      ? { initialData: { pageParams: [start], pages: [input.startPage] } }
+    ...(startPage && start
+      ? { initialData: { pageParams: [start], pages: [startPage] } }
       : undefined),
     getNextPageParam: (page): NewerPageParam | undefined =>
       reachesLatest(page, latestFirstSeq) || !page.nextCursor
@@ -234,6 +255,77 @@ function reachesLatest(
   return lastSeq + 1 >= latestFirstSeq;
 }
 
+/** How long a read page around a start opens the transcript at once. */
+const START_PAGE_STALE_MS = 30_000;
+
+/**
+ * Read the page around a start before the reader picks it, for example when
+ * an outline preview opens, so the jump to it needs no request.
+ */
+export function prefetchHistoryAround(
+  queryClient: QueryClient,
+  conversationId: string,
+  start: HistoryStart,
+): Promise<void> {
+  return queryClient.prefetchQuery(startPageQuery(conversationId, start));
+}
+
+/**
+ * The read page around a start. For an event, a page read around another
+ * start also serves when it holds the event, so a jump to a message near a
+ * prefetched one needs no request either.
+ */
+export function cachedStartPage(
+  queryClient: QueryClient,
+  conversationId: string,
+  start: HistoryStart,
+): ConversationEventPage | undefined {
+  const exact = queryClient.getQueryData(
+    startPageQuery(conversationId, start).queryKey,
+  );
+  if (exact || !("event" in start)) return exact;
+  const seq = Number(start.event);
+  const pages = queryClient.getQueriesData<ConversationEventPage>({
+    predicate: (query) => query.queryKey[4] === "start",
+    queryKey: ["conversation", conversationId, "around"],
+  });
+  return pages
+    .map(([, page]) => page)
+    .find((page) => {
+      const first = page?.events[0]?.seq;
+      const last = page?.events.at(-1)?.seq;
+      return (
+        first !== undefined && last !== undefined && first <= seq && seq <= last
+      );
+    });
+}
+
+/**
+ * The page around a start, kept for a short time. Only this page is kept:
+ * pages after it can end at an old latest event, which would leave a gap
+ * before the latest page.
+ */
+function startPageQuery(conversationId: string, start: HistoryStart) {
+  return queryOptions({
+    gcTime: START_PAGE_STALE_MS,
+    queryFn: ({ signal }) =>
+      readConversationEventsFrom(conversationId, start, signal),
+    queryKey: [
+      "conversation",
+      conversationId,
+      "around",
+      historyStartKey(start),
+      "start",
+    ],
+    retry: false,
+    staleTime: START_PAGE_STALE_MS,
+  });
+}
+
+function historyStartKey(start: HistoryStart): string | undefined {
+  return Object.entries(start)[0]?.join(":");
+}
+
 /** The first page is around the start. The rest follow it. */
 type NewerPageParam = HistoryStart | { after: string };
 
@@ -256,8 +348,23 @@ function readConversationEventsFrom(
   });
 }
 
-/** A linked event seq or Turn id. */
-export type ConversationLink = { event: number } | { turn: string };
+/** A linked event seq, Turn id, or Message id. */
+export type ConversationLink =
+  | { event: number }
+  | { message: string }
+  | { turn: string };
+
+/** Read the link of a page URL. A Turn wins over an event, then a Message. */
+export function readConversationLink(
+  params: URLSearchParams,
+): ConversationLink | undefined {
+  const turn = params.get(CONVERSATION_TURN_PARAM);
+  if (turn) return { turn };
+  const event = parseConversationEventSeq(params.get(CONVERSATION_EVENT_PARAM));
+  if (event !== undefined) return { event };
+  const message = params.get(CONVERSATION_MESSAGE_PARAM);
+  return message ? { message } : undefined;
+}
 
 /** The page to open for a link, or nothing when `events` hold its row. */
 export function unheldLinkStart(
@@ -265,12 +372,16 @@ export function unheldLinkStart(
   link: ConversationLink,
 ): HistoryStart | undefined {
   const seq =
-    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
+    "event" in link
+      ? link.event
+      : "message" in link
+        ? messageEventSeq(events, link.message)
+        : turnStartedEventSeq(events, link.turn);
   const held =
     seq !== undefined &&
     events !== undefined &&
     seq >= (events[0]?.seq ?? Infinity) &&
     seq <= (events.at(-1)?.seq ?? -Infinity);
   if (held) return undefined;
-  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
+  return "event" in link ? { event: String(link.event) } : link;
 }

@@ -17,11 +17,14 @@ export {
   promptMessageSchema,
   type PromptContext,
   type PromptContextContribution,
+  type PromptHistory,
+  type PromptHistoryContext,
   type PromptMessage,
   type SystemPromptContext,
   type UserPromptContribution,
   type UserPromptContext,
 } from "./prompt";
+export * from "./prompt-tags";
 export * from "./dispatch";
 export * from "./events";
 export * from "./event-triggers";

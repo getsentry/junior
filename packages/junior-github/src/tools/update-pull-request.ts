@@ -1,13 +1,11 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
   type PluginDecider,
   type PluginEgress,
-  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -20,6 +18,7 @@ import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
   readGitHubBody,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
@@ -35,12 +34,15 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
-import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
+import {
+  checkPullRequestDescription,
+  PULL_REQUEST_BODY_RULES,
+} from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
     title: z
       .string()
       .trim()
@@ -50,9 +52,7 @@ const inputSchema = z
     body: z
       .string()
       .optional()
-      .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
-      ),
+      .describe(`Replacement pull request body. ${PULL_REQUEST_BODY_RULES}`),
     base: z
       .string()
       .trim()
@@ -166,7 +166,6 @@ export function createGitHubUpdatePullRequestTool(
       _options,
       ctx: {
         actor?: Actor | undefined;
-        automationLink?: { url: string };
         conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
@@ -174,12 +173,7 @@ export function createGitHubUpdatePullRequestTool(
         log: PluginLogger;
         events: { canSubscribe: boolean };
         conversationLink?: { url: string };
-        source?: Source | undefined;
-        users: {
-          resolveActor(): Promise<
-            { identity?: Identity; user?: User } | undefined
-          >;
-        };
+        resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
       },
     ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
@@ -199,7 +193,7 @@ export function createGitHubUpdatePullRequestTool(
         update.body !== undefined
           ? await readGitHubBody(ctx.egress, {
               operation: "github.pull.get",
-              path: `${repoPath(repo)}/pulls/${update.number}`,
+              path: `${repoPath(repo)}/pulls/${update.pull_request}`,
             })
           : undefined;
       const payload = {
@@ -209,7 +203,6 @@ export function createGitHubUpdatePullRequestTool(
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
                   update.body,
-                  ctx,
                   requester,
                   currentBody,
                 ),
@@ -224,7 +217,7 @@ export function createGitHubUpdatePullRequestTool(
       const hasRestUpdate = Object.keys(payload).length > 0;
       const response = await githubApi(ctx.egress, {
         operation: hasRestUpdate ? "github.pull.update" : "github.pull.get",
-        path: `${repoPath(repo)}/pulls/${update.number}`,
+        path: `${repoPath(repo)}/pulls/${update.pull_request}`,
         ...(hasRestUpdate ? { method: "PATCH", body: payload } : undefined),
       });
       const parsed = response.body;
@@ -265,9 +258,10 @@ export function createGitHubUpdatePullRequestTool(
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      if (requester?.identity) {
+      const identity = requesterPerson(requester)?.identity;
+      if (identity) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-          identityId: requester.identity.id,
+          identityId: identity.id,
           number: providerResult.number,
           repositoryFullName: repo.ref,
         });

@@ -6,7 +6,7 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { getConversationEventStore } from "@/chat/db";
-import { getPlugins } from "./agent-hooks";
+import { getRegistrations } from "./agent-hooks";
 
 function registeredDefinition(
   plugin: PluginRegistration,
@@ -79,7 +79,7 @@ export function renderPluginConversationEvent(args: {
   namespace: string;
   version: number;
 }): ConversationEventPresentation | undefined {
-  const plugin = getPlugins().find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === args.namespace,
   );
   const definition = plugin?.conversationEvents?.find(

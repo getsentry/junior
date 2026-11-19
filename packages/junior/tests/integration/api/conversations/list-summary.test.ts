@@ -5,6 +5,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
 describe("conversation list API summaries", () => {
   test("shows the latest summary only where private content is visible", async () => {
@@ -39,8 +40,9 @@ describe("conversation list API summaries", () => {
         });
       }
 
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations",
+      const response = await expectSqlBudget(
+        () => createJuniorApi().request("http://localhost/api/conversations"),
+        { statements: 15, serialRounds: 3 },
       );
       expect(response.status).toBe(200);
       const conversations = new Map(

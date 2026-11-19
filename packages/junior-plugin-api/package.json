@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-plugin-api",
-  "version": "0.303.0",
+  "version": "0.310.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -15,6 +15,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./embeddings": {
+      "types": "./dist/embeddings.d.ts",
+      "default": "./dist/embeddings.js"
     }
   },
   "files": [
@@ -23,6 +27,7 @@
   ],
   "dependencies": {
     "commander": "^14.0.3",
+    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "scripts": {

@@ -31,6 +31,14 @@
     {
       "name": "time-format",
       "specifier": "./oxlint/time-format.ts"
+    },
+    {
+      "name": "query-invalidation",
+      "specifier": "./oxlint/query-invalidation.ts"
+    },
+    {
+      "name": "radius",
+      "specifier": "./oxlint/radius.ts"
     }
   ],
   "ignorePatterns": [
@@ -49,6 +57,7 @@
   ],
   "rules": {
     "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
@@ -82,6 +91,8 @@
     "text-control/no-raw-text-control": "error",
     "px-geometry/px-constant-sizes-element": "error",
     "image-src/no-raw-external-image-src": "error",
+    "query-invalidation/no-broad-query-invalidation": "error",
+    "query-invalidation/no-refetch-interval": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -128,13 +139,28 @@
     {
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
-        "junior/no-regex-url-parsing": "error"
+        "junior/no-regex-url-parsing": "error",
+        "junior/no-value-switch": "error"
       }
     },
     {
       "files": ["src/client/**"],
       "rules": {
         "time-format/no-raw-time-format": "error"
+      }
+    },
+    {
+      "files": ["src/**"],
+      "rules": {
+        "junior/bounded-fan-out": "error",
+        "junior/prefer-map-bounded": "error",
+        "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "rules": {
+        "radius/no-large-radius": "error"
       }
     },
     {
@@ -157,7 +183,10 @@
       }
     },
     {
-      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "files": [
+        "src/client/conversations/ConversationSectionList.tsx",
+        "src/client/inbox/conversations/ConversationSectionList.tsx"
+      ],
       "rules": {
         "no-restricted-imports": "off"
       }

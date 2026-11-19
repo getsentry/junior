@@ -101,6 +101,7 @@ export async function readDraftReadiness(
   let agentsMd: string | undefined;
   let after: string | null = null;
   do {
+    // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
     const response = await githubApi(egress, {
       operation: "github.pull.draft_readiness.get",
       method: "POST",

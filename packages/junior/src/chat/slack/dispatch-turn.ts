@@ -44,7 +44,7 @@ export function createSlackDispatchTurnRunner(options: {
       shouldYield?: () => boolean;
       checkIn?: () => Promise<boolean>;
     },
-  ): Promise<DispatchTurnResult> {
+  ): Promise<DispatchTurnResult | undefined> {
     const state = getStateAdapter();
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
@@ -96,8 +96,7 @@ export function createSlackDispatchTurnRunner(options: {
       isSubscribedContext: true,
     });
 
-    let outcome: DispatchTurnResult["outcome"] | undefined;
-    let errorMessage: string | undefined;
+    let outcome: DispatchTurnResult | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);
     await options.executeSlackTurn(thread, message, {
@@ -120,17 +119,21 @@ export function createSlackDispatchTurnRunner(options: {
         resultMessageTs = messageId;
       },
       onTurnOutcome: (result) => {
-        outcome = result.outcome;
-        errorMessage = result.errorMessage;
+        outcome = result;
       },
       shouldYield: hooks.shouldYield,
       checkIn: hooks.checkIn,
       skipBackfill: true,
     });
-    return {
-      ...(errorMessage ? { errorMessage } : undefined),
-      ...(outcome ? { outcome } : undefined),
-      ...(resultMessageTs ? { resultMessageTs } : undefined),
-    };
+    // Without a reported outcome, the dispatch worker reads the turn record.
+    if (
+      resultMessageTs &&
+      (outcome?.outcome === "blocked" ||
+        outcome?.outcome === "completed" ||
+        outcome?.outcome === "failed")
+    ) {
+      return { ...outcome, resultMessageTs };
+    }
+    return outcome;
   };
 }

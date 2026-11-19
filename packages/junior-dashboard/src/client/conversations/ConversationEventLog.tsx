@@ -6,6 +6,7 @@ import { Toggle } from "../components/ui/toggle";
 import { useEventTime } from "./eventTime";
 import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
+import { useInboxUi } from "../uiShell";
 import type { ConversationTranscript } from "../types";
 import {
   adjacentEventLogSeqs,
@@ -27,7 +28,8 @@ const rowClass =
  */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
-  onSearchChange(value: string): void;
+  /** Without it, as in the new UI, the log has no search. */
+  onSearchChange?(value: string): void;
   onSelectedSeqChange?(seq: number | undefined): void;
   /** The row that holds the reader's place, from the scroll owner. */
   scrollAnchorKey?: () => string | undefined;
@@ -35,7 +37,12 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
 }) {
   const { conversation } = props;
   const time = useEventTime();
-  const search = useTranscriptSearch();
+  const transcriptSearch = useTranscriptSearch();
+  // The new UI has no page search.
+  const onSearchChange = useInboxUi() ? undefined : props.onSearchChange;
+  const search = onSearchChange
+    ? transcriptSearch
+    : { ...transcriptSearch, active: false, normalizedQuery: "" };
   const [localSelectedSeq, setLocalSelectedSeq] = useState<number>();
   const selectedSeq = props.onSelectedSeqChange
     ? props.selectedSeq
@@ -106,14 +113,16 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     <section aria-label="Conversation event log" className="@container min-w-0">
       <div className="sticky top-0 z-10 bg-dashboard-bg">
         <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
-          <SearchInput
-            className="min-w-32 flex-1 @max-[28rem]:basis-full"
-            label="Search events"
-            onChange={props.onSearchChange}
-            placeholder="Search events…"
-            size="compact"
-            value={search.query}
-          />
+          {onSearchChange ? (
+            <SearchInput
+              className="min-w-32 flex-1 @max-[28rem]:basis-full"
+              label="Search events"
+              onChange={onSearchChange}
+              placeholder="Search events…"
+              size="compact"
+              value={search.query}
+            />
+          ) : null}
           <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted @max-[28rem]:w-full @max-[28rem]:justify-between">
             <span role="status">
               {search.active

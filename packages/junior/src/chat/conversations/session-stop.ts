@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
@@ -47,9 +48,9 @@ export async function markConversationsStopped(
     return;
   }
   if (options.cancelWatches) {
-    for (const conversationId of conversationIds) {
-      await cancelSubscriptions({ conversationId, state: options.state });
-    }
+    await mapBounded(conversationIds, (conversationId) =>
+      cancelSubscriptions({ conversationId, state: options.state }),
+    );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()
@@ -223,9 +224,7 @@ async function saveStoppedConversationEvents(
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)).map(
-      (input) => ({ kind: "runtime" as const, text: input }),
-    ),
+    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

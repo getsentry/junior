@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
@@ -92,8 +93,9 @@ export function createAgentRunner(
           drainSteeringMessages: (accept) =>
             drainSteeringMessages(async (messages) =>
               accept(
-                await Promise.all(
-                  messages.map(async ({ storedAttachments, ...message }) =>
+                await mapBounded(
+                  messages,
+                  async ({ storedAttachments, ...message }) =>
                     storedAttachments?.length
                       ? {
                           ...message,
@@ -101,7 +103,6 @@ export function createAgentRunner(
                             await loadStoredAttachments(storedAttachments),
                         }
                       : message,
-                  ),
                 ),
               ),
             ),

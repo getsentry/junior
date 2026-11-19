@@ -78,7 +78,8 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
       return {
         dimensions: 2,
         model: input.modelId,
-        provider: "test-provider",
+        // The provider name that the real gateway client reports.
+        provider: "vercel-ai-gateway",
         vectors: input.texts.map(() => [1, 0]),
       };
     },
@@ -268,7 +269,7 @@ describe("Conversation metadata task", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const send = vi.fn();
-    await scheduleSessionCompletedPluginTasks(task("turn-1").params, { send });
+    await scheduleSessionCompletedPluginTasks(task("turn-1").params, send);
     expect(send).toHaveBeenCalledWith(task("turn-1"));
     await processPluginTask(task("turn-1"));
 
@@ -407,9 +408,10 @@ describe("Conversation metadata task", () => {
     // The disabled setting schedules and runs nothing.
     setConversationMetadataEnabled(false);
     const disabledSend = vi.fn();
-    await scheduleSessionCompletedPluginTasks(task("turn-4").params, {
-      send: disabledSend,
-    });
+    await scheduleSessionCompletedPluginTasks(
+      task("turn-4").params,
+      disabledSend,
+    );
     expect(disabledSend).not.toHaveBeenCalledWith(task("turn-4"));
   }, 30_000);
 });

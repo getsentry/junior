@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
+import { renderTag } from "@sentry/junior-plugin-api";
 import type { TranscriptEntry } from "@/chat/conversations/transcript-entries";
 import type { ConversationMetadataInput } from "./input";
 
@@ -123,9 +124,7 @@ function promptInput(args: {
   }
 
   return [
-    "<conversation-metadata-input>",
-    text,
-    "</conversation-metadata-input>",
+    renderTag("conversation-metadata-input", {}, [text]),
     "Return the next summary as structured data.",
   ].join("\n");
 }

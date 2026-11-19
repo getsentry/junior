@@ -14,8 +14,8 @@ function toolContext(
     actor?: unknown;
     currentBody?: string;
     decider?: unknown;
-    requester?: unknown;
-    source?: unknown;
+    /** Overrides the host's work owner. By default the Turn Actor. */
+    workOwner?: unknown;
   } = {},
 ) {
   const fetch = vi.fn(async (input: { operation: string }) => {
@@ -43,22 +43,23 @@ function toolContext(
       )
     );
   });
+  const ctxActor = options.actor ?? {
+    platform: "slack",
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: options.actor ?? {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor: ctxActor,
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
     conversationLink: { url: "https://example.com/session" },
-    source: options.source,
-    users: {
-      resolveActor: async () => options.requester,
-    },
+    resolveWorkOwner: async () =>
+      "workOwner" in options
+        ? options.workOwner
+        : { kind: "person", actor: ctxActor },
   };
   return {
     fetch,
@@ -88,7 +89,7 @@ async function savedFacts(pullRequest: Record<string, unknown>) {
     ),
   );
   const result = (await tool.execute?.(
-    { repo: "getsentry/junior", number: 691, title: "Updated title" },
+    { repo: "getsentry/junior", pull_request: 691, title: "Updated title" },
     { toolCallId: "update-pr" },
   )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
   return result.objectAnnotations[0]!.facts;
@@ -116,7 +117,7 @@ describe("updatePullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           title: "Updated title",
           body: "Updated body",
           base: "release",
@@ -174,13 +175,13 @@ describe("updatePullRequest", () => {
     {
       name: "a review event keeps the requesters",
       actor: { platform: "system", name: "event" },
-      source: { kind: "event" },
       expected: "via @lcian.",
     },
     {
       name: "another person with a linked GitHub account is added",
       actor: jan,
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "jan-auer" }] },
       },
       expected: "via @lcian, @jan-auer.",
@@ -198,7 +199,8 @@ describe("updatePullRequest", () => {
         teamId: "T1",
         userId: "U3",
       },
-      requester: {
+      workOwner: {
+        kind: "person",
         user: { identities: [{ provider: "github", handle: "lcian" }] },
       },
       expected: "via @lcian.",
@@ -206,20 +208,22 @@ describe("updatePullRequest", () => {
     {
       name: "an automation run is added after the people",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
-        automationId: "evt_1",
-        automationRunId: "run_1",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_1",
       },
       expected: "via @lcian, automation `evt_1` · Run ID `run_1`.",
     },
     {
       name: "each automation run is kept, like each person",
       actor: { platform: "system", name: "automation" },
-      source: {
-        kind: "event_automation",
-        automationId: "evt_1",
-        automationRunId: "run_2",
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "run_2",
       },
       currentBody: `Original body
 
@@ -229,16 +233,15 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       expected:
         "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
     },
-  ])("$name", async ({ actor, currentBody, expected, requester, source }) => {
+  ])("$name", async ({ actor, currentBody, expected, workOwner }) => {
     const { fetch, tool } = toolContext(undefined, {
       actor,
       currentBody: currentBody ?? ATTRIBUTED_BODY,
-      requester,
-      source,
+      ...(workOwner ? { workOwner } : undefined),
     });
 
     await tool.execute?.(
-      { repo: "getsentry/junior", number: 691, body: "Updated body" },
+      { repo: "getsentry/junior", pull_request: 691, body: "Updated body" },
       { toolCallId: "update-pr" },
     );
 
@@ -262,7 +265,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Retry timed-out webhooks.\n\n## Test plan\n- [x] pnpm test",
         },
         { toolCallId: "update-pr" },
@@ -282,7 +285,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, body: "  " },
+        { repo: "getsentry/junior", pull_request: 691, body: "  " },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({
@@ -312,7 +315,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, title: "Updated title" },
+        { repo: "getsentry/junior", pull_request: 691, title: "Updated title" },
         { toolCallId: "update-merged-pr" },
       ),
     ).resolves.toMatchObject({
@@ -441,7 +444,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/Junior", number: 691, draft: false },
+        { repo: "getsentry/Junior", pull_request: 691, draft: false },
         { toolCallId: "ready-pr" },
       ),
     ).resolves.toMatchObject({
@@ -474,7 +477,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       );
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, draft: false },
+        { repo: "getsentry/junior", pull_request: 691, draft: false },
         { toolCallId: "ready-pr-denied" },
       ),
     ).rejects.toThrow(
@@ -511,7 +514,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           title: "New title",
           draft: true,
         },
@@ -532,7 +535,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     fetch.mockResolvedValueOnce(new Response(JSON.stringify(readyPull)));
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, draft: false },
+        { repo: "getsentry/junior", pull_request: 691, draft: false },
         { toolCallId: "already-ready" },
       ),
     ).resolves.toMatchObject({ draft: false });
@@ -540,9 +543,9 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
   });
 
   it.each([
-    { repo: "getsentry/junior", number: 691 },
-    { repo: "getsentry/junior", number: 691, title: "   " },
-    { repo: "getsentry/junior", number: 691, base: "" },
+    { repo: "getsentry/junior", pull_request: 691 },
+    { repo: "getsentry/junior", pull_request: 691, title: "   " },
+    { repo: "getsentry/junior", pull_request: 691, base: "" },
   ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 
@@ -561,7 +564,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, base: "missing" },
+        { repo: "getsentry/junior", pull_request: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({
@@ -580,7 +583,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, base: "main" },
+        { repo: "getsentry/junior", pull_request: 691, base: "main" },
         { toolCallId: "update-pr" },
       ),
     ).rejects.toMatchObject({

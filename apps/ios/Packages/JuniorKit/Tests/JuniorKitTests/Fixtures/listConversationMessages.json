@@ -1,0 +1,26 @@
+{
+  "messages": [
+    {
+      "seq": 45,
+      "messageId": "many-turns-reply-22",
+      "createdAt": "2026-08-06T10:22:20.000Z",
+      "role": "assistant",
+      "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+    },
+    {
+      "seq": 46,
+      "messageId": "many-turns-user-23",
+      "createdAt": "2026-08-06T10:23:00.000Z",
+      "role": "user",
+      "text": "Question 24: review the alert thresholds. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+    },
+    {
+      "seq": 47,
+      "messageId": "many-turns-reply-23",
+      "createdAt": "2026-08-06T10:23:20.000Z",
+      "role": "assistant",
+      "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+    }
+  ],
+  "nextCursor": "eyJjb252ZXJzYXRpb25JZCI6InNsYWNrOkNRQTQ1NjoxNzcwMDI1MjAwLjAwMDcwMCIsInNlcSI6NDUsInZlcnNpb24iOjF9.mock"
+}

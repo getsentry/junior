@@ -342,6 +342,7 @@ export function auxiliaryOperationLabel(
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
     "junior/tool_search_rerank": "Tool search",
+    "junior/transcription": "Transcription",
     "junior/turn_routed": "Thinking routing",
     "junior/vision_summary": "Image summary",
     "junior/web_search": "Web search",

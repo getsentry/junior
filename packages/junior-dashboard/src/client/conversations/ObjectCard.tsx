@@ -4,9 +4,11 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@dashboard/lib/utils";
+import { codeChangeSize } from "../codeChangeSize";
 import { ActorAvatar } from "../components/ActorAvatar";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { Sparkline } from "../components/charts/Sparkline";
@@ -23,54 +25,16 @@ import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
+import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
 import { formatRelativeTime, formatTime } from "../time";
 
-// A thumbnail that fails to load does not render.
-function Thumbnail({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt=""
-      className="aspect-video max-h-44 w-full rounded-md border border-dashboard-border object-cover"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={src}
-    />
-  );
-}
-
-// The image route answers 404 to a viewer who cannot see the source, so a
-// preview image that fails to load does not render.
-function PreviewImage({
-  alt,
-  image,
-}: {
-  alt: string;
-  image: { src: string; srcSet: string };
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt={alt}
-      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
-      decoding="async"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={image.src}
-      srcSet={image.srcSet}
-    />
-  );
-}
-
-// A web page names its site, then its author, such as "YouTube · Sentry".
-// Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event or a release ends with when it happened, and a
-// monitor with when it last checked, in the viewer's time.
+// Its type and its core plugin tell the viewer nothing, and the label of a
+// web page is its title. An event or a release ends with when it happened,
+// and a monitor with when it last checked, in the viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  if (card.objectType === "web_page") return webPageMeta(card) ?? type;
   const time =
     card.facts?.type === "event"
       ? card.facts.occurredAt
@@ -79,22 +43,26 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
         : card.facts?.type === "monitor"
           ? card.facts.lastCheckedAt
           : undefined;
-  const parts =
-    card.objectType === "web_page"
-      ? [
-          webPageSite(card),
-          card.facts?.type === "web_page" ? card.facts.author : undefined,
-        ]
-      : [
-          type,
-          objectSource(card.plugin),
-          // A label that repeats the title or the type says nothing new.
-          [card.title, type].includes(card.label) ? "" : card.label,
-          time
-            ? formatTime(time, { dateStyle: "medium", timeStyle: "short" })
-            : undefined,
-        ];
-  return parts.filter(Boolean).join(" · ") || type;
+  return (
+    [
+      type,
+      objectSource(card.plugin),
+      // A label that repeats the title or the type says nothing new.
+      [card.title, type].includes(card.label) ? "" : card.label,
+      time
+        ? formatTime(time, { dateStyle: "medium", timeStyle: "short" })
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ") || type
+  );
+}
+
+/** Name a web page by its site, then its author, such as "YouTube · Sentry". */
+export function webPageMeta(card: OwnedObjectAnnotation): string | undefined {
+  const author =
+    card.facts?.type === "web_page" ? card.facts.author : undefined;
+  return [webPageSite(card), author].filter(Boolean).join(" · ") || undefined;
 }
 
 function webPageSite(card: OwnedObjectAnnotation): string | undefined {
@@ -106,19 +74,23 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 }
 
 /**
- * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit. A live card can attach
- * its object to the Conversation. A saved card tells when Junior fetched its
- * facts. With `fill`, the card fills the height of its container and its body
- * scrolls.
+ * Show the full card of the latest saved annotation, or a `live` card that
+ * the API resolved for a link: images, facts, and details. A link preview
+ * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
+ * A live card can attach its object to the Conversation. A saved card tells
+ * when Junior fetched its facts. With `fill`, the card fills the height of
+ * its container and its body scrolls. `children` end the body, such as the
+ * recent activity of a person.
  */
 export function ObjectCard({
   card,
+  children,
   className,
   fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  children?: ReactNode;
   className?: string;
   fill?: boolean | undefined;
   live?: boolean | undefined;
@@ -151,6 +123,8 @@ export function ObjectCard({
   );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
+  const size = card.facts?.type === "code_change" ? card.facts : undefined;
+  const sized = codeChangeSize(size) !== undefined;
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
@@ -192,16 +166,21 @@ export function ObjectCard({
       >
         {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
           card.facts.thumbnailUrl && (
-            <Thumbnail src={card.facts.thumbnailUrl} />
+            <ObjectImage
+              className="aspect-video max-h-44 w-full"
+              src={card.facts.thumbnailUrl}
+            />
           )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
             {images.map((image, index) => (
-              <PreviewImage
+              <ObjectImage
                 key={image.src}
                 alt={`Description image ${index + 1}`}
-                image={image}
+                className="aspect-video w-full"
+                src={image.src}
+                srcSet={image.srcSet}
               />
             ))}
           </div>
@@ -236,7 +215,7 @@ export function ObjectCard({
             spans={card.facts.spans}
           />
         )}
-        {(card.status || fields.length > 0) && (
+        {(card.status || fields.length > 0 || sized) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
           <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
             {card.status && (
@@ -268,6 +247,17 @@ export function ObjectCard({
                 </dd>
               </div>
             ))}
+            {sized && (
+              <div className="min-w-0">
+                <dt className="text-xs text-dashboard-text-muted">Size</dt>
+                <dd className="m-0 mt-1">
+                  <ChangeSize
+                    className="text-sm text-dashboard-text"
+                    size={size}
+                  />
+                </dd>
+              </div>
+            )}
           </dl>
         )}
         {card.description && (
@@ -291,6 +281,7 @@ export function ObjectCard({
             {card.warning}
           </p>
         )}
+        {children}
       </div>
       {(card.url || fetchedAt || attachable) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">

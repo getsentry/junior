@@ -62,7 +62,7 @@ function htmlImageSources(html: string): string[] {
       const src = node.attrs.find((attr) => attr.name === "src")?.value;
       if (src) sources.push(src);
     }
-    if ("childNodes" in node) node.childNodes.forEach(visit);
+    if ("childNodes" in node) for (const child of node.childNodes) visit(child);
     if ("content" in node) visit(node.content);
   };
   visit(parseFragment(html));

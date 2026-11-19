@@ -15,12 +15,12 @@ import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
-  assigneeLabel,
   reviewItemStatusLabel,
   reviewItemSubjectHref,
 } from "./reviewItemFormat";
 import { OutboundLink } from "../components/OutboundLink";
 import { formatRelativeTime } from "../time";
+import { ReviewItemAssignees } from "./ReviewItemPeople";
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (
@@ -87,13 +87,13 @@ export function ReviewItemDetails(props: {
       <div className="grid min-w-0 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
           <ReviewItemObjects conversationId={item.addedByConversationId}>
-            <DisplayText text={item.body} />
+            <DisplayText mentions={item.mentions} text={item.body} />
           </ReviewItemObjects>
         </div>
         <DetailsCard title="Assignees">
           {assigned ? (
             <span className="text-sm text-dashboard-text">
-              {assigneeLabel(item)}
+              <ReviewItemAssignees item={item} />
             </span>
           ) : (
             <StatusChip size="compact" tone="warning">

@@ -1,10 +1,18 @@
+import { useEffect, useMemo, useRef } from "react";
 import {
   keepPreviousData,
   queryOptions,
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
+  type InfiniteData,
 } from "@tanstack/react-query";
-import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type {
+  ActorProfileReport,
+  AutomationList,
+  AutomationListItem,
+  CodePersonReport,
+} from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
@@ -22,6 +30,7 @@ import {
   locationDirectoryReportSchema,
   personalSpendReportSchema,
   automationExecutionListSchema,
+  automationListPageSchema,
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
@@ -46,7 +55,8 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
-import type { DashboardCoreData, SystemData } from "./types";
+import { useInboxUi } from "./uiShell";
+import type { DashboardCoreData, SystemPluginsData } from "./types";
 
 declare global {
   interface Window {
@@ -118,14 +128,18 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
+  // Only the new UI's rows show files and link cards, which cost the server
+  // a query, so only it asks for them.
+  const include = useInboxUi() && !search ? "links,media" : "";
   return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
-    queryKey: ["dashboard", "conversations", "viewer", { search }],
+    queryKey: ["dashboard", "conversations", "viewer", { include, search }],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
+      if (include) params.set("include", include);
       if (pageParam) params.set("cursor", pageParam);
       const query = params.toString();
       return fetchDashboardJson(
@@ -144,8 +158,9 @@ export function useConversationsData(search = "") {
 }
 
 /** Fetch repository and code change analytics. */
-export function useCodeOverviewData() {
+export function useCodeOverviewData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
@@ -176,7 +191,10 @@ export function useCodeRepositoryData(
   });
 }
 
-/** Fetch conversations linked to one repository through its code changes. */
+/**
+ * Fetch conversations linked to one repository through its code changes,
+ * optionally matching `search` on the server.
+ */
 export function useCodeRepositoryConversationsData(
   repositoryId: string | undefined,
   search = "",
@@ -203,11 +221,33 @@ export function useCodeRepositoryConversationsData(
   });
 }
 
+/**
+ * Query keys for Automation reads. Every list shares one prefix and every
+ * read of one Automation shares another, so a change refreshes the lists and
+ * only the Automation that it changed.
+ */
+export const automationKeys = {
+  lists: () => ["dashboard", "automations", "list"] as const,
+  list: (search: string) => [...automationKeys.lists(), search] as const,
+  activityPages: (search: string) =>
+    [...automationKeys.lists(), "activity-pages", search] as const,
+  runs: () => ["dashboard", "automations", "runs"] as const,
+  one: (id: string | undefined) =>
+    ["dashboard", "automations", "one", id] as const,
+  detail: (id: string | undefined) =>
+    [...automationKeys.one(id), "detail"] as const,
+  edit: (id: string) => [...automationKeys.one(id), "edit"] as const,
+  executions: (id: string | undefined) =>
+    [...automationKeys.one(id), "executions"] as const,
+  versions: (id: string | undefined) =>
+    [...automationKeys.one(id), "versions"] as const,
+};
+
 /** Fetch the signed-in viewer's scheduled and event automations. */
 export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", search],
+    queryKey: automationKeys.list(search),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
@@ -219,11 +259,63 @@ export function useAutomationsData(enabled: boolean, search: string) {
   });
 }
 
-/** Load details by ID, independent of list filters and pagination. */
-export function useAutomationData(enabled: boolean, id: string | undefined) {
-  return useQuery({
-    enabled: enabled && Boolean(id),
-    queryKey: ["dashboard", "automations", "detail", id],
+/**
+ * Page through the Automation list by `sort=activity`, as the new UI's
+ * list scrolls. `automations` holds the rows of every loaded page.
+ */
+export function useAutomationPagesData(enabled: boolean, search: string) {
+  const query = useInfiniteQuery({
+    enabled,
+    initialPageParam: "",
+    queryKey: automationKeys.activityPages(search),
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams(search);
+      params.set("sort", "activity");
+      if (pageParam) params.set("cursor", pageParam);
+      return fetchDashboardJson(
+        automationListPageSchema,
+        `/api/automations?${params.toString()}`,
+        signal,
+      );
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+  const pages = query.data?.pages;
+  const automations = useMemo(
+    () => (pages ?? []).flatMap((page) => page.automations),
+    [pages],
+  );
+  return { automations, first: pages?.[0], query };
+}
+
+/**
+ * Find a loaded list row for one Automation, so its page can show the
+ * header before the summary arrives.
+ */
+export function useCachedAutomationListItem(
+  id: string | undefined,
+): AutomationListItem | undefined {
+  const queryClient = useQueryClient();
+  if (!id) return undefined;
+  for (const [, data] of queryClient.getQueriesData<
+    AutomationList | InfiniteData<AutomationList>
+  >({ queryKey: automationKeys.lists() })) {
+    const lists = data && "pages" in data ? data.pages : data ? [data] : [];
+    for (const list of lists) {
+      const found = list.automations?.find(
+        (automation) => automation.id === id,
+      );
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function automationDetailQuery(id: string | undefined) {
+  return queryOptions({
+    queryKey: automationKeys.detail(id),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationSummarySchema,
@@ -234,11 +326,19 @@ export function useAutomationData(enabled: boolean, id: string | undefined) {
   });
 }
 
+/** Load details by ID, independent of list filters and pagination. */
+export function useAutomationData(enabled: boolean, id: string | undefined) {
+  return useQuery({
+    ...automationDetailQuery(id),
+    enabled: enabled && Boolean(id),
+  });
+}
+
 /** Fetch newest runs across all viewer-visible automations. */
 export function useAutomationRunsData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "runs"],
+    queryKey: automationKeys.runs(),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationRunListSchema,
@@ -255,8 +355,14 @@ export function useAutomationExecutionsData(
   automationId: string | undefined,
 ) {
   return useQuery({
+    ...automationExecutionsQuery(automationId),
     enabled: enabled && Boolean(automationId),
-    queryKey: ["dashboard", "automations", automationId, "executions"],
+  });
+}
+
+function automationExecutionsQuery(automationId: string | undefined) {
+  return queryOptions({
+    queryKey: automationKeys.executions(automationId),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationExecutionListSchema,
@@ -267,6 +373,37 @@ export function useAutomationExecutionsData(
   });
 }
 
+// Long enough that a pointer moving across the list fetches nothing.
+const HOVER_INTENT_MS = 150;
+
+/**
+ * Prefetch an Automation's summary and runs when the pointer rests on its
+ * row or the row gets focus, so its page opens with data. Fresh reads are
+ * not fetched again.
+ */
+export function usePrefetchAutomation(id: string) {
+  const queryClient = useQueryClient();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const start = () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void queryClient.prefetchQuery(automationDetailQuery(id));
+      void queryClient.prefetchQuery(automationExecutionsQuery(id));
+    }, HOVER_INTENT_MS);
+  };
+  const cancel = () => clearTimeout(timer.current);
+  return {
+    onBlur: cancel,
+    onFocus: start,
+    // A tap opens the row at once, so a touch gives no time to prefetch.
+    onPointerEnter: (event: { pointerType: string }) => {
+      if (event.pointerType !== "touch") start();
+    },
+    onPointerLeave: cancel,
+  };
+}
+
 /** Fetch saved definitions for one viewer-visible Automation, newest first. */
 export function useAutomationVersionsData(
   enabled: boolean,
@@ -274,7 +411,7 @@ export function useAutomationVersionsData(
 ) {
   return useQuery({
     enabled: enabled && Boolean(automationId),
-    queryKey: ["dashboard", "automations", automationId, "versions"],
+    queryKey: automationKeys.versions(automationId),
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationVersionListSchema,
@@ -286,8 +423,9 @@ export function useAutomationVersionsData(
 }
 
 /** Fetch the actor directory used by the People dashboard route. */
-export function useActorDirectoryData() {
+export function useActorDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
@@ -341,6 +479,29 @@ export function useActorCodeData(email: string | undefined) {
 }
 
 /**
+ * Read every open code change of one person, a page of the code overview at
+ * a time. Open changes list first, so paging stops at the first page that
+ * reaches completed changes.
+ */
+export function useActorOpenCodeChanges(email: string | undefined) {
+  return useInfiniteQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code", "open"],
+    queryFn: ({ pageParam, signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ""}`,
+        signal,
+      ),
+    // An empty cursor reads the first page.
+    initialPageParam: "",
+    getNextPageParam: (page: CodePersonReport) =>
+      page.changes.at(-1)?.state === "open" ? page.nextCursor : undefined,
+    retry: false,
+  });
+}
+
+/**
  * Fetch the authenticated viewer's rolling model spend. The versions poll
  * refreshes it when it changes.
  */
@@ -360,8 +521,9 @@ export function usePersonalSpendData(enabled: boolean) {
 }
 
 /** Fetch the public location directory and private activity aggregate. */
-export function useLocationDirectoryData() {
+export function useLocationDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "locations"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -389,8 +551,9 @@ export function useLocationDetailData(locationId: string | undefined) {
 }
 
 /** Fetch discovered skills used by System navigation and capability views. */
-export function useSkillsData() {
+export function useSkillsData(options: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: ["dashboard", "skills"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
@@ -414,7 +577,11 @@ export function useSkillDetail(name: string) {
   });
 }
 
-/** Fetch operational plugin reports used by System navigation and pages. */
+// Reports and conversation stats are aggregates that are slow to build and
+// change slowly. Keep them across route changes and window focus.
+const dashboardAggregateStaleTimeMs = 5 * 60_000;
+
+/** Fetch operational plugin reports shown on the System Plugins pages. */
 export function usePluginReportsData() {
   return useQuery({
     queryKey: ["dashboard", "plugin-reports"],
@@ -424,7 +591,26 @@ export function usePluginReportsData() {
         "/api/plugin-reports",
         signal,
       ),
+    refetchOnWindowFocus: false,
     retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
+  });
+}
+
+/** Fetch conversation activity and model usage for the System overview. */
+export function useConversationStatsData(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    enabled: options.enabled ?? true,
+    queryKey: ["dashboard", "conversation-stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        conversationStatsReportSchema,
+        "/api/conversations/stats",
+        signal,
+      ),
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
   });
 }
 
@@ -453,31 +639,15 @@ export function useCacheWarmingSavings(days: number) {
   });
 }
 
-/** Fetch system metrics, plugin inventory, and operational reports. */
-export function useSystemData(coreData: DashboardCoreData) {
+/** Fetch the plugin inventory, skills, and operational reports. */
+export function useSystemPluginsData() {
   const pluginsQuery = usePluginsData();
-  const conversationStatsQuery = useQuery({
-    queryKey: ["dashboard", "conversation-stats"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationStatsReportSchema,
-        "/api/conversations/stats",
-        signal,
-      ),
-    retry: false,
-  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
   return {
     data: dataReady
       ? ({
-          ...coreData,
-          conversationStatsError: Boolean(conversationStatsQuery.error),
-          ...(conversationStatsQuery.data
-            ? { conversationStats: conversationStatsQuery.data }
-            : undefined),
-          conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
@@ -485,9 +655,8 @@ export function useSystemData(coreData: DashboardCoreData) {
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,
-        } satisfies SystemData)
+        } satisfies SystemPluginsData)
       : undefined,
     error: pluginsQuery.error ?? skillsQuery.error,
-    isPending: pluginsQuery.isPending || skillsQuery.isPending,
   };
 }

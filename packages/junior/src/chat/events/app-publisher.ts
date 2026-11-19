@@ -1,6 +1,5 @@
 import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import pLimit from "p-limit";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
@@ -13,9 +12,10 @@ import {
   findMatchingWatches,
 } from "@/chat/events/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { mapBounded } from "@/chat/fan-out";
 
 // Each Watch check reads the state adapter. Bound the reads for a webhook
 // with many events.
@@ -39,27 +39,24 @@ export function createEventAppPublisher(args: {
     state?: StateAdapter | undefined;
   };
 }): EventAppPublisher {
-  // Event automations still key by destination team until that store is conversation-owned.
-  const resolveEventAutomationTeamId = createEventTeamIdResolver();
-
   return {
     async hasMatch(events) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
-      const limit = pLimit(WATCH_MATCH_CONCURRENCY);
+      // Event automations still key by destination team until that store is
+      // conversation-owned.
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       const [subscriptions, tasks] = await Promise.all([
-        Promise.all(
-          events.map((event) =>
-            limit(() =>
-              findMatchingWatches({
-                data: event.data,
-                eventType: event.eventType,
-                namespace: event.namespace,
-                identifier: event.identifier,
-                state: work.state,
-              }),
-            ),
-          ),
+        mapBounded(
+          events,
+          (event) =>
+            findMatchingWatches({
+              data: event.data,
+              eventType: event.eventType,
+              namespace: event.namespace,
+              identifier: event.identifier,
+              state: work.state,
+            }),
+          WATCH_MATCH_CONCURRENCY,
         ),
         eventAutomationTeamId
           ? findMatchingEventAutomations(
@@ -74,7 +71,7 @@ export function createEventAppPublisher(args: {
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       const [watchKeys, taskKeys] = await Promise.all([
         collectEventMatchKeys({
           eventTypes: input.eventTypes,
@@ -98,7 +95,7 @@ export function createEventAppPublisher(args: {
     async publish(event) {
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       await Promise.all([
         ingestEvent(event, {
           queue,

@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   createSlackTurnRuntime,
@@ -32,7 +33,7 @@ import {
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   createPausedTurns,
   type PausedTurns,
@@ -42,9 +43,7 @@ export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: (() => number) | undefined;
   pausedTurns?: PausedTurns;
-  sendPluginTask?:
-    | ScheduleSessionCompletedPluginTasksOptions["send"]
-    | undefined;
+  sendPluginTask: SendPluginTask;
   services?: JuniorRuntimeServiceOverrides | undefined;
   /** Keeps background work started by a turn alive. */
   waitUntil?: ((task: Promise<unknown>) => void) | undefined;
@@ -70,23 +69,21 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       if (destination.platform !== "slack") {
         throw new Error("Slack turn backfill requires a Slack destination");
       }
-      await Promise.all(
-        messages
-          .filter((message) => {
-            const actor = getMessageActorIdentity(message);
-            return (
-              !message.author.isMe &&
-              Boolean(actor?.userId) &&
-              !actor?.fullName &&
-              !actor?.userName
-            );
-          })
-          .map((message) =>
-            ensureSlackMessageActorIdentity(
-              message,
-              destination.teamId,
-              lookupSlackUser,
-            ),
+      await mapBounded(
+        messages.filter((message) => {
+          const actor = getMessageActorIdentity(message);
+          return (
+            !message.author.isMe &&
+            Boolean(actor?.userId) &&
+            !actor?.fullName &&
+            !actor?.userName
+          );
+        }),
+        (message) =>
+          ensureSlackMessageActorIdentity(
+            message,
+            destination.teamId,
+            lookupSlackUser,
           ),
       );
     },

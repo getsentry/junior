@@ -1,5 +1,5 @@
 import type { ConversationReportEvent } from "@/api/schema/conversation";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { isEventAuthorId } from "@/chat/events/actor";
 
 /** One transcript row, as model input for Conversation metadata and catch-up. */
 export type TranscriptEntry = {
@@ -122,7 +122,7 @@ export function transcriptEntriesFromReportEvents(
       const role =
         data.role === "user" &&
         (Boolean(data.eventType) ||
-          data.actorIdentity?.slackUserId === EVENT_AUTHOR_ID)
+          isEventAuthorId(data.actorIdentity?.slackUserId))
           ? "event"
           : data.role;
       entries.push({

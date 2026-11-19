@@ -110,7 +110,8 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Private" }).click();
+  await page.getByRole("combobox", { name: "Conversation visibility" }).click();
+  await page.getByRole("option", { name: "Private" }).click();
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
   // Any file type goes. A file over the per-file cap does not. Build large
@@ -268,7 +269,8 @@ test("starts and continues conversations from the dashboard", async ({
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
+          turnActive: true,
         }),
       });
     },
@@ -505,7 +507,8 @@ test("hands web and external messages from queue to history without gaps", async
         mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
-        status: active ? "active" : "completed",
+        status: active ? "working" : "done",
+        turnActive: active,
         events: [
           ...detail.events,
           ...committed.map((message, index) => ({
@@ -833,7 +836,8 @@ test("keeps details closed on a home send after the reader closed them", async (
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
+          turnActive: true,
         }),
       });
     },

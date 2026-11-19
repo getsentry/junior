@@ -54,6 +54,11 @@ function DrawerClose({ ...props }: DrawerPrimitive.Close.Props) {
   return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />;
 }
 
+/** Name the drawer for assistive technology. */
+function DrawerTitle({ ...props }: DrawerPrimitive.Title.Props) {
+  return <DrawerPrimitive.Title data-slot="drawer-title" {...props} />;
+}
+
 function DrawerOverlay({
   className,
   ...props
@@ -137,4 +142,4 @@ function DrawerContent({
   );
 }
 
-export { Drawer, DrawerClose, DrawerContent };
+export { Drawer, DrawerClose, DrawerContent, DrawerTitle };

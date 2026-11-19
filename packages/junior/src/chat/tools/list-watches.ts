@@ -1,6 +1,7 @@
 import { agentEventKeys } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
+import { turnEvents } from "@/chat/events/store";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
@@ -14,6 +15,13 @@ const listedResourceWatchSchema = z
     namespace: z.string().min(1),
     resource_type: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    quiet_events: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe(
+        "Events that start no Turn. The next Turn gets each one as a Conversation note.",
+      ),
     match: z.record(z.string(), z.unknown()).optional(),
     intent: z.string().min(1),
     expires_at: z.string().datetime(),
@@ -65,7 +73,10 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
           identifier: subscription.identifier,
           namespace: subscription.namespace,
           resource_type: subscription.resourceType,
-          events: subscription.events,
+          events: turnEvents(subscription),
+          ...(subscription.quietEvents
+            ? { quiet_events: subscription.quietEvents }
+            : undefined),
           ...(subscription.match
             ? { match: agentEventKeys(subscription.match) }
             : undefined),

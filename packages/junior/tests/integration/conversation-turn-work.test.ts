@@ -13,10 +13,6 @@ import {
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import {
-  resolveMailboxTurnWork,
-  type MailboxTurnWork,
-} from "@/chat/task-execution/mailbox-turn";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -24,10 +20,6 @@ import { createEventInboundMessage } from "@/chat/events/notification";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
@@ -36,26 +28,10 @@ import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import {
   closeConversationFixture,
   createConversationFixture,
+  requireConversationTurn,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-
-function requireConversationTurn(
-  worker: (
-    context: ConversationWorkerContext,
-    resolved: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>,
-) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveMailboxTurnWork(context);
-    if (!resolved) {
-      throw new Error("Expected Conversation mailbox work");
-    }
-    return await worker(context, resolved);
-  };
-}
 
 describe("Conversation mailbox Turn work", () => {
   afterEach(async () => {

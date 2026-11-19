@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type {
-  AutomationSummary,
+  AutomationListItem,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -15,6 +15,7 @@ import { pathWithSearch } from "../searchParams";
 import { cn } from "../styles";
 import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** A sidebar group key. The page owns which groups are collapsed. */
 export type InboxGroupKey = "blocked" | "fyi" | "needs-you";
@@ -127,7 +128,7 @@ function InboxRowsLoading() {
  * open and archived matches instead.
  */
 export function ReviewDeskSidebar(props: {
-  blocked: AutomationSummary[];
+  blocked: AutomationListItem[];
   collapsed: ReadonlySet<InboxGroupKey>;
   /** Shown under the groups, such as an empty state or load more. */
   footer?: ReactNode;
@@ -177,7 +178,7 @@ export function ReviewDeskSidebar(props: {
               ? "always"
               : "wide"
         }
-        title={item.title}
+        title={reviewItemTitleText(item)}
         to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
       />
     );

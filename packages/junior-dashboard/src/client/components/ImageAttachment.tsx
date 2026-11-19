@@ -115,7 +115,7 @@ const PREVIEW_NAV_BUTTON_CLASS =
  * scroll lock with sheets and keeps Escape and backdrop dismissal on the
  * front modal.
  */
-function ImagePreview(props: {
+export function ImagePreview(props: {
   images: readonly PreviewImage[];
   initialIndex: number;
   onClose(): void;

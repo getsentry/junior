@@ -295,6 +295,7 @@ const manifestSourceSchema = z
     }),
     "display-name": nonEmptyTrimmedString,
     description: nonEmptyTrimmedString,
+    "review-context": nonEmptyTrimmedString.optional(),
     "config-keys": z
       .array(z.string(), {
         error: "must be an array when provided",
@@ -343,6 +344,9 @@ const manifestSourceSchema = z
         error: "must be an object",
       })
       .optional(),
+    "tools-send-no-credential": z
+      .boolean({ error: "must be a boolean" })
+      .optional(),
   })
   .passthrough();
 
@@ -364,11 +368,13 @@ function manifestConfigPatch(
   const result: Record<string, unknown> = {};
   setDefined(result, "display-name", config.displayName);
   setDefined(result, "description", config.description);
+  setDefined(result, "review-context", config.reviewContext);
   setDefined(result, "config-keys", config.configKeys);
   setDefined(result, "domains", config.domains);
   setDefined(result, "api-headers", config.apiHeaders);
   setDefined(result, "command-env", config.commandEnv);
   setDefined(result, "env-vars", config.envVars);
+  setDefined(result, "tools-send-no-credential", config.toolsSendNoCredential);
 
   if (config.credentials !== undefined) {
     if (!config.credentials) {
@@ -1310,6 +1316,9 @@ function parseManifestSource(
     name: data.name,
     displayName: data["display-name"],
     description: data.description,
+    ...(data["review-context"]
+      ? { reviewContext: data["review-context"] }
+      : undefined),
     configKeys,
     ...(domains ? { domains } : undefined),
     ...(apiHeaders ? { apiHeaders } : undefined),
@@ -1320,6 +1329,9 @@ function parseManifestSource(
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
     ...(accounts ? { accounts } : undefined),
+    ...(data["tools-send-no-credential"]
+      ? { toolsSendNoCredential: true }
+      : undefined),
   };
 
   if (data.oauth) {

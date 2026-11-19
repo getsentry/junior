@@ -423,7 +423,7 @@ test("forks from the transcript and the event log with retry-safe requests", asy
           forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
-          status: "completed",
+          status: "done",
           forks: [],
         }),
       }),
@@ -687,7 +687,7 @@ for (const width of [1440, 390]) {
     const scrollHeight = () =>
       scroll.evaluate((element) => element.scrollHeight);
     const heightBeforeIdle = await scrollHeight();
-    report.status = "completed";
+    report.status = "done";
     report.events.push({
       seq: 41,
       createdAt: report.lastSeenAt,
@@ -704,7 +704,8 @@ for (const width of [1440, 390]) {
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
-    report.status = "active";
+    report.status = "working";
+    report.turnActive = true;
     report.events.push({
       seq: 42,
       createdAt: report.lastSeenAt,
@@ -760,6 +761,7 @@ for (const view of [desktop, mobile]) {
     ).json();
     const item = {
       addedByConversationId: conversationId,
+      rootConversationId: conversationId,
       assignedToEveryone: false,
       assignees: [
         {
@@ -837,7 +839,7 @@ for (const view of [desktop, mobile]) {
       },
     ];
     // Junior asked and ended its Turn, so it waits for the answer.
-    report.status = "completed";
+    report.status = "needs_input";
     await page.route(`**${api}*`, (route) =>
       route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
     );

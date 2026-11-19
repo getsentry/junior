@@ -26,6 +26,7 @@ async function readUnreadEvents(
   let count = 0;
   let beforeSeq: number | undefined = range.throughSeq + 1;
   while (beforeSeq !== undefined && beforeSeq > range.afterSeq + 1) {
+    // oxlint-disable-next-line no-await-in-loop -- Each page reads back from the oldest row of the page before.
     const page = await readConversationEventPage(getSqlExecutor(), {
       beforeSeq,
       canExposePayload: true,

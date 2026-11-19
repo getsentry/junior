@@ -1,9 +1,13 @@
+import pLimit from "p-limit";
 import type { PluginLogger } from "@sentry/junior-plugin-api";
 import {
   configuredRepository,
   type Repository,
 } from "./configured-repository.js";
 import { isRecord } from "./credential-support.js";
+
+// GitHub objects that one title read loads at once.
+const REFERENCE_LOAD_CONCURRENCY = 5;
 
 // Name a Conversation from its main objects, not from every reference it has.
 const MAX_REFERENCES = 3;
@@ -192,8 +196,9 @@ export async function loadGitHubConversationTitleContext(args: {
   log: PluginLogger;
   text: string;
 }): Promise<string[]> {
-  const lines = await Promise.all(
-    parseGitHubReferences(args.text, args.config).map(async (reference) => {
+  const lines = await pLimit(REFERENCE_LOAD_CONCURRENCY).map(
+    parseGitHubReferences(args.text, args.config),
+    async (reference) => {
       try {
         const title = objectTitle(
           reference.kind,
@@ -213,7 +218,7 @@ export async function loadGitHubConversationTitleContext(args: {
         });
         return undefined;
       }
-    }),
+    },
   );
   return lines.filter((line): line is string => Boolean(line));
 }

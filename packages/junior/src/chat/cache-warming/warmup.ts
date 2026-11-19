@@ -30,6 +30,7 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
+import { mapBounded } from "@/chat/fan-out";
 import {
   decideWarmup,
   gapSegment,
@@ -234,12 +235,12 @@ async function recordGap(
   if (!claimed) {
     return;
   }
-  for (const segment of recordedSegments(warm)) {
-    await state.appendToList(segmentGapsKey(segment), gapMs, {
+  await mapBounded(recordedSegments(warm), (segment) =>
+    state.appendToList(segmentGapsKey(segment), gapMs, {
       maxLength: GLOBAL_GAPS_MAX,
       ttlMs: GLOBAL_GAPS_TTL_MS,
-    });
-  }
+    }),
+  );
   await state.appendToList(
     conversationGapsKey(conversationId, decisionSegment(warm)),
     gapMs,
@@ -257,21 +258,18 @@ async function startIdlePeriod(
   conversationId: string,
   request: ModelRequest,
   message: AssistantMessage,
-  turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
+  turn: CacheWarmingTurn & Pick<GapSegmentInput, "endedTurns">,
   definitionsKey: ToolDefinitionsKey,
   turnEnding: TurnEnding,
 ): Promise<IdlePeriod | undefined> {
-  const automation = definitionsKey.mode === "automation";
   // Read once here, not on each model call.
   const { watches, waitingOn } = await readPendingWork(
     conversationId,
     request.context.messages,
     message,
-    automation,
+    turn.idleNeedsPendingWork,
   );
-  // An Automation run almost never gets an answer. Its ending starts an idle
-  // period only while a child agent or a Watch can start its next Turn.
-  if (automation && !waitingOn) return undefined;
+  if (turn.idleNeedsPendingWork && !waitingOn) return undefined;
   const idle: IdlePeriod = {
     generation: randomUUID(),
     sinceMs: request.startedAtMs,
@@ -382,7 +380,7 @@ async function recordSavings(
 
 async function recordModelCall(
   conversationId: string,
-  userActor: boolean,
+  turn: CacheWarmingTurn,
   definitionsKey: ToolDefinitionsKey,
   request: ModelRequest,
   message: AssistantMessage,
@@ -424,7 +422,7 @@ async function recordModelCall(
         conversationId,
         request,
         message,
-        { userActor, endedTurns },
+        { ...turn, endedTurns },
         definitionsKey,
         turnEnding,
       )
@@ -498,14 +496,21 @@ export interface CacheWarmingRecorder {
   stop(): Promise<void>;
 }
 
+/** What the recorder reads about the Turn of one agent run. */
+export interface CacheWarmingTurn {
+  /** A person started the Turn. */
+  userActor: boolean;
+  /** From `turnBehavior`. */
+  idleNeedsPendingWork: boolean;
+}
+
 /**
- * Create a recorder for one agent run. `userActor` is true when a person
- * started the Turn. A failure to record only loses cache warming, so it is
- * logged and does not stop the run.
+ * Create a recorder for one agent run. A failure to record only loses cache
+ * warming, so it is logged and does not stop the run.
  */
 export function createCacheWarmingRecorder(
   conversationId: string,
-  userActor: boolean,
+  turn: CacheWarmingTurn,
   definitionsKey: ToolDefinitionsKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
@@ -574,7 +579,7 @@ export function createCacheWarmingRecorder(
       try {
         await recordModelCall(
           conversationId,
-          userActor,
+          turn,
           definitionsKey,
           request,
           message,
@@ -606,7 +611,7 @@ export function createCacheWarmingRecorder(
       try {
         await recordModelCall(
           conversationId,
-          userActor,
+          turn,
           definitionsKey,
           lastCall.request,
           lastCall.message,
@@ -768,6 +773,7 @@ export async function runCacheWarmup(
         if (!segmentNeedsParent((priorGapsMs.at(-1) ?? globalGapsMs).length)) {
           break;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Read a parent list only when the list before it is thin.
         priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
       }
       const decision = decideWarmup({

@@ -37,6 +37,7 @@ import {
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import { deferConversationMove } from "@/chat/task-execution/store";
+import { mapBounded } from "@/chat/fan-out";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import type {
   SlackChannelScope,
@@ -195,12 +196,12 @@ export async function unfurlDashboardConversationLinks(args: {
   const unfurls: Record<string, { blocks: KnownBlock[] }> = {};
   let canReceive: Promise<boolean> | undefined;
   const urls = [...new Set(event.links.map((link) => link.url))];
-  for (const url of urls.slice(0, MAX_LINKS)) {
+  const unfurlLink = async (url: string): Promise<void> => {
     const conversationId = parseDashboardConversationLink(url);
     const conversation = conversationId
       ? await readPublicConversation(conversationId)
       : undefined;
-    if (!conversation) continue;
+    if (!conversation) return;
     const movable =
       isMovableToSlack(conversation) &&
       (await (canReceive ??= canReceiveConversation(
@@ -224,7 +225,8 @@ export async function unfurlDashboardConversationLinks(args: {
           : undefined),
       }),
     };
-  }
+  };
+  await mapBounded(urls.slice(0, MAX_LINKS), unfurlLink);
   if (Object.keys(unfurls).length === 0) return;
   await unfurlSlackLinks({
     channelId,
@@ -302,6 +304,7 @@ async function continueHere(
 ): Promise<void> {
   const tell = (text: string) => tellClicker(click, click.slackUserId, text);
   // A Run can end or start between the checks. Then try again, a few times.
+  /* oxlint-disable no-await-in-loop -- Try again only after the attempt before. */
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const conversation = await getConversationStore().get({
       conversationId: click.conversationId,
@@ -358,6 +361,7 @@ async function continueHere(
     );
     return;
   }
+  /* oxlint-enable no-await-in-loop */
   await tell(BUSY);
 }
 

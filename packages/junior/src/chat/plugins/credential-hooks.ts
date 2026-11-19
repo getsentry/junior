@@ -113,6 +113,7 @@ export interface EgressGrantInput {
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  withoutCredential?: true;
 }
 
 /** Ask a plugin which grant an outbound request needs. */
@@ -135,6 +136,7 @@ export async function selectPluginGrant(
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),
+      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     },
   });
   return result === undefined

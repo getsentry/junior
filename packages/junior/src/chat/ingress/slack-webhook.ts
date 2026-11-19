@@ -66,7 +66,7 @@ import {
   isSlackWorkspaceMember,
   slackWorkspaceBotId,
 } from "@/chat/ingress/workspace-membership";
-import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -113,10 +113,6 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
-  /** Email domains Slack authors need to start a Turn. Empty allows all. */
-  allowedDomains?: readonly string[];
-  /** Slack user IDs of bots that may start a Turn without an email domain. */
-  allowedBotUserIds?: readonly string[];
   /** Join each public channel created after this is on. Defaults to off. */
   autoJoinNewChannels?: boolean;
   runtime: Pick<
@@ -368,8 +364,6 @@ async function routeParsedMessage(args: {
   conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
-  allowedBotUserIds: readonly string[];
-  allowedDomains: readonly string[];
   /** Run the task after the caller releases the thread's ingress lock. */
   runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
@@ -413,20 +407,14 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  const isAuthorDomainAllowed = () =>
-    isSlackAuthorDomainAllowed({
-      allowedBotUserIds: args.allowedBotUserIds,
-      allowedDomains: args.allowedDomains,
+  const isAuthorTrusted = () =>
+    isTrustedSlackAuthor({
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
     });
   // Passive thread messages and stops are not checked for the allowed domains.
-  if (
-    !stopDecision &&
-    route === "mention" &&
-    !(await isAuthorDomainAllowed())
-  ) {
+  if (!stopDecision && route === "mention" && !(await isAuthorTrusted())) {
     return;
   }
 
@@ -505,9 +493,7 @@ async function routeParsedMessage(args: {
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
     await closeReviewItemsAnsweredByReply({
-      ...(route === "subscribed"
-        ? { canAnswer: isAuthorDomainAllowed }
-        : undefined),
+      ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
       delivery: {
         queue: args.queue,
@@ -715,6 +701,10 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          // Junior is read-only in a channel shared with another
+          // organization: no post there starts a Turn or an automation, so
+          // no reply exposes internal data. Tools can still read the channel.
+          if (channelScope === "external") return;
           // A post with a bot ID and no user, such as from an app
           // integration, runs only channel-message automations that name the
           // bot. It never starts a Turn. A post that mentions Junior runs
@@ -753,8 +743,6 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
-                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-                allowedDomains: args.services.allowedDomains ?? [],
                 runAfterUnlock: (task) => {
                   afterUnlock = task;
                 },
@@ -838,9 +826,7 @@ export async function handleSlackWebhook(args: {
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
       isAuthorAllowed: (userId, installation) =>
-        isSlackAuthorDomainAllowed({
-          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-          allowedDomains: args.services.allowedDomains ?? [],
+        isTrustedSlackAuthor({
           state,
           teamId: installation.teamId,
           user: userId,

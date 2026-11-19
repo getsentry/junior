@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
-import type { AutomationList } from "@sentry/junior/api/schema";
+import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 
-export const automationReport: Pick<AutomationList, "automations"> = {
+export const automationReport: { automations: AutomationSummary[] } = {
   automations: [
     {
       createdAt: "2026-07-28T16:00:00.000Z",

@@ -1,6 +1,7 @@
 // Ingress rules for Slack messages that reach a thread. Steering behavior
 // that needs the agent lives in the agent test fixture evals:
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import {
@@ -137,7 +138,10 @@ function ingress(
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
-    runtime: createSlackRuntime({ getSlackAdapter: () => adapter }),
+    runtime: createSlackRuntime({
+      getSlackAdapter: () => adapter,
+      sendPluginTask: sendVercelPluginTask,
+    }),
     state,
   };
   const send = (args: {

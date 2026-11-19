@@ -9,11 +9,13 @@ import {
   type EventMatch,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { mapBounded } from "@/chat/fan-out";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -45,6 +47,8 @@ const subscriptionSchema = z
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
+    /** Event types that this Watch delivers as a Quiet Event. */
+    quietEvents: z.array(eventTypeSchema).min(1).optional(),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
@@ -63,6 +67,7 @@ export interface CreateWatchInput {
   match?: EventMatch;
   namespace: string;
   identifier: string;
+  quietEvents?: readonly string[] | undefined;
   resourceType: string;
 }
 
@@ -102,6 +107,7 @@ async function acquireSubscriptionLock(
   subscriptionId: string,
   waitDeadlineMs = Date.now() + SUBSCRIPTION_LOCK_WAIT_MS,
 ): Promise<Lock> {
+  /* oxlint-disable no-await-in-loop -- Poll the lock until it is free or the wait ends. */
   while (true) {
     const lock = await state.acquireLock(
       subscriptionLockKey(subscriptionId),
@@ -115,6 +121,7 @@ async function acquireSubscriptionLock(
     }
     await sleep(SUBSCRIPTION_LOCK_RETRY_MS);
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Run one subscription lifecycle transition while keeping its lease alive. */
@@ -210,15 +217,17 @@ async function withIndexLock<T>(
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock = await state.acquireLock(indexLockKey(key), INDEX_LOCK_TTL_MS);
-  if (!lock) {
+  // Parallel Watch writes in one Conversation, such as watchEvents and
+  // watchTimer in one step, contend here. Each holder writes a few keys, so
+  // wait out even a crashed holder's TTL before calling it a failure.
+  const attempt = await withLock(state, indexLockKey(key), callback, {
+    ttlMs: INDEX_LOCK_TTL_MS,
+    waitMs: INDEX_LOCK_TTL_MS,
+  });
+  if (!attempt.acquired) {
     throw new Error(`Could not acquire event index lock for ${key}`);
   }
-  try {
-    return await callback();
-  } finally {
-    await state.releaseLock(lock);
-  }
+  return attempt.value;
 }
 
 async function addToIndex(
@@ -252,11 +261,7 @@ async function indexTtlMs(
   subscriptionIds: string[],
   nowMs: number,
 ): Promise<number> {
-  const records = await Promise.all(
-    subscriptionIds.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, subscriptionIds);
   const latestExpiresAtMs = Math.max(
     nowMs,
     ...records
@@ -267,6 +272,15 @@ async function indexTtlMs(
       .map((record) => record.expiresAtMs),
   );
   return ttlUntil(latestExpiresAtMs, nowMs);
+}
+
+/** Read many Watch records in one state round trip. */
+async function readSubscriptions(
+  state: StateAdapter,
+  ids: readonly string[],
+): Promise<Array<Watch | undefined>> {
+  const values = await getStateValues(state, ids.map(subscriptionKey));
+  return values.map(parseSubscription);
 }
 
 function parseSubscription(value: unknown): Watch | undefined {
@@ -313,6 +327,23 @@ function watchGuidance(
   return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
+/** Whether a Watch delivers this event type as a Quiet Event. */
+export function isQuietEvent(
+  subscription: Pick<Watch, "quietEvents">,
+  eventType: string,
+): boolean {
+  return subscription.quietEvents?.includes(eventType) === true;
+}
+
+/** The event types of a Watch that start a Turn. */
+export function turnEvents(
+  subscription: Pick<Watch, "events" | "quietEvents">,
+): string[] {
+  return subscription.events.filter(
+    (eventType) => !isQuietEvent(subscription, eventType),
+  );
+}
+
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,
@@ -342,6 +373,14 @@ export async function createWatch(
     identifier: input.identifier,
   });
   const guidance = watchGuidance(input.guidance, events);
+  // Quiet is not part of the Watch id: a Watch for the same events from
+  // watchEvents replaces this one, and its Events start Turns.
+  const quietEvents = events.filter((event) =>
+    input.quietEvents?.includes(event),
+  );
+  if (quietEvents.length === events.length) {
+    throw new Error("Watch requires at least one event that starts a Turn");
+  }
   const record: Watch = {
     conversationId: input.conversationId,
     createdAtMs: nowMs,
@@ -354,6 +393,7 @@ export async function createWatch(
     ...(match ? { match } : undefined),
     namespace: input.namespace,
     identifier: input.identifier,
+    ...(quietEvents.length > 0 ? { quietEvents } : undefined),
     resourceType: input.resourceType,
     status: "active",
     updatedAtMs: nowMs,
@@ -464,6 +504,7 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
   const state = getStateAdapter();
   await state.connect();
   const watches: Watch[] = [];
+  /* oxlint-disable no-await-in-loop -- A stale entry updates the timer index, whose lock does not wait. */
   for (const id of await updateTimerIndex(state, { kind: "claim", nowMs })) {
     await withSubscriptionLock(state, id, async () => {
       const watch = parseSubscription(await state.get(subscriptionKey(id)));
@@ -474,6 +515,7 @@ export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
       }
     });
   }
+  /* oxlint-enable no-await-in-loop */
   return watches;
 }
 
@@ -490,11 +532,7 @@ export async function listWatches(input: {
     state,
     conversationIndexKey(input.conversationId),
   );
-  const records = await Promise.all(
-    ids.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, ids);
   return records
     .filter(
       (record): record is Watch =>
@@ -503,6 +541,38 @@ export async function listWatches(input: {
         activeAt(record, nowMs),
     )
     .sort((left, right) => left.createdAtMs - right.createdAtMs);
+}
+
+/**
+ * Return which of these Conversations have an active Watch or Timer. It reads
+ * the Conversation indexes in one batch, then the Watches in one batch, so a
+ * page of Conversations costs two state reads.
+ */
+export async function listConversationsWithWatches(input: {
+  conversationIds: readonly string[];
+}): Promise<Set<string>> {
+  if (input.conversationIds.length === 0) return new Set();
+  const state = getStateAdapter();
+  await state.connect();
+  const nowMs = Date.now();
+  const indexes = await getStateValues(
+    state,
+    input.conversationIds.map(conversationIndexKey),
+  );
+  const ids = indexes.flatMap((value) =>
+    value === undefined || value === null
+      ? []
+      : subscriptionIdIndexSchema.parse(value),
+  );
+  const records = await readSubscriptions(state, ids);
+  const wanted = new Set(input.conversationIds);
+  return new Set(
+    records.flatMap((record) =>
+      record && wanted.has(record.conversationId) && activeAt(record, nowMs)
+        ? [record.conversationId]
+        : [],
+    ),
+  );
 }
 
 /**
@@ -571,6 +641,7 @@ export async function cancelSubscriptions(input: {
   state?: StateAdapter | undefined;
 }): Promise<void> {
   const subscriptions = await listWatches(input);
+  /* oxlint-disable no-await-in-loop -- Each cancel updates the timer index, whose lock does not wait. */
   for (const subscription of subscriptions) {
     await cancelWatch({
       conversationId: input.conversationId,
@@ -579,6 +650,7 @@ export async function cancelSubscriptions(input: {
       state: input.state,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -603,16 +675,17 @@ export async function collectEventMatchKeys(input: {
   const identifiers = new Set(
     input.identifiers.map((value) => value.trim()).filter(Boolean),
   );
-  for (const identifier of identifiers) {
-    const ids = await readSubscriptionIdIndex(
-      state,
-      resourceIndexKey(input.namespace, identifier),
-    );
-    const records = await Promise.all(
-      ids.map(async (id) =>
-        parseSubscription(await state.get(subscriptionKey(id))),
-      ),
-    );
+  const recordsByIdentifier = await mapBounded(
+    identifiers,
+    async (identifier) => {
+      const ids = await readSubscriptionIdIndex(
+        state,
+        resourceIndexKey(input.namespace, identifier),
+      );
+      return { identifier, records: await readSubscriptions(state, ids) };
+    },
+  );
+  for (const { identifier, records } of recordsByIdentifier) {
     for (const record of records) {
       if (!record) continue;
       if (record.namespace !== input.namespace) continue;
@@ -644,11 +717,7 @@ export async function findMatchingWatches(input: {
     state,
     resourceIndexKey(input.namespace, input.identifier),
   );
-  const records = await Promise.all(
-    ids.map(async (id) =>
-      parseSubscription(await state.get(subscriptionKey(id))),
-    ),
-  );
+  const records = await readSubscriptions(state, ids);
   return records.filter(
     (record): record is Watch =>
       record !== undefined &&

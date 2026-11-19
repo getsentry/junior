@@ -9,10 +9,8 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { ReviewItemRequest } from "@/chat/review-items/evidence";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorAutomations } from "./automations";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
@@ -37,7 +35,7 @@ export const juniorReviewItems = pgTable(
     visibility: text("visibility").$type<"public" | "private">().notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
-    request: jsonb("request").$type<UserInputRequest>(),
+    request: jsonb("request").$type<ReviewItemRequest>(),
     answer: jsonb("answer").$type<UserInputAnswer>(),
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
@@ -108,10 +106,19 @@ export const juniorReviewItems = pgTable(
       table.id,
     ),
     index("junior_review_items_subject_idx").on(table.subjectId, table.status),
+    // The Conversation status reads the open action items that each
+    // Conversation added.
+    index("junior_review_items_open_action_added_by_idx")
+      .on(table.addedByConversationId)
+      .where(sql`${table.status} = 'open' and ${table.kind} = 'action'`),
     index("junior_review_items_automation_idx").on(
       table.automationId,
       table.status,
     ),
+    // A feed row reads the viewer's newest answer in its Conversation.
+    index("junior_review_items_answered_idx")
+      .on(table.addedByConversationId, table.closedByUserId, table.closedAt)
+      .where(sql`${table.answer} is not null`),
   ],
 );
 

@@ -238,7 +238,10 @@ async function prepareLocalChatRun(
   await configureLocalChatPlugins(pluginSet);
   const { setConversationMetadataEnabled } =
     await import("@/chat/conversations/metadata/task");
+  const { setEventEmbeddingsConfig } =
+    await import("@/chat/conversations/event-embedding-config");
   setConversationMetadataEnabled(true);
+  setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -366,6 +369,7 @@ async function runInteractive(
     terminal: true,
   });
   try {
+    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
     while (true) {
       const message = (await rl.question("junior> ")).trim();
       if (!message) {
@@ -389,6 +393,7 @@ async function runInteractive(
         await reportStatus(io, errorMessage(error));
       }
     }
+    /* oxlint-enable no-await-in-loop */
   } finally {
     rl.close();
     await close();

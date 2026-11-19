@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  storeConversationEmbedding,
-  type ConversationEmbedder,
-} from "@/chat/conversations/embedding";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
+import { storeConversationEmbedding } from "@/chat/conversations/embedding";
 import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -310,10 +308,21 @@ describe("Conversation search", () => {
         "Notes about lunch": [0, 0, 1],
       };
       // A document is the title, then the summary on its last line.
-      const embedder: ConversationEmbedder = async ({ text }) => {
-        const vector = vectors[text.split("\n").at(-1)!];
-        if (!vector) throw new Error(`No test vector for ${text}`);
-        return { model: "test-embedding", provider: "test", vector };
+      const embedder: PluginEmbedder = {
+        model: "test-embedding",
+        provider: "test",
+        async embedTexts({ texts }) {
+          return {
+            dimensions: 3,
+            model: "test-embedding",
+            provider: "test",
+            vectors: texts.map((text) => {
+              const vector = vectors[text.split("\n").at(-1)!];
+              if (!vector) throw new Error(`No test vector for ${text}`);
+              return vector;
+            }),
+          };
+        },
       };
       const seed = async (args: {
         channelId: string;

@@ -3,17 +3,21 @@ import {
   TranscriptAttachments,
   TranscriptLocalFiles,
 } from "./TranscriptAttachment";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectRow } from "./ObjectRow";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
 import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
+import { useHref } from "react-router";
+import { Link } from "lucide-react";
 
+import { PersonReference } from "../components/PersonReference";
 import {
   transcriptMessageActor,
   transcriptMessageActorLabel,
+  transcriptMessagePerson,
   transcriptRoleKind,
 } from "../format";
 import { cn } from "../styles";
@@ -26,10 +30,10 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SourceMark } from "./SourceMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
 import { formatMessageTimestamp } from "../time";
+import { conversationPath } from "./conversationRoutes";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
@@ -97,7 +101,6 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
-        <TranscriptRecalledMemories message={props.message} />
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}
@@ -111,7 +114,7 @@ export const TranscriptMessageView = memo(
           switch (card.kind) {
             case "object":
               return (
-                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                <ObjectRow key={`${card.plugin}:${card.key}`} card={card} />
               );
             case "automation":
               return (
@@ -128,6 +131,12 @@ export const TranscriptMessageView = memo(
           <MessageActions className="-mt-1.5 -mb-2.5 -ml-2 [&>button]:size-8">
             {rawText ? (
               <CopyButton getText={() => rawText} label="Copy message" />
+            ) : null}
+            {props.message.messageId ? (
+              <CopyMessageLinkButton
+                conversationId={props.conversation.conversationId}
+                messageId={props.message.messageId}
+              />
             ) : null}
             {forkMessageId ? (
               <ForkConversationButton
@@ -156,6 +165,22 @@ export const TranscriptMessageView = memo(
     previous.conversation.authors === next.conversation.authors,
 );
 
+function CopyMessageLinkButton(props: {
+  conversationId: string;
+  messageId: string;
+}) {
+  const href = useHref(
+    conversationPath(props.conversationId, { messageId: props.messageId }),
+  );
+  return (
+    <CopyButton
+      getText={() => new URL(href, window.location.origin).href}
+      icon={Link}
+      label="Copy link to message"
+    />
+  );
+}
+
 /** Render a redacted primary chat message without exposing body content. */
 export function RedactedMessageView(props: {
   footer?: ReactNode;
@@ -175,7 +200,7 @@ export function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         {props.message.parts.map((_part, index) => (
           <div className="py-1" key={index}>
             <RedactedMarker />
@@ -226,11 +251,21 @@ function TranscriptMessageHeader(props: {
     props.conversation,
     props.message,
   );
+  const person = transcriptMessagePerson(props.conversation, props.message);
 
   return (
     <TranscriptMessageHeading action={props.action}>
       <span className={transcriptRoleLabelClass(props.message.role)}>
-        {roleLabel}
+        {person ? (
+          // The large photo beside the message already shows who wrote it.
+          <PersonReference
+            avatar={false}
+            className="text-inherit no-underline hover:underline"
+            person={person}
+          />
+        ) : (
+          roleLabel
+        )}
       </span>
       {source || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">

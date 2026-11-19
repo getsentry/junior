@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
@@ -33,7 +34,7 @@ async function steeringMessageFromWeb(
     actor: instructionActorFor(actor),
     ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
-    text: reviewItemInput ?? message.input.text.trim(),
+    text: reviewItemInput?.text ?? message.input.text.trim(),
     timestampMs: message.createdAtMs,
     ...(storedAttachments.length ? { storedAttachments } : undefined),
   };
@@ -88,8 +89,8 @@ export function createWebSteeringDrain(args: {
         (await getTurnRecord(context.conversationId, turnId))?.piMessages ?? [];
       const messages = withoutSavedSteeringMessages(
         saved,
-        await Promise.all(
-          joining.map((message) => steeringMessageFromWeb(message, actor)),
+        await mapBounded(joining, (message) =>
+          steeringMessageFromWeb(message, actor),
         ),
         buildSteeringPiMessage,
       );

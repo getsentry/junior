@@ -1,4 +1,5 @@
 import { and, eq, max } from "drizzle-orm";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -113,7 +114,10 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await read();
+    const first = await expectSqlBudget(() => read(), {
+      statements: 1,
+      serialRounds: 1,
+    });
     expect(await read()).toEqual(first);
     expect(await detailVersion()).toBe(first.conversation);
     // A Conversation that does not exist has no token.
@@ -203,15 +207,25 @@ describe("versions API", () => {
       title: "Approve",
       visibility: "private",
     });
+    // An open item is a status input, so the detail moves too. The feed row
+    // moves from `working` to `needs_input`, which outranks it.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual(["reviewItems"]);
+    expect(changed(withPin, withItem)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
     await closeReviewItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual(["reviewItems"]);
+    expect(changed(withItem, closed)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
     // minute in the past, so the Events below stay in the spend window and
@@ -357,6 +371,24 @@ describe("versions API", () => {
     const threadEnded = await threadTurn("idle", nowMs + 240_000);
     expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
 
+    // A Task has no row, but its work moves the root's tree state.
+    const taskTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationStore().recordExecution({
+        conversationId: `${OWN}:child`,
+        createdAtMs: atMs,
+        execution: { runId: "task-turn-2", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const taskRunning = await taskTurn("running", nowMs + 300_000);
+    expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
+    const taskEnded = await taskTurn("idle", nowMs + 300_000);
+    expect(feedMoved(taskRunning, taskEnded)).toEqual(["threads"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -370,7 +402,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(threadEnded, withReply)).toEqual([
+    expect(changed(taskEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);

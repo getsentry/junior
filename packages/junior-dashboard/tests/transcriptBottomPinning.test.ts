@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isFarFromScrollBottom,
   isNearScrollBottom,
   programmaticSettleScrollAction,
   shouldAutoPinTranscriptBottom,
@@ -22,7 +23,8 @@ function activeTurn(
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "active",
+    status: "working",
+    turnActive: true,
     surface: "slack",
     displayTitle: "Conversation",
     generatedAt: "2026-01-01T00:00:10.000Z",
@@ -81,7 +83,7 @@ describe("transcript bottom pinning", () => {
       }),
     );
     const after = transcriptJuniorMessageVersion(
-      activeTurn({ status: "completed" }),
+      activeTurn({ status: "done" }),
     );
 
     expect(before).toBe("empty");
@@ -101,7 +103,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "done",
       }),
     );
 
@@ -125,7 +127,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "done",
       }),
     );
 
@@ -286,7 +288,7 @@ describe("transcript bottom pinning", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
       activeTurn({
-        status: "completed",
+        status: "done",
       }),
     );
 
@@ -447,6 +449,31 @@ describe("transcript bottom pinning", () => {
         endsAtLatest: false,
         following: false,
         hasPendingUpdate: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows jump-to-latest once the reader scrolls far up a finished transcript", () => {
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        farFromBottom: true,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFarFromScrollBottom({
+        clientHeight: 800,
+        scrollHeight: 10_000,
+        scrollTop: 8_000,
+      }),
+    ).toBe(false);
+    expect(
+      isFarFromScrollBottom({
+        clientHeight: 800,
+        scrollHeight: 10_000,
+        scrollTop: 6_000,
       }),
     ).toBe(true);
   });

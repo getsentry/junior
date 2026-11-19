@@ -18,6 +18,7 @@ import {
   readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mapBounded } from "@/chat/fan-out";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
@@ -346,9 +347,9 @@ export async function deleteMcpAuthSessionsForUserProvider(
   const indexKey = sessionIndexKey(userId, provider);
   const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
 
-  for (const authSessionId of authSessionIds) {
-    await stateAdapter.delete(sessionKey(authSessionId));
-  }
+  await mapBounded(authSessionIds, (authSessionId) =>
+    stateAdapter.delete(sessionKey(authSessionId)),
+  );
 
   await stateAdapter.delete(indexKey);
 }
@@ -362,11 +363,11 @@ export async function getLatestMcpAuthSessionForUserProvider(
     await stateAdapter.get(sessionIndexKey(userId, provider)),
   );
 
+  const sessions = await mapBounded(authSessionIds, async (authSessionId) =>
+    parseMcpAuthSession(await readMcpAuthSession(stateAdapter, authSessionId)),
+  );
   let latestSession: McpAuthSessionState | undefined;
-  for (const authSessionId of authSessionIds) {
-    const session = parseMcpAuthSession(
-      await readMcpAuthSession(stateAdapter, authSessionId),
-    );
+  for (const session of sessions) {
     if (!session) {
       continue;
     }

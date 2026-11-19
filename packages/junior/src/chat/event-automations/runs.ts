@@ -7,11 +7,13 @@ import {
   existingConversationId,
   recordAutomationExecution,
 } from "@/chat/automations/execution-stats";
+import { conversationCostOf } from "@/chat/automations/run-cost";
 import { automationVersionOf } from "@/chat/automations/versions";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
+import { mapBounded } from "@/chat/fan-out";
 
 /**
  * Record a dispatched event automation run with the Automation version it ran,
@@ -23,15 +25,16 @@ export async function recordEventAutomationRunStarted(
   db: JuniorDatabase,
   args: { automation: EventAutomation; dispatchId: string; nowMs: number },
 ): Promise<void> {
+  const conversationId = getDispatchConversationId({ id: args.dispatchId });
   await db
     .insert(juniorAutomationRuns)
     .values({
       id: args.dispatchId,
       automationId: args.automation.id,
       automationVersion: automationVersionOf(args.automation),
-      conversationId: existingConversationId(
-        getDispatchConversationId({ id: args.dispatchId }),
-      ),
+      conversationId: existingConversationId(conversationId),
+      // The dispatch can write usage before this row exists.
+      costMicroUsd: conversationCostOf(conversationId),
       startedAtMs: args.nowMs,
       status: "running",
     })
@@ -62,12 +65,14 @@ export async function settleEventAutomationRuns(
         eq(juniorAutomationRuns.status, "running"),
       ),
     );
-  for (const run of runs) {
-    const dispatch = await getDispatchRecord(run.id);
+  const dispatches = await mapBounded(runs, (run) => getDispatchRecord(run.id));
+  for (const [index, run] of runs.entries()) {
+    const dispatch = dispatches[index];
     const status = dispatch?.status ?? "failed";
     if (status !== "blocked" && status !== "completed" && status !== "failed") {
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Record runs in order, so an Automation's latest run is recorded last.
     await recordAutomationExecution(run.automationId, {
       conversationId: getDispatchConversationId({ id: run.id }),
       errorMessage: dispatch

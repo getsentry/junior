@@ -99,6 +99,20 @@ export function reviewItemNeedsSomeone(): SQL {
 }
 
 /**
+ * SQL: the Review item waits for a person's input: an open `action` item,
+ * whoever it is assigned to. An item with no assignees still waits for
+ * anyone who can answer it. The Conversation that added it shows
+ * `needs_input`. `junior_review_items_open_action_added_by_idx` has this
+ * predicate.
+ */
+export function reviewItemNeedsInput(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+  )!;
+}
+
+/**
  * SQL: the Review item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnReviewItem`; keep the two the same.
@@ -363,16 +377,11 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const inConversation = new Set<string>();
-  for (const conversationId of new Set(args.conversationIds)) {
-    for (const id of await conversationParticipantUserIds(
-      getDb(),
-      conversationId,
-      others,
-    )) {
-      inConversation.add(id);
-    }
-  }
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    args.conversationIds,
+    others,
+  );
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

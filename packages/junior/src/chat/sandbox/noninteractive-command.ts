@@ -66,10 +66,10 @@ function gitConfigEnv(env: Record<string, string>): Record<string, string> {
   const result: Record<string, string> = {
     GIT_CONFIG_COUNT: String(entries.length),
   };
-  entries.forEach(([key, value], index) => {
+  for (const [index, [key, value]] of entries.entries()) {
     result[`GIT_CONFIG_KEY_${index}`] = key;
     result[`GIT_CONFIG_VALUE_${index}`] = value;
-  });
+  }
   return result;
 }
 

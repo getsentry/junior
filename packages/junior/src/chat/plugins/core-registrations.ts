@@ -1,0 +1,31 @@
+/**
+ * Core features that use the plugin registration shape, so they reach the
+ * same hook sites as app plugins. Package discovery never loads them, and an
+ * app plugin cannot use their names.
+ */
+import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
+import { notificationsTaskRegistration } from "@/chat/notifications/task";
+import { readWebPushConfig } from "@/chat/notifications/web-push";
+
+/** Return whether a core feature owns this registration name. */
+export function isCoreRegistrationName(name: string): boolean {
+  // Read the names at call time: these modules import the plugin hooks, so
+  // their registrations are not ready while this module loads.
+  return [
+    eventSearchTaskRegistration({ embedEvents: false }),
+    notificationsTaskRegistration,
+  ].some((registration) => registration.manifest.name === name);
+}
+
+/**
+ * Return enabled core registrations: event search and reply notifications. Event search always stores lexemes, which cost no provider
+ * call. It embeds events only when event embeddings are enabled.
+ */
+export function coreRegistrations(): PluginRegistration[] {
+  return [
+    eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
+    ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
+  ];
+}

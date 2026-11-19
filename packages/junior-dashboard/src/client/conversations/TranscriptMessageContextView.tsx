@@ -3,7 +3,12 @@ import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
-import { transcriptMessageActor, transcriptMessageActorLabel } from "../format";
+import { PersonReference } from "../components/PersonReference";
+import {
+  transcriptMessageActor,
+  transcriptMessageActorLabel,
+  transcriptMessagePerson,
+} from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -25,6 +30,7 @@ export function TranscriptMessageContextView(props: {
   const { active: searchActive } = useTranscriptSearch();
   const [open, setOpen] = useState(false);
   const actor = transcriptMessageActorLabel(props.conversation, props.message);
+  const person = transcriptMessagePerson(props.conversation, props.message);
   const timestamp = formatMessageTimestamp(props.message.timestamp);
   const text = messageRawText(props.message);
 
@@ -49,7 +55,15 @@ export function TranscriptMessageContextView(props: {
           flush
           className="group flex items-center justify-between gap-2 font-sans text-xs font-medium text-dashboard-text-muted"
         >
-          <span className="min-w-0 truncate">Context from {actor}</span>
+          <span className="min-w-0 truncate">
+            Context from{" "}
+            {person ? (
+              // The heading is a disclosure button, which cannot hold a link.
+              <PersonReference card={false} person={person} />
+            ) : (
+              actor
+            )}
+          </span>
           <ChevronRight
             aria-hidden="true"
             className={dashboardDisclosureChevronClass}
@@ -75,13 +89,21 @@ export function TranscriptMessageContextView(props: {
         </CollapsibleContent>
       </Collapsible>
       <article
-        className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
+        className="hidden min-w-0 border-l-2 border-dashboard-border-emphasis py-0.5 pl-3 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow
           left={
             <span className="font-sans text-xs font-medium text-dashboard-text-muted">
-              Context from {actor}
+              Context from{" "}
+              {person ? (
+                <PersonReference
+                  className="text-inherit no-underline hover:underline"
+                  person={person}
+                />
+              ) : (
+                actor
+              )}
             </span>
           }
           leftClassName="min-w-0"

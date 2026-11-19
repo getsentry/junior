@@ -53,6 +53,11 @@ registerApiProvider({
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
+  objectCompletionAttributes,
+  structuredOutputErrorCause,
+  structuredOutputTokenLimit,
+} from "@/chat/pi/object-completion";
+import {
   extractGenAiUsageAttributes,
   normalizeGenAiFinishReason,
   serializeGenAiAttribute,
@@ -259,13 +264,18 @@ function extractText(message: {
     .trim();
 }
 
-/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<Api> {
-  const matched =
+function findGatewayModel(modelId: string): Model<Api> | undefined {
+  return (
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
       (model: Model<Api>) => model.id === modelId,
-    );
+    )
+  );
+}
+
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
+export function resolveGatewayModel(modelId: string): Model<Api> {
+  const matched = findGatewayModel(modelId);
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
@@ -521,17 +531,6 @@ function bestEffortObjectCompletionCost(
   }
 }
 
-/**
- * Keep only the fixed message and stack of a failed structured output. The SDK
- * error's `text` and its parse or validation cause hold the raw model output.
- */
-function structuredOutputErrorCause(error: NoObjectGeneratedError): Error {
-  const cause = new Error(error.message);
-  cause.name = error.name;
-  cause.stack = error.stack;
-  return cause;
-}
-
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -539,11 +538,17 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   system?: string;
   prompt: string;
   thinkingLevel?: ThinkingLevel;
+  /** Tokens for the object itself. Reasoning gets its own room on top. */
   maxTokens?: number;
   signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
+  // Plugins can name a model outside the catalog, so a miss sends the sum.
+  const maxOutputTokens = structuredOutputTokenLimit(
+    params.maxTokens,
+    findGatewayModel(params.modelId)?.maxTokens,
+  );
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;
@@ -560,17 +565,21 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.system !== undefined
             ? { system: params.system }
             : undefined),
-          ...(params.maxTokens !== undefined
-            ? { maxOutputTokens: params.maxTokens }
-            : undefined),
+          ...(maxOutputTokens !== undefined ? { maxOutputTokens } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
+        }).catch((error: unknown) => {
+          if (NoObjectGeneratedError.isInstance(error)) {
+            setSpanAttributes(
+              objectCompletionAttributes(error.finishReason, error.usage),
+            );
+          }
+          throw error;
         });
-        setSpanAttributes({
-          "gen_ai.response.finish_reasons": [result.finishReason],
-          ...extractGenAiUsageAttributes(result.usage),
-        });
+        setSpanAttributes(
+          objectCompletionAttributes(result.finishReason, result.usage),
+        );
         return result;
       },
       {
@@ -587,8 +596,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
-        ...(params.maxTokens !== undefined
-          ? { "gen_ai.request.max_tokens": params.maxTokens }
+        ...(maxOutputTokens !== undefined
+          ? { "gen_ai.request.max_tokens": maxOutputTokens }
           : undefined),
       },
     );
@@ -793,7 +802,7 @@ export async function embedTexts(params: {
 }
 
 /** Read the billed cost that AI Gateway reports in provider metadata. */
-function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+export function gatewayCostUsd(providerMetadata: unknown): number | undefined {
   const cost = (
     providerMetadata as { gateway?: { cost?: unknown } } | undefined
   )?.gateway?.cost;

@@ -1,11 +1,12 @@
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@dashboard/lib/utils";
+import { dashboardMessageCardClass } from "../styles";
 import { Item, ItemContent, ItemMedia } from "./ui/item";
 
 /**
- * Frame one card in the transcript. Object, automation, and Review item
- * cards share this frame, so they read as one family. The card fills its
+ * Frame one full card: an object preview, an automation, or a docked
+ * question share this frame, so they read as one family. The card fills its
  * column.
  */
 export function MessageCard({
@@ -16,7 +17,8 @@ export function MessageCard({
     <section
       {...props}
       className={cn(
-        "w-full min-w-0 overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel font-sans text-sm text-dashboard-text",
+        "w-full min-w-0 overflow-hidden font-sans text-sm text-dashboard-text",
+        dashboardMessageCardClass,
         className,
       )}
     />

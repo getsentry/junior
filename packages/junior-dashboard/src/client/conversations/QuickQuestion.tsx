@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { GitFork } from "lucide-react";
 import {
   useCallback,
@@ -37,6 +38,7 @@ import {
   selectionMarkdown,
 } from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 const HIGHLIGHT_NAME = "quick-question";
 const STARTER_PROMPTS = ["Explain this", "Is this right?", "What's the risk?"];
@@ -322,10 +324,7 @@ function useKeepQuickQuestion() {
         `/api/conversations/${encodeURIComponent(forkId)}/quick-question/keep`,
         {},
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      }),
+    onSuccess: () => invalidateConversationFeeds(queryClient),
   });
 }
 
@@ -460,7 +459,7 @@ export function QuickQuestionPanel(props: {
   // answer, and the person can then ask again.
   const thinking =
     unsaved.length > 0 ||
-    (fork?.status === "active" && messages.at(-1)?.role === "user");
+    (conversationTurnIsActive(fork) && messages.at(-1)?.role === "user");
   const busy = props.pending || thinking;
 
   useEffect(() => {

@@ -3,32 +3,10 @@ import {
   buildPromptInput,
   buildUserTurnText,
   instructionActorFor,
-  renderExplicitSkillInstructions,
 } from "@/chat/agent/prompt";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 describe("buildUserTurnText", () => {
-  it("renders an explicitly selected skill as loaded instructions", () => {
-    expect(
-      renderExplicitSkillInstructions({
-        name: "weather-lookup",
-        description: "Weather lookup",
-        skillPath: "/host/skills/weather-lookup/SKILL.md",
-        body: "Use the weather source.",
-      }),
-    ).toBe(
-      [
-        "<skill>",
-        "<name>weather-lookup</name>",
-        "<path>/vercel/sandbox/skills/weather-lookup/SKILL.md</path>",
-        "<working_directory>/vercel/sandbox/skills/weather-lookup</working_directory>",
-        "<path_resolution>Resolve relative paths in this skill against /vercel/sandbox/skills/weather-lookup. For bash commands from this skill, cd to /vercel/sandbox/skills/weather-lookup first or use absolute paths.</path_resolution>",
-        "Use the weather source.",
-        "</skill>",
-      ].join("\n"),
-    );
-  });
-
   it("wraps input in the current instruction boundary without context", () => {
     expect(buildUserTurnText("hello")).toBe(
       ["<current-instruction>", "hello", "</current-instruction>"].join("\n"),
@@ -91,7 +69,7 @@ describe("buildUserTurnText", () => {
         text: "what now?",
         context: [
           '<thread-context authority="evidence-only">',
-          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author_id="U_DAVID" author_name="David" slack_ts="1712345.000200">',
           "[user] David: add customer impact",
           "  </message>",
           "</thread-context>",
@@ -104,7 +82,7 @@ describe("buildUserTurnText", () => {
         type: "text",
         text: [
           '<thread-context authority="evidence-only">',
-          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author_id="U_DAVID" author_name="David" slack_ts="1712345.000200">',
           "[user] David: add customer impact",
           "  </message>",
           "</thread-context>",

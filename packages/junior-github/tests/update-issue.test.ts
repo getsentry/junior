@@ -55,34 +55,54 @@ function toolContext(response?: Response, user?: typeof linkedUser) {
       )
     );
   });
+  const actor = {
+    platform: "slack" as const,
+    fullName: "David Cramer",
+    userId: "U039RR91S",
+    userName: "david",
+  };
   const ctx = {
-    actor: {
-      platform: "slack",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "david",
-    },
+    actor,
     conversationId: "slack:C123:123.456",
+    source: {
+      kind: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "123.456",
+      visibility: "public" as const,
+    },
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    events: { canSubscribe: true },
-    conversationLink: { url: "https://example.com/session" },
-    users: {
-      resolveActor: async () => (user ? { user } : undefined),
+    events: {
+      canSubscribe: true,
+      subscribe: vi.fn(async ({ events }: { events: string[] }) => ({
+        events,
+        id: "subscription-1",
+      })),
     },
+    conversationLink: { url: "https://example.com/session" },
+    resolveWorkOwner: async () => ({
+      kind: "person" as const,
+      actor,
+      ...(user ? { user } : undefined),
+    }),
   };
-  return { fetch, tool: bindPluginTool(gitHubUpdateIssueTool, ctx) };
+  return {
+    fetch,
+    subscribe: ctx.events.subscribe,
+    tool: bindPluginTool(gitHubUpdateIssueTool, ctx),
+  };
 }
 
 describe("updateIssue", () => {
   it("updates issue metadata and preserves runtime-owned body metadata", async () => {
-    const { fetch, tool } = toolContext();
+    const { fetch, subscribe, tool } = toolContext();
 
     await expect(
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           title: "Updated title",
           body: "Updated body",
           state: "open",
@@ -97,9 +117,20 @@ describe("updateIssue", () => {
       objectAnnotations: [{ description: "Updated body" }],
       subscribable: {
         identifier: "getsentry/junior#691",
+        suggested_events: expect.not.arrayContaining(["issue.comment.created"]),
       },
+      subscription: { events: ["issue.comment.created"], id: "subscription-1" },
       url: "https://github.com/getsentry/junior/issues/691",
     });
+    // The updated issue gets the same Watch as a created one.
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: ["issue.comment.created"],
+        resource: expect.objectContaining({
+          identifier: "getsentry/junior#691",
+        }),
+      }),
+    );
 
     expect(fetch.mock.calls[0]?.[0]).toMatchObject({
       operation: "github.issue.get",
@@ -127,7 +158,7 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).resolves.toMatchObject({ assignees: ["lcian", "dcramer"], number: 691 });
@@ -152,7 +183,7 @@ describe("updateIssue", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          issue: 691,
           state: "closed",
           assign_requester: true,
         },
@@ -167,16 +198,16 @@ describe("updateIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691, assign_requester: true },
+        { repo: "getsentry/junior", issue: 691, assign_requester: true },
         { toolCallId: "claim-issue" },
       ),
     ).rejects.toThrow("GitHub did not assign @dcramer");
   });
 
   it.each([
-    { repo: "getsentry/junior", number: 691 },
-    { repo: "getsentry/junior", number: 691, title: "   " },
-    { repo: "getsentry/junior", number: 691, assign_requester: false },
+    { repo: "getsentry/junior", issue: 691 },
+    { repo: "getsentry/junior", issue: 691, title: "   " },
+    { repo: "getsentry/junior", issue: 691, assign_requester: false },
   ])("rejects invalid updates before calling GitHub", async (input) => {
     const { fetch, tool } = toolContext();
 

@@ -120,6 +120,15 @@ export function completedToolCalls(
   );
 }
 
+/** Names of the skills that completed `loadSkill` calls loaded. */
+export function loadedSkillNames(
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): unknown[] {
+  return completedToolCalls("loadSkill", ...results).map(
+    (call) => (call.input as { skill_name?: unknown } | undefined)?.skill_name,
+  );
+}
+
 /**
  * Calls of one MCP tool in any state, such as
  * `mcp__eval-tracker__search-tickets`, across the results of several calls.
@@ -168,6 +177,8 @@ export type TurnStatus =
   | "succeeded";
 
 export interface Turn {
+  /** Time from the start of the turn to its last state, once it has ended. */
+  durationMs?: number;
   replies: Reply[];
   status: TurnStatus;
   toolCalls: ToolCall[];
@@ -178,6 +189,8 @@ export interface Turn {
 export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
+  /** Text of each compaction summary, for checks that the answer is not in it. */
+  compactionSummaries: string[];
   lastSeq: number;
   replies: Reply[];
   toolCalls: ToolCall[];
@@ -222,7 +235,7 @@ type CallTranscriptSource = {
 export async function readFailedCallRun(args: {
   api: RequestApp;
   target: CallTranscriptSource | (() => CallTranscriptSource);
-  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>;
+  calls: ReportCall[];
   error: unknown;
   usage: FixtureUsage;
   startedAtMs: number;
@@ -246,6 +259,7 @@ export async function readFailedCallRun(args: {
       calls.push({
         conversationId: record.conversationId,
         events: toTranscriptEvents(events.visibleMessages, events.toolCalls),
+        turns: events.turns,
       });
     }
   } catch (snapshotError) {
@@ -339,7 +353,9 @@ export function readCallEvents(args: {
   const toolCalls = new Map<string, ToolCall>();
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
+  const turnStartedAtMs = new Map<Turn, number>();
   let compactions = 0;
+  const compactionSummaries: string[] = [];
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -356,10 +372,14 @@ export function readCallEvents(args: {
       turn.status = data.state;
       turns.set(data.turnId, turn);
       if (!turnToolCallIds.has(turn)) turnToolCallIds.set(turn, []);
+      const atMs = Date.parse(event.createdAt);
       if (data.state === "started") {
         currentTurn = turn;
-      } else if (currentTurn === turn) {
-        currentTurn = undefined;
+        if (!turnStartedAtMs.has(turn)) turnStartedAtMs.set(turn, atMs);
+      } else {
+        const startedAtMs = turnStartedAtMs.get(turn);
+        if (startedAtMs !== undefined) turn.durationMs = atMs - startedAtMs;
+        if (currentTurn === turn) currentTurn = undefined;
       }
       continue;
     }
@@ -401,6 +421,7 @@ export function readCallEvents(args: {
     }
     if (data.type === "compaction") {
       compactions += 1;
+      if (data.summary) compactionSummaries.push(data.summary);
       continue;
     }
   }
@@ -414,6 +435,7 @@ export function readCallEvents(args: {
 
   return {
     compactions,
+    compactionSummaries,
     lastSeq,
     replies,
     toolCalls: [...toolCalls.values()],
@@ -622,9 +644,16 @@ export function toHarnessRun(args: {
   };
 }
 
+/** What the eval report keeps of one call. */
+export interface ReportCall {
+  conversationId: string;
+  events: TranscriptEvent[];
+  turns: Turn[];
+}
+
 /** One vitest-evals run with every call of the test, for the eval report. */
 export function combinedRun(
-  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>,
+  calls: ReportCall[],
   usage: FixtureUsage,
   startedAtMs: number,
 ): HarnessRun {
@@ -643,7 +672,17 @@ export function combinedRun(
         gatewayRequests: usage.gatewayRequests,
       },
     },
-    timings: { totalMs: Date.now() - startedAtMs },
+    timings: {
+      totalMs: Date.now() - startedAtMs,
+      metadata: {
+        // Turns of every call, in order. A turn that did not end has none.
+        turnMs: calls.flatMap((entry) =>
+          entry.turns.flatMap((turn) =>
+            turn.durationMs === undefined ? [] : [turn.durationMs],
+          ),
+        ),
+      },
+    },
     errors: [],
   };
 }

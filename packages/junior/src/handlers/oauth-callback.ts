@@ -5,6 +5,7 @@
  * or change its history.
  */
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { authorizationId } from "@/chat/oauth-authorization";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
@@ -39,7 +40,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getConversationPendingAuth } from "@/chat/services/pending-auth";
-import { escapeXml } from "@/chat/xml";
+import { escapeHtml } from "@/api/html";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -73,7 +74,7 @@ function htmlErrorResponse(
   message: string,
   status: number,
 ): Response {
-  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
+  return htmlCallbackResponse(escapeHtml(title), escapeHtml(message), status);
 }
 
 function oauthTokenErrorAttributes(
@@ -89,13 +90,6 @@ function oauthTokenErrorAttributes(
       ? { "http.response.status_code": status }
       : undefined),
   };
-}
-
-function pluginAuthorizationId(args: {
-  provider: string;
-  sessionId: string;
-}): string {
-  return `${args.sessionId}:plugin:${args.provider}`;
 }
 
 /** Return the Junior user of the person who started the OAuth connection. */
@@ -198,7 +192,8 @@ async function wakeAuthorizedPluginTurn(
       provider: stored.provider,
       actorId: stored.userId,
       scope: stored.scope,
-      authorizationId: pluginAuthorizationId({
+      authorizationId: authorizationId({
+        kind: "plugin",
         provider: stored.provider,
         sessionId: turnId,
       }),
@@ -439,7 +434,8 @@ export async function GET(
           ...(account?.label ? { accountLabel: account.label } : undefined),
           ...(stored.resumeSessionId
             ? {
-                authorizationId: pluginAuthorizationId({
+                authorizationId: authorizationId({
+                  kind: "plugin",
                   provider,
                   sessionId: stored.resumeSessionId,
                 }),
@@ -504,7 +500,8 @@ export async function GET(
         kind: "plugin",
         provider: stored.provider,
         actorId: stored.userId,
-        authorizationId: pluginAuthorizationId({
+        authorizationId: authorizationId({
+          kind: "plugin",
           provider: stored.provider,
           sessionId: stored.resumeSessionId!,
         }),
@@ -549,9 +546,9 @@ export async function GET(
       ? `You can close this tab and return to ${botName}.`
       : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(
-    escapeXml(`${providerLabel} account connected`),
-    escapeXml(statusMessage),
+    escapeHtml(`${providerLabel} account connected`),
+    escapeHtml(statusMessage),
     200,
-    { footerMessage: escapeXml(footerMessage) },
+    { footerMessage: escapeHtml(footerMessage) },
   );
 }

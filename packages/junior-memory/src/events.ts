@@ -1,5 +1,6 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { RETIRE_REASONS, type RetireReason } from "./lifecycle";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
@@ -38,6 +39,24 @@ const capturedMemoriesSchema = z
   })
   .strict();
 
+const archivedMemorySchema = z
+  .object({
+    ...capturedMemoryFields,
+    reason: z.enum(RETIRE_REASONS),
+    scope: z.enum(MEMORY_SCOPES),
+    /** Memory captured in the same Turn that states the current fact. */
+    supersededById: z.string().min(1).optional(),
+  })
+  .strict();
+
+const capturedMemoriesV3Schema = z
+  .object({
+    /** Memories that this Turn's evidence retired. */
+    archived: z.array(archivedMemorySchema).max(100),
+    memories: z.array(capturedMemorySchema).max(100),
+  })
+  .strict();
+
 const recalledMemoriesSchema = z
   .object({
     // Matches the automatic-recall candidate window; admission packs by char budget.
@@ -55,21 +74,39 @@ function currentScope(
   return scope;
 }
 
+function memoryCount(count: number): string {
+  return `${count} ${count === 1 ? "memory" : "memories"}`;
+}
+
 function renderCapturedMemories(event: {
+  archived?: Array<z.output<typeof archivedMemorySchema>>;
   memories: Array<
     | z.output<typeof legacyCapturedMemorySchema>
     | z.output<typeof capturedMemorySchema>
   >;
 }) {
   const count = event.memories.length;
-  if (count === 0) return undefined;
+  const archived = event.archived ?? [];
+  if (count === 0 && archived.length === 0) return undefined;
+  const title =
+    archived.length === 0
+      ? `Captured ${memoryCount(count)}`
+      : count === 0
+        ? `Archived ${memoryCount(archived.length)}`
+        : `Captured ${memoryCount(count)}, archived ${archived.length}`;
   return {
     icon: "brain" as const,
-    title: `Captured ${count} ${count === 1 ? "memory" : "memories"}`,
-    details: event.memories.map((memory) => ({
-      title: memory.content,
-      metadata: [memory.kind, currentScope(memory.scope)],
-    })),
+    title,
+    details: [
+      ...event.memories.map((memory) => ({
+        title: memory.content,
+        metadata: [memory.kind, currentScope(memory.scope)],
+      })),
+      ...archived.map((memory) => ({
+        title: memory.content,
+        metadata: [memory.kind, memory.reason],
+      })),
+    ],
   };
 }
 
@@ -81,11 +118,23 @@ export const memoriesCapturedEventV1 = defineConversationEvent({
   renderEvent: renderCapturedMemories,
 });
 
-/** Durable outcome emitted after every completed passive memory extraction. */
-export const memoriesCapturedEvent = defineConversationEvent({
+/** Previous stored memory-capture event shape retained for transcript rendering. */
+export const memoriesCapturedEventV2 = defineConversationEvent({
   name: "memories_captured",
   version: 2,
   schema: capturedMemoriesSchema,
+  renderEvent: renderCapturedMemories,
+});
+
+/**
+ * Durable outcome emitted after every completed passive memory extraction:
+ * the memories it captured and the ones that its evidence retired. The event
+ * lives in the evidence Conversation and Turn, so it is the audit trail.
+ */
+export const memoriesCapturedEvent = defineConversationEvent({
+  name: "memories_captured",
+  version: 3,
+  schema: capturedMemoriesV3Schema,
   renderEvent: renderCapturedMemories,
 });
 
@@ -111,8 +160,11 @@ export function parseCapturedMemories(
   if (version === memoriesCapturedEventV1.version) {
     return legacyCapturedMemoriesSchema.parse(content).memories;
   }
-  if (version === memoriesCapturedEvent.version) {
+  if (version === memoriesCapturedEventV2.version) {
     return capturedMemoriesSchema.parse(content).memories;
+  }
+  if (version === memoriesCapturedEvent.version) {
+    return capturedMemoriesV3Schema.parse(content).memories;
   }
   return [];
 }
@@ -126,6 +178,17 @@ export function parseRecalledMemoryIds(
     return recalledMemoriesSchema.parse(content).memories;
   }
   return [];
+}
+
+/** Select the retained fields of a memory that automatic retirement archived. */
+export function archivedMemory(memory: MemoryRecord, reason: RetireReason) {
+  return {
+    ...capturedMemory(memory),
+    reason,
+    ...(memory.supersededById
+      ? { supersededById: memory.supersededById }
+      : undefined),
+  };
 }
 
 /** Select the stable, safe memory fields retained in conversation history. */

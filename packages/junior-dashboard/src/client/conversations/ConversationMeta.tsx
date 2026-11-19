@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
 import { objectPresentation } from "@sentry/junior-plugin-api";
@@ -243,7 +244,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;
@@ -440,9 +441,14 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -462,12 +468,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -669,7 +675,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "active";
+  const live = conversationTurnIsActive(detail, conversation);
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -698,7 +704,7 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

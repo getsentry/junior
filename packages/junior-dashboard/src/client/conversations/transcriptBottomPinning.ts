@@ -22,9 +22,13 @@ import {
 
 const BOTTOM_PROXIMITY_PX = 96;
 const HISTORY_PAGE_PROXIMITY_PX = 600;
+/** Viewports of content below the reader before the jump control shows. */
+const FAR_FROM_BOTTOM_VIEWPORTS = 2;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
+// Leave a little earlier context above a row taller than the viewport.
+const TALL_ROW_TOP_GAP_PX = 48;
 
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
@@ -45,11 +49,15 @@ type BottomPinResult = {
   jumpToBottom: () => void;
   /**
    * Show a mounted row. A row that the reader asks for moves to the middle
-   * of the viewport. A row that `arrived` by itself moves only into view,
-   * and only while the reader follows the latest. Returns false when the
-   * row does not show.
+   * of the viewport, or its start to the top when it does not fit. A row
+   * that `arrived` by itself moves only into view,
+   * and only while the reader follows the latest. An `instant` move skips
+   * smooth scrolling. Returns false when the row does not show.
    */
-  showRow: (row: Element, options: { arrived: boolean }) => boolean;
+  showRow: (
+    row: Element,
+    options: { arrived: boolean; instant?: boolean },
+  ) => boolean;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -137,89 +145,107 @@ function changesVisibleTranscript(event: ConversationReportEvent): boolean {
   );
 }
 
+type EventData<T extends ConversationReportEvent["data"]["type"]> = Extract<
+  ConversationReportEvent["data"],
+  { type: T }
+>;
+type EventTailVersions = {
+  [T in ConversationReportEvent["data"]["type"]]: (
+    data: EventData<T>,
+    event: ConversationReportEvent,
+  ) => string;
+};
+
+const EVENT_TAIL_VERSIONS = {
+  message: (data) =>
+    [
+      data.type,
+      data.role,
+      data.messageId,
+      data.redacted ? "redacted" : (data.text?.length ?? 0),
+      data.eventType ?? "",
+    ].join(":"),
+  assistant_message: (data) => {
+    const parts = data.parts;
+    const lastPart = parts.at(-1);
+    return [
+      data.type,
+      parts.length,
+      lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+    ].join(":");
+  },
+  tool_calls: (data) => {
+    const call = data.calls.at(-1);
+    return [
+      data.type,
+      data.calls.length,
+      call?.toolCallId ?? "",
+      call?.name ?? "",
+      call?.status ?? "",
+      call?.output === undefined ? "" : "output",
+    ].join(":");
+  },
+  subagent: (data) =>
+    [
+      data.type,
+      data.childConversationId,
+      data.status,
+      data.subagentKind,
+      data.parentToolCallId ?? "",
+    ].join(":"),
+  turn_lifecycle: (data) =>
+    [
+      data.type,
+      data.turnId,
+      data.state,
+      "failureCode" in data ? data.failureCode : "",
+      "failureReason" in data ? (data.failureReason ?? "") : "",
+    ].join(":"),
+  structured_event: (data) =>
+    [
+      data.type,
+      data.namespace,
+      data.name,
+      data.version,
+      data.presentation.title,
+      data.presentation.preview?.length ?? 0,
+    ].join(":"),
+  message_handled: (data) => [data.type, data.messageId].join(":"),
+  attachments_delivered: (data) =>
+    [
+      data.type,
+      data.attachments.length,
+      ...data.attachments.map(
+        (attachment) =>
+          `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
+      ),
+    ].join(":"),
+  compaction: (data, event) =>
+    [data.type, data.summary?.length ?? 0, event.createdAt].join(":"),
+  guardian_action_reviewed: (data) =>
+    [data.type, data.turnId, data.toolCallId, data.decision].join(":"),
+  turn_context: (data) =>
+    [data.type, data.turnId, data.pluginName, data.kind, data.version].join(
+      ":",
+    ),
+  reply_posted: (data, event) => `${data.type}:${event.seq}`,
+} satisfies EventTailVersions;
+
+function dataTailVersion<T extends ConversationReportEvent["data"]["type"]>(
+  data: EventData<T>,
+  event: ConversationReportEvent,
+): string {
+  const version: EventTailVersions[T] = EVENT_TAIL_VERSIONS[data.type];
+  return version(data, event);
+}
+
 function eventTailVersion(event: ConversationReportEvent | undefined): string {
   if (!event) return "";
   const data = event.data;
-  switch (data.type) {
-    case "message":
-      return [
-        data.type,
-        data.role,
-        data.messageId,
-        data.redacted ? "redacted" : (data.text?.length ?? 0),
-        data.eventType ?? "",
-      ].join(":");
-    case "assistant_message": {
-      const parts = data.parts;
-      const lastPart = parts.at(-1);
-      return [
-        data.type,
-        parts.length,
-        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
-      ].join(":");
-    }
-    case "tool_calls": {
-      const call = data.calls.at(-1);
-      return [
-        data.type,
-        data.calls.length,
-        call?.toolCallId ?? "",
-        call?.name ?? "",
-        call?.status ?? "",
-        call?.output === undefined ? "" : "output",
-      ].join(":");
-    }
-    case "subagent":
-      return [
-        data.type,
-        data.childConversationId,
-        data.status,
-        data.subagentKind,
-        data.parentToolCallId ?? "",
-      ].join(":");
-    case "turn_lifecycle":
-      return [
-        data.type,
-        data.turnId,
-        data.state,
-        "failureCode" in data ? data.failureCode : "",
-        "failureReason" in data ? (data.failureReason ?? "") : "",
-      ].join(":");
-    case "structured_event":
-      return [
-        data.type,
-        data.namespace,
-        data.name,
-        data.version,
-        data.presentation.title,
-        data.presentation.preview?.length ?? 0,
-      ].join(":");
-    case "message_handled":
-      return [data.type, data.messageId].join(":");
-    case "attachments_delivered":
-      return [
-        data.type,
-        data.attachments.length,
-        ...data.attachments.map(
-          (attachment) =>
-            `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
-        ),
-      ].join(":");
-    case "compaction":
-      return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "guardian_action_reviewed":
-      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
-    case "turn_context":
-      return [
-        data.type,
-        data.turnId,
-        data.pluginName,
-        data.kind,
-        data.version,
-      ].join(":");
-    default:
-      return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
+  if (!Object.hasOwn(EVENT_TAIL_VERSIONS, data.type)) {
+    return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
   }
+  return dataTailVersion(data, event);
 }
 
 /** Require both live mode and reader intent before moving the viewport. */
@@ -249,13 +275,15 @@ export function terminalReplyPinState(input: {
 
 /**
  * Show the jump control only when the reader left the bottom and a newer tail
- * arrived, when the transcript opened at unread rows, or when it does not end
- * at the latest event. Staying pinned, or intentionally following, must not
- * flash it.
+ * arrived, when the transcript opened at unread rows, when it does not end
+ * at the latest event, or when the reader scrolled far up a long transcript.
+ * Staying pinned, or intentionally following, must not flash it.
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
   endsAtLatest?: boolean | undefined;
+  /** More than a few viewports of content are below the reader. */
+  farFromBottom?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
@@ -264,8 +292,16 @@ export function shouldShowJumpToLatest(input: {
     !input.following &&
     (input.endsAtLatest === false ||
       Boolean(input.openedAtUnread) ||
+      Boolean(input.farFromBottom) ||
       (input.enabled && input.hasPendingUpdate))
   );
+}
+
+/** True when more than `FAR_FROM_BOTTOM_VIEWPORTS` of content sit below the viewport. */
+export function isFarFromScrollBottom(snapshot: ScrollSnapshot): boolean {
+  const remaining =
+    snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight;
+  return remaining > snapshot.clientHeight * FAR_FROM_BOTTOM_VIEWPORTS;
 }
 
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
@@ -350,6 +386,7 @@ export function usePinnedTranscriptBottom(input: {
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
+  const [farFromBottom, setFarFromBottom] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [openedAtUnread, setOpenedAtUnread] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -423,6 +460,7 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
+      setFarFromBottom(isFarFromScrollBottom(snapshot));
 
       if (source === "scroll") {
         const restored = restoredScrollTopRef.current;
@@ -511,22 +549,31 @@ export function usePinnedTranscriptBottom(input: {
   );
 
   const showRow = useCallback(
-    (row: Element, options: { arrived: boolean }): boolean => {
+    (
+      row: Element,
+      options: { arrived: boolean; instant?: boolean },
+    ): boolean => {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return false;
       // A reader who scrolled away reads something else. Do not move it.
       if (options.arrived && !followingRef.current) return false;
       const bounds = viewportBounds(root);
       const rect = row.getBoundingClientRect();
+      const viewportHeight = bounds.bottom - bounds.top;
+      // A row taller than the viewport shows from its start, not its middle.
       const offset = options.arrived
         ? Math.max(0, rect.bottom - bounds.bottom)
         : rect.top -
           bounds.top -
-          (bounds.bottom - bounds.top - rect.height) / 2;
+          (rect.height > viewportHeight
+            ? TALL_ROW_TOP_GAP_PX
+            : (viewportHeight - rect.height) / 2);
       if (Math.abs(offset) < 1) return true;
       // The reader goes to the row, so the latest must not pull them back.
       if (offset < 0) leaveBottom();
-      const behavior = preferredExplicitScrollBehavior();
+      const behavior = options.instant
+        ? "auto"
+        : preferredExplicitScrollBehavior();
       setScrollTop(
         root,
         Math.max(0, scrollSnapshot(root).scrollTop + offset),
@@ -818,6 +865,7 @@ export function usePinnedTranscriptBottom(input: {
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
+        farFromBottom,
         following,
         hasPendingUpdate,
         openedAtUnread,
@@ -826,6 +874,7 @@ export function usePinnedTranscriptBottom(input: {
     [
       contentElement,
       contentRef,
+      farFromBottom,
       following,
       hasPendingUpdate,
       input.enabled,

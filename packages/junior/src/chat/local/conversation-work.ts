@@ -63,6 +63,7 @@ export function createLocalConversationWork(
     queue,
     async drain() {
       while (pending.size > 0) {
+        // oxlint-disable-next-line no-await-in-loop -- Settled work can start more work, so check again until none is left.
         await Promise.all(pending);
       }
       if (firstError !== undefined) {

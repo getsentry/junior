@@ -114,10 +114,12 @@ export class PluginMcpClient {
       let cursor: string | undefined;
 
       do {
+        // oxlint-disable-next-line no-await-in-loop -- Each page gives the cursor of the next.
         const result = await this.wrapAuth(
           () => client.listTools(cursor ? { cursor } : undefined),
           "list_tools",
         );
+        // oxlint-disable-next-line no-await-in-loop -- Save the session id of this page before the next request.
         await this.syncTransportSessionId();
         for (const tool of result.tools) {
           if (seen.has(tool.name)) {

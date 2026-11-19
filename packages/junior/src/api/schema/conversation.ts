@@ -7,6 +7,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationTitleSchema } from "./conversation-title";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -27,11 +28,14 @@ export {
   conversationTurnFailureReasonSchema,
 };
 
+/**
+ * The status of one Conversation's own work. See `TERMINOLOGY.md` and
+ * `conversationStatusSql`, the only place that derives it.
+ */
 export const conversationReportStatusSchema = z.enum([
-  "active",
-  "completed",
-  "failed",
-  "stopped",
+  "needs_input",
+  "working",
+  "done",
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
@@ -106,7 +110,8 @@ const conversationEventsLimitSchema = z.coerce
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
  * both ways from one event with `around`. A link target asks for the page
- * around one event by its `event` seq, or around the start of a `turn`.
+ * around one event by its `event` seq, around one `message` by its id, or
+ * around the start of a `turn`.
  */
 export const conversationEventsQuerySchema = z.union([
   z
@@ -126,6 +131,12 @@ export const conversationEventsQuerySchema = z.union([
     .strict(),
   z
     .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      message: z.string().min(1),
+      limit: conversationEventsLimitSchema,
+    })
     .strict(),
 ]);
 
@@ -261,6 +272,18 @@ export const conversationSummaryReportSchema = z
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
+    /** Feed rows and the detail only. */
+    treeState: conversationTreeStateSchema.optional(),
+    /**
+     * A Conversation in the tree has an active Watch or a pending Timer.
+     * Feed rows and the detail only.
+     */
+    watching: z.boolean().optional(),
+    /**
+     * A Turn is queued or running. Live views poll and show thinking on it,
+     * since `status` can read `needs_input` while a Turn runs.
+     */
+    turnActive: z.boolean(),
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),

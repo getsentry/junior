@@ -1,39 +1,46 @@
 /** Run-scoped skill discovery and explicit invocation. */
+import type { AgentRun } from "@/chat/agent/types";
+import type { Actor } from "@sentry/junior-plugin-api";
+import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { logInfo } from "@/chat/logging";
-import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
+import { discoverSkills, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { readTaskInstructions } from "@/chat/task-input";
 
 let startupDiscoveryLogged = false;
 
-/** Upsert a skill into the active skills list by name. */
-export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
-  const existing = activeSkills.find((skill) => skill.name === next.name);
-  if (existing) {
-    existing.body = next.body;
-    existing.description = next.description;
-    existing.skillPath = next.skillPath;
-    existing.allowedTools = next.allowedTools;
-    existing.pluginProvider = next.pluginProvider;
-    return;
-  }
-
-  activeSkills.push(next);
-}
-
 /**
- * Return the skills that the model can load with `loadSkill`. A user-callable
- * skill is loadable only in the Turn where the user invoked it.
+ * Return the skills that the model can load with `loadSkill`. A manual-only
+ * skill is loadable only when the Turn's message invokes it, when `loadSkill`
+ * loaded it earlier in the Conversation, or when a loadable skill references
+ * it as `$name` in its SKILL.md instructions. The model can load any loadable
+ * skill at any time, so the list is fixed for the Turn. No other text, such
+ * as memory, thread messages, or tool results, unlocks one.
  */
 export function loadableSkills(
   availableSkills: SkillMetadata[],
-  invokedSkillName: string | undefined,
+  invokedSkillNames: readonly string[],
 ): SkillMetadata[] {
-  return availableSkills.filter(
-    (skill) =>
-      skill.disableModelInvocation !== true || skill.name === invokedSkillName,
-  );
+  const byName = new Map(availableSkills.map((skill) => [skill.name, skill]));
+  const unlocked = new Set<string>();
+  const pending = [
+    ...invokedSkillNames,
+    ...availableSkills
+      .filter((skill) => skill.disableModelInvocation !== true)
+      .map((skill) => skill.name),
+  ];
+  for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+    const skill = byName.get(name);
+    if (!skill || unlocked.has(name)) {
+      continue;
+    }
+    unlocked.add(name);
+    pending.push(...(skill.references ?? []));
+  }
+  return availableSkills.filter((skill) => unlocked.has(skill.name));
 }
 
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
@@ -58,6 +65,40 @@ export async function discoverRunSkills(args: {
     });
   }
   return availableSkills;
+}
+
+/**
+ * Return the text whose skill references unlock skills in this Run: the
+ * person's own input, or the instructions of an Automation run. Text that no
+ * person wrote for this Run, such as Event text, an agent result, a parent
+ * agent task, or a plugin dispatch, unlocks nothing.
+ */
+export function skillInvocationText(
+  run: Pick<AgentRun, "dispatch" | "instruction">,
+  actor: Actor | undefined,
+): string {
+  if (run.dispatch) {
+    return dispatchInstructionsInvokeSkills(run.dispatch)
+      ? (readTaskInstructions(run.instruction.text) ?? "")
+      : "";
+  }
+  const provenance =
+    run.instruction.provenance ?? instructionProvenanceFor(actor);
+  if (
+    provenance.authority !== "instruction" ||
+    !provenance.actor ||
+    provenance.actor.platform === "system"
+  ) {
+    return "";
+  }
+  return (
+    run.instruction.inputs ?? [
+      { kind: "person" as const, text: run.instruction.text },
+    ]
+  )
+    .filter((input) => input.kind === "person")
+    .map((input) => input.text)
+    .join("\n\n");
 }
 
 function lastLoadedSkillName(
@@ -90,23 +131,21 @@ function lastLoadedSkillName(
   return undefined;
 }
 
-/** Load the explicit skill, or recover the last skill loaded in a resumed turn. */
-export async function loadRunSkill(args: {
-  activeSkills: Skill[];
+/**
+ * Make the last skill that `loadSkill` loaded earlier in this Turn active
+ * again in a resumed slice, so its tool limits and files still apply. Skills
+ * from earlier Turns are never restored.
+ */
+export async function restoreActiveSkill(args: {
   currentTurnMessages: readonly PiMessage[];
-  invokedSkill: SkillMetadata | null;
   resumed: boolean;
   skillSandbox: SkillSandbox;
-}): Promise<Skill | null> {
-  const skillName =
-    args.invokedSkill?.name ??
-    (args.resumed ? lastLoadedSkillName(args.currentTurnMessages) : undefined);
-  if (!skillName) {
-    return null;
+}): Promise<void> {
+  if (!args.resumed) {
+    return;
   }
-  const loadedSkill = await args.skillSandbox.loadSkill(skillName);
-  if (loadedSkill) {
-    upsertActiveSkill(args.activeSkills, loadedSkill);
+  const skillName = lastLoadedSkillName(args.currentTurnMessages);
+  if (skillName) {
+    await args.skillSandbox.loadSkill(skillName);
   }
-  return loadedSkill;
 }

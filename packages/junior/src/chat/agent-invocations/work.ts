@@ -18,7 +18,7 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { escapeClosingTags, renderTag } from "@/chat/input-tags";
+import { renderParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   AgentRunError,
@@ -115,15 +115,12 @@ type EnqueueOptions = {
   state?: StateAdapter | undefined;
 };
 
-/** Map a durable invocation's model settings and depth to the child Run policy. */
+/** Map a durable invocation's model settings to the child Run policy. */
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
-  canSpawn: boolean,
 ): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
-    disabledFeatures: canSpawn
-      ? ["interactive-auth"]
-      : ["interactive-auth", "subagents"],
+    disabledFeatures: ["interactive-auth"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),
@@ -255,9 +252,9 @@ export function agentInvocationInputText(
     invocation.fork ? FORK_INSTRUCTIONS : undefined,
     agentTypeInstructions(invocation.agentType),
   ].filter((text) => text !== undefined);
-  return renderTag("parent-agent-task", {}, [
-    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
-    escapeClosingTags(invocation.input),
+  return renderParentAgentTask([
+    ...instructions.flatMap((text) => [text, ""]),
+    invocation.input,
   ]);
 }
 
@@ -335,6 +332,7 @@ function createAgentMessageSteeringDrain(
           if (!metadata.success) {
             continue;
           }
+          // oxlint-disable-next-line no-await-in-loop -- Stop at the first message that cannot join, so steering keeps message order.
           const candidate = await getAgentInvocation(
             metadata.data.agentInvocationId,
           );
@@ -390,10 +388,12 @@ function createAgentMessageSteeringDrain(
           accepted.push(...messages);
         }
         for (const candidate of joining) {
+          // oxlint-disable-next-line no-await-in-loop -- Mark and record joined invocations in message order.
           const terminal = await markAgentInvocationSteered(
             candidate.invocationId,
           );
           if (terminal && isTerminalAgentInvocation(terminal)) {
+            // oxlint-disable-next-line no-await-in-loop -- Mark and record joined invocations in message order.
             await recordSubagentEnded(terminal);
           }
         }
@@ -504,6 +504,7 @@ export async function endActiveAgentInvocations(
     exceptInvocationId?: string;
   },
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Report failed invocations to the parent in start order. */
   for (const active of await listAgentInvocationsForConversation(
     conversationId,
     ACTIVE_AGENT_INVOCATION_STATUSES,
@@ -525,6 +526,7 @@ export async function endActiveAgentInvocations(
       await options.enqueueResult?.(terminal);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -537,6 +539,7 @@ export async function endAgentInvocationsOfStoppedWork(
   conversationId: string,
   inboundMessageIds: readonly string[],
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Fail invocations in start order, so their terminal events stay in order. */
   for (const invocation of await listAgentInvocationsForConversation(
     conversationId,
     NON_TERMINAL_AGENT_INVOCATION_STATUSES,
@@ -561,6 +564,7 @@ export async function endAgentInvocationsOfStoppedWork(
       await persistTerminalLifecycle(terminal);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /** Classify authorization failures that terminally block background work. */
@@ -669,21 +673,14 @@ async function saveAgentInvocationResult(args: {
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
- * `maxAgentDepth` is the number of child agent levels that can start their
- * own child agents. The default, 0, lets only the root start child agents.
  */
 export function createAgentInvocationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
-    maxAgentDepth?: number;
     sendReply?: SendReply;
   } = {},
 ) {
-  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
-  // a child past the limit still sees spawnAgent, and the spawn-time check in
-  // spawn.ts refuses it. Depth is not stored or read per Run.
-  const canSpawn = (options.maxAgentDepth ?? 0) > 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -847,10 +844,17 @@ export function createAgentInvocationWorker(
           parentConversationId: invocation.parentConversationId,
           turnId,
           runId: invocation.invocationId,
-          // A child has no person input: every input is a runtime tag.
+          // A child has no person input: every input is a runtime tag. A
+          // parent agent's task or message is the request in it.
           instruction: {
             ...instructionForInputs([
-              { kind: "runtime", text: agentInvocationInputText(invocation) },
+              {
+                kind: "runtime",
+                text: agentInvocationInputText(invocation),
+                ...(invocation.parentToolCallId
+                  ? { requestText: invocation.input }
+                  : undefined),
+              },
             ]),
             provenance: agentInvocationProvenance(invocation),
           },
@@ -869,7 +873,7 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          ...agentInvocationRunPolicy(invocation, canSpawn),
+          ...agentInvocationRunPolicy(invocation),
           state: {
             sandboxRef,
           },

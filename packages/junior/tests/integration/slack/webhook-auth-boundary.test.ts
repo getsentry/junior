@@ -4,8 +4,6 @@ import { http, HttpResponse } from "msw";
 import { createApp } from "@/app";
 import { closeDb, getConversationEventStore } from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -19,7 +17,6 @@ import {
 } from "../../fixtures/conversation-work";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { SUITE_EXPERIMENTAL } from "../../fixtures/experimental-setup";
-import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { authTestOk, usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
@@ -126,7 +123,7 @@ describe("Slack webhook auth boundary", () => {
     },
   );
 
-  it("uses mention author fields without a lookup and rejects external authors", async () => {
+  it("uses mention author fields without a lookup and rejects external authors and shared channels", async () => {
     const state = createMemoryState();
     await state.connect();
     const adapter = createSlackAdapterFixture();
@@ -143,7 +140,14 @@ describe("Slack webhook auth boundary", () => {
     // Bolt's mention fixture has different team and user_team values.
     // Change IDs only.
     // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L717-L744
-    for (const [index, team] of ["TEXTERNAL", "T123"].entries()) {
+    // A workspace member in a channel shared with another organization
+    // starts nothing: Junior is read-only there.
+    const cases = [
+      { team: "TEXTERNAL", shared: false, accepted: false },
+      { team: "T123", shared: true, accepted: false },
+      { team: "T123", shared: false, accepted: true },
+    ];
+    for (const [index, { team, shared, accepted }] of cases.entries()) {
       const envelope = slackEventsApiEnvelope({
         channel: "C123",
         ts: `1712345.000${index + 2}`,
@@ -153,7 +157,7 @@ describe("Slack webhook auth boundary", () => {
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest({
           ...envelope,
-          is_ext_shared_channel: true,
+          is_ext_shared_channel: shared,
           event: {
             ...envelope.event,
             team: "T123",
@@ -164,14 +168,15 @@ describe("Slack webhook auth boundary", () => {
         services,
       });
       expect(response.status).toBe(200);
-      expect(queue.queuedMessages()).toHaveLength(index);
+      expect(queue.queuedMessages()).toHaveLength(accepted ? 1 : 0);
       const work = await getConversationWorkState({
         conversationId: threadId,
         state,
       });
-      expect(work !== undefined).toBe(index === 1);
+      expect(work !== undefined).toBe(accepted);
     }
     expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
+    expect(slackApiOutbox.messages()).toEqual([]);
     await state.disconnect();
   });
 
@@ -324,63 +329,6 @@ describe("Slack webhook auth boundary", () => {
     await mention("UBOT");
     expect(queue.queuedMessages()).toHaveLength(2);
   });
-
-  it.each(["message", "factory"] as const)(
-    "checks membership before SDK routing for a %s",
-    async (mode) => {
-      const state = createMemoryState();
-      const adapter = createSlackAdapterFixture();
-      const bot = new JuniorChat({
-        userName: "junior",
-        adapters: { slack: adapter },
-        state,
-      });
-      const handled: string[] = [];
-      bot.onDirectMessage(async (_thread, message) => {
-        handled.push(message.text);
-      });
-      await bot.initialize();
-      const client = createSlackWebhookTestClient({
-        signingSecret: SIGNING_SECRET,
-      });
-      const waitUntil = client.waitUntil();
-      const threadId = "slack:D123:1712345.0001";
-
-      vi.useFakeTimers({ toFake: ["Date"] });
-      for (const [index, teamId] of ["TEXTERNAL", "T123"].entries()) {
-        vi.setSystemTime(Date.now() + 30_001);
-        const profile = usersInfoOk({ userId: "U123" });
-        queueSlackApiResponse("users.info", {
-          body: { ...profile, user: { ...profile.user, team_id: teamId } },
-        });
-        const message = createTestMessage({
-          id: `1712345.000${index + 1}`,
-          threadId,
-          text: teamId,
-          author: { userId: "U123" },
-          raw: {
-            ...slackEventsApiEnvelope({
-              eventType: "message",
-              channel: "D123",
-              user: "U123",
-            }).event,
-          },
-        });
-        await runWithWorkspaceTeamId("T123", () =>
-          bot.processMessage(
-            adapter,
-            threadId,
-            mode === "factory" ? async () => message : message,
-            { waitUntil: waitUntil.fn },
-          ),
-        );
-        await waitUntil.flush();
-      }
-
-      expect(handled).toEqual(["T123"]);
-      await bot.shutdown();
-    },
-  );
 
   it.each([
     { channel: 123 },

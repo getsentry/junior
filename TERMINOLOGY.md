@@ -16,6 +16,8 @@ Canonical words for Junior code and docs. One concept, one word.
   state, keyed by a unique `conversationId`. Parent is optional and separate
   from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
   never changes. `automation` is a top-level Conversation for an Automation run.
+  A Conversation is the default. Slack is a Destination attached to it. Do not
+  say "web Conversation".
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -42,6 +44,24 @@ Canonical words for Junior code and docs. One concept, one word.
   Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
+- **Conversation status**: what one Conversation's own work needs, shared
+  by everyone and derived from runtime state only. `needs_input`: it waits on
+  a person: an open action Review item it added, a sign-in, or its starter
+  while no Turn is queued or running (a failed latest Turn, a `partial` or
+  `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
+  anything else, also a stop. The first that applies wins, in that order.
+  `completed` is a Turn, Agent invocation, or run outcome, never a
+  Conversation status.
+- **Starter**: the User of a root's actor, the person whose message started
+  it or the creator of an Automation run. Its child Conversations share it.
+- **Archived**: a flag on a Conversation, shared by everyone. It is not a
+  status, and an archived Conversation keeps its status.
+- **Viewer state**: what a Conversation and its child Conversations need from
+  one viewer. Code and the API call it `treeState`. `needs_you`: the tree's
+  `needs_input` includes the viewer or Everyone. `working`: a Turn is queued
+  or running in the tree. `done`: anything else. The first that applies wins.
+  A separate `watching` flag says that a Conversation in the tree has an
+  active Watch or a pending Timer. It is not a status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.
@@ -57,6 +77,9 @@ Canonical words for Junior code and docs. One concept, one word.
   defaults that need people use Participants. A Conversation has no owner.
   The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
   Participant like any other, and is kept only for attribution such as spend.
+- **Work owner**: who a Turn's work is credited to, for attribution only: the
+  person Actor of the Turn, else the root Actor if it is a person, else the
+  system record that started the root, such as an Automation run.
 - **Admin**: a User with the Junior-wide admin role, set only by
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed
@@ -74,6 +97,20 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Quiet Event**: a Watch Event that the code that made the Watch marked
+  quiet. Core saves it as a Conversation note and starts no Turn.
+- **Event author**: the account that wrote the content of an Event, such as
+  a commenter. A plugin reports it as `EventAuthor` (facts only). An Event
+  with no author is a system Event. The author never becomes the Turn Actor.
+- **Author trust**: core's decision for one Event author, `AuthorTrust`:
+  `system`, `trusted`, or `untrusted` with a reason. Core makes it once at
+  ingest. `chat/identities/trust.ts` owns it and every other trust check
+  (Slack ingress, Identity dispatch, allowed emails).
+- **Trusted author**: an Event author with `trusted` Author trust. Like a
+  Slack author, a linked person writes the Event's Message. Any other author
+  is an Untrusted author: the Event runs as system context, and the task
+  input says the account is not verified. Either way, the author's own text
+  is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops
@@ -135,6 +172,15 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Dismiss**: close a Review item without an answer. The one UI word for
+  removing an item, on a row, a card, or many FYIs at once. Not Clear or
+  Done. Archive is for a Conversation.
+- **Done** (Inbox): the view of done and dismissed Review items. Not
+  Conversation archive.
+- **Plan**: the durable list of work that outlives a Turn in one
+  Conversation, changed with `updatePlan`. Not a Task. **Plan item**: one
+  entry, with a status and one Assignee: the Conversation's own agent, one of
+  its child agents, or a User. Each change gets a new version.
 
 ## Naming
 

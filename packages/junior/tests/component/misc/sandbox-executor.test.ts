@@ -205,7 +205,11 @@ import {
   isWorkspaceSnapshotNotReadyError,
   WorkspaceSnapshotNotReadyError,
 } from "@/chat/sandbox/snapshot/not-ready-error";
-import { getSandboxProvider } from "@/chat/sandbox/provider";
+import {
+  getSandboxProvider,
+  isRetryableSandboxFailure,
+} from "@/chat/sandbox/provider";
+import { SandboxCallTimeoutError } from "@/chat/sandbox/errors";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -1958,6 +1962,41 @@ describe("createTestSandbox", () => {
       timed_out: false,
       stderr: "Command aborted because the agent turn was cancelled.",
     });
+  });
+
+  it("fails a hung AGENTS.md read after its time limit", async () => {
+    const sandbox = makeSandbox("sbx_agents_read_hang");
+    // Injected fault: the sandbox API holds the command request open.
+    sandbox.runCommand.mockImplementationOnce(
+      async (input) =>
+        await new Promise((_, reject) => {
+          input.signal?.addEventListener("abort", () => {
+            reject(input.signal.reason);
+          });
+        }),
+    );
+    sandboxGetMock.mockResolvedValue(sandbox);
+    const timeLimit = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeLimit.signal);
+    try {
+      const access = createSandbox({
+        sandboxRef: { id: "sbx_agents_read_hang" },
+        skills: [],
+        referenceFiles: [],
+      });
+
+      const read = access.captureRepositoryInstructions();
+      await vi.waitFor(() => expect(sandbox.runCommand).toHaveBeenCalledOnce());
+      timeLimit.abort(new DOMException("timed out", "TimeoutError"));
+
+      const error = await read.catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(SandboxCallTimeoutError);
+      expect(isRetryableSandboxFailure(error)).toBe(true);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
   });
 
   it("marks an aborted mutation with completed side effects as outcome unknown", async () => {

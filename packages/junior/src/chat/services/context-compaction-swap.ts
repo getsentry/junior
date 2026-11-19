@@ -36,6 +36,7 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
+import { appendPlanSnapshot } from "@/chat/plan/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -48,7 +49,6 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
-import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -154,6 +154,7 @@ async function waitForRunningSummary(
   signal: AbortSignal | undefined,
 ): Promise<LatestBackgroundCompaction | undefined> {
   let latest: LatestBackgroundCompaction | undefined = request;
+  /* oxlint-disable no-await-in-loop -- Poll until the summary changes or the wait ends. */
   while (latest?.event.seq === request.event.seq && Date.now() < waitUntilMs) {
     await sleep(
       Math.min(RUNNING_SUMMARY_POLL_MS, waitUntilMs - Date.now()),
@@ -162,6 +163,7 @@ async function waitForRunningSummary(
     );
     latest = await loadLatestBackgroundCompaction(conversationId);
   }
+  /* oxlint-enable no-await-in-loop */
   return latest;
 }
 
@@ -318,7 +320,10 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        appendOpenPlan(renderCompactionSummary(prepared.summary), summarized),
+        await appendPlanSnapshot(
+          renderCompactionSummary(prepared.summary),
+          args.conversationId,
+        ),
       ),
       provenance: contextProvenance,
     },

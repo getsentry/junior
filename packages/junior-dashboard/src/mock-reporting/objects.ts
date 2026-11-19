@@ -3,14 +3,18 @@ import {
   messageObjectCard,
   personObjectCard,
   webPageObjectCard,
+  PERSON_CARD_RECENT_LIMIT,
   type AttachObjectLinkResponse,
   type ObjectLinksReport,
+  type PersonCardReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
   readMockConversationDetail,
+  readMockPeopleCode,
   readMockPeopleDirectory,
+  readMockPeopleProfile,
 } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
@@ -269,6 +273,27 @@ const SENTRY_MONITOR: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "sentry",
 };
 const SENTRY_MONITOR_PATH = "/monitors/4021/";
+// The mock release thread links to the alert that told the team about
+// feedback on the new checkout.
+const SENTRY_ALERT: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "alert",
+  key: "alert:acme:6363564",
+  label: "New checkout feedback",
+  title: "New checkout feedback",
+  status: "Enabled",
+  displayType: "Sentry alert",
+  facts: {
+    type: "alert",
+    enabled: true,
+    projects: ["junior"],
+    trigger: "First seen · Feedback · app.feedback.topic is new_checkout",
+    notifies: ["Email member", "Slack #checkout-feedback"],
+    lastTriggeredAt: new Date(1770021500_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_ALERT_PATH = "/monitors/alerts/6363564/";
 // The mock release thread links to one Sentry trace: a checkout request
 // whose payment call failed.
 const SENTRY_TRACE_ID = "a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4";
@@ -386,11 +411,62 @@ const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
     title: "What's new in Release 4.2",
     url: "https://blog.example.com/posts/release-4-2",
   },
+  // A page title as long as a GitHub pull request page's, so its Inbox
+  // line must truncate inside its column.
+  "https://code.example.com/acme/checkout/pull/5378": {
+    siteName: "Example Code",
+    title:
+      "feat(checkout): cache tax rates per checkout session by Riley Park · Pull Request #5378 · acme/checkout",
+    url: "https://code.example.com/acme/checkout/pull/5378",
+  },
+  "https://news.example.com/checkout-4-2-session-tax-cache": {
+    siteName: "Example News",
+    title: "Checkout 4.2 brings back per-session tax caching",
+    url: "https://news.example.com/checkout-4-2-session-tax-cache",
+  },
+};
+
+// The Sentaur review ask's pull request, with a long body, so the Inbox
+// shows how a description sits under the ask's own text.
+const SENTAUR_PULL_REQUEST: OwnedObjectAnnotation = {
+  kind: "object",
+  objectType: "code_change",
+  key: "getsentry/sentaur#418",
+  label: "getsentry/sentaur#418",
+  title: "Retry a canary stage once on a lost agent",
+  displayType: "Pull request",
+  facts: {
+    type: "code_change",
+    additions: 1204,
+    author: "junior",
+    changedFiles: 12,
+    deletions: 340,
+    sourceBranch: "fix/canary-lost-agent-retry",
+    targetBranch: "main",
+  },
+  plugin: "github",
+  status: "open",
+  url: "https://github.com/getsentry/sentaur/pull/418",
+  description: [
+    "A canary stage fails when its GoCD agent loses its lease, even though the deploy itself is fine. Three of the last ten runs failed this way.",
+    "",
+    "## Changes",
+    "",
+    "- Retry a canary stage once when its agent loses the lease.",
+    "- Do not retry a stage that failed its health checks.",
+    "- Log the agent and the lease age on each retry.",
+    "",
+    "## Rollout",
+    "",
+    "Merge after the current train. To roll back, revert this PR.",
+  ].join("\n"),
 };
 
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
+  if (url.href === SENTAUR_PULL_REQUEST.url)
+    return [{ object: SENTAUR_PULL_REQUEST, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);
@@ -414,6 +490,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url.pathname === SENTRY_MONITOR_PATH
   ) {
     return [{ object: { ...SENTRY_MONITOR, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ALERT_PATH) {
+    return [{ object: { ...SENTRY_ALERT, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
     return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
@@ -482,6 +561,43 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url: href,
   });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
+}
+
+/**
+ * Build a person card like the person card API: the person link card, the
+ * merged code changes of their People profile, and their recent activity.
+ */
+export function readMockPersonCard(
+  origin: string,
+  email: string,
+): PersonCardReport {
+  const card = mockObject(`${origin}/people/${encodeURIComponent(email)}`)[0]
+    ?.object;
+  const recent = [
+    ...(readMockPeopleProfile(email)?.recentConversations ?? []),
+  ].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  const merged = (readMockPeopleCode(email)?.changes ?? [])
+    .filter((change) => change.state === "merged" && change.mergedAt)
+    .sort(
+      (a, b) => Date.parse(b.mergedAt ?? "") - Date.parse(a.mergedAt ?? ""),
+    );
+  return {
+    // Last active covers every Conversation, like the API. Mocks have one
+    // viewer, who may read a private Conversation only as a participant.
+    activity: {
+      ...(recent[0] ? { lastActiveAt: recent[0].lastSeenAt } : undefined),
+      recentConversations: recent
+        .filter((item) => item.visibility !== "private" || item.isParticipant)
+        .slice(0, PERSON_CARD_RECENT_LIMIT)
+        .map((item) => ({
+          conversationId: item.conversationId,
+          lastTurnAt: item.lastSeenAt,
+          title: item.displayTitle,
+        })),
+    },
+    ...(card ? { card } : undefined),
+    mergedChanges: merged.slice(0, PERSON_CARD_RECENT_LIMIT),
+  };
 }
 
 /** Resolve mock links to the cards that the API would show. */

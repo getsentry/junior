@@ -21,9 +21,10 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
-  type ConversationEmbedder,
+  embedConversationQuery,
 } from "@/chat/conversations/embedding";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
@@ -116,7 +117,7 @@ export interface ConversationSearch {
 export async function searchConversations(
   db: JuniorDatabase,
   args: {
-    embedder?: ConversationEmbedder;
+    embedder?: PluginEmbedder;
     requesterConversationId: string;
     search: ConversationSearch;
   },
@@ -129,7 +130,7 @@ export async function searchConversations(
   const query = search.query?.trim() || undefined;
   const queryVector =
     query && embedder
-      ? await embedder({ inputType: "query", text: query })
+      ? await embedConversationQuery(embedder, query)
       : undefined;
   // SQL null for a stale vector or a vector of another model.
   const similarity = queryVector

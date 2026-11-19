@@ -50,8 +50,15 @@ ORDER BY sequence_name ASC
 `,
       [SCHEMA_NAME],
     );
-    for (const { qualified_name: sequenceName } of sequenceRows.rows) {
-      await client.query(`ALTER SEQUENCE ${sequenceName} RESTART WITH 1`);
+    if (sequenceRows.rows.length > 0) {
+      await client.query(
+        sequenceRows.rows
+          .map(
+            ({ qualified_name: sequenceName }) =>
+              `ALTER SEQUENCE ${sequenceName} RESTART WITH 1;`,
+          )
+          .join("\n"),
+      );
     }
 
     await client.query("COMMIT");
@@ -70,12 +77,14 @@ export async function resetPostgresTestDatabase(
   try {
     for (let attempt = 0; ; attempt += 1) {
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Retry only after the attempt before fails.
         await truncateTables(client, options);
         return;
       } catch (error) {
         if (attempt >= 2 || !isRetryableResetError(error)) {
           throw error;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Retry only after the attempt before fails.
         await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
       }
     }

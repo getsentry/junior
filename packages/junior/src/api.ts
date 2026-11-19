@@ -1,3 +1,4 @@
+import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
@@ -39,6 +40,7 @@ import { logException } from "./chat/logging";
 import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
+import type { WaitUntilFn } from "./handlers/types";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -49,7 +51,7 @@ import {
 } from "./reporting";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
-export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export { isAllowedDomain, parseEmail } from "./chat/identities/trust";
 export {
   DEFAULT_USER_SETTINGS,
   readUserSettings,
@@ -68,6 +70,8 @@ export { jsonResponse };
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
+  /** Keeps background work alive after a response. Defaults to Vercel's. */
+  waitUntil?: WaitUntilFn | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
@@ -116,11 +120,15 @@ export function createJuniorApi(
 
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  const waitUntil: WaitUntilFn =
+    options.waitUntil ??
+    ((task) => vercelWaitUntil(typeof task === "function" ? task() : task));
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
       queue,
+      waitUntil,
     }),
   );
   app.route(
@@ -140,7 +148,7 @@ export function createJuniorApi(
   app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
-  app.route("/api/people", createPeopleRoutes());
+  app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());

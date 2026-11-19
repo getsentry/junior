@@ -44,6 +44,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { readConversationTreeStates } from "./tree-state";
 import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
 import { canPauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 
@@ -73,6 +74,7 @@ function projectConversationDetail(args: {
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
   sourceTask?: ConversationDetailReport["sourceTask"];
+  status: ConversationDetailReport["status"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
   unreadPage?: ConversationDetailReport["unreadPage"];
@@ -98,6 +100,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      status: args.status,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
         : undefined),
@@ -218,6 +221,7 @@ async function readConversationDetailFromSql(
     people,
     sourceTask,
     teamDomainByTeamId,
+    treeStateByConversation,
     page,
   ] = await Promise.all([
     readConversationAgentTree(
@@ -252,6 +256,7 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
+    readConversationTreeStates(getDb(), [conversationId], options.viewer?.id),
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
@@ -334,6 +339,7 @@ async function readConversationDetailFromSql(
     authors: people.authors,
     participants: people.participants,
     ...(sourceTask ? { sourceTask } : undefined),
+    status: record.status,
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? undefined
@@ -350,6 +356,7 @@ async function readConversationDetailFromSql(
   return {
     ...report,
     ...state.forks,
+    ...treeStateByConversation.get(conversationId),
     ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }

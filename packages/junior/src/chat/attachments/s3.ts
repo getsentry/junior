@@ -1,6 +1,10 @@
 import { AwsClient } from "aws4fetch";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { rangeHeader, type AttachmentStorage } from "./storage";
+import { mapBounded } from "@/chat/fan-out";
+
+// S3 objects that one delete removes at once.
+const S3_DELETE_CONCURRENCY = 8;
 
 /** Settings for an S3-compatible object store. */
 export interface S3StorageConfig {
@@ -168,8 +172,9 @@ export function createS3AttachmentStorage(
       return response.body;
     },
     async delete(keys) {
-      await Promise.all(
-        keys.map(async (key) => {
+      await mapBounded(
+        keys,
+        async (key) => {
           const response = await client.fetch(objectUrl(config, key), {
             method: "DELETE",
           });
@@ -179,7 +184,8 @@ export function createS3AttachmentStorage(
             return;
           }
           await expectOk(response, "delete");
-        }),
+        },
+        S3_DELETE_CONCURRENCY,
       );
     },
   };

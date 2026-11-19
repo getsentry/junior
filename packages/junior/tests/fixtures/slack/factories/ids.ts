@@ -9,13 +9,6 @@ export const TEST_CANVAS_ID = "F_CANVAS_TEST";
 export const TEST_LIST_ID = "L_TEST";
 export const TEST_FILE_ID = "F_FILE_TEST";
 
-export function slackThreadId(
-  channelId = TEST_CHANNEL_ID,
-  threadTs = TEST_THREAD_TS,
-): string {
-  return `slack:${channelId}:${threadTs}`;
-}
-
 export function slackTimestamp(sequence = 0): string {
   const clamped = Math.max(0, sequence);
   return `1700000000.${String(clamped).padStart(3, "0")}`;

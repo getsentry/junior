@@ -382,6 +382,25 @@ test("links to a settings section", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { exact: true, name: "Conversations" }),
   ).toBeInViewport();
+
+  // The Interface section holds the dashboard choices, and links
+  // to each choice still work.
+  await page.goto(`${dashboard.baseURL}/settings#open-conversations-at`);
+  const openAt = page.getByRole("heading", {
+    exact: true,
+    name: "Open conversations at",
+  });
+  await expect(openAt).toBeInViewport();
+  const ui = page.getByRole("region", { exact: true, name: "Interface" });
+  await expect(ui).toContainText("New dashboard");
+  await expect(ui).toContainText("Open conversations at");
+  await expect(ui).toContainText("Scroll conversations with");
+  await expect(ui).toContainText("Message box");
+  await expect(ui).toContainText("Browser tab");
+  await screenshot(page, "settings-interface", {
+    target: ui,
+    view: "desktop",
+  });
 });
 
 // Hold the API token list until `release`, so the sections above MCP grow
@@ -464,27 +483,3 @@ test("opens an old Settings page as its section and keeps the query", async ({
     page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
 });
-
-test(
-  "goes back to the current UI from the new one",
-  { tag: "@new" },
-  async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/settings`);
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toBeVisible();
-    await screenshot(page, "new-ui-placeholder", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    await page
-      .getByRole("button", { name: "Use the current dashboard" })
-      .click();
-
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await expect(
-      page.getByText("The new dashboard is coming soon"),
-    ).toHaveCount(0);
-  },
-);

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   doublePrecision,
   foreignKey,
   index,
@@ -28,7 +29,10 @@ export const juniorConversationBriefs = pgTable(
     content: jsonb("content").notNull(),
     searchText: text("search_text").notNull(),
     modelId: text("model_id").notNull(),
-    costUsd: doublePrecision("cost_usd"),
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }),
+    // TODO: drop in the release after micro-USD. Only the runtime before it
+    // writes this USD cost, and a repair migration converts those rows.
+    legacyCostUsd: doublePrecision("cost_usd"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [

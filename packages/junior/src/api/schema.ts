@@ -13,6 +13,7 @@ export {
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
+  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -122,6 +123,7 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -250,6 +252,16 @@ export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
 } from "./schema/watch";
+export {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
+} from "./schema/plan";
+export type {
+  ConversationPlanItem,
+  ConversationPlanReport,
+  PlanItemStatusBody,
+} from "./schema/plan";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -257,6 +269,8 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  PERSON_CARD_RECENT_LIMIT,
+  personCardReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -284,6 +298,7 @@ export type {
   ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
+  PersonCardReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";
@@ -363,8 +378,10 @@ export {
   automationExecutionSchema,
   automationExecutionStatusDaySchema,
   automationExecutionStatusSchema,
+  automationListItemSchema,
   automationListQuerySchema,
   automationListSchema,
+  automationListPageSchema,
   automationParamsSchema,
   automationRunListSchema,
   automationRunSchema,
@@ -383,6 +400,8 @@ export type {
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListPage,
+  AutomationListItem,
   AutomationListQuery,
   AutomationRun,
   AutomationRunList,

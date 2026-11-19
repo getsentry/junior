@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Lock, StateAdapter } from "chat";
+import type { StateAdapter } from "chat";
 import {
   destinationSchema,
   destinationVisibilitySchema,
@@ -13,6 +13,7 @@ import { automationSkillNameSchema } from "@/chat/automations/task";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { blockEventAutomation } from "@/chat/event-automations/store";
@@ -27,6 +28,9 @@ import type {
 
 const DISPATCH_PREFIX = "junior:agent_dispatch";
 const DISPATCH_LOCK_TTL_MS = 10 * 60 * 1000;
+// Duplicate Conversation work deliveries contend for one dispatch. Each holder
+// only reads and writes the record and the mailbox append index.
+const DISPATCH_LOCK_WAIT_MS = 5_000;
 const DISPATCH_MAILBOX_APPEND_INDEX_LOCK_TTL_MS = 10_000;
 const DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH = 10_000;
 
@@ -242,19 +246,16 @@ async function withDispatchLock<T>(
 ): Promise<T> {
   const state = getStateAdapter();
   await state.connect();
-  const lock: Lock | null = await state.acquireLock(
+  const attempt = await withLock(
+    state,
     dispatchLockKey(dispatchId),
-    DISPATCH_LOCK_TTL_MS,
+    () => task(state),
+    { ttlMs: DISPATCH_LOCK_TTL_MS, waitMs: DISPATCH_LOCK_WAIT_MS },
   );
-  if (!lock) {
+  if (!attempt.acquired) {
     throw new Error(`Could not acquire dispatch lock for ${dispatchId}`);
   }
-
-  try {
-    return await task(state);
-  } finally {
-    await state.releaseLock(lock);
-  }
+  return attempt.value;
 }
 
 async function putRecord(

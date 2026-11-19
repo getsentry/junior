@@ -1,14 +1,26 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {
+  escapeClosingTag,
+  readTag,
+  renderTag,
+  unescapeClosingTag,
+} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   SANDBOX_REPOS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
-import { parseSkillFile } from "@/chat/skills";
+import {
+  openAiPolicyDisablesImplicitInvocation,
+  parseSkillFile,
+} from "@/chat/skills";
 import type { SandboxCommandRunner } from "@/chat/tools/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
+// Codex's model-visible wrapper of repository instructions.
+const AGENTS_HEADER = "# AGENTS.md instructions";
+const AGENTS_TAG = "INSTRUCTIONS";
 const MAX_REPOSITORY_INSTRUCTIONS_BYTES = 32 * 1024;
 /** Repository skill directories, in priority order, relative to the Git root. */
 const REPOSITORY_SKILL_ROOTS = [".agents/skills", ".claude/skills"];
@@ -50,10 +62,10 @@ export type VisibleAgentsInstructions =
   | { active: true; directory?: string; text: string };
 
 /**
- * Read limit for each AGENTS.md and SKILL.md file. It is 3 bytes past the
- * budget: a UTF-8 character has at most 4 bytes, so a character cut at this
- * limit starts after the budget, and the budgeted text is the same as with a
- * full read.
+ * Read limit for each AGENTS.md, SKILL.md, and openai.yaml file. It is 3
+ * bytes past the budget: a UTF-8 character has at most 4 bytes, so a
+ * character cut at this limit starts after the budget, and the budgeted text
+ * is the same as with a full read.
  */
 const FILE_READ_LIMIT_BYTES = MAX_REPOSITORY_INSTRUCTIONS_BYTES + 3;
 
@@ -68,7 +80,8 @@ const FILE_READ_LIMIT_BYTES = MAX_REPOSITORY_INSTRUCTIONS_BYTES + 3;
  *
  * Records: `R <dir>` for a Git worktree in repos/, `G <dir>/.git`, `D <path>`
  * for a directory in a skill root, `E <path>` for another entry in a skill
- * root, and `F <base64> <path>` for an AGENTS.md or SKILL.md file. File
+ * root, and `F <base64> <path>` for an AGENTS.md, SKILL.md, or skill
+ * `agents/openai.yaml` file. File
  * tests follow symlinks like `stat -L`. Globs skip dot entries like `ls -1`,
  * which the Vercel Sandbox `readdir` runs.
  */
@@ -107,6 +120,8 @@ emit_skills() {
     if [ -d "$entry" ]; then
       printf 'D %s\\n' "$entry"
       emit_file "$entry/SKILL.md"
+      # Codex can make a skill manual-only here. An unreadable file does not.
+      [ -r "$entry/agents/openai.yaml" ] && emit_file "$entry/agents/openai.yaml"
     else
       printf 'E %s\\n' "$entry"
     fi
@@ -143,7 +158,10 @@ const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
 interface RepositoryTree {
   /** Entries of each skill root, by name, with whether each is a directory. */
   entries: Map<string, Map<string, boolean>>;
-  /** AGENTS.md and SKILL.md contents, cut at `FILE_READ_LIMIT_BYTES`. */
+  /**
+   * AGENTS.md, SKILL.md, and openai.yaml contents, cut at
+   * `FILE_READ_LIMIT_BYTES`.
+   */
   files: Map<string, string>;
   /** `.git` paths that exist, as a file or a directory. */
   gitMarkers: Set<string>;
@@ -317,6 +335,14 @@ function readRepositorySkills(
     const raw = readInstructionFile(tree, filePath);
     const parsed = raw ? parseSkillFile(raw, name) : undefined;
     if (!parsed?.ok || parsed.skill.disableModelInvocation) {
+      continue;
+    }
+    const policyPath = path.posix.join(candidate.path, "agents", "openai.yaml");
+    const policy = tree.files.get(policyPath);
+    if (
+      policy !== undefined &&
+      openAiPolicyDisablesImplicitInvocation(policy, policyPath)
+    ) {
       continue;
     }
     skills.push({
@@ -591,7 +617,9 @@ export function renderAgentsInstructions(args: {
   text: string;
 }): string {
   const directory = args.directory ? ` for ${args.directory}` : "";
-  return `# AGENTS.md instructions${directory}\n\n<INSTRUCTIONS>\n${args.text}\n</INSTRUCTIONS>`;
+  return `${AGENTS_HEADER}${directory}\n\n${renderTag(AGENTS_TAG, {}, [
+    escapeClosingTag(args.text, AGENTS_TAG),
+  ])}`;
 }
 
 /** Build one user-role repository-instructions context message. */
@@ -635,17 +663,21 @@ export function findVisibleAgentsInstructions(
       if (
         part.type !== "text" ||
         typeof part.text !== "string" ||
-        !part.text.startsWith("# AGENTS.md instructions")
+        !part.text.startsWith(AGENTS_HEADER)
       ) {
         continue;
       }
-      const match = part.text.match(
-        /^# AGENTS\.md instructions(?: for ([^\n]+))?\n\n<INSTRUCTIONS>\n([\s\S]*)\n<\/INSTRUCTIONS>$/,
-      );
-      if (!match) {
+      const headerEnd = part.text.indexOf("\n\n");
+      const header = part.text.slice(AGENTS_HEADER.length, headerEnd);
+      const body =
+        headerEnd < 0
+          ? undefined
+          : readTag(part.text.slice(headerEnd + 2), AGENTS_TAG);
+      if (body === undefined || (header && !header.startsWith(" for "))) {
         continue;
       }
-      let text = match[2]!;
+      const directory = header.slice(" for ".length);
+      let text = unescapeClosingTag(body, AGENTS_TAG);
       if (text === AGENTS_REMOVAL_NOTICE) {
         return { active: false };
       }
@@ -654,7 +686,7 @@ export function findVisibleAgentsInstructions(
       }
       return {
         active: true,
-        ...(match[1] ? { directory: match[1] } : undefined),
+        ...(directory ? { directory } : undefined),
         text,
       };
     }
@@ -694,9 +726,4 @@ export function renderAgentsInstructionsForPrompt(
         ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
         : instructions.text,
   });
-}
-
-/** Whether one message is a generated AGENTS.md context update. */
-export function isAgentsInstructionsMessage(message: PiMessage): boolean {
-  return Boolean(findVisibleAgentsInstructions([message]));
 }

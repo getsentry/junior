@@ -2,7 +2,12 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { reviewItemListQueryKey } from "../review-desk/queries";
 
-const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
+const CONVERSATION_SIDE_READS = [
+  "agents",
+  "memories",
+  "plan",
+  "watches",
+] as const;
 
 /**
  * Key a read that shows beside the detail report, such as in the details

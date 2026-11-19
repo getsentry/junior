@@ -572,8 +572,8 @@ export class SqlStore implements ConversationStore {
         ? args.execution
         : (existing?.execution ?? args.execution);
       // Root Actor and origin Source come from the saved Conversation, as in
-      // recordActivity. A later Turn, such as an event on a web Conversation,
-      // must not derive a system Actor from its own Source.
+      // recordActivity. A later Turn, such as an event on a Conversation that
+      // the dashboard started, must not derive a system Actor from its Source.
       const actor = mergeActor(existing?.actor, args.actor);
       const source = existing?.source ?? args.source;
       await this.upsertConversation({

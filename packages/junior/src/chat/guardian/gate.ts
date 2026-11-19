@@ -29,6 +29,7 @@ import type {
   ToolActionReviewer,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
+import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
@@ -472,27 +473,6 @@ export const MAX_TOOL_ACTION_BATCH = 10;
 /** Most Guardian reviews of one batch that run at the same time. */
 const MAX_CONCURRENT_REVIEWS = 4;
 
-/** Map items with at most `limit` calls of `fn` in flight, in input order. */
-async function mapConcurrent<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(items[index]!);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
-}
-
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
@@ -596,20 +576,20 @@ export function createToolActionReview(options: {
       }
       return state;
     });
-    states.forEach((state, index) => {
+    for (const [index, state] of states.entries()) {
       const step = steps[index]!;
       if (step.kind !== "reviewed" || state.rejected) {
-        return;
+        continue;
       }
       if (step.decision.decision === "allow") {
         // A later action of the same attempt can still add one.
         consecutiveRejections = 0;
-        return;
+        continue;
       }
       state.rejected = true;
       consecutiveRejections = state.before + 1;
       if (consecutiveRejections < MAX_CONSECUTIVE_REJECTIONS) {
-        return;
+        continue;
       }
       state.exhausted = true;
       // Keep Sentry visibility for the limit without aborting the run.
@@ -624,7 +604,7 @@ export function createToolActionReview(options: {
           "gen_ai.tool.call.id": actions[index]!.toolCallId,
         },
       );
-    });
+    }
     return states;
   };
 
@@ -678,10 +658,10 @@ export function createToolActionReview(options: {
           // Each action sees the same prior rejections, so the order in
           // which concurrent reviews finish cannot change a proposal.
           const rejections = [...priorRejections];
-          const steps = await mapConcurrent(
+          const steps = await mapBounded(
             actions,
-            MAX_CONCURRENT_REVIEWS,
             (action) => reviewStep(action, rejections, signal),
+            MAX_CONCURRENT_REVIEWS,
           );
           // Change gate state in batch order, so it does not depend on
           // which review finished first.

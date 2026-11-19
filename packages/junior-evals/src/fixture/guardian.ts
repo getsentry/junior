@@ -91,7 +91,12 @@ export async function answerGuardianReview(
     prompt?: Array<{ content?: unknown; role?: string }>;
   };
   const [system, ...messages] = payload.prompt ?? [];
-  if (system?.content !== GUARDIAN_ACTION_POLICY) return undefined;
+  if (
+    typeof system?.content !== "string" ||
+    !system.content.startsWith(GUARDIAN_ACTION_POLICY)
+  ) {
+    return undefined;
+  }
   const text = messages
     .flatMap((message) =>
       Array.isArray(message.content) ? message.content : [],

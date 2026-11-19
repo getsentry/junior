@@ -1,4 +1,4 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { CalendarClock, LockKeyhole, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
@@ -12,6 +12,8 @@ import {
 import { AutomationRunStrip } from "./AutomationRunStrip";
 import { automationProblemSummary } from "./AutomationStatus";
 import { formatRelativeTime } from "../../time";
+import { PersonReference } from "../../components/PersonReference";
+import { automationCreator } from "../../person";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
 export const AUTOMATION_ROW_RUN_SLOTS = 20;
@@ -26,7 +28,7 @@ const automationRowColumns =
  * owner line with what is wrong and the link that fixes it.
  */
 export function AutomationRow(props: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
   onSelect(): void;
   to: string;
 }) {
@@ -86,7 +88,11 @@ export function AutomationRow(props: {
             size="list"
           />
           <span className="truncate">
-            {automation.ownedByViewer ? "You" : automation.createdBy}
+            <PersonReference
+              avatar={false}
+              label={automation.ownedByViewer ? "You" : undefined}
+              person={automationCreator(automation)}
+            />
           </span>
         </span>
         <div className="hidden md:block">
@@ -110,7 +116,7 @@ export function AutomationRow(props: {
 function AutomationTriggerLine({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   const scheduled = automation.kind === "scheduled";
   const Icon = scheduled ? CalendarClock : Zap;
@@ -162,7 +168,7 @@ function AutomationTriggerLine({
 }
 
 /** What happens next on top, the last run under it. */
-function AutomationTiming({ automation }: { automation: AutomationSummary }) {
+function AutomationTiming({ automation }: { automation: AutomationListItem }) {
   const next =
     automation.status === "paused"
       ? { label: "Paused" }

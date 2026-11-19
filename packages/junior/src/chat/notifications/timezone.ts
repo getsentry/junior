@@ -1,10 +1,8 @@
 import type { JuniorDatabase } from "@/db/db";
-import { readUserTimezone, saveUserTimezone } from "@/chat/identities/sql";
-import { defaultTimezone } from "@/chat/identities/timezone";
+import { linkedSlackUser } from "@/chat/identities/sql";
+import { defaultTimezone, findUserTimezone } from "@/chat/identities/timezone";
 import { isValidTimeZone } from "@/chat/scheduled-automations/cadence";
-import { lookupSlackUser } from "@/chat/slack/user";
 import type { NotificationSchedule } from "./schedule";
-import { linkedSlackUser } from "./slack";
 
 /** Where the notification timezone came from. */
 export type NotificationTimezoneSource =
@@ -27,17 +25,11 @@ export async function resolveNotificationTimezone(args: {
   if (args.schedule.timezone && isValidTimeZone(args.schedule.timezone)) {
     return { source: "manual", timezone: args.schedule.timezone };
   }
-  const slack = await linkedSlackUser(args.db, args.userId);
-  const slackTimezone = slack
-    ? (await lookupSlackUser(slack.teamId, slack.userId))?.timezone
-    : undefined;
-  if (slackTimezone && isValidTimeZone(slackTimezone)) {
-    await saveUserTimezone(args.db, args.userId, slackTimezone, args.nowMs);
-    return { source: "slack", timezone: slackTimezone };
-  }
-  const saved = await readUserTimezone(args.db, args.userId);
-  if (saved && isValidTimeZone(saved)) {
-    return { source: "saved", timezone: saved };
-  }
-  return { source: "default", timezone: defaultTimezone() };
+  const found = await findUserTimezone({
+    db: args.db,
+    nowMs: args.nowMs,
+    slack: await linkedSlackUser(args.db, args.userId),
+    userId: args.userId,
+  });
+  return found ?? { source: "default", timezone: defaultTimezone() };
 }

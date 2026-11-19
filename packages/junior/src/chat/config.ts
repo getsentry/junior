@@ -92,6 +92,8 @@ export interface BotModelConfig {
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
+  /** Model used to transcribe audio and video attachments. */
+  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
@@ -108,6 +110,7 @@ export interface BotConfig {
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
+  transcriptionModelId: string;
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
@@ -260,6 +263,9 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
+// The transcription tool sends a URL, not bytes. The model must accept
+// ElevenLabs `sourceUrl`.
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -336,6 +342,9 @@ function readBotConfig(
     imageGenerationModelId:
       toOptionalTrimmed(env["AI_IMAGE_MODEL"]) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
+    transcriptionModelId:
+      toOptionalTrimmed(env["AI_TRANSCRIPTION_MODEL"]) ??
+      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
       validateEmbeddingModelId(env["AI_EMBEDDING_MODEL"]) ??
       DEFAULT_EMBEDDING_MODEL_ID,
@@ -350,7 +359,7 @@ function readBotConfig(
       env["AI_VISION_MODEL"] === undefined
         ? DEFAULT_VISION_MODEL_ID
         : validateGatewayModelId(env["AI_VISION_MODEL"]),
-    maxAgentDepth: 0,
+    maxAgentDepth: 1,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
@@ -483,7 +492,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 0, lets only the root Conversation start child agents.
+   * default, 1, lets a child of the root start child agents, and those
+   * cannot start more. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
@@ -654,10 +664,6 @@ export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
 }
 
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
-}
-
 // ---------------------------------------------------------------------------
 // Runtime metadata
 // ---------------------------------------------------------------------------
@@ -727,6 +733,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       "imageGenerationModelId",
       config.imageGenerationModelId,
       validateEmbeddingModelId,
+    );
+  }
+  if (config.transcriptionModelId !== undefined) {
+    botConfig.transcriptionModelId = requireModelId(
+      "transcriptionModelId",
+      config.transcriptionModelId,
+      toOptionalTrimmed,
     );
   }
   if (config.visionModelId !== undefined) {

@@ -19,6 +19,8 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
@@ -41,12 +43,21 @@ let creatorIdentityId = "";
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
-    ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        conversationWork: () => ({ queue }),
+      }),
   });
 }
 
@@ -470,7 +481,7 @@ describe("scheduled automation heartbeat", () => {
       expect(dispatchRecord?.skill).toBe("manual-digest");
       expect(dispatchRecord?.input).toContain(
         [
-          "Run the manual-digest skill. The instructions below add context for this run.",
+          "Run the $manual-digest skill. The instructions below add context for this run.",
           "<instructions>Only cover getsentry/junior.</instructions>",
         ].join("\n"),
       );

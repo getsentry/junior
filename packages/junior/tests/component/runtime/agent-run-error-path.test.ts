@@ -1,6 +1,9 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
+import * as Sentry from "@/chat/sentry";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 
 const originalAiModel = process.env["AI_MODEL"];
 
@@ -11,7 +14,7 @@ vi.mock("@/chat/skills", () => ({
     throw new Error("discover failed");
   }),
   findSkillByName: vi.fn(),
-  parseSkillInvocation: vi.fn(),
+  parseSkillInvocations: vi.fn(() => []),
 }));
 
 const { executeAgentRun } = await import("@/chat/agent");
@@ -22,7 +25,29 @@ const LOCAL_DESTINATION = {
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 describe("executeAgentRun error path", () => {
-  afterAll(() => {
+  const sentEvents: Sentry.ErrorEvent[] = [];
+  let client: ReturnType<typeof Sentry.init>;
+
+  beforeAll(() => {
+    client = Sentry.init({
+      dsn: "https://public@example.com/1",
+      defaultIntegrations: false,
+      transport: () => ({
+        send: async (envelope) => {
+          for (const [header, payload] of envelope[1]) {
+            if (header.type === "event") {
+              sentEvents.push(payload as Sentry.ErrorEvent);
+            }
+          }
+          return { statusCode: 200 };
+        },
+        flush: async () => true,
+      }),
+    });
+  });
+
+  afterAll(async () => {
+    await client?.close();
     if (originalAiModel === undefined) {
       delete process.env["AI_MODEL"];
     } else {
@@ -61,12 +86,14 @@ describe("executeAgentRun error path", () => {
     expect(reply!.diagnostics.reasoningLevel).toBe("high");
   });
 
-  it("binds authoritative request context before startup failures", async () => {
+  it("reports a startup failure once, with request context", async () => {
     const records: EmittedLogRecord[] = [];
     const unregister = registerLogRecordSink((record) => records.push(record));
+    sentEvents.length = 0;
 
+    let outcome: AgentRunOutcome;
     try {
-      await executeAgentRun({
+      outcome = await executeAgentRun({
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-context-failure",
         runId: "run-context-failure",
@@ -84,7 +111,7 @@ describe("executeAgentRun error path", () => {
     }
 
     const failure = records.find(
-      (record) => record.eventName === "assistant.reply.generation.failed",
+      (record) => record.eventName === "agent.turn.provider_error",
     );
     expect(failure?.attributes).toMatchObject({
       "app.platform": "local",
@@ -96,6 +123,20 @@ describe("executeAgentRun error path", () => {
       "messaging.message.conversation_id": LOCAL_DESTINATION.conversationId,
       "messaging.system": "local",
     });
+
+    // The run reports its own failure. The failure reply shows that event,
+    // and nothing reports the failure again.
+    const result = outcome.status === "completed" ? outcome.result : undefined;
+    const finalized = finalizeFailedTurnReplyWithEvent({ reply: result! });
+    await client?.flush();
+    const eventId = result!.diagnostics.eventId;
+    expect(eventId).toBeDefined();
+    expect(sentEvents.map((event) => event.event_id)).toEqual([eventId]);
+    expect(sentEvents[0]?.extra).toMatchObject({
+      "app.ai.failure_reason": "unknown",
+      "app.ai.outcome": "provider_error",
+    });
+    expect(finalized.reply.text).toContain(`event_id=${eventId}`);
   });
 
   it("preserves configured reasoning in failure diagnostics", async () => {

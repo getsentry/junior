@@ -17,21 +17,24 @@ import {
 } from "./queries";
 import { loadCompleteConversationTranscript } from "./transcript";
 
+/** What a row menu acts on. The menu reads the detail from the cache. */
+export type ConversationRowMenuProps = Omit<
+  ConversationMenu,
+  "conversation" | "detail" | "getMarkdown"
+> & {
+  conversation: NonNullable<ConversationMenu["conversation"]>;
+};
+
 /**
- * Render the sidebar row menu with the rows of the conversation `⋯` menu.
- * It mounts only while the menu is open, and it reads the detail from the
- * cache that the row prefetch fills.
+ * List the row menu groups. Mount it only while a menu is open: it reads the
+ * detail from the cache that the row prefetch fills.
  */
-export function ConversationRowMenu(
-  props: Omit<ConversationMenu, "conversation" | "detail" | "getMarkdown"> & {
-    conversation: NonNullable<ConversationMenu["conversation"]>;
-  },
-) {
+export function useConversationRowMenuGroups(props: ConversationRowMenuProps) {
   const detail = useQuery({
     ...conversationDetailQueryOptions(props.conversationId),
     enabled: false,
   }).data;
-  const groups = useConversationMenuItems({
+  return useConversationMenuItems({
     ...props,
     detail,
     getMarkdown: detail
@@ -47,6 +50,11 @@ export function ConversationRowMenu(
           )
       : undefined,
   });
+}
+
+/** Render the row context menu with the rows of the conversation `⋯` menu. */
+export function ConversationRowMenu(props: ConversationRowMenuProps) {
+  const groups = useConversationRowMenuGroups(props);
   return groups.map((items, index) => (
     <Fragment key={index}>
       {index > 0 ? <ContextMenuSeparator /> : null}

@@ -5,6 +5,7 @@ import {
   type PluginSandbox,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
+  type PluginWorkOwner,
   type ToolRegistrationHookContext,
   type WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
@@ -96,6 +97,15 @@ type TestActor = {
   userName?: string;
 };
 
+// A pull request needs a requester, so pull request tests run as a person.
+const PULL_REQUEST_REQUESTER: TestActor = {
+  fullName: "Pat Requester",
+  platform: "slack",
+  teamId: "T1",
+  userId: "U0PATREQ",
+  userName: "pat",
+};
+
 function beforeToolContext(
   actor: TestActor,
   actors?: TestActor[],
@@ -147,6 +157,9 @@ function beforeToolContext(
     },
   };
 }
+
+const NO_REQUESTER_ERROR =
+  "Cannot open a pull request: no person or Automation run asked for this work. Do not retry. Report it as blocked";
 
 const pluginLog = {
   error() {},
@@ -395,6 +408,8 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  /** Overrides the host's work owner. By default a person runs the Turn. */
+  workOwner?: PluginWorkOwner | undefined;
   source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
   subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
@@ -411,6 +426,12 @@ function githubToolsContext(input?: {
     log: pluginLog,
     plugin: { name: "github" },
     ...(input?.actor ? { actor: input.actor } : undefined),
+    async resolveWorkOwner(): Promise<PluginWorkOwner | undefined> {
+      if (input && "workOwner" in input) return input.workOwner;
+      const actor = input?.actor;
+      if (!actor || actor.platform === "system") return undefined;
+      return { kind: "person", actor, ...(await input?.resolveActor?.()) };
+    },
     conversationId,
     destination: { platform: "local" as const, conversationId },
     source: input?.source ?? {
@@ -478,7 +499,7 @@ function githubToolsContext(input?: {
         _ttlMs: number,
         callback: () => Promise<T>,
       ) {
-        return await callback();
+        return { acquired: true as const, value: await callback() };
       },
     },
     egressRequests() {
@@ -631,6 +652,40 @@ describe("github plugin", () => {
         workflowPath: { kind: "string" },
       },
     });
+  });
+
+  // Event data names the number `pull_request` or `issue`, and the model
+  // copies that name into tool arguments.
+  it("names pull request and issue numbers the way event data does", () => {
+    const inputKeys = Object.fromEntries(
+      Object.entries(githubPlugin().hooks?.tools?.() ?? {}).map(
+        ([name, tool]) => [
+          name,
+          Object.keys(
+            (tool.inputSchema as { properties?: object }).properties ?? {},
+          ),
+        ],
+      ),
+    );
+    const pullRequest = expect.arrayContaining(["pull_request"]);
+    const issue = expect.arrayContaining(["issue"]);
+
+    expect(inputKeys).toMatchObject({
+      commentOnIssue: issue,
+      commentOnPullRequest: pullRequest,
+      getIssue: issue,
+      getPullRequest: pullRequest,
+      reactToIssue: issue,
+      submitPullRequestReview: pullRequest,
+      updateIssue: issue,
+      updatePullRequest: pullRequest,
+      updatePullRequestFeedback: pullRequest,
+    });
+    expect(
+      Object.keys(inputKeys).filter((name) =>
+        inputKeys[name]?.includes("number"),
+      ),
+    ).toEqual([]);
   });
 
   it("registers app guidance for pull request events", () => {
@@ -941,6 +996,10 @@ describe("github plugin", () => {
 
   it("creates issues with deterministic requester attribution", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -949,6 +1008,14 @@ describe("github plugin", () => {
         userId: "U1",
       },
       conversationId: "slack:C123:1712345.0001",
+      source: {
+        kind: "slack",
+        teamId: "T1",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        visibility: "public",
+      },
+      subscribe,
     });
     const plugin = githubPlugin();
     const tool = bindPluginTool(
@@ -967,11 +1034,17 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
+      // A person started the Turn, so the result names the Review item that
+      // asks whether to implement the issue.
+      note: expect.stringContaining(
+        '"github-issue-implement:getsentry/junior#660"',
+      ),
       number: 660,
       subscribable: {
         namespace: "github",
         identifier: "getsentry/junior#660",
         type: "issue",
+        suggested_events: ["issue.closed", "issue.reopened", "issue.updated"],
         supported_events: [
           "issue.comment.created",
           "issue.opened",
@@ -980,9 +1053,19 @@ describe("github plugin", () => {
           "issue.updated",
         ],
       },
+      subscription: { events: ["issue.comment.created"], id: "subscription-1" },
       url: "https://github.com/getsentry/junior/issues/660",
     });
     expect(result).not.toHaveProperty("data");
+    // The Watch wakes only on comments, and it does not reply on GitHub.
+    expect(subscribe).toHaveBeenCalledWith({
+      events: ["issue.comment.created"],
+      intent: expect.stringContaining("Do not reply on GitHub"),
+      resource: expect.objectContaining({
+        identifier: "getsentry/junior#660",
+        type: "issue",
+      }),
+    });
 
     expect(ctx.egressRequests()).toHaveLength(1);
     const request = ctx.egressRequests()[0];
@@ -1124,24 +1207,33 @@ describe("github plugin", () => {
 
   it("attributes automation writes to the Automation run", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
-    const ctx = {
-      ...githubToolsContext({
-        actor: { platform: "system", name: "junior" },
-        conversationId: "agent-dispatch:dispatch_1",
-        source: {
-          kind: "event_automation",
-          automationId: "evt_1",
-          automationRunId: "dispatch_1",
-        },
-      }),
-      automationLink: { url: "https://junior.example.com/automations/evt_1" },
-    };
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({
+      actor: { platform: "system", name: "junior" },
+      conversationId: "agent-dispatch:dispatch_1",
+      source: {
+        kind: "event_automation",
+        automationId: "evt_1",
+        automationRunId: "dispatch_1",
+      },
+      subscribe,
+      workOwner: {
+        kind: "system",
+        name: "automation",
+        id: "evt_1",
+        runId: "dispatch_1",
+        url: "https://junior.example.com/automations/evt_1",
+      },
+    });
     const tool = bindPluginTool(
       githubPlugin().hooks?.tools?.()?.["createIssue"],
       ctx as any,
     );
 
-    await tool?.execute?.(
+    const result = await tool?.execute?.(
       {
         repo: "getsentry/junior",
         title: "Typed issue",
@@ -1151,9 +1243,41 @@ describe("github plugin", () => {
       { toolCallId: "call-create-issue-automation" },
     );
 
+    // No person started the run, so the issue gets no Watch, and no one
+    // could answer a Review item about implementing it.
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("subscription");
+    expect(result).not.toHaveProperty("note");
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
+    });
+
+    // An Automation run needs no person to open a pull request.
+    const createPullRequest = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+      ctx as any,
+    );
+    await createPullRequest?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "automation/fix",
+        base: "main",
+        body: "PR body",
+      },
+      { toolCallId: "call-create-pull-request-automation" },
+    );
+    const pullRequest = ctx
+      .egressRequests()
+      .find(
+        (entry: { operation: string }) =>
+          entry.operation === "github.pull.create",
+      );
+    await expect(pullRequest?.request.json()).resolves.toMatchObject({
+      body: expect.stringContaining(
+        "PR body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
+      ),
     });
   });
 
@@ -1284,6 +1408,36 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject(expected);
 
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
+  it("returns the created issue when the Watch cannot be created", async () => {
+    process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+    const subscribe = vi.fn(async () => {
+      // Injected fault: the Watch store is down after GitHub created the issue.
+      throw new Error("subscription store unavailable");
+    });
+    const ctx = githubToolsContext({
+      actor: { platform: "local", userId: "local-user" },
+      subscribe,
+    });
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createIssue"],
+      ctx as any,
+    );
+
+    const result = await tool?.execute?.(
+      { repo: "getsentry/junior", title: "Typed issue" },
+      { toolCallId: "call-create-issue-subscribe-fail" },
+    );
+    expect(result).toMatchObject({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+      subscribable: {
+        suggested_events: expect.arrayContaining(["issue.comment.created"]),
+      },
+    });
+    expect(result).not.toHaveProperty("subscription");
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
@@ -1638,11 +1792,17 @@ Conversation: \`local:test:old-conversation\`
 
   it("subscribes configured events after creating a pull request", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
-    const subscribe = vi.fn(async ({ events }) => ({
-      events,
+    // Like core, the result lists only the events that start a Turn.
+    const subscribe = vi.fn(async ({ events, quietEvents }) => ({
+      events: events.filter(
+        (eventType: string) => !quietEvents?.includes(eventType),
+      ),
       id: "subscription-1",
     }));
-    const ctx = githubToolsContext({ subscribe });
+    const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
+      subscribe,
+    });
     const tool = bindPluginTool(
       githubPlugin({
         pullRequestEvents: {
@@ -1650,49 +1810,65 @@ Conversation: \`local:test:old-conversation\`
             events: [
               "pull_request.checks.failed",
               "pull_request.review.changes_requested",
+              "pull_request.merged",
             ],
-            intent: "Report failed checks and requested changes.",
+            intent: "Report failed checks, requested changes, and merges.",
           },
         },
       }).hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
     );
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed PR",
-          head: "feature",
-          base: "main",
-        },
-        { toolCallId: "call-create-pull-request-subscribe" },
-      ),
-    ).resolves.toMatchObject({
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-subscribe" },
+    );
+    expect(result).toMatchObject({
       subscribable: {
         suggested_events: expect.not.arrayContaining([
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.merged",
         ]),
       },
       subscription: {
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.merged",
           "pull_request.merge_conflict",
         ],
         id: "subscription-1",
       },
     });
+    // A Quiet Event stays suggested, so the agent can still watch it when a
+    // person asks to hear about it.
+    expect(result.subscribable.suggested_events).toContain(
+      "pull_request.closed_unmerged",
+    );
     // Merge conflicts always reach the Watch, so Junior keeps its pull
-    // request ready to merge.
+    // request ready to merge. An approval and a close arrive as Quiet
+    // Events, so later Turns know them. The configured merge still starts a
+    // Turn.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
         "pull_request.review.changes_requested",
+        "pull_request.merged",
         "pull_request.merge_conflict",
+        "pull_request.review.approved",
+        "pull_request.closed_unmerged",
       ],
-      intent: "Report failed checks and requested changes.",
+      intent: "Report failed checks, requested changes, and merges.",
+      quietEvents: [
+        "pull_request.review.approved",
+        "pull_request.closed_unmerged",
+      ],
       resource: expect.objectContaining({
         identifier: "getsentry/junior#660",
         type: "pull_request",
@@ -1706,7 +1882,10 @@ Conversation: \`local:test:old-conversation\`
       events,
       id: "subscription-1",
     }));
-    const ctx = githubToolsContext({ subscribe });
+    const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
+      subscribe,
+    });
     const tool = bindPluginTool(
       githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
@@ -1722,10 +1901,20 @@ Conversation: \`local:test:old-conversation\`
       },
       { toolCallId: "call-create-draft-pull-request-watch" },
     );
-    // Junior marks its draft ready when the required checks pass.
+    // Junior marks its draft ready when the required checks pass. A person
+    // can mark it ready first, so later Turns learn that quietly.
     expect(subscribe).toHaveBeenCalledWith(
       expect.objectContaining({
-        events: expect.arrayContaining(["pull_request.checks.recovered"]),
+        events: expect.arrayContaining([
+          "pull_request.checks.recovered",
+          "pull_request.ready_for_review",
+        ]),
+        quietEvents: [
+          "pull_request.review.approved",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
+          "pull_request.ready_for_review",
+        ],
         guidance: expect.objectContaining({
           "pull_request.checks.recovered": expect.stringContaining(
             "mark it ready with github_updatePullRequest and draft false",
@@ -1741,7 +1930,10 @@ Conversation: \`local:test:old-conversation\`
       events,
       id: "subscription-1",
     }));
-    const ctx = githubToolsContext({ subscribe });
+    const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
+      subscribe,
+    });
     const tool = bindPluginTool(
       githubPlugin().hooks?.tools?.()?.["createPullRequest"],
       ctx as any,
@@ -1766,6 +1958,14 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.review.commented",
           "pull_request.review_comment.created",
           "pull_request.merge_conflict",
+          "pull_request.review.approved",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
+        ],
+        quietEvents: [
+          "pull_request.review.approved",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         intent: expect.stringContaining(
           "Reply on GitHub to review comments and questions",
@@ -1780,7 +1980,10 @@ Conversation: \`local:test:old-conversation\`
     const subscribe = vi.fn(async () => {
       throw new Error("subscription store unavailable");
     });
-    const ctx = githubToolsContext({ subscribe });
+    const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
+      subscribe,
+    });
     ctx.log = { ...ctx.log, warn };
     const tool = bindPluginTool(
       githubPlugin({
@@ -1824,83 +2027,96 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
-    const ctx = githubToolsContext({
-      actor: {
-        platform: "slack",
-        teamId: "T1",
-        userId: "U039RR91S",
-      },
-      resolveActor: async () => ({
-        identity: {
-          displayName: "Slack Profile Name",
-          handle: "david",
-          id: "identity-1",
-          provider: "slack",
-          providerSubjectId: "U039RR91S",
-          providerTenantId: "T1",
+  const linkedRequester = {
+    identity: {
+      displayName: "Slack Profile Name",
+      handle: "david",
+      id: "identity-1",
+      provider: "slack",
+      providerSubjectId: "U039RR91S",
+      providerTenantId: "T1",
+    },
+    user: {
+      displayName: "David Cramer",
+      email: "david@example.com",
+      id: "user-1",
+      identities: [
+        {
+          id: "github-identity",
+          provider: "github",
+          providerSubjectId: "1473041",
+          handle: "dcramer_sentry",
         },
-        user: {
-          displayName: "David Cramer",
-          email: "david@example.com",
-          id: "user-1",
-          identities: [
-            {
-              id: "github-identity",
-              provider: "github",
-              providerSubjectId: "1473041",
-              handle: "dcramer_sentry",
-            },
-          ],
+      ],
+    },
+  };
+
+  // A system Turn, such as a Watch Event or a parent agent's message, does
+  // its root's work, so the root Actor is the requester.
+  it.each([
+    {
+      name: "the person who runs the Turn",
+      actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
+      resolveActor: async () => linkedRequester,
+    },
+    {
+      name: "the root Actor of a system Turn",
+      actor: { platform: "system", name: "event" },
+      workOwner: { kind: "person" as const, ...linkedRequester },
+    },
+  ])(
+    "assigns pull requests to $name and mentions them in attribution",
+    async (requester) => {
+      const ctx = githubToolsContext({
+        ...requester,
+        egressFetch: async ({ operation }) =>
+          operation === "github.pull.assign"
+            ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
+            : new Response(
+                JSON.stringify({
+                  number: 692,
+                  html_url: "https://github.com/getsentry/junior/pull/692",
+                }),
+                { status: 201 },
+              ),
+      });
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
+
+      await tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+          draft: true,
         },
-      }),
-      egressFetch: async ({ operation }) =>
-        operation === "github.pull.assign"
-          ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
-          : new Response(
-              JSON.stringify({
-                number: 692,
-                html_url: "https://github.com/getsentry/junior/pull/692",
-              }),
-              { status: 201 },
-            ),
-    });
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
+        { toolCallId: "call-create-identity-pull-request" },
+      );
 
-    await tool?.execute?.(
-      {
-        repo: "getsentry/junior",
-        title: "Typed PR",
-        head: "dcramer/gh-660-pr-create",
-        base: "main",
-        body: "PR body",
-        draft: true,
-      },
-      { toolCallId: "call-create-identity-pull-request" },
-    );
-
-    // A draft gets no review request until it is ready for review.
-    expect(ctx.egressRequests()).toHaveLength(2);
-    const assignment = ctx.egressRequests()[1];
-    expect(assignment).toMatchObject({
-      provider: "github",
-      operation: "github.pull.assign",
-    });
-    expect(assignment.request.method).toBe("POST");
-    expect(assignment.request.url).toBe(
-      "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
-    );
-    await expect(assignment.request.json()).resolves.toEqual({
-      assignees: ["dcramer_sentry"],
-    });
-    const request = ctx.egressRequests()[0];
-    await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
-    });
-  });
+      // A draft gets no review request until it is ready for review.
+      expect(ctx.egressRequests()).toHaveLength(2);
+      const assignment = ctx.egressRequests()[1];
+      expect(assignment).toMatchObject({
+        provider: "github",
+        operation: "github.pull.assign",
+      });
+      expect(assignment.request.method).toBe("POST");
+      expect(assignment.request.url).toBe(
+        "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
+      );
+      await expect(assignment.request.json()).resolves.toEqual({
+        assignees: ["dcramer_sentry"],
+      });
+      const request = ctx.egressRequests()[0];
+      await expect(request?.request.json()).resolves.toMatchObject({
+        body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
+      });
+    },
+  );
 
   it("asks the named reviewers and keeps the requester as the assignee", async () => {
     const ctx = githubToolsContext({
@@ -2017,6 +2233,7 @@ Conversation: \`local:test:old-conversation\`
     async ({ stack, stacks, write }) => {
       const repo = { default_branch: "main", full_name: "getsentry/junior" };
       const ctx = githubToolsContext({
+        actor: PULL_REQUEST_REQUESTER,
         egressFetch: async ({ operation, request }) => {
           if (operation === "github.pull.create") {
             return Response.json(
@@ -2087,6 +2304,7 @@ Conversation: \`local:test:old-conversation\`
     async ({ head, bottomBase }) => {
       const repo = { default_branch: "main", full_name: "getsentry/junior" };
       const ctx = githubToolsContext({
+        actor: PULL_REQUEST_REQUESTER,
         egressFetch: async ({ operation, request }) => {
           if (operation === "github.pull.create") {
             return Response.json(
@@ -2143,8 +2361,9 @@ Conversation: \`local:test:old-conversation\`
     },
   );
 
-  it("omits requester attribution when identity and actor names are unresolved", async () => {
-    const ctx = githubToolsContext({
+  it.each([
+    {
+      name: "a person whose name does not resolve",
       actor: {
         fullName: "U039RR91S",
         platform: "slack",
@@ -2152,45 +2371,67 @@ Conversation: \`local:test:old-conversation\`
         userId: "U039RR91S",
         userName: "U039RR91S",
       },
-      resolveActor: async () => ({
-        identity: {
-          id: "identity-1",
-          provider: "slack",
-          providerSubjectId: "U039RR91S",
-          providerTenantId: "T1",
-        },
-      }),
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 693,
-            html_url: "https://github.com/getsentry/junior/pull/693",
-          }),
-          { status: 201 },
-        ),
-    });
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
-
-    await tool?.execute?.(
-      {
-        repo: "getsentry/junior",
-        title: "Typed PR",
-        head: "dcramer/gh-660-pr-create",
-        base: "main",
-        body: "PR body",
-        draft: true,
+      error:
+        "Cannot open a pull request: the person who asked for it has no linked GitHub account or name to attribute it to. Do not retry. Ask them to link their GitHub account",
+    },
+    {
+      name: "a watch event Turn",
+      actor: { platform: "system", name: "event" },
+      source: {
+        kind: "event" as const,
+        eventKey: "check_run:1",
+        eventType: "pull_request.checks.failed",
+        identifier: "getsentry/junior#660",
+        namespace: "github",
       },
-      { toolCallId: "call-create-unresolved-pull-request" },
-    );
+      error: NO_REQUESTER_ERROR,
+    },
+    {
+      name: "a child agent of a system root",
+      actor: { platform: "system", name: "event" },
+      source: { kind: "agent_invocation" as const },
+      error: NO_REQUESTER_ERROR,
+    },
+  ])(
+    "rejects a pull request with no requester from $name",
+    async ({ actor, error, source }) => {
+      const state = new Map<string, unknown>();
+      const ctx = githubToolsContext({
+        actor,
+        resolveActor: async () => ({
+          identity: {
+            id: "identity-1",
+            provider: "slack",
+            providerSubjectId: "U039RR91S",
+            providerTenantId: "T1",
+          },
+        }),
+        ...(source ? { source } : undefined),
+        stateSet: ({ key, value }) => {
+          state.set(key, value);
+        },
+      });
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
 
-    const request = ctx.egressRequests()[0];
-    await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body",
-    });
-  });
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Typed PR",
+            head: "dcramer/gh-660-pr-create",
+            base: "main",
+            body: "PR body",
+          },
+          { toolCallId: "call-create-unattributed-pull-request" },
+        ),
+      ).rejects.toThrow(error);
+      expect(ctx.egressRequests()).toEqual([]);
+      expect(state.size).toBe(0);
+    },
+  );
 
   it("returns the created pull request when requester lookup fails", async () => {
     const ctx = githubToolsContext({
@@ -2232,8 +2473,38 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  // A failed lookup is not work that nobody asked for, so a system Turn gets
+  // the lookup error instead of the do-not-retry refusal.
+  it("fails a system Turn's pull request when work owner lookup fails", async () => {
+    const ctx = {
+      ...githubToolsContext({ actor: { platform: "system", name: "event" } }),
+      resolveWorkOwner: async () => {
+        throw new Error("identity storage unavailable");
+      },
+    };
+    const tool = bindPluginTool(
+      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+      ctx as any,
+    );
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+        },
+        { toolCallId: "call-create-work-owner-lookup-failed" },
+      ),
+    ).rejects.toThrow("identity storage unavailable");
+    expect(ctx.egressRequests()).toEqual([]);
+  });
+
   it("keeps pull request annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
       egressFetch: async () =>
         new Response(
           JSON.stringify({
@@ -2266,6 +2537,7 @@ Conversation: \`local:test:old-conversation\`
 
   it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {
     const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
       egressFetch: async () =>
         new Response(
           JSON.stringify({
@@ -2302,6 +2574,7 @@ Conversation: \`local:test:old-conversation\`
     process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
     process.env["SENTRY_ORG_SLUG"] = "acme";
     const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
       conversationId: "slack:C123:1712345.0001",
       egressFetch: async () =>
         new Response(
@@ -2332,6 +2605,10 @@ Conversation: \`local:test:old-conversation\`
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: `PR body
+
+<!-- junior-request-attribution:start -->
+via **Pat Requester**.
+<!-- junior-request-attribution:end -->
 
 <!-- junior-session-footer:start -->
 <!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->
@@ -2556,6 +2833,7 @@ Conversation: \`local:test:old-conversation\`
 
   it("surfaces GitHub pull request validation error details", async () => {
     const ctx = githubToolsContext({
+      actor: PULL_REQUEST_REQUESTER,
       egressFetch: async () =>
         new Response(
           JSON.stringify({
@@ -2744,6 +3022,37 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
       }),
     ).rejects.toThrow("This GitHub write request is not supported.");
+  });
+
+  // github_createPullRequest owns the requester check, so no other path may
+  // open a pull request. graphql-policy denies the GraphQL mutation.
+  it("denies pull request creation outside github_createPullRequest", async () => {
+    const toolOnly = "must use the github_createPullRequest tool";
+    for (const [path, operation, denial] of [
+      ["/repos/getsentry/junior/pulls", undefined, toolOnly],
+      ["/repos/getsentry/junior/pulls", "github.pull.update", toolOnly],
+      ["/repos/GetSentry/Junior/PULLS", undefined, toolOnly],
+      [
+        "/repos/getsentry/junior/pulls/",
+        undefined,
+        "This GitHub write request is not supported.",
+      ],
+    ] as const) {
+      await expect(
+        grantForEgress({
+          method: "POST",
+          ...(operation ? { operation } : undefined),
+          url: `https://api.github.com${path}`,
+        }),
+      ).rejects.toThrow(denial);
+    }
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.create",
+        url: "https://api.github.com/repos/getsentry/junior/pulls",
+      }),
+    ).resolves.toMatchObject({ access: "write" });
   });
 
   it("denies raw issue and pull request metadata updates", async () => {

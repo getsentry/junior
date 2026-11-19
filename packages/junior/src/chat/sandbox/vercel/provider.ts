@@ -13,6 +13,7 @@ import type {
   SandboxSession,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
+import { mapBounded } from "@/chat/fan-out";
 
 /**
  * Sandbox client options. Since 4.0, a client without `fetch` uses the SDK's
@@ -222,7 +223,7 @@ async function deleteWorkspaceSnapshotBuilders(
 ): Promise<void> {
   let hasError = false;
   let firstError: unknown;
-  for (const name of new Set(names)) {
+  await mapBounded([...new Set(names)], async (name) => {
     try {
       const sandbox = await Sandbox.get({
         name,
@@ -236,7 +237,7 @@ async function deleteWorkspaceSnapshotBuilders(
         hasError = true;
       }
     }
-  }
+  });
   if (hasError) throw firstError;
 }
 

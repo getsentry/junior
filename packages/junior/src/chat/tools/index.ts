@@ -1,4 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -10,6 +11,7 @@ import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
@@ -64,9 +66,11 @@ import {
   userLookupIdentityProviders,
 } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type { AnyToolDefinition, ToolRegistry } from "@/chat/tools/definition";
 import {
   coreToolSlots,
@@ -137,6 +141,8 @@ interface ToolRun {
   availableSkills: SkillMetadata[];
   hooks: ToolHooks;
   context: ToolRuntimeContext;
+  /** The tools that the Turn lists. `context.turnTools` says which it can use. */
+  listedTools: TurnBehavior["tools"];
   options: CreateToolsOptions;
   state: ToolState;
   slack: SlackToolContext | undefined;
@@ -172,16 +178,23 @@ function isPublic(run: ToolRun): boolean {
 }
 
 // One binder for each static tool in the registry. The registry decides
-// whether a Turn has the tool, from the platform, the Turn tools and
+// whether a Turn lists the tool, from the platform, the listed Turn tools and
 // deployment config; a binder never repeats those gates. A binder reads only
 // the run: it can return `undefined` when the run lacks a capability that the
 // tool needs, or set `disabledReason` when the run cannot use the tool now.
+// `TURN_TOOL_LIMITS` disables the listed tools that the Turn's own tools do
+// not allow.
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updatePlan: () => createUpdatePlanTool(),
+  updatePlan: (run) =>
+    createUpdatePlanTool(
+      run.context,
+      run.reviewItemServices().findMentionedUserId,
+    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
+  submitFeedback: (run) => createSubmitFeedbackTool(run.context),
   bash: () => createBashTool(),
   readFile: () => createReadFileTool(),
   editFile: () => createEditFileTool(),
@@ -228,7 +241,22 @@ const STATIC_TOOL_BINDERS = {
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
   searchConversationEvents: (run) =>
-    createSearchConversationEventsTool(run.context),
+    createSearchConversationEventsTool(
+      run.context,
+      isEventEmbeddingsEnabled()
+        ? {
+            embedder: createConversationEmbedder({
+              cost: {
+                conversationId: run.context.conversationId,
+                ...(run.context.turnId
+                  ? { turnId: run.context.turnId }
+                  : undefined),
+              },
+              operation: "conversation_search_embedding",
+            }),
+          }
+        : undefined,
+    ),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
   searchConversations: (run) =>
     createSearchConversationsTool({
@@ -274,9 +302,9 @@ const STATIC_TOOL_BINDERS = {
       ? createMessageAgentTool(run.context.messageAgent)
       : undefined,
   [REPLY_TOOL_NAME]: (run) =>
-    createReplyTool(enabledMode(run.context.turnTools.reply)),
+    createReplyTool(enabledMode(run.listedTools.reply)),
   [REPORT_BLOCKED_TOOL_NAME]: (run) =>
-    createReportBlockedTool(enabledMode(run.context.turnTools.reportBlocked)),
+    createReportBlockedTool(enabledMode(run.listedTools.reportBlocked)),
   [NO_REPLY_TOOL_NAME]: () => createNoReplyTool(),
   slackCanvasRead: () => createSlackCanvasReadTool(),
   slackCanvasEdit: (run) => createSlackCanvasEditTool(run.state),
@@ -315,27 +343,61 @@ const STATIC_TOOL_BINDERS = {
   // `addReviewItem` is how the agent asks a person anything, so it is loaded
   // in every root Turn. A child agent asks its parent instead.
   addReviewItem: (run) =>
-    withDisabledReason(
-      createAddReviewItemTool(run.context, run.reviewItemServices()),
-      reviewDeskDisabledReason(run),
-    ),
+    createAddReviewItemTool(run.context, run.reviewItemServices()),
   searchReviewItems: (run) =>
-    withDisabledReason(
-      createSearchReviewItemsTool(run.context, run.reviewItemServices()),
-      reviewDeskDisabledReason(run),
-    ),
+    createSearchReviewItemsTool(run.context, run.reviewItemServices()),
   updateReviewItem: (run) =>
-    withDisabledReason(
-      createUpdateReviewItemTool(run.context, run.reviewItemServices()),
-      reviewDeskDisabledReason(run),
-    ),
+    createUpdateReviewItemTool(run.context, run.reviewItemServices()),
 } satisfies Record<StaticToolName, ToolBinder>;
 
-function reviewDeskDisabledReason(run: ToolRun): string | undefined {
-  return run.context.turnTools.reviewDesk
+type TurnTools = TurnBehavior["tools"];
+
+// A person's Turn in a Thread lists the agent tools of the Thread, but it
+// cannot use them: their results would report to the parent as the wrong
+// Actor.
+const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
+  turnTools.agents === "none"
+    ? "A person's Turn in a Thread cannot use agent tools."
+    : undefined;
+
+const REVIEW_DESK_LIMIT = (turnTools: TurnTools) =>
+  turnTools.reviewDesk
     ? undefined
     : `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`;
-}
+
+// The listed tools that the Turn's own tools can disallow, with the reason
+// that the model sees. A Thread lists the tools of both senders, so one
+// sender's Turn gets the other sender's tools disabled here.
+const TURN_TOOL_LIMITS: Partial<
+  Record<StaticToolName, (turnTools: TurnTools) => string | undefined>
+> = {
+  spawnAgent: AGENT_TOOL_LIMIT,
+  stopAgent: AGENT_TOOL_LIMIT,
+  archiveAgent: AGENT_TOOL_LIMIT,
+  listAgents: AGENT_TOOL_LIMIT,
+  messageAgent: AGENT_TOOL_LIMIT,
+  // The system prompt says why for each sender: a person's Turn ends with a
+  // final response, and an Automation with no outcomes posts nothing.
+  [REPLY_TOOL_NAME]: (turnTools) =>
+    turnTools.reply === "none"
+      ? `This Turn cannot send a \`${REPLY_TOOL_NAME}\`.`
+      : undefined,
+  [REPORT_BLOCKED_TOOL_NAME]: (turnTools) =>
+    turnTools.reportBlocked === "none"
+      ? "This Turn cannot send a blocked report."
+      : undefined,
+  updateUserCustomization: (turnTools) =>
+    turnTools.userCustomization
+      ? undefined
+      : "Only a person's Turn can change user customization.",
+  setConversationSubscription: (turnTools) =>
+    turnTools.subscriptions
+      ? undefined
+      : "Only a person's Turn can change subscriptions.",
+  addReviewItem: REVIEW_DESK_LIMIT,
+  searchReviewItems: REVIEW_DESK_LIMIT,
+  updateReviewItem: REVIEW_DESK_LIMIT,
+};
 
 function attachmentStore(run: ToolRun) {
   const storage = run.context.attachmentStorage;
@@ -401,9 +463,9 @@ const RUN_BUILT_TOOL_BUILDERS = {
         )
       : undefined,
   imageGenerate: (run) =>
-    run.hooks.writeGeneratedArtifacts
+    run.hooks.writeGeneratedFiles
       ? createImageGenerateTool(
-          { writeGeneratedArtifacts: run.hooks.writeGeneratedArtifacts },
+          { writeGeneratedFiles: run.hooks.writeGeneratedFiles },
           {
             modelId: botConfig.imageGenerationModelId,
             canSendFilesToActiveConversation:
@@ -451,6 +513,23 @@ const RUN_BUILT_TOOL_BUILDERS = {
           db: getSqlExecutor(),
         })
       : undefined,
+  transcribeAudio: (run) => {
+    const storage = run.context.attachmentStorage;
+    const createDownloadUrl = storage?.createDownloadUrl?.bind(storage);
+    return storage && createDownloadUrl
+      ? createTranscribeAudioTool({
+          conversationId: run.context.conversationId,
+          db: getSqlExecutor(),
+          modelCost: run.modelCost,
+          modelId: botConfig.transcriptionModelId,
+          ...(run.slack
+            ? { readAttachmentSource: readSlackAttachmentSource }
+            : undefined),
+          storage: { ...storage, createDownloadUrl },
+          workspace: run.context.workspace,
+        })
+      : undefined;
+  },
   searchMcpTools: (run) =>
     run.context.mcpToolManager
       ? createSearchMcpToolsTool(run.context.mcpToolManager)
@@ -474,6 +553,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
       run.slack,
       run.state,
       (input) => readSandboxFileUpload(run.context.workspace, input),
+      run.context.conversationId,
       attachmentStore(run),
     );
   },
@@ -512,10 +592,12 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const slack = getSlackToolContext(context);
+  const listedTools = context.listedTools ?? context.turnTools;
   const run: ToolRun = {
     availableSkills,
     hooks,
     context,
+    listedTools,
     options,
     state: createToolState(),
     slack,
@@ -542,13 +624,20 @@ export function createTools(
   const tools: ToolRegistry = {};
   for (const slot of coreToolSlots({
     platform: slack ? "slack" : "local",
-    turnTools: context.turnTools,
+    listedTools,
   })) {
     const tool =
       slot.kind === "static"
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
-    if (tool) tools[slot.name] = tool;
+    if (!tool) continue;
+    tools[slot.name] =
+      slot.kind === "static"
+        ? withDisabledReason(
+            tool,
+            TURN_TOOL_LIMITS[slot.name]?.(context.turnTools),
+          )
+        : tool;
   }
 
   for (const [name, pluginTool] of Object.entries(

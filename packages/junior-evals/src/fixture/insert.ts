@@ -33,6 +33,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
 import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -113,11 +114,13 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
 }
 
 /**
- * Link a GitHub login to a Slack person, as account linking does, so Events
- * that name the login resolve to that person.
+ * Link a GitHub account to a Slack person, as account linking does. Core
+ * trusts an Event author by the account id that GitHub sends as
+ * `sender.id`, never by login.
  */
 export async function insertLinkedGitHubIdentity(args: {
   author?: SlackAuthor;
+  id: number;
   login: string;
 }): Promise<void> {
   const slack = await insertSlackIdentity(resolveAuthor(args.author));
@@ -128,7 +131,7 @@ export async function insertLinkedGitHubIdentity(args: {
     handle: args.login,
     kind: "user",
     provider: "github",
-    providerSubjectId: `github-user-${args.login}`,
+    providerSubjectId: String(args.id),
   });
 }
 
@@ -345,6 +348,7 @@ export async function insertWatch(args: {
   intent: string;
   label: string;
   namespace?: string;
+  quietEvents?: string[];
   resourceType: string;
 }): Promise<{ id: string }> {
   const nowMs = Date.now();
@@ -358,6 +362,7 @@ export async function insertWatch(args: {
       intent: args.intent,
       label: args.label,
       namespace: args.namespace ?? "github",
+      quietEvents: args.quietEvents,
       resourceType: args.resourceType,
     },
     { nowMs },
@@ -463,4 +468,18 @@ export async function insertCredential(args: {
     scope: args.scope,
   });
   onTestFinished(() => store.delete(userId, args.provider));
+}
+
+/**
+ * Create an install-wide Workspace recipe. Workspaces are install-wide, so
+ * the recipe is deleted when the test finishes.
+ */
+export async function insertWorkspace(args: {
+  name: string;
+  repos: Array<{ provider: "github"; repo: string }>;
+}): Promise<void> {
+  const workspace = await createWorkspace(args);
+  onTestFinished(async () => {
+    await deleteWorkspace(workspace.id);
+  });
 }

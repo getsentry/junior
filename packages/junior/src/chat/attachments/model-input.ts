@@ -1,3 +1,4 @@
+import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import type { AgentAttachment } from "@/chat/agent/types";
 import { getSqlExecutor } from "@/chat/db";
 import type { MessageAttachment } from "./input";
@@ -13,20 +14,31 @@ export const MAX_MODEL_ATTACHMENTS = 3;
 /** Largest file that Slack and web send to the model in the prompt. */
 export const MAX_MODEL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Render the name and type lines of an attachment tag. The person who
+ * attached the file chose its name, so both are escaped.
+ */
+export function attachmentFactLines(args: {
+  filename?: string | undefined;
+  mediaType: string;
+}): string[] {
+  return [
+    `filename: ${escapeTagText(args.filename ?? "unnamed")}`,
+    `media_type: ${escapeTagText(args.mediaType)}`,
+  ];
+}
+
 /** Tell the model how to read a stored file that the prompt does not carry. */
 export function buildStoredAttachmentPromptText(args: {
   attachmentId: string;
   filename?: string | undefined;
   mediaType: string;
 }): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
+  return renderTag("attachment", {}, [
+    ...attachmentFactLines(args),
     `attachment_id: ${args.attachmentId}`,
     "Use loadAttachment with this id to access the original file.",
-    "</attachment>",
-  ].join("\n");
+  ]);
 }
 
 async function readStoredBytes(args: {
@@ -39,6 +51,7 @@ async function readStoredBytes(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
+  // Only web uploads reach here, and a web upload is always stored.
   if (
     !record ||
     record.storageProvider !== args.storage.provider ||
@@ -68,6 +81,7 @@ export async function loadInputAttachments(args: {
 }): Promise<AgentAttachment[]> {
   let images = 0;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- A Message has at most MAX_INPUT_ATTACHMENTS files.
     args.attachments.map(async (attachment): Promise<AgentAttachment> => {
       const base = {
         attachmentId: attachment.id,

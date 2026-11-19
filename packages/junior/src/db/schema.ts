@@ -10,6 +10,8 @@ import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
 import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationEmbeddings } from "./schema/conversation-embeddings";
+import { juniorConversationEventEmbeddings } from "./schema/conversation-event-embeddings";
+import { juniorConversationEventLexemes } from "./schema/conversation-event-lexemes";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
@@ -32,6 +34,7 @@ import {
   juniorReviewItemSlackCards,
   juniorReviewItems,
 } from "./schema/review-items";
+import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
@@ -51,6 +54,8 @@ export {
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
+  juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
@@ -63,6 +68,8 @@ export {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPlanItems,
+  juniorPlanItemVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
@@ -88,6 +95,8 @@ export const juniorSqlSchema = {
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
+  juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
@@ -100,6 +109,7 @@ export const juniorSqlSchema = {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPlanItems,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,

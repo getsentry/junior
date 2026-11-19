@@ -4,6 +4,7 @@ import {
   objectPresentation,
   type OwnedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
+import { encodeAnnotationRef } from "./annotation-ref";
 import type { SlackCard } from "./cards";
 import type { SlackEntity } from "./work-object";
 import { renderSlackAutomationCard } from "./automation-card";
@@ -69,7 +70,10 @@ export function renderSlackObjectCard(
   ]
     .filter(Boolean)
     .join("\n");
-  if (!card.url) return { entity: null, text };
+  const refId = encodeAnnotationRef(conversationId, card.plugin, card.key);
+  // Slack drops the whole metadata payload for an invalid reference, so a
+  // Conversation ID that does not fit gets the text card.
+  if (!card.url || !refId) return { entity: null, text };
   const task = card.objectType === "task";
   const attributes = {
     title: { text: title },
@@ -146,10 +150,7 @@ export function renderSlackObjectCard(
           },
         }),
     external_ref: {
-      id: Buffer.from(
-        JSON.stringify([conversationId, card.plugin, card.key]),
-        "utf8",
-      ).toString("base64url"),
+      id: refId,
       type: "annotation",
     },
     url: card.url,

@@ -144,11 +144,9 @@ async function completeDashboardTurn(
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: "turn-1" },
-    {
-      send: async (message) => {
-        scheduled.push(`${message.plugin}.${message.name}`);
-        await processPluginTask(message);
-      },
+    async (message) => {
+      scheduled.push(`${message.plugin}.${message.name}`);
+      await processPluginTask(message);
     },
   );
   return scheduled;
@@ -224,7 +222,10 @@ describe("reply notification task", () => {
 
     await expect(
       completeDashboardTurn("The deploy finished."),
-    ).resolves.toEqual(["notifications.notifyReply"]);
+    ).resolves.toEqual([
+      "event-search.indexEvents",
+      "notifications.notifyReply",
+    ]);
 
     expect(pushes).toHaveLength(1);
     expect(pushes[0]!.headers.get("content-encoding")).toBe("aes128gcm");
