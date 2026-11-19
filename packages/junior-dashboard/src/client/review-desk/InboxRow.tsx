@@ -24,10 +24,12 @@ import type {
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { Spinner } from "../components/ui/spinner";
 import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
-import { visualStatusForConversation } from "../format";
+import {
+  ConversationStateIcon,
+  conversationDisplayState,
+} from "../conversations/ConversationStateIcon";
 import {
   ConversationCast,
   useConversationDensity,
@@ -448,7 +450,6 @@ function ConversationInboxRow(
               onArchived={showArchived}
               onRowAction={props.onRowAction}
               selected={props.selected}
-              waiting={false}
             />
           ))}
           {toggle || actionsBelow ? (
@@ -598,8 +599,9 @@ function InboxRowBody(
   const controls = props.actionsBelow
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
-  const pinned = Boolean(conversation?.pinnedAt);
-  const running = conversation?.status === "active";
+  const state = conversation
+    ? conversationDisplayState(conversation)
+    : undefined;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
@@ -821,21 +823,11 @@ function InboxRowBody(
               {conversation ? (
                 <ConversationStatusText
                   isPrivate={conversation.visibility === "private"}
-                  status={visualStatusForConversation(conversation)}
+                  status={conversation.status}
                 />
               ) : null}
-              {pinned ? (
-                <Pin
-                  aria-label="Pinned"
-                  className="size-3 text-dashboard-text-muted"
-                  role="img"
-                />
-              ) : null}
-              {running ? (
-                <Spinner aria-label="Running" className="size-3.5" />
-              ) : (
-                formatCompactAge(props.time)
-              )}
+              <ConversationStateIcon state={state} />
+              {state === "working" ? null : formatCompactAge(props.time)}
             </span>
           </span>
         </div>

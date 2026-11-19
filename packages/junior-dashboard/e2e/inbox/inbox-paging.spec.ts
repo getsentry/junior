@@ -420,8 +420,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       }
       const body = await (await route.fetch()).json();
       const done = body.conversations.filter(
-        (conversation: { pinnedAt?: string; status?: string }) =>
-          !conversation.pinnedAt && conversation.status !== "active",
+        (conversation: { pinnedAt?: string; turnActive?: boolean }) =>
+          !conversation.pinnedAt && !conversation.turnActive,
       );
       await route.fulfill({
         json: { ...body, conversations: done, nextCursor: "older" },

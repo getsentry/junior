@@ -8,18 +8,27 @@ import {
 import * as z from "zod";
 import {
   createMemoryStore,
+  parseMemoryRow,
   type CreateMemoryInput,
   type CreateMemoryResult,
   type MemoryDb,
 } from "./store";
 import {
   createMemoryAgent,
+  parseContradictedMemory,
   parseExtractedMemory,
+  type ContradictedMemory,
   type ExtractedMemory,
   type MemoryExtractionResult,
 } from "./agent";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
-import { capturedMemory, memoriesCapturedEvent } from "./events";
+import {
+  archivedMemory,
+  capturedMemory,
+  memoriesCapturedEvent,
+  parseRecalledMemoryIds,
+} from "./events";
+import { loadActiveMemoryRows, retireMemoryRows } from "./lifecycle";
 
 const MEMORY_TOOL_NAMES = new Set([
   "archiveMemory",
@@ -38,23 +47,37 @@ const extractedMemorySchema = z
       .array(z.number().int().nonnegative())
       .min(1)
       .max(10),
+    statesChange: z.boolean().optional(),
   })
   .strict()
   .transform(parseExtractedMemory);
+const contradictedMemoryCacheSchema = z
+  .object({
+    evidenceMessageIndices: z
+      .array(z.number().int().nonnegative())
+      .min(1)
+      .max(10),
+    id: z.string().min(1),
+    replacementIndex: z.number().int().nonnegative().nullable(),
+  })
+  .strict()
+  .transform(parseContradictedMemory);
 const extractedMemoryCacheSchema = z.union([
   z
     .object({
+      // Only cache entries written before contradiction checks lack it.
+      contradicted: z.array(contradictedMemoryCacheSchema).max(5).default([]),
       // Only cache entries written before Junior recorded plugin model cost
       // have it. Junior records that cost now.
       costUsd: z.number().finite().nonnegative().optional(),
       memories: z.array(extractedMemorySchema).max(5),
     })
     .strict()
-    .transform(({ memories }) => ({ memories })),
+    .transform(({ contradicted, memories }) => ({ contradicted, memories })),
   z
     .array(extractedMemorySchema)
     .max(5)
-    .transform((memories) => ({ memories })),
+    .transform((memories) => ({ contradicted: [], memories })),
 ]);
 
 /** Subject for a passively extracted memory, or drop when unproven. */
@@ -62,9 +85,20 @@ type MemorySubjectTarget = "drop" | "user" | "conversation";
 
 function recordCapturedMemory(
   captured: ReturnType<typeof capturedMemory>[],
+  archived: ReturnType<typeof archivedMemory>[],
   result: CreateMemoryResult,
 ): void {
-  const supersededIds = new Set(result.supersededIds ?? []);
+  const capturedIds = new Set(captured.map((memory) => memory.id));
+  for (const memory of result.archived ?? []) {
+    // A memory captured and replaced in the same Turn is in neither list.
+    if (!capturedIds.has(memory.id)) {
+      archived.push(archivedMemory(memory, "superseded"));
+    }
+  }
+  const supersededIds = new Set([
+    ...(result.supersededIds ?? []),
+    ...(result.archived ?? []).map((memory) => memory.id),
+  ]);
   for (let index = captured.length - 1; index >= 0; index -= 1) {
     if (supersededIds.has(captured[index]!.id)) {
       captured.splice(index, 1);
@@ -166,6 +200,33 @@ function routeExtractedMemory(
     : "drop";
 }
 
+/**
+ * Verify a reported contradiction against runtime-owned provenance, as
+ * routeExtractedMemory does for a new memory. Knowledge and procedures need
+ * user or tool evidence. A preference needs its own User's instruction in a
+ * single-actor run.
+ */
+function canRetireMemory(
+  memory: { kind: ExtractedMemory["kind"]; subjectKey: string | null },
+  contradicted: ContradictedMemory,
+  transcript: PluginRunTranscriptEntry[],
+  run: Pick<PluginRunContext, "actor" | "actors" | "actorUserId">,
+): boolean {
+  const target = routeExtractedMemory(
+    {
+      content: "contradiction",
+      evidenceMessageIndices: contradicted.evidenceMessageIndices,
+      expiresAtMs: null,
+      kind: memory.kind,
+      statesChange: false,
+    },
+    transcript,
+    run,
+  );
+  if (target === "user") return memory.subjectKey === run.actorUserId;
+  return target === "conversation";
+}
+
 function memoryIdempotencySuffix(
   memory: ExtractedMemory,
   target: MemorySubjectTarget,
@@ -192,6 +253,7 @@ function passiveInput(
     content: memory.content,
     idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory, target)}`,
     kind: memory.kind,
+    ...(memory.statesChange ? { statesChange: true } : undefined),
     ...(memory.expiresAtMs !== null
       ? { expiresAtMs: memory.expiresAtMs }
       : undefined),
@@ -267,20 +329,22 @@ export async function processMemorySession(
     ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });
   const agent = createMemoryAgent(context.model);
-  const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
+  const db = context.db as MemoryDb;
+  const store = createMemoryStore(db, runtimeContext, {
     embedder: context.embedder,
     supersessionDecider: agent,
   });
   await store.archiveExpiredMemories();
   const extraction = await getTaskExtraction(context, async () => {
-    const existingMemories = await store.searchMemories({
-      limit: 10,
-      query: evidenceText,
-    });
+    const [existingMemories, recalledMemories] = await Promise.all([
+      store.searchMemories({ limit: 10, query: evidenceText }),
+      loadRecalledMemories(context, db),
+    ]);
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,
       })),
+      recalledMemories,
       actors: run.actors,
       transcript,
       runtimeContext,
@@ -288,7 +352,9 @@ export async function processMemorySession(
   });
 
   const captured: ReturnType<typeof capturedMemory>[] = [];
-  for (const memory of extraction.memories) {
+  const archived: ReturnType<typeof archivedMemory>[] = [];
+  const results = new Map<number, CreateMemoryResult>();
+  for (const [index, memory] of extraction.memories.entries()) {
     // The routing gate stays even though extraction is also actor-gated:
     // getTaskExtraction caches extraction output for 7 days, so a retry can replay
     // preference proposals cached before this gate existed.
@@ -300,12 +366,90 @@ export async function processMemorySession(
     if (target === "conversation") {
       // oxlint-disable-next-line no-await-in-loop -- Write in order, so a later memory dedupes against an earlier one.
       const result = await store.createConversationMemory(input);
-      recordCapturedMemory(captured, result);
+      results.set(index, result);
+      recordCapturedMemory(captured, archived, result);
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- Write in order, so a later memory dedupes against an earlier one.
     const result = await store.createMemory(input);
-    recordCapturedMemory(captured, result);
+    results.set(index, result);
+    recordCapturedMemory(captured, archived, result);
   }
-  await context.events.emit(memoriesCapturedEvent({ memories: captured }));
+  archived.push(
+    ...(await retireContradictedMemories({
+      contradicted: extraction.contradicted,
+      db,
+      results,
+      run,
+      transcript,
+    })),
+  );
+  await context.events.emit(
+    memoriesCapturedEvent({ archived, memories: captured }),
+  );
+}
+
+/** Read the active memories that recall put into this Turn's prompt. */
+async function loadRecalledMemories(context: PluginTaskContext, db: MemoryDb) {
+  const ids = (
+    await context.turnEvents.list({ eventName: "memories_recalled" })
+  ).flatMap((event) => parseRecalledMemoryIds(event.version, event.content));
+  const rows = await loadActiveMemoryRows(db, [...new Set(ids)], Date.now());
+  return rows.map((row) => ({
+    content: row.content,
+    id: row.id,
+    kind: row.kind,
+  }));
+}
+
+/**
+ * Archive recalled memories that the Turn's cited evidence contradicts. When
+ * a memory captured in the same Turn states the current fact, link it.
+ */
+async function retireContradictedMemories(args: {
+  contradicted: ContradictedMemory[];
+  db: MemoryDb;
+  results: Map<number, CreateMemoryResult>;
+  run: PluginRunContext;
+  transcript: PluginRunTranscriptEntry[];
+}): Promise<ReturnType<typeof archivedMemory>[]> {
+  if (args.contradicted.length === 0) return [];
+  const { db } = args;
+  const nowMs = Date.now();
+  const rows = new Map(
+    (
+      await loadActiveMemoryRows(
+        db,
+        args.contradicted.map(({ id }) => id),
+        nowMs,
+      )
+    ).map((row) => [row.id, row]),
+  );
+  const retired: ReturnType<typeof archivedMemory>[] = [];
+  for (const contradicted of args.contradicted) {
+    const row = rows.get(contradicted.id);
+    if (
+      !row ||
+      !canRetireMemory(row, contradicted, args.transcript, args.run)
+    ) {
+      continue;
+    }
+    const replacement =
+      contradicted.replacementIndex === null
+        ? undefined
+        : args.results.get(contradicted.replacementIndex)?.memory;
+    // A new memory that resolved to this one confirms it.
+    if (replacement?.id === row.id) continue;
+    // oxlint-disable-next-line no-await-in-loop -- At most five bounded writes, each with its own replacement.
+    const [archivedRow] = await retireMemoryRows(db, {
+      ids: [row.id],
+      nowMs,
+      reason: "contradicted",
+      supersededById: replacement?.id,
+    });
+    if (archivedRow) {
+      retired.push(archivedMemory(parseMemoryRow(archivedRow), "contradicted"));
+    }
+  }
+  return retired;
 }

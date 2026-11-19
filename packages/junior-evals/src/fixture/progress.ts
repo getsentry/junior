@@ -1,7 +1,7 @@
 /**
  * `onProgress` handlers that tests share.
  */
-import type { CallOptions } from "./agent";
+import type { CallOptions } from "./call";
 import type { Input } from "./inputs";
 
 /**

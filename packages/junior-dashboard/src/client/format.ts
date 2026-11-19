@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./conversations/turnActivity";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
@@ -12,38 +13,11 @@ import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
-  VisualStatus,
 } from "./types";
 import { getDashboardAgentName } from "./agentName";
 import { personFromActor, type Person } from "./person";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import { formatRuntime } from "./time";
-
-function isActiveSummary(summary: ConversationSummaryReport): boolean {
-  return summary.status === "active";
-}
-
-/** Identify summaries that should appear in failed conversation filters. */
-export function isFailedConversationSummary(
-  summary: ConversationSummaryReport,
-): boolean {
-  return summary.status === "failed";
-}
-
-function isActiveConversation(conversation: Conversation): boolean {
-  return conversation.status === "active";
-}
-
-/** Whether no work runs: the Conversation finished or a person stopped it. */
-export function isIdleConversation(conversation: Conversation): boolean {
-  return (
-    conversation.status === "completed" || conversation.status === "stopped"
-  );
-}
-
-function isFailedConversation(conversation: Conversation): boolean {
-  return conversation.status === "failed";
-}
 
 function parseTime(value: string | undefined): number | null {
   if (!value) return null;
@@ -618,26 +592,6 @@ export function slackLocationLabel(
   return name ? `${name}${idSuffix}` : channelId;
 }
 
-/** Collapse raw summary states into the dashboard's visual status language. */
-export function visualStatusForSummary(
-  summary: ConversationSummaryReport,
-): VisualStatus {
-  if (isFailedConversationSummary(summary)) return "failed";
-  if (isActiveSummary(summary)) return "active";
-  if (summary.status === "stopped") return "stopped";
-  return "idle";
-}
-
-/** Derive the dashboard status from a conversation record. */
-export function visualStatusForConversation(
-  conversation: Conversation,
-): VisualStatus {
-  if (isActiveConversation(conversation)) return "active";
-  if (isFailedConversation(conversation)) return "failed";
-  if (conversation.status === "stopped") return "stopped";
-  return "idle";
-}
-
 /** Explain why a transcript body is absent without exposing private content. */
 export function unavailableTranscriptLabel(
   conversation: ConversationTranscript,
@@ -648,8 +602,7 @@ export function unavailableTranscriptLabel(
   if (conversation.eventHistory.status === "expired") {
     return "Transcript expired for this conversation.";
   }
-  const status = visualStatusForSummary(conversation);
-  if (status === "active") {
+  if (conversationTurnIsActive(conversation)) {
     return "Transcript pending while this conversation is active.";
   }
   return "Transcript unavailable for this conversation.";
@@ -771,6 +724,9 @@ export function buildConversations(
       sentryTraceUrl: summary.sentryTraceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
+      treeState: summary.treeState,
+      watching: summary.watching,
+      turnActive: summary.turnActive,
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,

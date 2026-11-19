@@ -11,6 +11,10 @@ import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 const QUIET_BUTTON_CLASS =
   "cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus";
 
+function itemCount(count: number): string {
+  return `${count} ${count === 1 ? "item" : "items"}`;
+}
+
 /** How many rows a stack shows before the rest fold. */
 export const STACK_FOLD = 4;
 
@@ -27,9 +31,11 @@ export function InboxStack(props: {
   conversationId: string;
   expandedKey: string;
   keys: readonly string[];
-  /** Dismiss all: every open ask of the stack that the viewer can act on. */
+  /** How many asks Dismiss closes. */
+  dismissCount?: number;
+  /** Dismiss: every open ask of the stack that the viewer can act on. */
   onDismiss?(): void;
-  /** Snooze all: every row of the stack. A snoozed stack has none. */
+  /** Snooze: every row of the stack. A snoozed stack has none. */
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   snoozeMenuOpen: boolean;
@@ -63,12 +69,13 @@ export function InboxStack(props: {
             {props.title}
           </span>
         </Link>
-        {/* The row bar's own buttons. Dismiss all is the main action, so it
-            goes right-most. */}
+        {/* The row bar's own buttons. Dismiss is the main action, so it comes
+            last. The count shows once, right-most, so a scan reads it. The
+            names say what each button covers. */}
         {props.onSnooze ? (
           <RowSnoozeButton
             look="quiet"
-            label="Snooze all"
+            name={`Snooze ${itemCount(props.keys.length)} in this stack`}
             onOpenChange={props.onSnoozeMenu}
             onSnooze={props.onSnooze}
             open={props.snoozeMenuOpen}
@@ -77,10 +84,14 @@ export function InboxStack(props: {
         {props.onDismiss ? (
           <RowDismissButton
             look="quiet"
-            label="Dismiss all"
+            name={`Dismiss ${itemCount(props.dismissCount ?? props.keys.length)} in this stack`}
             onClick={props.onDismiss}
           />
         ) : null}
+        <span className="px-1 text-xs text-dashboard-text-muted tabular-nums">
+          {props.keys.length}
+          <span className="sr-only"> items</span>
+        </span>
       </div>
       <ul
         className={cn(

@@ -1,9 +1,10 @@
 /**
  * Stored full-text lexemes of searchable events, so keyword search reads
  * them instead of parsing every event on each query. The event search task
- * stores them after each completed Turn, newest events first. Keyword search
- * computes the lexemes of an event with no stored row, so old history and
- * apps without the task stay searchable.
+ * stores them after each completed Turn, newest events first, and the
+ * heartbeat backfill stores the rest in recently active Conversations.
+ * Keyword search computes the lexemes of an event with no stored row, so old
+ * history and apps without the task stay searchable.
  */
 import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
@@ -19,8 +20,7 @@ import {
 // Characters of one event that keyword search and excerpts read. The
 // tsvector of this much text stays far below the 1 MB Postgres limit.
 const MAX_SEARCHED_EVENT_CHARS = 200_000;
-// A run takes about 4 s on a local Postgres 17 for events of 5 KB each. A
-// long Conversation catches up over later Turns.
+// A run takes about 4 s on a local Postgres 17 for events of 5 KB each.
 const MAX_EVENTS_PER_RUN = 2_000;
 // The Postgres parser keeps a path, a URL, or a repository reference as one
 // lexeme. Spaces in their place let a query match each part, such as a file
@@ -54,12 +54,13 @@ export function searchedEventTextSql(): SQL<string | null> {
 
 /**
  * Store the lexemes of the newest searchable events of one Conversation that
- * have none. Return how many it stored. Retries are safe: a stored row is
- * kept.
+ * have none, at most `maxEvents`. Return how many it stored. Retries are
+ * safe: a stored row is kept.
  */
 export async function storeConversationEventLexemes(
   db: JuniorDatabase,
   conversationId: string,
+  maxEvents = MAX_EVENTS_PER_RUN,
 ): Promise<number> {
   const events = juniorConversationEvents;
   const stored = juniorConversationEventLexemes;
@@ -84,7 +85,7 @@ export async function storeConversationEventLexemes(
       ),
     )
     .orderBy(desc(events.seq))
-    .limit(MAX_EVENTS_PER_RUN);
+    .limit(maxEvents);
   if (unstored.length === 0) return 0;
   const rows = await db
     .insert(stored)

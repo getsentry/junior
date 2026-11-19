@@ -439,7 +439,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             forkedFromTitle: report.displayTitle,
             events: [],
             isParticipant: true,
-            status: "completed",
+            status: "done",
             forks: [],
           }),
         }),
@@ -717,7 +717,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       const scrollHeight = () =>
         scroll.evaluate((element) => element.scrollHeight);
       const heightBeforeIdle = await scrollHeight();
-      report.status = "completed";
+      report.status = "done";
       report.events.push({
         seq: 41,
         createdAt: report.lastSeenAt,
@@ -736,7 +736,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(
         page.getByText("Message 0", { exact: true }),
       ).toBeInViewport();
-      report.status = "active";
+      report.status = "working";
+      report.turnActive = true;
       report.events.push({
         seq: 42,
         createdAt: report.lastSeenAt,
@@ -872,7 +873,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ];
       // Junior asked and ended its Turn, so it waits for the answer.
-      report.status = "completed";
+      report.status = "needs_input";
       await page.route(`**${api}*`, (route) =>
         route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
       );

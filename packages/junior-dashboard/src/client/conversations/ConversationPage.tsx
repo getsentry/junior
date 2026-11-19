@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { Bot } from "lucide-react";
 import {
   useCallback,
@@ -11,7 +12,6 @@ import {
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
-  ConversationDetailReport,
   ConversationFeed,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
@@ -76,11 +76,7 @@ import {
 } from "./TranscriptTurnContextView";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
-import {
-  ChildConversationStatusPill,
-  childConversationStatus,
-} from "./ChildConversationStatus";
-import { useWaitingConversations } from "../review-desk/queries";
+import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
@@ -94,7 +90,6 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
@@ -253,7 +248,6 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -434,11 +428,8 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "expired"
       ? undefined
       : transcript?.events.find((event) => event.seq === selectedEventSeq);
-  const visualStatus = conversation
-    ? visualStatusForConversation(conversation)
-    : undefined;
   // History and mailbox use the same deferred server snapshot.
-  const live = conversationIsLive(visualStatus, detail.data);
+  const live = conversationTurnIsActive(detail.data, conversation);
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
@@ -766,9 +757,7 @@ export function ConversationPage(props: {
               sidebarToggle={props.sidebarToggle}
               status={
                 isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill
-                    status={childConversationStatus(conversation, waiting)}
-                  />
+                  <ChildConversationStatusPill status={conversation.status} />
                 ) : null
               }
               title={title}
@@ -932,12 +921,4 @@ export function ConversationPage(props: {
       ) : null}
     </div>
   );
-}
-
-function conversationIsLive(
-  visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
-  detail: ConversationDetailReport | undefined,
-): boolean {
-  if (detail) return detail.status === "active";
-  return visualStatus === "active";
 }
