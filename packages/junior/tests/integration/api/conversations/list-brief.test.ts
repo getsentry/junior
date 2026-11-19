@@ -46,7 +46,7 @@ describe("conversation list API Briefs", () => {
 
       const response = await expectSqlBudget(
         () => createJuniorApi().request("http://localhost/api/conversations"),
-        { statements: 19, serialRounds: 7 },
+        { statements: 23, serialRounds: 11 },
       );
       expect(response.status).toBe(200);
       const conversations = new Map(

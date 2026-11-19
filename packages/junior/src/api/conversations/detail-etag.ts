@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   conversationSubtree,
@@ -196,49 +196,53 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         ),
       )
     : sql`false`;
-  const [row] = await db
-    .select({
-      ...conversationRecordColumns(),
-      // A root Conversation has no agent tree.
-      agentTreeRootLabel: sql<
-        string | null
-      >`case when ${juniorConversations.parentConversationId} is null then null else (${agentTreeRootLabel(db, rootConversationId)}) end`,
-      attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
-      autoArchive: juniorConversationParticipants.autoArchive,
-      autoArchiveDefault: detailViewer.autoArchiveDefault,
-      forkIds: sql<string[]>`array${forkIds}`,
-      forkSourceId: forkSource.conversationId,
-      forkSourceTitle: forkSource.title,
-      lastReadSeq: viewer
-        ? sql<
-            number | null
-          >`(${conversationReadPositionQuery(viewer, conversationId)})`
-        : sql<null>`null`,
-      pinnedAt: juniorConversationParticipants.pinnedAt,
-      pinPosition: juniorConversationParticipants.pinPosition,
-      rootConversationId,
-      unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
-      version: sql<
-        string | null
-      >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
-    })
-    .from(juniorConversations)
-    .leftJoin(juniorDestinations, conversationRecordJoins.location)
-    .leftJoin(juniorIdentities, conversationRecordJoins.identity)
-    .leftJoin(juniorUsers, conversationRecordJoins.user)
-    .leftJoin(
-      forkSource,
-      eq(
-        forkSource.conversationId,
-        juniorConversations.forkedFromConversationId,
-      ),
-    )
-    .leftJoin(juniorConversationParticipants, viewerParticipant)
-    .leftJoin(
-      detailViewer,
-      viewer ? eq(detailViewer.id, viewer.id) : sql`false`,
-    )
-    .where(eq(juniorConversations.conversationId, conversationId));
+  // Its status and version reads plan at a cost that starts JIT, which
+  // costs more than the read.
+  const [row] = await getSqlExecutor().readWithoutJit((db) =>
+    db
+      .select({
+        ...conversationRecordColumns(),
+        // A root Conversation has no agent tree.
+        agentTreeRootLabel: sql<
+          string | null
+        >`case when ${juniorConversations.parentConversationId} is null then null else (${agentTreeRootLabel(db, rootConversationId)}) end`,
+        attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
+        autoArchive: juniorConversationParticipants.autoArchive,
+        autoArchiveDefault: detailViewer.autoArchiveDefault,
+        forkIds: sql<string[]>`array${forkIds}`,
+        forkSourceId: forkSource.conversationId,
+        forkSourceTitle: forkSource.title,
+        lastReadSeq: viewer
+          ? sql<
+              number | null
+            >`(${conversationReadPositionQuery(viewer, conversationId)})`
+          : sql<null>`null`,
+        pinnedAt: juniorConversationParticipants.pinnedAt,
+        pinPosition: juniorConversationParticipants.pinPosition,
+        rootConversationId,
+        unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
+        version: sql<
+          string | null
+        >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
+      })
+      .from(juniorConversations)
+      .leftJoin(juniorDestinations, conversationRecordJoins.location)
+      .leftJoin(juniorIdentities, conversationRecordJoins.identity)
+      .leftJoin(juniorUsers, conversationRecordJoins.user)
+      .leftJoin(
+        forkSource,
+        eq(
+          forkSource.conversationId,
+          juniorConversations.forkedFromConversationId,
+        ),
+      )
+      .leftJoin(juniorConversationParticipants, viewerParticipant)
+      .leftJoin(
+        detailViewer,
+        viewer ? eq(detailViewer.id, viewer.id) : sql`false`,
+      )
+      .where(eq(juniorConversations.conversationId, conversationId)),
+  );
   return row;
 }
 

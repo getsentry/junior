@@ -1,4 +1,5 @@
 import { and, inArray, sql, type SQL } from "drizzle-orm";
+import { getSqlExecutor } from "@/chat/db";
 import * as z from "zod";
 import {
   readSubtreeEventWatermarks,
@@ -231,7 +232,11 @@ export async function readConversationAuxiliaryCostsFromSql(
 ): Promise<Map<string, ConversationTreeAuxiliaryCosts>> {
   if (conversationIds.length === 0) return new Map();
 
-  const watermarks = await readSubtreeEventWatermarks(db, conversationIds);
+  // The subtree read plans at a cost that starts JIT, which costs more than
+  // the read.
+  const watermarks = await getSqlExecutor().readWithoutJit((jitOffDb) =>
+    readSubtreeEventWatermarks(jitOffDb, conversationIds),
+  );
   const operationsByConversation = await readOperationsByConversation(
     db,
     watermarks,

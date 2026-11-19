@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
@@ -11,6 +12,7 @@ import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
+import { conversationSubtree } from "@/chat/conversations/sql/subtree";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
@@ -46,6 +48,25 @@ async function jitSetting(db: JuniorDatabase): Promise<string> {
     .from(juniorConversations)
     .limit(1);
   return row!.jit;
+}
+
+type PlanNode = {
+  "Node Type": string;
+  "Plan Rows": number;
+  Plans?: PlanNode[] | undefined;
+};
+const planNode: z.ZodType<PlanNode> = z.lazy(() =>
+  z.object({
+    "Node Type": z.string(),
+    "Plan Rows": z.number(),
+    Plans: z.array(planNode).optional(),
+  }),
+);
+const planRoot = z.object({ Plan: planNode });
+
+/** Every node of an EXPLAIN plan. */
+function planNodes(node: PlanNode): PlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(planNodes)];
 }
 
 async function feedToken(fixture: StatusFixture): Promise<string> {
@@ -343,6 +364,39 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
   });
 
+  it("plans a root's tree without a walk over it", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000540",
+    );
+    await getSqlExecutor().execute(
+      `insert into junior_conversations
+        (conversation_id, root_conversation_id, parent_conversation_id,
+         created_at, last_activity_at, updated_at, execution_status)
+      select 'agent:big-tree-' || n, $1, $1, now(), now(), now(), 'idle'
+      from generate_series(1, 2000) n`,
+      [conversationId],
+    );
+    await getSqlExecutor().execute("analyze junior_conversations");
+    const [explained] = z
+      .object({ rows: z.array(z.object({ "QUERY PLAN": z.array(planRoot) })) })
+      .parse(
+        await getDb().execute(
+          sql`explain (format json) select * from ${conversationSubtree([conversationId])}`,
+        ),
+      ).rows;
+    // Postgres guesses each recursive step from the rows that start the
+    // walk. A guess that holds the root's tree prices the read high enough
+    // to turn on JIT.
+    const walks = planNodes(explained!["QUERY PLAN"][0]!.Plan).filter(
+      (node) => node["Node Type"] === "Recursive Union",
+    );
+    expect(walks.length).toBeGreaterThan(0);
+    // A tenth of the 2,000 children: the guess covers the walk, not the tree.
+    for (const walk of walks) expect(walk["Plan Rows"]).toBeLessThan(200);
+  });
+
   it("skips archived children and their descendants", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
@@ -450,8 +504,10 @@ describe("conversation tree state", () => {
       await fixture.request("/api/versions");
       await fixture.feedTree(conversationId);
       await fixture.tree(conversationId);
-      // Versions; feed tree state and Threads; detail tree state.
-      expect(settings).toEqual(["off", "off", "off", "off"]);
+      // Versions (1). The feed: tree state, Threads, tree totals and
+      // watermarks (4). The detail: state row, tree state, tree totals and
+      // watermarks (4).
+      expect(settings).toEqual(Array.from({ length: 9 }, () => "off"));
       vi.restoreAllMocks();
 
       // The setting ends with the read, also inside a transaction.
@@ -480,15 +536,15 @@ describe("conversation tree state", () => {
       }
     };
     // The feed and the detail keep one budget however big the tree grows.
-    // Each JIT-off read adds BEGIN and COMMIT: two in the feed, one in the
-    // detail.
+    // Each JIT-off read adds BEGIN and COMMIT: four in the feed, four in
+    // the detail.
     const expectBudget = async (tree: {
       treeState: string;
       watching: boolean;
     }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
-        { statements: 24, serialRounds: 9 },
+        { statements: 28, serialRounds: 12 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -498,7 +554,7 @@ describe("conversation tree state", () => {
       );
       const detail = await expectSqlBudget(
         () => fixture.request(detailPath(conversationId)),
-        { statements: 22, serialRounds: 7 },
+        { statements: 28, serialRounds: 12 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
       expect({

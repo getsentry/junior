@@ -589,7 +589,10 @@ export async function readConversationFeedFromSql(
     ),
     listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds),
-    readConversationTreeMetricsFromSql(db, conversationIds),
+    // The subtree read plans at a cost that starts JIT.
+    getSqlExecutor().readWithoutJit((jitOffDb) =>
+      readConversationTreeMetricsFromSql(jitOffDb, conversationIds),
+    ),
     readConversationParticipants(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
