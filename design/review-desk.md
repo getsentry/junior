@@ -43,6 +43,9 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
 - A Slack thread that its Conversation detached from gets no new item card.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
+- The answer to an item that a plugin added goes to that plugin, which does
+  the work, such as Resume on a stopped merge conflict fix. It starts no
+  Turn.
 - An item from a public Conversation is visible to the whole workspace.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
