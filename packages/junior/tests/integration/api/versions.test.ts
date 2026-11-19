@@ -114,9 +114,10 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
+    // One read, with BEGIN and COMMIT around it to turn JIT off.
     const first = await expectSqlBudget(() => read(), {
-      statements: 1,
-      serialRounds: 1,
+      statements: 3,
+      serialRounds: 3,
     });
     expect(await read()).toEqual(first);
     expect(await detailVersion()).toBe(first.conversation);

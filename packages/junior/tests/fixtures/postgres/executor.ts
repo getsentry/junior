@@ -75,6 +75,21 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
     }
   }
 
+  async readWithoutJit<T>(
+    read: (db: JuniorDatabase) => Promise<T>,
+  ): Promise<T> {
+    // Rolling back to the savepoint undoes `SET LOCAL`.
+    const savepoint = `junior_test_savepoint_${++this.savepointId}`;
+    await this.client.query(`SAVEPOINT ${savepoint}; SET LOCAL jit = off`);
+    try {
+      return await read(this.db());
+    } finally {
+      await this.client.query(
+        `ROLLBACK TO SAVEPOINT ${savepoint}; RELEASE SAVEPOINT ${savepoint}`,
+      );
+    }
+  }
+
   async withLock<T>(lockName: string, callback: () => Promise<T>): Promise<T> {
     if (!lockName) {
       throw new Error("SQL lock name is required");

@@ -97,6 +97,21 @@ async function runDatabaseMigrations(
       ? `Database is up to date (${migrationCount(scanned)}).`
       : `Applied ${migrationCount(migrated)} (${scanned} total).`,
   );
+  await reportJit(context.sqlExecutor, io);
+}
+
+// The deploy log shows whether Postgres can JIT-compile the app's queries.
+// The status reads turn JIT off for themselves with `readWithoutJit`.
+async function reportJit(
+  sqlExecutor: JuniorSqlExecutor,
+  io: UpgradeIo,
+): Promise<void> {
+  const [row] = await sqlExecutor.query<{ jit: string; available: boolean }>(
+    "SELECT current_setting('jit') AS jit, pg_jit_available() AS available",
+  );
+  io.info(
+    `Postgres JIT: ${row?.jit} (${row?.available ? "available" : "not available"}).`,
+  );
 }
 
 /** Apply Junior and enabled-plugin database migrations. */

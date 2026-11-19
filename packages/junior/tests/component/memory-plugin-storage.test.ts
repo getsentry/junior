@@ -380,6 +380,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
         `  junior-memory: applied ${memoryMigrationCount} migrations (${memoryMigrationCount} total)`,
         `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
+        expect.stringMatching(
+          /^Postgres JIT: (on|off) \((not )?available\)\.$/,
+        ),
       ]);
 
       lines.length = 0;
@@ -389,6 +392,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `  junior: up to date (${coreMigrationCount} migrations)`,
         `  junior-memory: up to date (${memoryMigrationCount} migrations)`,
         `Database is up to date (${totalMigrationCount} migrations).`,
+        expect.stringMatching(
+          /^Postgres JIT: (on|off) \((not )?available\)\.$/,
+        ),
       ]);
     } finally {
       await fixture.close();

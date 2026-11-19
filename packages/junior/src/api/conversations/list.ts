@@ -613,7 +613,7 @@ export async function readConversationFeedFromSql(
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
-    readConversationTreeStates(db, conversationIds, options.viewer?.id),
+    readConversationTreeStates(conversationIds, options.viewer?.id),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),

@@ -38,6 +38,13 @@ export interface JuniorSqlMigrationExecutor extends JuniorSqlDatabase {
 export interface JuniorSqlExecutor extends JuniorSqlMigrationExecutor {
   close(): Promise<void>;
   /**
+   * Run one read with JIT compilation off. Postgres picks JIT when it plans
+   * a statement, so the setting must apply before the read starts. The read
+   * gets its own read-only transaction, and the setting ends with it. Inside
+   * a transaction, a savepoint that rolls back ends the setting.
+   */
+  readWithoutJit<T>(read: (db: JuniorDatabase) => Promise<T>): Promise<T>;
+  /**
    * Run exactly one caller-written statement on its own connection, then
    * discard that connection. Session state such as `BEGIN` or `SET` cannot
    * reach later pool queries, and statement lists fail instead of running.

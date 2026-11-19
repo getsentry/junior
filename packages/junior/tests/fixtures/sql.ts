@@ -46,6 +46,8 @@ async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
       statement: string,
       params?: readonly unknown[],
     ) => fixture.transaction(() => fixture.query<T>(statement, params)),
+    // Only the Postgres executors turn JIT off. PGlite runs the read as is.
+    readWithoutJit: (read) => read(fixture.db()),
     transaction: (callback) => fixture.transaction(callback),
     withLock: (lockName, callback) => fixture.withLock(lockName, callback),
     withMigrationLock: (_migrationTable, callback) => callback(),
