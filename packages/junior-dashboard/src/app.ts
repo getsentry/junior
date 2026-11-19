@@ -125,6 +125,7 @@ interface DashboardRuntimeOptions extends JuniorDashboardOptions {
 interface DashboardPluginRoute {
   app: PluginRouteApp;
   pluginName: string;
+  prefix: string;
 }
 
 type Variables = JuniorApiVariables & { authSession: DashboardSession };
@@ -348,10 +349,6 @@ function mockViewerFromSession(session: DashboardSession) {
     identities: [],
     ...(displayName ? { displayName } : undefined),
   };
-}
-
-function pluginRoutePrefix(pluginName: string): string {
-  return `/api/plugins/${pluginName}`;
 }
 
 /** Strip the core-owned plugin prefix before dispatching to a plugin app. */
@@ -620,7 +617,7 @@ export function createDashboardApp(
     }
   }
   for (const route of options.pluginRoutes ?? []) {
-    const prefix = pluginRoutePrefix(route.pluginName);
+    const { prefix } = route;
     const handler = async (c: Context<{ Variables: Variables }>) => {
       const response = await route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),

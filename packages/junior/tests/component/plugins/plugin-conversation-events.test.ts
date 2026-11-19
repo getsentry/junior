@@ -167,7 +167,11 @@ describe("plugin conversation events", () => {
     const events =
       await getConversationEventStore().loadHistory(conversationId);
     expect(
-      events.filter((event) => event.data.type === "structured_event"),
+      events.filter(
+        (event) =>
+          event.data.type === "structured_event" &&
+          event.data.namespace === "prompt-event-demo",
+      ),
     ).toEqual([
       expect.objectContaining({
         data: {

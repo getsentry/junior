@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { onTestFinished } from "vitest";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";

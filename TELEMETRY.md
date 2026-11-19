@@ -75,7 +75,7 @@ attributes. Nested logs and spans inherit them.
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
-| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `chat/memory/`                                                  |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |

@@ -44,7 +44,7 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
     actions: [
       {
         confirmation: "Forget this memory for everyone?",
-        href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+        href: `/api/memory/memories/${encodeURIComponent(memory.id)}`,
         label: "Forget",
         method: "DELETE",
         tone: "danger",
@@ -74,7 +74,7 @@ export function useMemoryRecord(memoryId: string | undefined) {
       memoryPageRecord(
         await fetchDashboardJson(
           memoryRecordSchema,
-          `/api/plugins/memory/memories/${encodeURIComponent(memoryId!)}`,
+          `/api/memory/memories/${encodeURIComponent(memoryId!)}`,
           signal,
         ),
       ),

@@ -105,6 +105,7 @@ import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import {
+  apiRoutePrefix,
   coreRegistrations,
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
@@ -129,6 +130,8 @@ export interface PluginRouteRegistration extends PluginRoute {
 export interface PluginApiRouteRegistration {
   app: PluginRouteApp;
   pluginName: string;
+  /** Path where the dashboard mounts the app. */
+  prefix: string;
 }
 
 export interface AfterMcpToolHookInput {
@@ -1297,11 +1300,11 @@ export function getPluginRoutes(options: {
   return routes;
 }
 
-/** Collect authenticated product API route apps exposed by plugins. */
+/** Collect authenticated product API route apps of plugins and core features. */
 export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
   const routes: PluginApiRouteRegistration[] = [];
 
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.apiRoutes;
     if (!hook) {
@@ -1321,7 +1324,7 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
-    routes.push({ app, pluginName });
+    routes.push({ app, pluginName, prefix: apiRoutePrefix(pluginName) });
   }
 
   return routes;

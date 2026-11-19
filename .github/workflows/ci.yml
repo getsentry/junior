@@ -54,7 +54,6 @@ jobs:
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
-              - packages/junior-search/**
               - packages/junior-testing/**
               - policies/**
             dashboard:
@@ -71,7 +70,6 @@ jobs:
               - apps/example/**
               - packages/junior/**
               - packages/junior-plugin-api/**
-              - packages/junior-search/**
             ios:
               - apps/ios/**
               - .github/workflows/ios.yml
@@ -93,12 +91,10 @@ jobs:
               - packages/junior-hex/**
               - packages/junior-linear/**
               - packages/junior-maintenance/**
-              - packages/junior-memory/**
               - packages/junior-notion/**
               - packages/junior-octolens/**
               - packages/junior-pagerduty/**
               - packages/junior-restream/**
-              - packages/junior-search/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
               - packages/junior-xdotcom/**
