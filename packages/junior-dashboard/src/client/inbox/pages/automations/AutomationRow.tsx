@@ -36,6 +36,8 @@ import { AutomationRunStrip } from "../../../pages/automations/AutomationRunStri
 import { automationProblemSummary } from "../../../pages/automations/AutomationStatus";
 import { useAutomationLifecycle } from "../../../pages/automations/useAutomationLifecycle";
 import { formatRelativeTime, formatRuntime } from "../../../time";
+import { PersonReference } from "../../../components/PersonReference";
+import { automationCreator } from "../../../person";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../../textFade";
 
 /** Number of recent runs each row shows. Matches the summary limit. */
@@ -171,7 +173,11 @@ export function AutomationRow(props: {
               className={cn(fadeOverflowClass, "max-w-28")}
               ref={fadeWhenOverflowing}
             >
-              {automation.ownedByViewer ? "You" : automation.createdBy}
+              <PersonReference
+                avatar={false}
+                label={automation.ownedByViewer ? "You" : undefined}
+                person={automationCreator(automation)}
+              />
             </span>
           </span>
           <span className="hidden lg:block">
@@ -256,7 +262,11 @@ function AutomationRowDetail(props: {
               size="list"
             />
             <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-              {automation.ownedByViewer ? "You" : automation.createdBy}
+              <PersonReference
+                avatar={false}
+                label={automation.ownedByViewer ? "You" : undefined}
+                person={automationCreator(automation)}
+              />
             </span>
           </span>
         </DetailFact>

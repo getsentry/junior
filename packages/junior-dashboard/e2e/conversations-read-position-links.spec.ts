@@ -72,6 +72,36 @@ test("opens links outside the loaded rows from the page around them", async ({
   await expect(linked).toBeHidden();
 });
 
+test("opens a Message link at the start of its reply", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 160,
+    lastReadSeq: 10,
+  });
+  mock.pagedDetail = true;
+  const transcript = page.getByLabel("Conversation transcript");
+
+  // Tasks of the Turn show under its reply, so the row ends at a Task.
+  mock.taskSeqs = [82, 83];
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-81`,
+  );
+  await expect(transcript.getByText("Transcript message 81 ")).toBeInViewport();
+
+  // A reply taller than the viewport shows from its first line.
+  mock.taskSeqs = [];
+  mock.tallSeqs = [85];
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-85`,
+  );
+  await expect(
+    transcript.getByText("Transcript message 85 starts here."),
+  ).toBeInViewport();
+});
+
 test("opens a link that the cached latest page holds at its row", async ({
   page,
   dashboard,

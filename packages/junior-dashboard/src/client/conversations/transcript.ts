@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type {
   ConversationDetailReport,
   ConversationEventPage,
@@ -293,7 +294,7 @@ function sameConversationEventVersion(
 export function conversationIsResponding(
   detail: ConversationDetailReport | undefined,
 ): boolean {
-  if (detail?.status !== "active") return false;
+  if (!detail || !conversationTurnIsActive(detail)) return false;
   for (let index = detail.events.length - 1; index >= 0; index -= 1) {
     const data = detail.events[index]!.data;
     if (data.type === "turn_lifecycle") return data.state === "started";

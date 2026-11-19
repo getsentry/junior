@@ -19,6 +19,20 @@ A conversation contains messages, execution state, and the history needed to con
 
 A turn may pause and resume without starting a new conversation. Junior can also shorten its working history to fit the available context without changing the Slack transcript.
 
+## Status
+
+Each conversation has one status. It comes from what Junior runs, never from the reply text, and it covers only that conversation's own work, not its child agents.
+
+| Status        | Meaning                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `needs_input` | It waits on a person: an open action Review item that it added, a sign-in, or its starter (see below).      |
+| `working`     | A turn runs or waits to start.                                                                              |
+| `done`        | Anything else, such as a finished answer that its starter read, a stopped conversation, or an idle one.     |
+
+It waits on its starter, the person who started it, when its latest turn failed, its Brief outcome is `partial` or `blocked`, or the starter has not read its latest answer. An answer counts as read once Junior posts it in Slack, once the starter sends a later message, or once the starter reads it in the dashboard. A running turn is `working`, not waiting on its starter.
+
+When more than one applies, the first in the table wins, so a conversation with an open action Review item reads `needs_input` while a turn runs. Archive does not change the status.
+
 ## Slack Behavior
 
 - Mention Junior to start work in a channel thread.

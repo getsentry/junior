@@ -321,8 +321,11 @@ type DetailOptions = Omit<
   | "startedAt"
   | "status"
   | "surface"
+  | "turnActive"
 > & {
   cumulativeDurationMs?: number;
+  /** Defaults to a running Turn on `working`. */
+  turnActive?: boolean;
   displayTitle: string;
   eventHistory?: ConversationDetailReport["eventHistory"];
   events: ConversationReportEvent[];
@@ -350,8 +353,9 @@ function detail(
     kind: options.kind ?? "root",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
-    status: options.status ?? "completed",
+    status: options.status ?? "done",
     surface: options.surface ?? "internal",
+    turnActive: options.turnActive ?? options.status === "working",
   };
 }
 
@@ -469,7 +473,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastProgressAt: iso(nowMs, -20_000),
     lastSeenAt: iso(nowMs, -10_000),
-    status: "active",
+    status: "working",
     surface: "slack",
     channel: "CQA123",
     channelName: "proj-checkout",
@@ -1819,7 +1823,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastSeenAt: iso(nowMs, -35 * 60_000),
     lastProgressAt: iso(nowMs, -35 * 60_000),
-    status: "failed",
+    status: "needs_input",
     surface: "slack",
     channel: "CQA777",
     channelName: "proj-incidents",
@@ -1933,6 +1937,7 @@ function simpleConversation(
     channel?: string;
     sourceTask?: ConversationDetailReport["sourceTask"];
     archivedAt?: string;
+    status?: ConversationDetailReport["status"];
   },
 ): ConversationDetailReport {
   // Finished work stays in Today even when it was active in the last 24 hours.
@@ -2377,14 +2382,18 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
     },
-    threadConversation(
-      nowMs,
-      DASHBOARD_QA_NESTED_THREAD_ID,
-      "Recheck pin order in Safari",
-      "Recheck the pinned row order in Safari.",
-      -2.9 * 60 * 60_000,
-      DASHBOARD_QA_THREAD_ID,
-    ),
+    {
+      ...threadConversation(
+        nowMs,
+        DASHBOARD_QA_NESTED_THREAD_ID,
+        "Recheck pin order in Safari",
+        "Recheck the pinned row order in Safari.",
+        -2.9 * 60 * 60_000,
+        DASHBOARD_QA_THREAD_ID,
+      ),
+      // QA shows a Thread whose Review item waits on a person.
+      status: "needs_input" as const,
+    },
     threadConversation(
       nowMs,
       DASHBOARD_QA_ARCHIVED_THREAD_ID,
@@ -2420,6 +2429,8 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
+      // A root whose Review item waits on a person.
+      status: "needs_input",
     }),
     simpleConversation(nowMs, {
       conversationId: SCHEDULER_CONVERSATION_ID,
@@ -2602,6 +2613,31 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
     .filter((summary) => !summary.archivedAt);
 }
 
+/** Root ids whose latest Turn failed, like `conversationTurnFailedSql`. */
+function mockTurnFailedIds(nowMs: number): Set<string> {
+  const ids = new Set<string>();
+  for (const conversation of mockConversations(nowMs)) {
+    const latest = conversation.events
+      .map((event) => event.data)
+      .filter((data) => data.type === "turn_lifecycle")
+      .at(-1);
+    if (latest?.type === "turn_lifecycle" && latest.state === "failed") {
+      ids.add(conversation.conversationId);
+    }
+  }
+  return ids;
+}
+
+/** Count a running Turn as active and a failed latest Turn as failed. */
+function addTurnCounts(
+  target: { active: number; failed: number },
+  summary: ConversationSummaryReport,
+  failedIds: Set<string>,
+) {
+  target.active += summary.turnActive ? 1 : 0;
+  target.failed += failedIds.has(summary.conversationId) ? 1 : 0;
+}
+
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
   const usage = summary.cumulativeUsage;
   return (
@@ -2619,11 +2655,11 @@ function statsItem(label: string): ConversationStatsItem {
 function addSummary(
   item: ConversationStatsItem,
   summary: ConversationSummaryReport,
+  failedIds: Set<string>,
 ) {
-  item.active += summary.status === "active" ? 1 : 0;
+  addTurnCounts(item, summary, failedIds);
   item.conversations += 1;
   item.durationMs += summary.cumulativeDurationMs;
-  item.failed += summary.status === "failed" ? 1 : 0;
   const tokens = summaryTokenTotal(summary);
   if (tokens) item.tokens = (item.tokens ?? 0) + tokens;
   const cost = summary.cumulativeUsage?.cost?.total;
@@ -2666,7 +2702,7 @@ function addMockOutcome(
   bucket: ConversationStatsReport["metricDays"][number],
   summary: ConversationSummaryReport,
 ) {
-  if (summary.status !== "completed") return;
+  if (summary.status !== "done") return;
   bucket.outcomes = (bucket.outcomes ?? 0) + 1;
   bucket.outcomeCostUsd =
     (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
@@ -3906,6 +3942,7 @@ export function readMockPeopleProfile(
   );
   const identity = summaries[0]?.actorIdentity;
   if (!identity) return undefined;
+  const failedIds = mockTurnFailedIds(nowMs);
   const totals: ActorProfileReport["totals"] = {
     active: 0,
     activeDays: 0,
@@ -3918,10 +3955,9 @@ export function readMockPeopleProfile(
   const locations = new Map<string, ConversationStatsItem>();
   const surfaces = new Map<string, ConversationStatsItem>();
   for (const summary of summaries) {
-    totals.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(totals, summary, failedIds);
     totals.conversations += 1;
     totals.durationMs += summary.cumulativeDurationMs;
-    totals.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) totals.tokens = (totals.tokens ?? 0) + tokens;
 
@@ -3934,10 +3970,9 @@ export function readMockPeopleProfile(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
@@ -3947,7 +3982,7 @@ export function readMockPeopleProfile(
 
     const place = locationLabel(summary);
     const location = locations.get(place) ?? statsItem(place);
-    addSummary(location, summary);
+    addSummary(location, summary, failedIds);
     locations.set(place, location);
 
     const surfaceLabel =
@@ -3955,7 +3990,7 @@ export function readMockPeopleProfile(
         ? "API"
         : `${summary.surface.charAt(0).toUpperCase()}${summary.surface.slice(1)}`;
     const surface = surfaces.get(surfaceLabel) ?? statsItem(surfaceLabel);
-    addSummary(surface, summary);
+    addSummary(surface, summary, failedIds);
     surfaces.set(surfaceLabel, surface);
   }
   totals.activeDays = activeDates.size;
@@ -4225,6 +4260,7 @@ export function conversationTimeBounds(
 function publicLocation(
   summaries: ConversationSummaryReport[],
   channel: string,
+  failedIds: Set<string>,
 ): LocationSummaryReport {
   const [first, ...rest] = summaries.filter(
     (summary) => summary.channel === channel,
@@ -4234,7 +4270,7 @@ function publicLocation(
     [first, ...rest];
   const item = statsItem(locationLabel(first));
   for (const summary of matching) {
-    addSummary(item, summary);
+    addSummary(item, summary, failedIds);
   }
   const bounds = conversationTimeBounds(matching);
   return {
@@ -4261,6 +4297,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
         ),
     ),
   ];
+  const failedIds = mockTurnFailedIds(nowMs);
   const privateActivity = statsItem("Private activity");
   const sparseActivity = new Map<string, LocationActivityDayReport>();
   for (const summary of summaries) {
@@ -4276,7 +4313,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
     if (isPublic) day.publicConversations += 1;
     else {
       day.privateConversations += 1;
-      addSummary(privateActivity, summary);
+      addSummary(privateActivity, summary, failedIds);
     }
     sparseActivity.set(date, day);
   }
@@ -4291,7 +4328,9 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
   return {
     activityDays,
     generatedAt: iso(nowMs),
-    locations: channels.map((channel) => publicLocation(summaries, channel)),
+    locations: channels.map((channel) =>
+      publicLocation(summaries, channel, failedIds),
+    ),
     privateActivity,
     source: "conversation_index",
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
@@ -4310,6 +4349,7 @@ export function readMockLocationDetail(
   const recentConversations = activeMockSummaries(nowMs).filter(
     (summary) => summary.channel === location.providerDestinationId,
   );
+  const failedIds = mockTurnFailedIds(nowMs);
   const actorItems = new Map<string, LocationActorSummaryReport>();
   const sparseDays = new Map<
     string,
@@ -4323,7 +4363,7 @@ export function readMockLocationDetail(
         ...statsItem(actorLabel(identity)),
         actor: identity,
       };
-      addSummary(actorItem, summary);
+      addSummary(actorItem, summary, failedIds);
       actorItems.set(actorKey, actorItem);
     }
     const date = summary.lastSeenAt.slice(0, 10);
@@ -4334,10 +4374,9 @@ export function readMockLocationDetail(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     sparseDays.set(date, day);

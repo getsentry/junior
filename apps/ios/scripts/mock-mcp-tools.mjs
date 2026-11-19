@@ -166,7 +166,8 @@ export function createMockMcpTools({ app, origin }) {
     return {
       conversationId: id,
       title: summary.displayTitle,
-      status: stopped.has(id) ? "stopped" : summary.status,
+      status: stopped.has(id) ? "done" : summary.status,
+      turnActive: summary.turnActive && !stopped.has(id),
       surface: summary.surface,
       channelName: summary.channelNameRedacted
         ? undefined
@@ -358,7 +359,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `status` is not `active` and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -627,8 +628,8 @@ export function createMockMcpTools({ app, origin }) {
       input: { conversationId },
       async run({ conversationId: id }) {
         const detail = await requireDetail(id);
-        // The mock has no turns to stop. An active one stands for a running turn.
-        const running = detail.status === "active" && !stopped.has(id);
+        // The mock has no turns to stop. `turnActive` stands for a running turn.
+        const running = detail.turnActive && !stopped.has(id);
         const { pendingMessages } = await readPendingWork(id);
         stopped.add(id);
         if (running) droppedPending.add(id);

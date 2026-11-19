@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { useDashboardCoreData } from "../api";
+import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import { pinnedFirst } from "../conversations/conversationSections";
 import { useInboxConversations } from "../conversations/useInboxConversations";
 import type { Conversation } from "../types";
@@ -33,7 +33,6 @@ import {
 import {
   inboxBundles,
   itemUpForGrabs,
-  conversationAnswerLine,
   type InboxBundle,
 } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -190,16 +189,6 @@ function useBuildInboxData(input: {
       ? [...read, ...held, ...left]
       : read;
   }, [leaving, missing, read, states]);
-  // Closed items, newest closed first, as Done lists them. A Conversation
-  // row says what the viewer answered until the Conversation moves on.
-  const viewerEmail = useDashboardCoreData().data?.me.user.email;
-  const { items: closed } = useReviewItemsData({
-    closed: true,
-    enabled: signedIn,
-    forViewer: true,
-  });
-  const answerOf = (conversation: Conversation): string | undefined =>
-    conversationAnswerLine(closed, conversation, viewerEmail);
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
@@ -207,7 +196,7 @@ function useBuildInboxData(input: {
   const serverCounts = useInboxCountData(signedIn).data;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(nowMs);
+  const snoozes = useInboxSnoozes(nowMs, list);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
@@ -279,21 +268,25 @@ function useBuildInboxData(input: {
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
 
-  // In flight: every pin and every running Conversation. Running rows come
-  // first, a running pin with them, then the other pins in the viewer's
-  // order. Collapsed, every pin shows, each one click away, and running
-  // Conversations fill the rows left, up to IN_FLIGHT_LIMIT.
+  // In flight: every pin and every busy Conversation, whose tree waits on
+  // the viewer, works, or watches for an Event or Timer. Busy rows come
+  // first, a busy pin with them, then the other pins in the viewer's order.
+  // Collapsed, every pin shows, each one click away, and busy Conversations
+  // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
-  const running = conversations.filter(
-    (conversation) =>
-      conversation.status === "active" && !conversation.pinnedAt,
+  const busy = (conversation: Conversation) => {
+    const state = conversationDisplayState(conversation);
+    return state !== undefined && state !== "pinned";
+  };
+  const busyRows = conversations.filter(
+    (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
-  const inFlightFor = (unpinnedRunning: Conversation[]) => [
-    ...unpinnedRunning,
-    ...pinned.filter((conversation) => conversation.status === "active"),
-    ...pinned.filter((conversation) => conversation.status !== "active"),
+  const inFlightFor = (unpinnedBusy: Conversation[]) => [
+    ...unpinnedBusy,
+    ...pinned.filter(busy),
+    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   const todoAutomations = automations.filter(
@@ -346,8 +339,6 @@ function useBuildInboxData(input: {
 
   return {
     alerts,
-    /** What the viewer answered last in a Conversation, while it is news. */
-    answerOf,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     /** The Automations that need attention are in, so To do is complete. */
@@ -368,10 +359,10 @@ function useBuildInboxData(input: {
     includedId: linkedId,
     includeItem,
     /** Every in-flight Conversation, in pane order. */
-    inFlight: inFlightFor(running),
-    /** Collapsed In flight: every pin, and running rows up to the limit. */
+    inFlight: inFlightFor(busyRows),
+    /** Collapsed In flight: every pin, and busy rows up to the limit. */
     inFlightCollapsed: inFlightFor(
-      running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+      busyRows.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
     ),
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
