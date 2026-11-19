@@ -120,6 +120,7 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { conversationFeedPageVersion } from "./feed-page-version";
+import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -150,11 +151,16 @@ export function createConversationRoutes(
       const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
+      // The feed does not mark waiting rows, so the read reports their count.
+      let waitingRows = 0;
       const feed = await readConversationFeed({
         ...(actorEmail ? { actorEmail } : undefined),
         ...(codeRepositoryId ? { codeRepositoryId } : undefined),
         ...(cursor ? { cursor } : undefined),
         include,
+        onWaitingRows: (count) => {
+          waitingRows = count;
+        },
         ...(q ? { q } : undefined),
         status,
         ...(viewer ? { viewer } : undefined),
@@ -172,7 +178,9 @@ export function createConversationRoutes(
       ) {
         return new Response(null, { status: 304, headers });
       }
-      return jsonResponse(conversationFeedSchema, feed, { headers });
+      return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
+        serializeConversationFeed(parsed, waitingRows),
+      );
     },
   );
 
