@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { conversationDisplayTitle } from "../format";
+import { Spinner } from "../components/ui/spinner";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { useInboxUi } from "../uiShell";
 import type { Conversation } from "../types";
@@ -121,7 +122,16 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {conversationTurnIsActive(props.conversation) ? null : (
+          {conversationTurnIsActive(props.conversation) ? (
+            // The icon follows `status`. A running Thread that needs input
+            // shows the alert there, so it shows that it runs here.
+            props.conversation.status === "working" ? null : (
+              <Spinner
+                aria-label="Running"
+                className="size-3.5 justify-self-end text-dashboard-text-muted"
+              />
+            )
+          ) : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",
