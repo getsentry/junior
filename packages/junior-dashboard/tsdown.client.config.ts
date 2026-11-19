@@ -41,6 +41,28 @@ function imageAssetPlugin(): Rolldown.Plugin {
 }
 
 /**
+ * Give the composer the URL of the editor's lazy chunk. A failed chunk load
+ * names no URL in Safari, so the composer cannot learn it from the error,
+ * and a retry needs the URL to make the import new.
+ */
+function editorChunkUrlPlugin(): Rolldown.Plugin {
+  const urlModule = path.resolve(
+    "src/client/conversations/composer-editor/editorChunkUrl.ts",
+  );
+  const editorModule = path.resolve(
+    "src/client/conversations/composer-editor/ComposerEditor.tsx",
+  );
+  return {
+    name: "junior-dashboard-editor-chunk-url",
+    load(id) {
+      if (id !== urlModule) return null;
+      const referenceId = this.emitFile({ type: "chunk", id: editorModule });
+      return `export default import.meta.ROLLUP_FILE_URL_${referenceId};`;
+    },
+  };
+}
+
+/**
  * Write the client manifest: each UI shell's entry and every file it imports
  * statically, the stylesheet, and the first-paint fonts. The page shell
  * preloads the files of the viewer's shell, so the browser fetches them
@@ -255,5 +277,5 @@ export default defineConfig({
     assetFileNames: "[name]-[hash:8][extname]",
     hashCharacters: "base36",
   },
-  plugins: [imageAssetPlugin(), clientManifestPlugin()],
+  plugins: [imageAssetPlugin(), editorChunkUrlPlugin(), clientManifestPlugin()],
 });

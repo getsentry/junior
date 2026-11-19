@@ -88,3 +88,28 @@ test("an editor chunk that fails to load is loaded again", async ({
   await page.clock.fastForward(30_000);
   await expect(composer).toHaveAttribute("contenteditable", "true");
 });
+
+test("an editor chunk whose error names no URL is loaded again", async ({
+  page,
+  dashboard,
+}) => {
+  // Safari's import error names no URL. A chunk that throws when it runs
+  // gives Chromium such an error too, and the browser keeps that failure.
+  await page.clock.install();
+  let failures = 0;
+  await page.route(EDITOR_CHUNK, async (route) => {
+    if (failures === 0) {
+      failures += 1;
+      await route.fulfill({
+        body: "throw new Error('broken chunk');",
+        contentType: "text/javascript",
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  const composer = await openStandIn(page, dashboard.baseURL);
+  await expect.poll(() => failures).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+});
