@@ -604,7 +604,8 @@ describe("cache warming gap segments", () => {
       const { totals } = cacheWarmingSavingsReportSchema.parse(
         await response.json(),
       );
-      // Prices are per million tokens. Each counted gap needs one warmup.
+      // Prices are per million tokens. Each counted gap needs one warmup,
+      // which the oracle prices at 1.1 reads.
       const read = (60_000 * model.cost.cacheRead) / 1_000_000;
       const write = (60_000 * model.cost.cacheWrite) / 1_000_000;
       const close = (usd: number) => expect.closeTo(usd, 3);
@@ -613,9 +614,9 @@ describe("cache warming gap segments", () => {
         hits: 1,
         savedUsd: close(write - read),
         warmupCostUsd: close(read),
-        oracleSavingsUsd: close(3 * (write - 2 * read)),
+        oracleSavingsUsd: close(3 * (write - 2.1 * read)),
         unwarmedIdlePeriods: 1,
-        unwarmedOracleSavingsUsd: close(write - 2 * read),
+        unwarmedOracleSavingsUsd: close(write - 2.1 * read),
       });
     } finally {
       await state.delete("junior:cache_warming:gaps:user:1:none");

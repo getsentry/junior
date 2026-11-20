@@ -40,6 +40,7 @@ import {
   type ModelRequest,
 } from "./request";
 import {
+  idlePeriodOutcome,
   idlePeriodSavings,
   recordIdlePeriodSavings,
   recordWarmupCost,
@@ -65,6 +66,8 @@ const storedWaitSchema = z
     startedAtMs: z.number(),
     prefixTokens: z.number(),
     warmed: z.boolean(),
+    /** Unset in waits stored before it was. */
+    warmups: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -109,6 +112,8 @@ interface Waiting {
   prefixTokens: number;
   /** A warmup was scheduled for the wait. */
   warmed: boolean;
+  /** Warmups that refreshed the cache of the wait. */
+  warmups: number;
 }
 
 /** Create the tool wait warmer of one agent run. */
@@ -226,6 +231,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             logInfo("cache_warming.warmup.completed", attributes);
             setOutcome("completed");
             if (current === generation) {
+              if (waiting) waiting.warmups += 1;
               schedule(cache, startedAtMs, cycle + 1);
             }
           } else {
@@ -285,9 +291,12 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
   ) => {
     const ttlMs = providerCacheTtlMs(previous.modelId);
     if (ttlMs === undefined) return;
-    const savings = idlePeriodSavings({
+    const gap = {
       cacheTtlMs: ttlMs,
       gapMs: request.startedAtMs - previous.startedAtMs,
+    };
+    const savings = idlePeriodSavings({
+      ...gap,
       prefixTokens: previous.prefixTokens,
       cacheRead: message.usage.cacheRead,
       cacheWrite: message.usage.cacheWrite,
@@ -295,7 +304,10 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       cacheWritePrice: request.model.cost.cacheWrite,
     });
     if (!savings) return;
-    await recordIdlePeriodSavings(previous.modelId, savings, previous.warmed);
+    await recordIdlePeriodSavings(previous.modelId, savings, {
+      warmed: previous.warmed,
+      outcome: idlePeriodOutcome(gap, savings, previous.warmups ?? 0),
+    });
   };
 
   const storedWait = (open: Waiting): StoredWait => ({
@@ -303,6 +315,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     startedAtMs: open.request.startedAtMs,
     prefixTokens: open.prefixTokens,
     warmed: open.warmed,
+    warmups: open.warmups,
   });
 
   return {
@@ -319,7 +332,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
         prefixTokens >= MIN_WARMUP_PREFIX_TOKENS && ttlMs !== undefined;
       waiting =
         message.stopReason === "toolUse"
-          ? { request, prefixTokens, warmed }
+          ? { request, prefixTokens, warmed, warmups: 0 }
           : undefined;
       if (waiting && ttlMs !== undefined && warmed) {
         schedule({ request, prefixTokens, ttlMs }, request.startedAtMs, 1);

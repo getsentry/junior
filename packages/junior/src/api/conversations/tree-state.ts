@@ -13,6 +13,7 @@ import { listConversationsWithWatches } from "@/chat/events/store";
 import {
   reviewItemForUser,
   reviewItemNeedsInput,
+  reviewItemOwnedByConversation,
 } from "@/chat/review-items/access";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations, juniorReviewItems } from "@/db/schema";
@@ -37,10 +38,7 @@ export type ConversationTreeRead = {
  */
 function needsUserSql(userId: string) {
   return sql<boolean>`(exists (select 1 from ${juniorReviewItems} where ${and(
-    eq(
-      juniorReviewItems.addedByConversationId,
-      juniorConversations.conversationId,
-    ),
+    reviewItemOwnedByConversation(juniorConversations.conversationId),
     reviewItemNeedsInput(),
     reviewItemForUser(userId),
   )}) or ${awaitsAuthorizationFrom(juniorConversations.conversationId, userId)})`;

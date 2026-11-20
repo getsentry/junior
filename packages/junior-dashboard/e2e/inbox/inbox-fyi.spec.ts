@@ -162,8 +162,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    const notice = {
+      ...pinChecks,
+      body: `${pinChecks.body}\n\n<@U0MOCKADA> owns the flaky suite.`,
+      mentions: [{ fullName: "Ada Lovelace", slackUserId: "U0MOCKADA" }],
+    };
     const actions = await mockReviewItems(page, {
-      open: [pinReview, pinChecks],
+      open: [pinReview, notice],
     });
     // A link to the notice opens the review's row, which holds it.
     await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
@@ -171,6 +176,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const checks = asks.getByRole("region", { name: pinChecks.title });
     await checks.getByRole("button", { name: "Checks failed" }).click();
     await expect(checks).toContainText("The required checks failed");
+    await expect(checks).toContainText("Ada Lovelace owns the flaky suite.");
+    await expect(checks).not.toContainText("U0MOCKADA");
     await checks.getByRole("button", { name: "Dismiss" }).click();
     await expect
       .poll(() => actions.map((action) => action.id))

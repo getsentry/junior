@@ -7,7 +7,7 @@ const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
 const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
 const question = {
-  addedByConversationId: CLOSED_ISSUE_ID,
+  owner: { id: CLOSED_ISSUE_ID, kind: "conversation" },
   rootConversationId: CLOSED_ISSUE_ID,
   assignedToEveryone: false,
   assignees: [

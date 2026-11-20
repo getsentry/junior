@@ -84,7 +84,7 @@ describe("getConversation MCP tool", () => {
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     // An open action item reads `needs_input` while the Turn runs.
     await insertReviewItem(getDb(), {
-      addedByConversationId: CONVERSATION_ID,
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Pick one.",
@@ -127,7 +127,7 @@ describe("getConversation MCP tool", () => {
     });
     const other = await resolveViewerUser(MCP_TEST_OTHER_VIEWER);
     const ask = {
-      addedByConversationId: CONVERSATION_ID,
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       body: "Pick one.",
       conversationIds: [CONVERSATION_ID],
       kind: "action" as const,

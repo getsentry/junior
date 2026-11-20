@@ -1,6 +1,5 @@
 import * as z from "zod";
-import { requireCredentialStart } from "@/chat/automations/edit-rules";
-import { automationRevision } from "@/chat/automations/revision";
+import { runAutomationNow } from "@/chat/automations/edit";
 import {
   requireToolAutomation,
   requireToolCaller,
@@ -10,11 +9,8 @@ import {
   automationToolResultSchema,
   compactAutomation,
 } from "@/chat/automations/tool-support";
-import { getDb } from "@/chat/db";
 import type { EventCatalog } from "@/chat/events/catalog";
-import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 export const runAutomationNowToolDefinition = zodToolDefinition({
@@ -55,23 +51,9 @@ export function createRunAutomationNowTool(
         await requireToolCaller(context),
         automationId,
       );
-      if (current.kind !== "scheduled") {
-        throw new ToolInputError(
-          "Only scheduled automations can run now. Event automations run when a matching event arrives.",
-        );
-      }
-      const { task, ownedByViewer } = current;
-      if (task.status !== "active") {
-        throw new ToolInputError(
-          "Scheduled automation must be active before it can be run now.",
-        );
-      }
-      requireCredentialStart(task, ownedByViewer);
-      const nowMs = Date.now();
-      const next = { ...task, updatedAtMs: nowMs, runNowAtMs: nowMs };
-      await saveScheduledAutomation(getDb(), next, automationRevision(task));
+      const next = await runAutomationNow(current);
       return {
-        automation: compactAutomation({ ...current, task: next }, catalog),
+        automation: compactAutomation(next, catalog),
       };
     },
   });
