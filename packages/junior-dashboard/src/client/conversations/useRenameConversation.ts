@@ -3,6 +3,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renameConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import { patchFeedConversation } from "./conversationArchive";
 import {
   mapConversationFeedCache,
@@ -33,10 +34,10 @@ export function useRenameConversation(
           )
         : feed,
     );
-    // Clear the etag so the next read gets a full body, not a 304 that keeps
-    // this local value.
     queryClient.setQueryData<DetailCache>(detailQueryKey, (detail) =>
-      detail ? { ...detail, displayTitle, detailEtag: undefined } : detail,
+      detail
+        ? withoutVersion({ ...detail, displayTitle }, "detailEtag")
+        : detail,
     );
   };
   return useMutation({

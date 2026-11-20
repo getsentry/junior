@@ -118,7 +118,6 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
@@ -312,7 +311,7 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
 export type { ApiError } from "./schema/common";
 export {
   connectionListSchema,
