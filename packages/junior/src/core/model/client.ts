@@ -6,13 +6,21 @@ import type {
   AssistantMessage,
   Context,
   Model,
+  ThinkingLevel,
 } from "@earendil-works/pi-ai";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import {
-  toPiReasoningLevel,
-  type TurnReasoningLevel,
-} from "@/chat/reasoning-level";
+  tracedStream,
+  type ConversationPrivacy,
+  type ModelStream,
+} from "@/core/model/span";
+
+/** How much the model reasons before it replies. */
+export type TurnReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh";
+
+// Pi calls no reasoning `off`, and takes `undefined` to mean it.
+function thinkingLevel(level: TurnReasoningLevel): ThinkingLevel | undefined {
+  return level === "none" ? undefined : level;
+}
 
 /** The model that a Turn uses, and how its requests are recorded. */
 export type ModelSettings = {
@@ -44,25 +52,26 @@ export type ModelClient = {
 
 /**
  * Builds the model client. `apiKey` runs before each request, because a
- * credential can rotate between requests.
+ * credential can rotate between requests. `stream` sends the request, such
+ * as pi-ai's `streamSimple`.
  */
 export function modelClient(dependencies: {
   apiKey: () => Promise<string>;
   resolveModel: (id: string) => Model<Api>;
+  stream: ModelStream;
 }): ModelClient {
   return {
     complete: async ({ model, session, context }, signal) => {
-      const reasoning = toPiReasoningLevel(model.reasoning);
-      // The traced stream of the chat agent loop, so each request gets the
-      // same `gen_ai.chat` span.
-      const stream = await createTracedStreamFn({
-        conversationPrivacy: model.privacy,
-      })(dependencies.resolveModel(model.id), context, {
-        apiKey: await dependencies.apiKey(),
-        sessionId: session,
-        reasoning: reasoning === "off" ? undefined : reasoning,
-        signal,
-      });
+      const stream = await tracedStream(dependencies.stream, model.privacy)(
+        dependencies.resolveModel(model.id),
+        context,
+        {
+          apiKey: await dependencies.apiKey(),
+          sessionId: session,
+          reasoning: thinkingLevel(model.reasoning),
+          signal,
+        },
+      );
       return stream.result();
     },
   };

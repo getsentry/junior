@@ -1,12 +1,19 @@
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { describe, expect, it } from "vitest";
-import { gatewayModelClient } from "@/chat/pi/model-client";
+import { resolveGatewayModel } from "@/chat/pi/client";
+import { modelClient } from "@/core/model/client";
 
 describe("model client", () => {
   it("returns an aborted reply instead of throwing when its signal aborts", async () => {
+    const client = modelClient({
+      apiKey: async () => "test-key",
+      resolveModel: resolveGatewayModel,
+      stream: streamSimple,
+    });
     const controller = new AbortController();
     controller.abort();
 
-    const reply = await gatewayModelClient.complete(
+    const reply = await client.complete(
       {
         model: {
           id: "anthropic/claude-opus-5.5",
