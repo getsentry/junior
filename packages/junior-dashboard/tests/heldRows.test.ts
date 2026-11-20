@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { heldRows, rowPlaces } from "../src/client/review-desk/heldRows";
-import type { ConversationRow } from "../src/client/review-desk/inboxData";
+import { heldRows, rowPlaces } from "../src/client/inbox/heldRows";
+import type { ConversationRow } from "../src/client/inbox/inboxData";
 import type { Conversation } from "../src/client/types";
 
 function row(

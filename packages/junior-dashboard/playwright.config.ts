@@ -12,13 +12,10 @@ const chrome = {
 };
 
 // A spec under e2e/inbox/ tests the new UI, so its namesake in e2e/ is
-// for the current UI only. The review desk exists only in the current UI.
-const currentUiSpecs = [
-  ...readdirSync(new URL("./e2e/inbox", import.meta.url)).filter((name) =>
-    name.endsWith(".spec.ts"),
-  ),
-  "review-desk.spec.ts",
-].map((name) => `**/e2e/${name}`);
+// for the current UI only.
+const currentUiSpecs = readdirSync(new URL("./e2e/inbox", import.meta.url))
+  .filter((name) => name.endsWith(".spec.ts"))
+  .map((name) => `**/e2e/${name}`);
 
 export default defineConfig<{ ui: DashboardShell }>({
   testDir: "./e2e",

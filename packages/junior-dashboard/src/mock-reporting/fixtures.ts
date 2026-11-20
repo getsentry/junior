@@ -4181,7 +4181,7 @@ export function readMockPeopleCode(
     ),
     openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
@@ -4204,7 +4204,7 @@ export function readMockPeopleCode(
     doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
       merged: 6,
     }),
-    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+    doneChange(2361, "getsentry/junior", "Add Inbox filters", 6, {
       merged: 4,
     }),
     doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {

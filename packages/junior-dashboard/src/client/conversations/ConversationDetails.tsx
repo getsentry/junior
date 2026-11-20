@@ -7,7 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
+import { ConversationReviewItems } from "../inbox/ConversationReviewItems";
 import { Button } from "../components/ui/button";
 import { ConversationBrief } from "./ConversationBrief";
 import {

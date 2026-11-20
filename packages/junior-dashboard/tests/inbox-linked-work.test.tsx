@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InboxLinkedWorkChips,
   WorkLine,
-} from "../src/client/review-desk/InboxLinkedWork";
+} from "../src/client/inbox/InboxLinkedWork";
 
 // The visible text of rendered markup: its text nodes, in order.
 function text(markup: string): string {

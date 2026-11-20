@@ -637,7 +637,7 @@ people work on it:
 - In the first 2 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day,
   and at most 3 times in a row with no activity by a person between them.
-- After that, Junior publishes no event. It adds a review desk item with a
+- After that, Junior publishes no event. It adds a Review item with a
   **Resume** button for the person who asked for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
   closes.

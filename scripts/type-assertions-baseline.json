@@ -33,7 +33,7 @@
   "packages/junior-dashboard/src/client/pages/system/PluginBarChart.tsx": 1,
   "packages/junior-dashboard/src/client/pages/system/SystemPlugins.ts": 2,
   "packages/junior-dashboard/src/client/pages/user/pluginUserPageData.ts": 1,
-  "packages/junior-dashboard/src/client/review-desk/queries.ts": 1,
+  "packages/junior-dashboard/src/client/inbox/queries.ts": 1,
   "packages/junior-dashboard/src/client/searchParams.ts": 2,
   "packages/junior-dashboard/src/client/sentry.ts": 2,
   "packages/junior-dashboard/src/conversation-cache.ts": 1,
