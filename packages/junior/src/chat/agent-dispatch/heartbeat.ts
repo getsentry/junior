@@ -7,6 +7,7 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { syncEventTriggerAlerts } from "@/chat/automations/alert-items";
 import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
@@ -305,6 +306,13 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    // A plugin change can make an event trigger unavailable, or available
+    // again, with no write to the Automation.
+    await syncEventTriggerAlerts(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "automation_alerts.heartbeat.failed");
   }
   try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });

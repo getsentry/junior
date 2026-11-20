@@ -183,8 +183,8 @@ async function attentionFilters(
 
 /**
  * Count the viewer's own Automations that need attention, the rows that the
- * Inbox lists from `scope=attention&owner=me`. One query reads the owned
- * candidates, and the trigger check runs on the event ones.
+ * Automations list shows for `scope=attention&owner=me`. One query reads
+ * the owned candidates, and the trigger check runs on the event ones.
  */
 export async function countOwnedAutomationsNeedingAttention(
   viewer: AutomationViewer,

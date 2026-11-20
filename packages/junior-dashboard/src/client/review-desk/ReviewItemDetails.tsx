@@ -15,6 +15,8 @@ import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
+  itemConversationId,
+  itemOwnerPath,
   reviewItemStatusLabel,
   reviewItemSubjectHref,
 } from "./reviewItemFormat";
@@ -69,10 +71,13 @@ export function ReviewItemDetails(props: {
 }) {
   const { item } = props;
   const subject = item.subject;
-  const [addedByTitle, ...linkedTitles] = useLinkedConversationTitles([
-    item.addedByConversationId,
+  const ownerConversationId = itemConversationId(item);
+  const titles = useLinkedConversationTitles([
+    ...(ownerConversationId ? [ownerConversationId] : []),
     ...item.conversationIds,
   ]);
+  const addedByTitle = ownerConversationId ? titles[0] : "Automation";
+  const linkedTitles = ownerConversationId ? titles.slice(1) : titles;
   const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
     <DetailsPanel
@@ -86,7 +91,7 @@ export function ReviewItemDetails(props: {
     >
       <div className="grid min-w-0 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          <ReviewItemObjects conversationId={item.addedByConversationId}>
+          <ReviewItemObjects conversationId={itemConversationId(item)}>
             <DisplayText mentions={item.mentions} text={item.body} />
           </ReviewItemObjects>
         </div>
@@ -108,10 +113,8 @@ export function ReviewItemDetails(props: {
             <Fact label="Added by">
               <Link
                 className={dashboardInlineLinkClass}
-                title={item.addedByConversationId}
-                to={conversationPath(item.addedByConversationId, {
-                  turnId: item.addedByTurnId,
-                })}
+                title={item.owner.id}
+                to={itemOwnerPath(item, { turnId: item.addedByTurnId })}
               >
                 {addedByTitle ?? "Conversation"}
               </Link>
@@ -133,7 +136,7 @@ export function ReviewItemDetails(props: {
           </dl>
         </DetailsCard>
         {subject ? (
-          <ReviewItemObjects conversationId={item.addedByConversationId}>
+          <ReviewItemObjects conversationId={itemConversationId(item)}>
             <SubjectCard body={item.body} subject={subject} />
           </ReviewItemObjects>
         ) : null}

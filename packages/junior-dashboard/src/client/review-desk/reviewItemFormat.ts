@@ -5,7 +5,9 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
+import { conversationPath } from "../conversations/conversationRoutes";
 import { withoutStandaloneUrl } from "../display-text/DisplayText";
+import { automationPath } from "../format";
 import { displayPlainText } from "../display-text/plainText";
 import type { Conversation } from "../types";
 
@@ -193,18 +195,62 @@ export type InboxGroups = {
 };
 
 /**
- * The Review items of one root Conversation and its child agents: a stack of
- * cards, each with its own actions. `needsYou` sorts the stack into the
- * queue; other stacks are FYI and sort after it.
+ * The Conversation that owns an item, or undefined when something else owns
+ * it, such as an Automation.
+ */
+export function itemConversationId(
+  item: Pick<ReviewItemPayload, "owner">,
+): string | undefined {
+  return item.owner.kind === "conversation" ? item.owner.id : undefined;
+}
+
+/**
+ * The route of an item's owner: its Conversation, with `options`, or its
+ * Automation.
+ */
+export function itemOwnerPath(
+  item: Pick<ReviewItemPayload, "owner">,
+  options?: Parameters<typeof conversationPath>[1],
+): string {
+  return item.owner.kind === "automation"
+    ? automationPath(item.owner.id)
+    : conversationPath(item.owner.id, options);
+}
+
+/** The label of a link that opens the item's owner (`itemOwnerPath`). */
+export function itemOwnerLinkLabel(
+  item: Pick<ReviewItemPayload, "owner">,
+): string {
+  return item.owner.kind === "automation"
+    ? "Open automation"
+    : "Open conversation";
+}
+
+/**
+ * The stack that shows an item: its root Conversation, or its owner when
+ * the owner is not a Conversation.
+ */
+export function itemStackKey(item: ReviewItemPayload): string {
+  return item.rootConversationId ?? `${item.owner.kind}:${item.owner.id}`;
+}
+
+/**
+ * The Review items of one root Conversation and its child agents, or of one
+ * other owner, such as an Automation: a stack of cards, each with its own
+ * actions. `needsYou` sorts the stack into the queue; other stacks are FYI
+ * and sort after it.
  */
 export type InboxBundle = {
   /**
-   * Names the row: the Conversation id for a Conversation stack, or the
-   * item id for a row that shows one item.
+   * Names the row: the Conversation id for a Conversation stack, the owner
+   * for another owner's stack, or the item id for a row that shows one item.
    */
   key: string;
-  /** The root Conversation whose stack shows the items (`rootConversationId`). */
-  conversationId: string;
+  /**
+   * The root Conversation whose stack shows the items
+   * (`rootConversationId`). Undefined for another owner's stack.
+   */
+  conversationId?: string;
   /** Items in inbox order: questions first, then the oldest. */
   items: ReviewItemPayload[];
   /** The item added last, which the collapsed bundle shows. */
@@ -257,12 +303,12 @@ export function itemUpForGrabs(item: ReviewItemPayload): boolean {
 export function inboxBundles(
   items: readonly ReviewItemPayload[],
 ): InboxBundle[] {
-  const byConversation = new Map<string, ReviewItemPayload[]>();
+  const byStack = new Map<string, ReviewItemPayload[]>();
   for (const item of items) {
-    const key = item.rootConversationId;
-    byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
+    const key = itemStackKey(item);
+    byStack.set(key, [...(byStack.get(key) ?? []), item]);
   }
-  const bundles = [...byConversation].map(([conversationId, group]) => {
+  const bundles = [...byStack].map(([key, group]) => {
     const sorted = [...group].sort(inboxOrder);
     const waiting = sorted.filter(itemNeedsViewer);
     const newest = sorted.reduce((latest, item) =>
@@ -274,9 +320,9 @@ export function inboxBundles(
       ),
     );
     return {
-      conversationId,
+      conversationId: sorted[0]!.rootConversationId,
       items: sorted,
-      key: conversationId,
+      key,
       newest,
       needsYou: waiting.length > 0,
       waitingSince: new Date(since).toISOString(),
@@ -286,7 +332,7 @@ export function inboxBundles(
     (a, b) =>
       Number(b.needsYou) - Number(a.needsYou) ||
       Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
-      a.conversationId.localeCompare(b.conversationId),
+      a.key.localeCompare(b.key),
   );
 }
 

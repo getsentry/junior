@@ -9,7 +9,7 @@ import { ConversationTranscriptView } from "../conversations/ConversationTranscr
 import { TranscriptLoading } from "../conversations/TranscriptLoading";
 import { useConversationData } from "../conversations/queries";
 import type { ConversationTranscript } from "../types";
-import { excerptMessage } from "./reviewItemFormat";
+import { excerptMessage, itemConversationId } from "./reviewItemFormat";
 
 /** Messages before the item that the excerpt shows. */
 const BEFORE_COUNT = 3;
@@ -67,7 +67,7 @@ export function ReviewItemContext(props: {
   fallback: ReactNode;
   item: ReviewItemPayload;
 }) {
-  const detail = useConversationData(props.item.addedByConversationId);
+  const detail = useConversationData(itemConversationId(props.item));
   const data = detail.data;
   const events = data?.events;
   const excerpt = useMemo(

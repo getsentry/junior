@@ -17,10 +17,20 @@ import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
 
 /**
+ * What a Review item belongs to: the Conversation of the agent or plugin
+ * that added it, or the Automation of an Automation alert. A new kind adds
+ * a value here and to the owner check.
+ */
+export type ReviewItemOwnerKind = "conversation" | "automation";
+
+/**
  * One Review item: something that needs a person. An action item stores its
  * `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
  * and `dismissed`. `closed_by_user_id` is null when an agent closed it.
+ * `owner_kind` and `owner_id` name its owner. The owner kind decides how the
+ * item gets its visibility and tenant, and where the Inbox stacks it. The id
+ * has no foreign key, because it can name a row of more than one table.
  */
 export const juniorReviewItems = pgTable(
   "junior_review_items",
@@ -44,12 +54,12 @@ export const juniorReviewItems = pgTable(
     subjectId: text("subject_id"),
     subjectTitle: text("subject_title"),
     subjectUrl: text("subject_url"),
-    /** Conversation of the agent that added the item. */
-    addedByConversationId: text("added_by_conversation_id")
+    // The default filled the rows from before owners had kinds.
+    ownerKind: text("owner_kind")
+      .$type<ReviewItemOwnerKind>()
       .notNull()
-      .references(() => juniorConversations.conversationId, {
-        onDelete: "cascade",
-      }),
+      .default("conversation"),
+    ownerId: text("owner_id").notNull(),
     /**
      * Turn of the agent that added the item, or that last added it again with
      * its dedupe key. Null for a plugin item, which has no Turn.
@@ -74,10 +84,17 @@ export const juniorReviewItems = pgTable(
   },
   (table) => [
     // An agent's action asks a question. A plugin's action asks for a step
-    // outside Junior, such as a merge, and the plugin closes it.
+    // outside Junior, such as a merge, and the plugin closes it. An
+    // Automation alert asks its creator to fix the Automation, and core
+    // closes it when the Automation recovers.
     check(
       "junior_review_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.dedupeKey} like 'plugin:%' and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%') and ${table.answer} is null)))`,
+    ),
+    // Only core adds Automation alerts, with the reserved key prefix.
+    check(
+      "junior_review_items_owner_check",
+      sql`(${table.ownerKind} = 'conversation' and ${table.dedupeKey} not like 'automation:%') or (${table.ownerKind} = 'automation' and ${table.dedupeKey} like 'automation:%')`,
     ),
     check(
       "junior_review_items_status_check",
@@ -107,9 +124,9 @@ export const juniorReviewItems = pgTable(
     ),
     index("junior_review_items_subject_idx").on(table.subjectId, table.status),
     // The Conversation status reads the open action items that each
-    // Conversation added.
-    index("junior_review_items_open_action_added_by_idx")
-      .on(table.addedByConversationId)
+    // Conversation owns.
+    index("junior_review_items_open_action_owner_idx")
+      .on(table.ownerId)
       .where(sql`${table.status} = 'open' and ${table.kind} = 'action'`),
     index("junior_review_items_automation_idx").on(
       table.automationId,
@@ -117,7 +134,7 @@ export const juniorReviewItems = pgTable(
     ),
     // A feed row reads the viewer's newest answer in its Conversation.
     index("junior_review_items_answered_idx")
-      .on(table.addedByConversationId, table.closedByUserId, table.closedAt)
+      .on(table.ownerId, table.closedByUserId, table.closedAt)
       .where(sql`${table.answer} is not null`),
   ],
 );

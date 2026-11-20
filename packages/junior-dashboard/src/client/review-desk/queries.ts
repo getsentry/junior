@@ -38,7 +38,7 @@ import {
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import { automationKeys } from "../api";
-import { itemNeedsViewer } from "./reviewItemFormat";
+import { itemConversationId, itemNeedsViewer } from "./reviewItemFormat";
 
 type ReviewItemCount = z.output<typeof reviewItemCountSchema>;
 type ReviewItemList = z.output<typeof reviewItemListSchema>;
@@ -124,7 +124,7 @@ export function invalidateReviewItemListsOfConversation(
       .filter(([, list]) =>
         list?.pages?.some((page) =>
           page.items.some(
-            (item) => item.addedByConversationId === conversationId,
+            (item) => itemConversationId(item) === conversationId,
           ),
         ),
       )
@@ -503,7 +503,7 @@ async function showAnswerOnFeedRows(
     feed
       ? mapConversationFeedCache(feed, (conversations) =>
           conversations.map((conversation) =>
-            conversation.conversationId === item.addedByConversationId
+            conversation.conversationId === itemConversationId(item)
               ? { ...conversation, viewerAnswer }
               : conversation,
           ),

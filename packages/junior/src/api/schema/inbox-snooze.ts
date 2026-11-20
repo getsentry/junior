@@ -1,20 +1,33 @@
 import * as z from "zod";
 
-/** The Inbox row of a snooze: one Conversation, or one item in it. */
-export const inboxSnoozeSubjectSchema = z
+const conversationRowSchema = z
   .object({
     conversationId: z.string().min(1),
     reviewItemId: z.string().min(1).optional(),
   })
   .strict();
+// An item whose owner is not a Conversation, such as an Automation alert,
+// has a row of its own.
+const itemRowSchema = z.object({ reviewItemId: z.string().min(1) }).strict();
+const wakeAt = { wakeAt: z.string().datetime() };
+
+/**
+ * The Inbox row of a snooze: one Conversation, one item in it, or one item
+ * on its own.
+ */
+export const inboxSnoozeSubjectSchema = z.union([
+  conversationRowSchema,
+  itemRowSchema,
+]);
 
 /**
  * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
  * until `wakeAt`. A later item in the row shows by itself.
  */
-export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
-  .extend({ wakeAt: z.string().datetime() })
-  .strict();
+export const inboxSnoozeCreateSchema = z.union([
+  conversationRowSchema.extend(wakeAt).strict(),
+  itemRowSchema.extend(wakeAt).strict(),
+]);
 
 /** The items that a snooze hid from the viewer, one snooze each. */
 export const inboxSnoozeSchema = z

@@ -15,7 +15,7 @@ import { AskKindIcon } from "./askKind";
 import { foldedNoticeLabel } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
-import { reviewItemText } from "./reviewItemFormat";
+import { itemConversationId, reviewItemText } from "./reviewItemFormat";
 
 /**
  * A notice about the item's subject, as one quiet line in the item's card.
@@ -43,7 +43,7 @@ export function FoldedNotice(props: {
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="grid min-w-0 gap-2 pt-2 pl-5">
-        <ReviewItemObjects conversationId={notice.addedByConversationId}>
+        <ReviewItemObjects conversationId={itemConversationId(notice)}>
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
             label={notice.title}

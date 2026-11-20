@@ -1,8 +1,7 @@
 import type { Page } from "@playwright/test";
 
-import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
-import { attentionCount, automationReport } from "./automation-fixture";
 import {
+  automationAlert,
   conversationId,
   expandRow,
   grab,
@@ -220,70 +219,27 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
-  test("the tab count waits for the alerts that this browser put away", async ({
+  test("the tab count counts an Automation alert, and its snooze leaves the count", async ({
     dashboard,
     page,
   }) => {
-    const report = structuredClone(automationReport);
-    const blocked = report.automations[1]!;
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T10:00:00.000Z",
-      lastRunStatus: "blocked",
-      status: "blocked",
-      statusReason: "GitHub access expired.",
-    });
-    const total = 1 + attentionCount(report);
-    await mockReviewItems(page, {
-      automations: () => attentionCount(report),
-      open: [rollout],
-    });
-    // The attention list can be held, as a slow list is on a real server.
-    let held: Promise<void> | undefined;
-    let release = () => {};
-    await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
-      await held;
-      await route.fulfill({
-        json: mockAutomationCollection(
-          report,
-          new URL(route.request().url()).searchParams,
-        ),
-      });
-    });
+    const alert = automationAlert("event-1", "Closed issue summary");
+    await mockReviewItems(page, { open: [rollout, alert] });
     await page.goto(`${dashboard.baseURL}/`);
-    await expect(page).toHaveTitle(`(${total}) Inbox - Junior`);
+    await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
-    await todo.getByRole("button", { name: new RegExp(blocked.title) }).click();
-    await page
-      .getByRole("region", { name: `${blocked.title}: attention` })
-      .getByRole("button", { name: "Dismiss", exact: true })
-      .click();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
+    await rowHead(todo, alert.title).hover();
+    await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
 
-    // Reload while the list that says which alert was put away is held.
-    held = new Promise((resolve) => {
-      release = resolve;
-    });
+    // The server keeps the snooze, so a reload never counts the alert.
     await recordTitles(page);
-    const counted = page.waitForResponse((response) =>
-      response.url().includes("/api/review-items/count"),
-    );
     await page.reload();
-    await counted;
     await expect(rowHead(page, checkout)).toBeVisible();
-    // Let the count render before the list arrives.
-    await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-    );
-    release();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
-    // The count never showed the put-away alert, so it never dropped.
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
     expect(
-      (await recordedTitles(page)).filter((title) =>
-        title.startsWith(`(${total}) `),
-      ),
+      (await recordedTitles(page)).filter((title) => title.startsWith("(2) ")),
     ).toEqual([]);
   });
   test("To do counts its rows, also each row of a stack, before and after an answer", async ({
@@ -340,7 +296,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A second ask on #42 shares its change, and #42 is a draft.
     const squash = {
       ...license,
-      addedByConversationId: conversationId,
+      owner: { id: conversationId, kind: "conversation" },
       rootConversationId: conversationId,
       id: "item-pr-squash",
       subject: prMerge.subject,

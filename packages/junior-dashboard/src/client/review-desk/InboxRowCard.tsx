@@ -6,11 +6,11 @@ import type {
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-import { conversationPath } from "../conversations/conversationRoutes";
 import { ClampedDisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { FoldedNotice } from "./FoldedNotice";
+import { AutomationAlertDetails } from "./InboxAutomationRow";
 import { Pill } from "./inboxAsks";
 import { inboxItemKind, textRepeatsHead } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
@@ -24,7 +24,9 @@ import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { ReviewItemTitle } from "./ReviewItemPeople";
 import {
+  itemConversationId,
   itemNeedsViewer,
+  itemOwnerPath,
   reviewItemText,
   reviewItemTitleText,
 } from "./reviewItemFormat";
@@ -35,7 +37,6 @@ import {
  */
 export function InboxRowCard(props: {
   actions?: InboxCardActions;
-  conversationId: string;
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
@@ -118,7 +119,7 @@ export function InboxRowCard(props: {
           {item.addedByLabel ? (
             <Link
               className="flex min-w-0 items-center gap-1 justify-self-start rounded-sm text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-              to={conversationPath(item.addedByConversationId)}
+              to={itemOwnerPath(item)}
             >
               <CornerDownRight
                 aria-hidden="true"
@@ -136,7 +137,7 @@ export function InboxRowCard(props: {
       )}
       {/* What Junior said comes first, then its question and the form. */}
       {item.request ? <ReviewItemTurnMessage item={item} /> : null}
-      <ReviewItemObjects conversationId={item.addedByConversationId}>
+      <ReviewItemObjects conversationId={itemConversationId(item)}>
         {showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
@@ -149,7 +150,7 @@ export function InboxRowCard(props: {
         {item.subject ? (
           <ReviewItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
-            conversationId={item.addedByConversationId}
+            conversationId={itemConversationId(item)}
             subject={item.subject}
             // An item row's head, or the card above it, names the subject.
             titled={!props.headTitled || !item.subject.title}
@@ -157,6 +158,9 @@ export function InboxRowCard(props: {
           />
         ) : null}
       </ReviewItemObjects>
+      {item.owner.kind === "automation" ? (
+        <AutomationAlertDetails automationId={item.owner.id} />
+      ) : null}
       {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
       {props.notices.map((notice) => (
         <FoldedNotice

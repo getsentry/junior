@@ -24,6 +24,7 @@ import {
   reviewItemSnoozedBy,
 } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
+import type { ReviewItemOwnerKind } from "@/db/schema/review-items";
 import {
   hasUserPhoto,
   userAvatarUrlsFromIdentities,
@@ -43,6 +44,7 @@ import {
   reviewItemForUser,
   reviewItemLinkedTo,
   reviewItemNeedsUser,
+  reviewItemOwnedByConversation,
   reviewItemPlugin,
   reviewItemVisibleTo,
   type ReviewItemReader,
@@ -76,9 +78,42 @@ export interface ReviewItemAssignee {
   userId: string;
 }
 
+/**
+ * What a Review item belongs to, like a parent: the Conversation of the
+ * agent or plugin that added it, or the Automation of an Automation alert.
+ */
+export interface ReviewItemOwner {
+  id: string;
+  kind: ReviewItemOwnerKind;
+}
+
+/** Return the Conversation that owns an item, or undefined for another owner. */
+export function ownerConversationId(
+  item: Pick<ReviewItem, "owner">,
+): string | undefined {
+  return item.owner.kind === "conversation" ? item.owner.id : undefined;
+}
+
+/** The owner Conversations, whose detail versions an item change moves. */
+function ownerConversationIds(
+  owners: readonly { ownerId: string; ownerKind: ReviewItemOwnerKind }[],
+): string[] {
+  return [
+    ...new Set(
+      owners.flatMap((owner) =>
+        owner.ownerKind === "conversation" ? [owner.ownerId] : [],
+      ),
+    ),
+  ];
+}
+
+const ownerColumns = {
+  ownerId: juniorReviewItems.ownerId,
+  ownerKind: juniorReviewItems.ownerKind,
+};
+
 /** A Review item with its assignees and linked Conversations. */
 export interface ReviewItem {
-  addedByConversationId: string;
   /** Turn that added the item. Unset for a plugin item. */
   addedByTurnId?: string;
   answer?: UserInputAnswer;
@@ -92,12 +127,14 @@ export interface ReviewItem {
   createdAt: Date;
   dedupeKey: string;
   /**
-   * The stored root of the Conversation that added the item. Only a search
-   * sets it; unset means unknown.
+   * The stored root of the Conversation that owns the item. Only a search
+   * sets it; unset means unknown, and null means none, such as for an
+   * Automation owner.
    */
-  addedByRootConversationId?: string | null;
+  ownerRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
+  owner: ReviewItemOwner;
   request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
@@ -196,7 +233,6 @@ async function hydrate(
       ? users.get(row.closedByUserId)
       : undefined;
     return {
-      addedByConversationId: row.addedByConversationId,
       assignedToEveryone: row.assignedToEveryone,
       assignees: assigneeRows
         .filter((assignee) => assignee.itemId === row.id)
@@ -211,6 +247,7 @@ async function hydrate(
       dedupeKey: row.dedupeKey,
       id: row.id,
       kind: row.kind,
+      owner: { id: row.ownerId, kind: row.ownerKind },
       status: row.status,
       title: row.title,
       updatedAt: row.updatedAt,
@@ -311,7 +348,7 @@ export async function listReplyActionItems(
     .from(juniorReviewItems)
     .where(
       and(
-        eq(juniorReviewItems.addedByConversationId, conversationId),
+        reviewItemOwnedByConversation(conversationId),
         eq(juniorReviewItems.kind, "action"),
         notLike(
           juniorReviewItems.dedupeKey,
@@ -360,11 +397,11 @@ export async function getOpenReviewItemByDedupeKey(
 export async function insertReviewItem(
   db: JuniorDatabase,
   input: ReviewItemContent & {
-    addedByConversationId: string;
     addedByTurnId?: string;
     automationId?: string;
     dedupeKey: string;
     nowMs: number;
+    owner: ReviewItemOwner;
     tenant?: ProviderTenant;
   },
 ): Promise<ReviewItem | undefined> {
@@ -374,7 +411,8 @@ export async function insertReviewItem(
       .insert(juniorReviewItems)
       .values({
         ...contentColumns(input),
-        addedByConversationId: input.addedByConversationId,
+        ownerId: input.owner.id,
+        ownerKind: input.owner.kind,
         addedByTurnId: input.addedByTurnId ?? null,
         automationId: input.automationId ?? null,
         createdAt: now,
@@ -391,7 +429,12 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
-    await touchConversationDetail(tx, [input.addedByConversationId]);
+    await touchConversationDetail(
+      tx,
+      ownerConversationIds([
+        { ownerId: input.owner.id, ownerKind: input.owner.kind },
+      ]),
+    );
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -429,13 +472,10 @@ export async function updateReviewItemContent(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({
-        addedByConversationId: juniorReviewItems.addedByConversationId,
-        id: juniorReviewItems.id,
-      });
+      .returning({ ...ownerColumns, id: juniorReviewItems.id });
     if (!updated[0]) return false;
     await replaceLinks(tx, updated[0].id, input);
-    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
+    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }
@@ -473,13 +513,8 @@ export async function closeReviewItem(
         eq(juniorReviewItems.status, "open"),
       ),
     )
-    .returning({
-      addedByConversationId: juniorReviewItems.addedByConversationId,
-    });
-  await touchConversationDetail(
-    db,
-    updated.map((row) => row.addedByConversationId),
-  );
+    .returning(ownerColumns);
+  await touchConversationDetail(db, ownerConversationIds(updated));
   return updated.length > 0;
 }
 
@@ -494,7 +529,7 @@ export async function closeReviewItem(
 export async function dismissOpenReviewItems(
   db: JuniorDatabase,
   input: { nowMs: number; reason: string } & (
-    | { addedByConversationIds: readonly string[] }
+    | { ownerConversationIds: readonly string[] }
     | { automationId: string }
     | { ids: readonly string[] }
   ),
@@ -517,19 +552,16 @@ export async function dismissOpenReviewItems(
           : "automationId" in input
             ? eq(juniorReviewItems.automationId, input.automationId)
             : and(
-                inArray(juniorReviewItems.addedByConversationId, [
-                  ...input.addedByConversationIds,
+                eq(juniorReviewItems.ownerKind, "conversation"),
+                inArray(juniorReviewItems.ownerId, [
+                  ...input.ownerConversationIds,
                 ]),
                 isNull(juniorReviewItems.automationId),
               ),
       ),
     )
-    .returning({
-      addedByConversationId: juniorReviewItems.addedByConversationId,
-    });
-  await touchConversationDetail(db, [
-    ...new Set(dismissed.map((row) => row.addedByConversationId)),
-  ]);
+    .returning(ownerColumns);
+  await touchConversationDetail(db, ownerConversationIds(dismissed));
 }
 
 /**
@@ -550,9 +582,7 @@ export async function takeReviewItem(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({
-        addedByConversationId: juniorReviewItems.addedByConversationId,
-      });
+      .returning(ownerColumns);
     if (!updated[0]) return false;
     await tx
       .delete(juniorReviewItemAssignees)
@@ -560,7 +590,7 @@ export async function takeReviewItem(
     await tx
       .insert(juniorReviewItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
-    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
+    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }
@@ -788,15 +818,12 @@ export async function searchReviewItems(
   const rows = await db
     .select({
       item: juniorReviewItems,
-      addedByRootConversationId: juniorConversations.rootConversationId,
+      ownerRootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorReviewItems)
     .leftJoin(
       juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorReviewItems.addedByConversationId,
-      ),
+      reviewItemOwnedByConversation(juniorConversations.conversationId),
     )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
@@ -820,7 +847,7 @@ export async function searchReviewItems(
   );
   return items.map((item, index) => ({
     ...item,
-    addedByRootConversationId: rows[index]!.addedByRootConversationId,
+    ownerRootConversationId: rows[index]!.ownerRootConversationId,
   }));
 }
 

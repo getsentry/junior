@@ -18,7 +18,12 @@ import {
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
-import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
+import {
+  inboxGroups,
+  itemConversationId,
+  nextInboxItem,
+  reviewItemPath,
+} from "./reviewItemFormat";
 
 const shellClass =
   "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
@@ -124,15 +129,16 @@ export function ReviewDeskPage() {
     const shown = selected ? [...rows, selected] : rows;
     return [
       ...new Set(
-        shown
-          .filter((item) => !item.automationId)
-          .map((item) => item.addedByConversationId),
+        shown.flatMap((item) => {
+          const conversationId = itemConversationId(item);
+          return conversationId && !item.automationId ? [conversationId] : [];
+        }),
       ),
     ];
   }, [collapsed, groups, results, selected]);
   const sourceTitles = useLinkedConversationTitles(sourceIds);
   const sourceTitle = (item: ReviewItemPayload) =>
-    sourceTitles[sourceIds.indexOf(item.addedByConversationId)];
+    sourceTitles[sourceIds.indexOf(itemConversationId(item) ?? "")];
 
   const panelFits = useDetailsPanel();
   const [detailsChoice, setDetailsChoice] = useState<boolean>();

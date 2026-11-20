@@ -48,11 +48,11 @@ export async function addItem(
   assignees: User[],
   title: string,
   visibility: "private" | "public" = "public",
-  addedByConversationId = conversationId,
+  ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId,
+    owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
@@ -84,7 +84,7 @@ export async function addNotice(
   title: string,
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,

@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useToastManager } from "../components/ui/toast";
 import { deleteDashboardResource, post } from "../http";
 import { invalidateReviewItemCollections } from "./queries";
-import type { InboxBundle } from "./reviewItemFormat";
+import { itemConversationId, type InboxBundle } from "./reviewItemFormat";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
 
@@ -24,6 +24,25 @@ interface SnoozedRead {
   itemsUpdatedAtMs: number;
   /** When the Inbox list last read the server, as `Date.now()`. */
   listUpdatedAtMs: number;
+}
+
+/** The snooze subject of one item: its item in its root's row, or itself. */
+function itemSubject(item: ReviewItemPayload): InboxSnoozeSubjectBody {
+  return item.rootConversationId
+    ? { conversationId: item.rootConversationId, reviewItemId: item.id }
+    : { reviewItemId: item.id };
+}
+
+/**
+ * The snooze subject of a row: a root Conversation's stack, one item of it,
+ * or the item of an owner that is not a Conversation. Such an owner, an
+ * Automation, has one open alert at a time, so its stack is that item.
+ */
+function rowSubject(bundle: InboxBundle): InboxSnoozeSubjectBody {
+  if (!bundle.conversationId) return { reviewItemId: bundle.newest.id };
+  return bundle.key === bundle.conversationId
+    ? { conversationId: bundle.conversationId }
+    : { conversationId: bundle.conversationId, reviewItemId: bundle.key };
 }
 
 /**
@@ -122,40 +141,19 @@ export function useInboxSnoozes(read: SnoozedRead) {
    * such as an FYI notice, only that item.
    */
   const snooze = (bundle: InboxBundle, untilMs: number) =>
-    save(
-      bundle.key,
-      {
-        conversationId: bundle.conversationId,
-        ...(bundle.key === bundle.conversationId
-          ? undefined
-          : { reviewItemId: bundle.key }),
-      },
-      untilMs,
-    );
+    save(bundle.key, rowSubject(bundle), untilMs);
   /** Snooze one item until `untilMs`. The rest of its stack stays. */
   const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
-    save(
-      item.id,
-      { conversationId: item.rootConversationId, reviewItemId: item.id },
-      untilMs,
-    );
+    save(item.id, itemSubject(item), untilMs);
   /** Wake a snoozed row now: undo the viewer's snoozes on its items. */
   const wake = (bundle: InboxBundle) =>
     unsnooze(
       bundle.items.map((item) => item.id),
-      {
-        conversationId: bundle.conversationId,
-        ...(bundle.key === bundle.conversationId
-          ? undefined
-          : { reviewItemId: bundle.key }),
-      },
+      rowSubject(bundle),
     );
   /** Wake one item now. The other items of its stack stay snoozed. */
   const wakeItem = (item: ReviewItemPayload) =>
-    unsnooze([item.id], {
-      conversationId: item.rootConversationId,
-      reviewItemId: item.id,
-    });
+    unsnooze([item.id], itemSubject(item));
   return {
     /**
      * The item's row was just snoozed, and the lists have not refreshed
@@ -164,10 +162,12 @@ export function useInboxSnoozes(read: SnoozedRead) {
      * those leave when the lists refresh.
      */
     hides: (item: ReviewItemPayload) =>
-      hiddenNow(item.id) ||
-      hiddenNow(item.rootConversationId) ||
-      hiddenNow(item.addedByConversationId) ||
-      item.conversationIds.some(hiddenNow),
+      [
+        item.id,
+        item.rootConversationId,
+        itemConversationId(item),
+        ...item.conversationIds,
+      ].some((key) => key !== undefined && hiddenNow(key)),
     /**
      * A snooze hides this item from the viewer. Undefined while that is
      * unknown: until Snoozed reads every page after the viewer's last

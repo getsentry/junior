@@ -9,6 +9,7 @@ import {
 } from "@/chat/review-items/changes";
 import {
   canAgentChangeReviewItem,
+  AUTOMATION_REVIEW_ITEM_KEY_PREFIX,
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   canReadReviewItem,
   readReviewItemAgentScope,
@@ -34,6 +35,7 @@ import {
   getOpenReviewItemByDedupeKey,
   getReviewItem,
   insertReviewItem,
+  ownerConversationId,
   searchReviewItems,
   updateReviewItemContent,
   type ReviewItem,
@@ -194,6 +196,12 @@ function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "notice" && hasRequest) {
     throw new ToolInputError("A notice has no `request`. Use kind `action`.");
   }
+}
+
+/** The owner Conversation of an item, as a list of Conversations to check. */
+function ownerLinks(item: ReviewItem | undefined): string[] {
+  const conversationId = item ? ownerConversationId(item) : undefined;
+  return conversationId ? [conversationId] : [];
 }
 
 async function readableItem(
@@ -377,6 +385,11 @@ export function createAddReviewItemTool(
           `A \`dedupe_key\` that starts with \`${PLUGIN_REVIEW_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
         );
       }
+      if (input.dedupe_key?.startsWith(AUTOMATION_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          `A \`dedupe_key\` that starts with \`${AUTOMATION_REVIEW_ITEM_KEY_PREFIX}\` belongs to an Automation alert. Use a different key.`,
+        );
+      }
       const db = getDb();
       const scope = await readReviewItemAgentScope(context);
       // A retry of the same tool call keeps the same key, so it updates the
@@ -457,9 +470,7 @@ export function createAddReviewItemTool(
         automationId: existing
           ? existing.automationId
           : scope.reader.automationId,
-        conversationIds: existing
-          ? [context.conversationId, existing.addedByConversationId]
-          : [context.conversationId],
+        conversationIds: [context.conversationId, ...ownerLinks(existing)],
         scope,
         visibility,
       });
@@ -487,9 +498,9 @@ export function createAddReviewItemTool(
           nowMs: Date.now(),
           // The latest add in the Conversation that added the item has the
           // most context. A Turn of another Conversation would not match
-          // `addedByConversationId`, so it keeps the stored Turn.
+          // the owner, so it keeps the stored Turn.
           ...(context.turnId &&
-          existing.addedByConversationId === context.conversationId
+          ownerConversationId(existing) === context.conversationId
             ? { addedByTurnId: context.turnId }
             : undefined),
         });
@@ -508,8 +519,8 @@ export function createAddReviewItemTool(
       }
       const item = await insertReviewItem(db, {
         ...content,
-        addedByConversationId: context.conversationId,
         dedupeKey,
+        owner: { id: context.conversationId, kind: "conversation" },
         ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
         ...(scope.reader.automationId
@@ -609,6 +620,12 @@ export function createUpdateReviewItemTool(
           "A plugin added this item. Only the plugin or a person can change it.",
         );
       }
+      // An agent changes only the items that a Conversation owns.
+      if (!ownerConversationId(item)) {
+        throw new ToolInputError(
+          "No Conversation owns this item. It is an Automation alert, which closes when its Automation recovers. Only a person can dismiss it.",
+        );
+      }
       if (!canAgentChangeReviewItem(item, scope)) {
         throw new ToolInputError(
           "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
@@ -626,7 +643,7 @@ export function createUpdateReviewItemTool(
         // The Conversation that added the item always stays linked.
         const conversationIds = [
           ...new Set([
-            item.addedByConversationId,
+            ...ownerLinks(item),
             ...(input.conversation_ids ?? item.conversationIds),
           ]),
         ];
@@ -635,7 +652,7 @@ export function createUpdateReviewItemTool(
         await requireReviewItemLinks({
           allowedIds: new Set([
             context.conversationId,
-            item.addedByConversationId,
+            ...ownerLinks(item),
             ...item.conversationIds,
           ]),
           conversationIds,
@@ -658,10 +675,7 @@ export function createUpdateReviewItemTool(
           await requireReviewItemAssignees({
             assignees,
             automationId: item.automationId,
-            conversationIds: [
-              context.conversationId,
-              item.addedByConversationId,
-            ],
+            conversationIds: [context.conversationId, ...ownerLinks(item)],
             scope,
             visibility,
           });

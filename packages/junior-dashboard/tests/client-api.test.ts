@@ -280,9 +280,9 @@ describe("dashboard client API", () => {
       [...REVIEW_ITEMS_QUERY_KEY, "count"],
       [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
-    const listOf = (addedByConversationId: string) => ({
+    const listOf = (ownerId: string) => ({
       pageParams: [undefined],
-      pages: [{ items: [{ addedByConversationId }] }],
+      pages: [{ items: [{ owner: { id: ownerId, kind: "conversation" } }] }],
     });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);

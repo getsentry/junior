@@ -39,6 +39,7 @@ import {
 import {
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
+  ownerConversationId,
   searchReviewItems,
   type ReviewItem,
   type ReviewItemFilters,
@@ -168,9 +169,9 @@ function reviewItemPayload(
   mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
-  const root = roots.get(item.addedByConversationId);
+  const conversationId = ownerConversationId(item);
+  const root = conversationId ? roots.get(conversationId) : undefined;
   return {
-    addedByConversationId: item.addedByConversationId,
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
@@ -182,11 +183,14 @@ function reviewItemPayload(
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
-    rootConversationId: root?.rootConversationId ?? item.addedByConversationId,
+    owner: item.owner,
     status: item.status,
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
+    ...(conversationId
+      ? { rootConversationId: root?.rootConversationId ?? conversationId }
+      : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
     ...(item.automationId ? { automationId: item.automationId } : undefined),

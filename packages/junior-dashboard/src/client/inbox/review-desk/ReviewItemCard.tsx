@@ -13,6 +13,7 @@ import { ReviewItemActions } from "../../review-desk/ReviewItemActions";
 import { ReviewItemObjects } from "../../review-desk/ReviewItemObjects";
 import {
   inboxItemPath,
+  itemConversationId,
   reviewItemStatusLabel,
   reviewItemTitleText,
 } from "../../review-desk/reviewItemFormat";
@@ -63,7 +64,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
         </div>
       </header>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        <ReviewItemObjects conversationId={item.addedByConversationId}>
+        <ReviewItemObjects conversationId={itemConversationId(item)}>
           <DisplayText mentions={item.mentions} text={item.body} />
         </ReviewItemObjects>
         <div className="border-t border-dashboard-border pt-4">

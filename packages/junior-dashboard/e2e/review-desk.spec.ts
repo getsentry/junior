@@ -11,7 +11,7 @@ const viewer = {
 };
 
 const base = {
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
@@ -31,7 +31,7 @@ const conversationId = "slack:CQA123:1770003600.000200";
 // messages before it and a new one after it.
 const rollout = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
@@ -107,7 +107,7 @@ const answered = {
 // The agent added this item in the Conversation, so a message there closes it.
 const migration = {
   ...license,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],

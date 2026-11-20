@@ -32,6 +32,7 @@ import {
 import {
   reviewItemForUser,
   reviewItemNeedsInput,
+  reviewItemOwnedByConversation,
 } from "@/chat/review-items/access";
 import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
@@ -328,7 +329,7 @@ export function conversationFeedVersionQuery(
         count(*) filter (where ${feedTree.stoppedAt} is not null),
         coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
         bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
-          eq(juniorReviewItems.addedByConversationId, feedTree.conversationId),
+          reviewItemOwnedByConversation(feedTree.conversationId),
           reviewItemNeedsInput(),
           reviewItemForUser(userId),
         )}) or ${awaitsAuthorizationFrom(feedTree.conversationId, userId)}),

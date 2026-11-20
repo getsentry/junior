@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
+  automationAlert,
   digest,
   expandRow,
   license,
@@ -13,6 +14,7 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { automationReport } from "./automation-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -59,6 +61,78 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
+  test("an Automation alert snoozes on the server like any item", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = automationAlert("event-1", "Closed issue summary");
+    await mockReviewItems(page, { open: [alert, license] });
+    const automation = {
+      ...automationReport.automations.find(({ id }) => id === "event-1")!,
+      status: "blocked" as const,
+      statusReason: "GitHub access expired.",
+    };
+    await page.route("**/api/automations/event-1", (route) =>
+      route.fulfill({ json: automation }),
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expandRow(rowHead(todo, alert.title));
+    // The card says what to fix, and acts on its Automation.
+    await expect(openRowOf(page)).toContainText(alert.body);
+    await expect(
+      openRowOf(page).getByRole("button", { name: "Resume" }),
+    ).toBeVisible();
+    await expect(
+      openRowOf(page).getByRole("link", { name: "Open automation" }),
+    ).toHaveAttribute("href", "/automations/event-1");
+    await expect(
+      openRowOf(page).getByRole("link", { name: "Open editor" }),
+    ).toHaveAttribute("href", "/automations/event-1/edit");
+    await screenshot(page, "inbox-automation-alert", { lightTheme: true });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    // The alert has no Conversation, so the snooze names the item only.
+    expect((await created).postDataJSON()).toEqual({
+      reviewItemId: alert.id,
+      wakeAt: expect.any(String),
+    });
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    // The server keeps the snooze. The browser stores no copy.
+    await page.reload();
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        Object.keys(localStorage).filter((key) => key.includes("automation")),
+      ),
+    ).toEqual([]);
+
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
+      "1",
+    );
+    await nav.getByRole("link", { name: /^Snoozed/ }).click();
+    await expect(rowHead(page, alert.title)).toBeVisible();
+    await screenshot(page, "inbox-automation-alert-snoozed", {
+      lightTheme: true,
+    });
+    await expandRow(rowHead(page, alert.title));
+    const deleted = page.waitForRequest(
+      (request) =>
+        request.method() === "DELETE" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await page.getByRole("button", { name: "Wake" }).click();
+    expect((await deleted).postDataJSON()).toEqual({ reviewItemId: alert.id });
+    await expect(page.getByText("Nothing snoozed")).toBeVisible();
+  });
+
   test("a lone card snoozes only its item, not its Conversation", async ({
     dashboard,
     page,
@@ -66,8 +140,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // An FYI notice in the ask's Conversation, on a row of its own.
     const notice = {
       ...releaseNotes,
-      addedByConversationId: rollout.addedByConversationId,
-      conversationIds: [rollout.addedByConversationId],
+      owner: { id: rollout.owner.id, kind: "conversation" },
+      conversationIds: [rollout.owner.id],
       rootConversationId: rollout.rootConversationId,
     };
     await mockReviewItems(page, { open: [rollout, notice] });
@@ -136,7 +210,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -160,11 +234,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Another Conversation added this ask, and it links the release one.
     const linked = {
       ...license,
-      addedByConversationId: "slack:CLINK:1770030000.000100",
-      conversationIds: [
-        "slack:CLINK:1770030000.000100",
-        pinReview.addedByConversationId,
-      ],
+      owner: { id: "slack:CLINK:1770030000.000100", kind: "conversation" },
+      conversationIds: ["slack:CLINK:1770030000.000100", pinReview.owner.id],
       id: "item-linked-release",
       title: "Approve the release window",
     };
@@ -211,7 +282,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [pinReview, pinChecks],
       snoozes: [
         {
-          conversationId: pinReview.addedByConversationId,
+          conversationId: pinReview.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -230,7 +301,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -280,7 +351,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
@@ -304,7 +375,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Wake" }).click();
     // Wake is per item, even when the snooze came from the whole row.
     expect((await woken).postDataJSON()).toEqual({
-      conversationId: rollout.addedByConversationId,
+      conversationId: rollout.owner.id,
       reviewItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
@@ -321,7 +392,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
-        conversationId: item.addedByConversationId,
+        conversationId: item.owner.id,
         untilMs: NOW_MS + 86_400_000,
       })),
     });
@@ -343,7 +414,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
-        conversationId: item.addedByConversationId,
+        conversationId: item.owner.id,
         untilMs: NOW_MS + 86_400_000,
       })),
     });
@@ -380,7 +451,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [license, rollout],
       snoozes: [
         {
-          conversationId: rollout.addedByConversationId,
+          conversationId: rollout.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],

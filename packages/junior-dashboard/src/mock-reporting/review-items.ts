@@ -2,7 +2,8 @@
  * Process-local Review items for mock reporting. Three Conversations ask the
  * viewer questions, so the questions above the message box, their transcript
  * rows, and the review desk can be checked without a database. GitHub
- * plugin asks and FYI notices fill the rest of the inbox.
+ * plugin asks, FYI notices, and the alerts of the viewer's Automations that
+ * need attention fill the rest of the inbox.
  */
 import {
   answeredChoices,
@@ -12,6 +13,7 @@ import {
   type ReviewItemActionBody,
   type ReviewItemPayload,
   type InboxSnoozeCreateBody,
+  type InboxSnoozeSubjectBody,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -68,9 +70,12 @@ type MockItemSeed = Pick<
       "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
     >
   > & {
+    /** The Automation that owns an alert. An alert has no Conversation. */
+    automationId?: string;
     /** The Thread title, for an item that a child agent added. */
     childLabel?: string;
-    conversationId: string;
+    /** The Conversation that owns the item, unless an Automation does. */
+    conversationId?: string;
     createdAt: string;
     /** Linked Conversations other than the one that added the item. */
     linkedConversationIds?: string[];
@@ -543,6 +548,24 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Sandbox snapshots rebuilt",
     },
+    // The alerts of the viewer's Automations that need attention
+    // (`fixtures.ts`), as core adds them.
+    {
+      automationId: "event-1",
+      body: "Blocked: GitHub access expired. Reconnect GitHub to resume. Fix the problem, then resume it.",
+      createdAt: at(3 * 60),
+      id: "qa-alert-closed-issue-summary",
+      status: "open",
+      title: "Closed issue summary",
+    },
+    {
+      automationId: "scheduled-2",
+      body: "Last run failed.",
+      createdAt: at(DAY),
+      id: "qa-alert-operations-digest",
+      status: "open",
+      title: "Daily operations digest",
+    },
   ];
 }
 
@@ -578,7 +601,7 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
   const reviewItemIds = seeds(nowMs)
     .filter(
       (seed) =>
-        rootOf(seed) === body.conversationId &&
+        (!("conversationId" in body) || rootOf(seed) === body.conversationId) &&
         isOpen(seed) &&
         (!body.reviewItemId || seed.id === body.reviewItemId),
     )
@@ -590,19 +613,23 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
 /** Wake a mock row, or one item of it, like `DELETE /api/inbox/snoozes`. */
 export function wakeMockRow(
   nowMs: number,
-  subject: { conversationId: string; reviewItemId?: string | undefined },
+  subject: InboxSnoozeSubjectBody,
 ): void {
   if (subject.reviewItemId) {
     snoozes.delete(subject.reviewItemId);
     return;
   }
   for (const seed of seeds(nowMs)) {
-    if (rootOf(seed) === subject.conversationId) snoozes.delete(seed.id);
+    if ("conversationId" in subject && rootOf(seed) === subject.conversationId)
+      snoozes.delete(seed.id);
   }
 }
 
-/** The root Conversation whose stack shows the seed: a child's parent. */
-function rootOf(seed: MockItemSeed): string {
+/**
+ * The root Conversation whose stack shows the seed: a child's parent. An
+ * alert has none.
+ */
+function rootOf(seed: MockItemSeed): string | undefined {
   return seed.childLabel ? SENTAUR_CONVERSATION_ID : seed.conversationId;
 }
 
@@ -623,7 +650,8 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
         other.id !== seed.id &&
         isOpen(other) &&
         ((seed.subject && other.subject?.id === seed.subject.id) ||
-          links.includes(other.conversationId)),
+          (other.conversationId !== undefined &&
+            links.includes(other.conversationId))),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(({ id, title }) => ({ id, title }));
@@ -637,27 +665,34 @@ function payload(
   all: readonly MockItemSeed[],
 ): ReviewItemPayload {
   const {
+    automationId,
     childLabel,
     conversationId,
     linkedConversationIds = [],
     plugin: _plugin,
     ...rest
   } = seed;
+  const root = rootOf(seed);
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   const relatedWork = related(seed, all);
   return {
     ...item,
-    addedByConversationId: conversationId,
     ...(childLabel ? { addedByLabel: childLabel } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [conversationId, ...linkedConversationIds],
+    conversationIds: [
+      ...(conversationId ? [conversationId] : []),
+      ...linkedConversationIds,
+    ],
     kind: seed.kind ?? "action",
-    rootConversationId: rootOf(seed),
+    owner: automationId
+      ? { id: automationId, kind: "automation" }
+      : { id: conversationId!, kind: "conversation" },
+    ...(root ? { rootConversationId: root } : undefined),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
@@ -748,15 +783,18 @@ export function withMockViewerAnswers(
   const answers = new Map<string, ConversationFeedViewerAnswer>();
   // Closed items come newest closed first, so the first one wins.
   for (const item of readMockReviewItems(nowMs, { closed: true })) {
+    const conversationId =
+      item.owner.kind === "conversation" ? item.owner.id : undefined;
     if (
+      !conversationId ||
       !item.answer ||
       !item.request ||
       !item.closedAt ||
       item.closedBy?.userId !== viewer.userId ||
-      answers.has(item.addedByConversationId)
+      answers.has(conversationId)
     )
       continue;
-    answers.set(item.addedByConversationId, {
+    answers.set(conversationId, {
       choices: answeredChoices(item.request, item.answer),
       closedAt: item.closedAt,
     });
@@ -805,10 +843,11 @@ export function readMockWaitingConversations(nowMs: number) {
   );
   const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
-  // Like the API, a child's items wait in its root.
+  // Like the API, a child's items wait in its root. An alert waits in no
+  // Conversation.
   for (const item of open) {
     const id = item.rootConversationId;
-    byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
+    if (id) byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({

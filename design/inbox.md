@@ -7,8 +7,8 @@ snoozes each row on its own. `./review-desk.md` owns who sees an item and who ca
 
 ## Intent
 
-- One stack for each root Conversation. People start and follow root
-  Conversations. They usually do not know which Threads and Tasks run under
+- One stack for each root Conversation, or for each other owner of an
+  item, such as an Automation. People start and follow root Conversations. They usually do not know which Threads and Tasks run under
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
@@ -46,6 +46,10 @@ snoozes each row on its own. `./review-desk.md` owns who sees an item and who ca
 
 Grouping:
 
+- Each item has one owner: the Conversation that added it, or an
+  Automation for its alerts. The owner sets who sees the item, its tenant,
+  and its stack. An Automation's alert takes its visibility from the
+  Automation's Destination, and stacks under the Automation alone.
 - A child Conversation, at any depth, rolls up to its root. Every item has
   the same root field, read from the root that each Conversation stores, so
   depth costs nothing. The row shows a quiet label that names the child,
@@ -110,10 +114,10 @@ Snooze:
   and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row
   wakes only that item.
+- The server keeps each snooze, so every browser of the viewer agrees. A
+  new alert of an Automation is a new item, so it is not snoozed.
 
 ## Gaps
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- A snooze lives in one browser. Another browser of the same viewer shows
-  the item. Server snoozes (getsentry/junior#3567, #3392) close this gap.

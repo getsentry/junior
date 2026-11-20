@@ -3,6 +3,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import {
+  automationAlert,
   answered,
   audit,
   digest,
@@ -197,7 +198,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A question for Everyone is still a question, so a sweep leaves it.
     const teamAsk = {
       ...audit,
-      addedByConversationId: "slack:C789:1770021600.000900",
+      owner: { id: "slack:C789:1770021600.000900", kind: "conversation" },
       rootConversationId: "slack:C789:1770021600.000900",
       assignedToEveryone: true,
       assignees: [],
@@ -322,17 +323,23 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
+    // The Automation's alert in the Inbox. A resume closes it on the server.
+    const open = [
+      license,
+      automationAlert("scheduled-1", "Weekly project summary"),
+    ];
     await mockReviewItems(page, {
       automations: () =>
         mockAutomationCollection(
           report,
           new URLSearchParams({ owner: "me", scope: "attention" }),
         ).total,
-      open: [license],
+      open,
     });
     const lifecycle: unknown[] = [];
     await page.route("**/api/automations/scheduled-1/lifecycle", (route) => {
       lifecycle.push(route.request().postDataJSON());
+      open.pop();
       Object.assign(
         report.automations.find(
           (automation) => automation.id === "scheduled-1",
@@ -369,7 +376,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect
       .poll(() => lifecycle)
       .toEqual([{ action: "resume", revision: editor.value.revision }]);
-    // A resumed Automation leaves the count, so the badge drops at once.
+    // A resume closes the alert, so the badge drops at once.
     await expect(badge).toHaveAccessibleName(`Inbox, ${waiting - 1} waiting`);
     await expect(details).toHaveCount(0);
   });
@@ -509,25 +516,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("a failed Automations read does not look like nothing waits", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockReviewItems(page, { automations: () => 0, open: [] });
-    await page.route(/\/api\/automations\?scope=attention/, (route) =>
-      route.fulfill({ json: { error: "Failed" }, status: 500 }),
-    );
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(
-      page.getByText("Could not load your Automations."),
-    ).toBeVisible();
-    // With nothing to do, To do hides, and closed items stay in Done. To do
-    // may still hold Automations, so the Inbox does not say it is empty.
-    await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
-    await expect(page.getByText("Nothing left here")).toHaveCount(0);
-    await expect(page.getByText(answered.title)).toHaveCount(0);
-  });
-
   test("a link into a collapsed To do opens it and its row", async ({
     dashboard,
     page,
@@ -546,42 +534,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is on screen.
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  });
-
-  test("To do lists every Automation that the count counts", async ({
-    dashboard,
-    page,
-  }) => {
-    const base = automationReport.automations.find(
-      (automation) => automation.id === "scheduled-1",
-    )!;
-    // More than one page of the Automation list.
-    const report = {
-      automations: Array.from({ length: 105 }, (_, index) => ({
-        ...structuredClone(base),
-        id: `blocked-${index}`,
-        lastRunStatus: "blocked" as const,
-        ownedByViewer: true,
-        status: "blocked" as const,
-        statusReason: "GitHub access expired.",
-        title: `Blocked digest ${index}`,
-      })),
-    };
-    await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
-      route.fulfill({
-        json: mockAutomationCollection(
-          report,
-          new URL(route.request().url()).searchParams,
-        ),
-      }),
-    );
-    await mockReviewItems(page, { automations: () => 105, open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(
-      page
-        .getByRole("region", { name: "To do" })
-        .locator('[data-inbox-row^="automation:"]'),
-    ).toHaveCount(105);
   });
 
   test("each card of an open row keeps its own Dismiss, and an item row's head names it", async ({
@@ -635,7 +587,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // does not load.
     await mockReviewItems(page, { open: [prReview] });
     await page.route(
-      `**/api/conversations/${encodeURIComponent(prReview.addedByConversationId)}**`,
+      `**/api/conversations/${encodeURIComponent(prReview.owner.id)}**`,
       (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
     );
     await page.goto(`${dashboard.baseURL}/?view=prs`);
@@ -653,7 +605,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const card = "Pull request: Pin the release train to payments 4.2";
     const item = {
       ...prReview,
-      addedByConversationId: "slack:CQA456:1770021600.000600",
+      owner: { id: "slack:CQA456:1770021600.000600", kind: "conversation" },
       rootConversationId: "slack:CQA456:1770021600.000600",
       body: [
         "GitHub asks you to review this pull request.",
@@ -698,7 +650,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The release Conversation saved the card for this pull request.
     const item = {
       ...prReview,
-      addedByConversationId: "slack:CQA456:1770021600.000600",
+      owner: { id: "slack:CQA456:1770021600.000600", kind: "conversation" },
       rootConversationId: "slack:CQA456:1770021600.000600",
       body: "GitHub asks you to review this pull request.\n\nhttps://github.com/getsentry/payments/pull/91",
       id: "item-pr-card",

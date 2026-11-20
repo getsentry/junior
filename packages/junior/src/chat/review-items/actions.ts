@@ -238,7 +238,7 @@ function messageAnswer(
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
- * - The agent added it in this Conversation (`addedByConversationId`).
+ * - The agent added it in this Conversation, its owner.
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
  * - The decision model says that the reply answers this item
