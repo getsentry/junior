@@ -22,6 +22,10 @@ export interface JuniorDashboardOptions {
   baseURL?: string;
   /** Disable dashboard route mounting while preserving serializable config shape. */
   disabled?: boolean;
+  /** Browser tab icon: an https URL or a path. Defaults to `iconUrl`. */
+  faviconUrl?: string;
+  /** Agent image: an https URL or a path. Defaults to the built-in avatar. */
+  iconUrl?: string;
   /** Replace Conversation route responses with dashboard visual-QA fixtures. */
   mockConversations?: boolean;
   /** Browser session lifetime in seconds. */

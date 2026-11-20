@@ -447,6 +447,51 @@ describe("dashboard shell routes", () => {
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
   });
 
+  it("redirects the built-in images to the host icon", async () => {
+    const app = createDashboardApp({
+      agentName: "Acme Agent",
+      allowedDomains: ["sentry.io"],
+      auth: auth({ user: { email: "person@sentry.io", emailVerified: true } }),
+      iconUrl: "https://cdn.example.com/acme.png",
+    });
+
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+    expect(html).toContain(
+      'window.__JUNIOR_DASHBOARD_ICONS__ = {"faviconUrl":"https://cdn.example.com/acme.png","iconUrl":"https://cdn.example.com/acme.png"};',
+    );
+    for (const path of [
+      "/_junior/dashboard/avatar.png",
+      "/_junior/dashboard/icon-512.png",
+      "/favicon.ico",
+    ]) {
+      const response = await app.fetch(new Request(`http://localhost${path}`));
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "https://cdn.example.com/acme.png",
+      );
+    }
+  });
+
+  it("rejects a host icon that is not https or would redirect to itself", () => {
+    for (const iconUrl of [
+      "javascript:alert(1)",
+      "http://cdn.example.com/a.png",
+      "/favicon.ico",
+      "https://dashboard.example.com/_junior/dashboard/icon-512.png",
+    ]) {
+      expect(() =>
+        createDashboardApp({
+          agentName: "Acme Agent",
+          allowedDomains: ["sentry.io"],
+          auth: auth(null),
+          iconUrl,
+        }),
+      ).toThrow("dashboard.iconUrl must be an https URL or a path");
+    }
+  });
+
   it("renders a browser-readable forbidden page for denied dashboard routes", async () => {
     const app = dashboard({
       user: {
