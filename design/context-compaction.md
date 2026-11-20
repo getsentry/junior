@@ -61,6 +61,9 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   first and compacts at a later slot. Stop wins only when the return
   likely comes before the current cache expires. On a tie, compaction
   wins, because a return after the horizon also writes less.
+- A slot that the timer floor covers warms, so the timer's Turn reads the
+  cache. With too few gaps, the warmup rule does not warm, so a return
+  writes P either way, and compaction wins.
 - After compaction on idle, Junior sends no warmups in that idle period.
   The compacted prefix is not in the cache, so its warmup would be a cache
   write. A return writes it once either way, so no return chance pays for

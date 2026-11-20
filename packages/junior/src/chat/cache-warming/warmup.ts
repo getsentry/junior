@@ -802,6 +802,9 @@ export async function runCacheWarmup(
         ),
         globalGapsMs,
         priorGapsMs,
+        ...(warm.timerDueIdleMs !== undefined
+          ? { timerDueIdleMs: warm.timerDueIdleMs }
+          : undefined),
         idleMs: Date.now() - idle.sinceMs,
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
@@ -866,12 +869,7 @@ export async function runCacheWarmup(
         return;
       }
 
-      const decision = decideWarmup({
-        ...returns,
-        ...(warm.timerDueIdleMs !== undefined
-          ? { timerDueIdleMs: warm.timerDueIdleMs }
-          : undefined),
-      });
+      const decision = decideWarmup(returns);
       attributes["app.cache_warming.return_probability"] =
         decision.returnProbability;
       attributes["app.cache_warming.returns_per_warmup"] =

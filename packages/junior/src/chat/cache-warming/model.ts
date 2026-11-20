@@ -414,9 +414,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (threshold >= 1) {
     return decision("no_savings");
   }
-  const timerFloor =
-    input.timerDueIdleMs !== undefined &&
-    input.cacheExpiryIdleMs < input.timerDueIdleMs + TIMER_START_DELAY_MS;
+  const timerFloor = timerFloorApplies(input);
   const reason =
     input.idleMs >= IDLE_HORIZON_MS
       ? "horizon"
@@ -426,6 +424,17 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
           ? "warm"
           : "unlikely_return";
   return decision(reason !== "warm" && timerFloor ? "timer" : reason);
+}
+
+// A timer is due before the cache that this warmup buys expires, plus the
+// time its Turn takes to start, so the timer's Turn reads the warm cache.
+function timerFloorApplies(
+  input: Pick<WarmupDecisionInput, "cacheExpiryIdleMs" | "timerDueIdleMs">,
+): boolean {
+  return (
+    input.timerDueIdleMs !== undefined &&
+    input.cacheExpiryIdleMs < input.timerDueIdleMs + TIMER_START_DELAY_MS
+  );
 }
 
 // Best expected returns per warmup over plans of 1, 2, ... warmups that end
@@ -459,10 +468,7 @@ function returnsPerWarmup(
 }
 
 /** Inputs for one compaction on idle choice. Prices use one unit. */
-export interface IdleCompactionChoiceInput extends Omit<
-  WarmupDecisionInput,
-  "timerDueIdleMs"
-> {
+export interface IdleCompactionChoiceInput extends WarmupDecisionInput {
   /** Estimated prefix after the ready summary replaces history. */
   compactedTokens: number;
   /** False when this slot cannot send a warmup, such as a late one. */
@@ -493,11 +499,17 @@ export interface IdleCompactionChoiceResult {
  * The cheapest option wins. On a tie, compact wins, because a return after
  * the horizon also writes less. So a likely quick return, such as a child
  * agent's result, warms first and compacts at a later slot.
+ *
+ * Two cases do not use the costs. A slot that the timer floor of
+ * `decideWarmup` covers warms, so the timer's Turn reads the cache that the
+ * floor keeps. With too few gaps to trust the curve, `decideWarmup` stops
+ * warming, so a later return writes P either way. Then compact wins, because
+ * it writes C in place of P.
  */
 export function chooseIdleCompaction(
   input: IdleCompactionChoiceInput,
 ): IdleCompactionChoiceResult {
-  const { histogram } = returnCurve(input);
+  const { histogram, conversationGaps, segmentGaps } = returnCurve(input);
   const S = (ms: number) => survival(histogram, Math.min(ms, IDLE_HORIZON_MS));
   const now = S(input.idleMs);
   const readFull = input.cacheReadPrice * input.prefixTokens;
@@ -533,7 +545,12 @@ export function chooseIdleCompaction(
   // With no return left, each option that can run costs nothing.
   const perIdle = (cost: number) => (now > 0 ? cost / now : cost);
   return {
-    choice: cheapest(costs),
+    choice:
+      input.canWarm && timerFloorApplies(input)
+        ? "warm"
+        : conversationGaps + segmentGaps < MIN_GAP_SAMPLES
+          ? "compact"
+          : cheapest(costs),
     costs: {
       compact: perIdle(costs.compact),
       stop: perIdle(costs.stop),

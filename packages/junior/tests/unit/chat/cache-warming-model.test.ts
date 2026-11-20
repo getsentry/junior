@@ -395,6 +395,18 @@ describe("chooseIdleCompaction", () => {
     expect(choice.costs.warm).toBe(Infinity);
   });
 
+  it("warms a slot that the timer floor covers", () => {
+    const choice = slot(gaps(100, 30 * MINUTE), {
+      timerDueIdleMs: 6 * MINUTE,
+    });
+
+    expect(choice.choice).toBe("warm");
+  });
+
+  it("compacts when too few gaps show the return chances", () => {
+    expect(slot(gaps(5, 6 * MINUTE)).choice).toBe("compact");
+  });
+
   it("compacts when no return is left in the horizon", () => {
     expect(slot(gaps(100, NO_REPLY_GAP_MS)).choice).toBe("compact");
   });
