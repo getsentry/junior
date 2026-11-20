@@ -16,7 +16,6 @@ import {
   type EventRegistrationInput,
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/chat/conversations/event-access";
-import { ingestEvent } from "@/chat/events/ingest";
 import { findMatchingWatches } from "@/chat/events/store";
 import { logException } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -157,6 +156,9 @@ export async function publishConversationStatus(
       state: options.state,
     });
     if (watches.length === 0 || (await options.skip?.())) return;
+    // Loaded on use: ingest reaches the runtime Event catalog, which imports
+    // this module, and its graph is too large for every Review item writer.
+    const { ingestEvent } = await import("@/chat/events/ingest");
     await ingestEvent(event, {
       admit: async (watch) =>
         await canReadConversation(watch.conversationId, conversationId),
