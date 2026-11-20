@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
+  canActOnReviewItem,
   canUserReadReviewItem,
   reviewItemForUser,
   reviewItemReaderForUser,
@@ -17,8 +19,11 @@ import {
   reviewItemSnoozedBy,
   settleInboxSnoozes,
   snoozeInboxItems,
+  snoozeTimerTrigger,
   unsnoozeInboxRow,
+  type InboxSnoozeTriggerInput,
 } from "./store";
+import { snoozeSubjectResource } from "./subject";
 import { scheduleInboxSnoozeTimer } from "./triggers";
 
 /** The Inbox row of a snooze: a root Conversation, or one item in it. */
@@ -62,6 +67,14 @@ async function rootConversationIds(
   return rows.map((row) => row.rootConversationId ?? row.conversationId);
 }
 
+/** An open item of an Inbox row, as a snooze of it reads it. */
+interface RowItem {
+  /** The viewer can dismiss it (`canActOnReviewItem`). */
+  canAct: boolean;
+  id: string;
+  subjectUrl: string | null;
+}
+
 /**
  * Return the open Review items of the row that the viewer can see: the one
  * item, or every item in the root Conversation's row. A missing row and a
@@ -71,7 +84,7 @@ async function visibleRowItems(
   user: User,
   root: string,
   reviewItemId: string | undefined,
-): Promise<string[]> {
+): Promise<RowItem[]> {
   if (reviewItemId) {
     const item = await getReviewItem(getDb(), reviewItemId);
     const roots = item ? await rootConversationIds(item.conversationIds) : [];
@@ -80,13 +93,23 @@ async function visibleRowItems(
       roots.includes(root) &&
       (await canUserReadReviewItem(item, user))
     ) {
-      return [item.id];
+      return [
+        {
+          canAct: canActOnReviewItem(item, user.id),
+          id: item.id,
+          subjectUrl: item.subject?.url ?? null,
+        },
+      ];
     }
     return [];
   }
   const reader = await reviewItemReaderForUserInConversation(user, root);
-  const rows = await getDb()
-    .select({ id: juniorReviewItems.id })
+  return getDb()
+    .select({
+      canAct: sql<boolean>`${reviewItemForUser(user.id)}`,
+      id: juniorReviewItems.id,
+      subjectUrl: juniorReviewItems.subjectUrl,
+    })
     .from(juniorReviewItems)
     .where(
       and(
@@ -95,46 +118,108 @@ async function visibleRowItems(
         reviewItemInRow(root),
       ),
     );
-  return rows.map((row) => row.id);
 }
 
 /**
- * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`.
- * Each item gets its own snooze, which replaces the viewer's earlier one;
- * a later item in the row shows by itself. Returns the snoozed items.
+ * An Event on each snoozed item's subject that ends its snooze: `wake`
+ * shows the item again, and `resolve` dismisses it.
+ */
+interface ViewerSnoozeTrigger {
+  eventType: string;
+  outcome: "wake" | "resolve";
+}
+
+/**
+ * Aim each trigger at the resource of each item's subject. The item names
+ * the resource, so a viewer cannot wait on a resource that no item they
+ * see names. A `resolve` dismisses the item, so it needs a viewer who can
+ * dismiss it.
+ */
+function subjectTriggers(
+  items: readonly RowItem[],
+  triggers: readonly ViewerSnoozeTrigger[],
+): InboxSnoozeTriggerInput[][] {
+  const catalog = getEventCatalog();
+  return items.map((item) => {
+    const resource =
+      item.subjectUrl && snoozeSubjectResource(catalog, item.subjectUrl);
+    return triggers.map((trigger) => {
+      if (!resource || !resource.events.includes(trigger.eventType)) {
+        throw new InboxSnoozeInputError(
+          `An item in the row has no subject with ${trigger.eventType} Events.`,
+        );
+      }
+      if (trigger.outcome === "resolve" && !item.canAct) {
+        throw new InboxSnoozeInputError(
+          "Only a person who can dismiss an item can resolve it on an Event.",
+        );
+      }
+      return {
+        eventType: trigger.eventType,
+        identifier: resource.identifier,
+        namespace: resource.namespace,
+        outcome: trigger.outcome,
+      };
+    });
+  });
+}
+
+/**
+ * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
+ * or until one of `triggers` fires on an item's subject, whichever is
+ * first. Each item gets its own snooze, which replaces the viewer's
+ * earlier one; a later item in the row shows by itself. Returns the
+ * snoozed items.
  */
 export async function createViewerSnooze(
   user: User,
-  input: { subject: InboxSnoozeSubject; wakeAtMs: number },
+  input: {
+    subject: InboxSnoozeSubject;
+    triggers?: readonly ViewerSnoozeTrigger[];
+    wakeAtMs?: number;
+  },
   nowMs = Date.now(),
 ): Promise<string[]> {
-  if (input.wakeAtMs <= nowMs) {
+  const { wakeAtMs } = input;
+  if (wakeAtMs === undefined && !input.triggers?.length) {
+    throw new InboxSnoozeInputError("Set a wake time or a trigger.");
+  }
+  if (wakeAtMs !== undefined && wakeAtMs <= nowMs) {
     throw new InboxSnoozeInputError("The wake time must be in the future.");
   }
   const root = await rootConversationId(input.subject.conversationId);
-  const reviewItemIds = root
+  const items = root
     ? await visibleRowItems(user, root, input.subject.reviewItemId)
     : [];
-  if (!root || reviewItemIds.length === 0) {
+  if (!root || items.length === 0) {
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
-  const timerId = `inbox-snooze:${randomUUID()}`;
+  const eventTriggers = subjectTriggers(items, input.triggers ?? []);
+  const timerId =
+    wakeAtMs === undefined ? undefined : `inbox-snooze:${randomUUID()}`;
   // Add the timer before the snoozes replace the viewer's earlier ones, so
   // a failed add leaves those snoozes and their timers as they were.
-  await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
+  if (timerId && wakeAtMs !== undefined) {
+    await scheduleInboxSnoozeTimer(timerId, wakeAtMs);
+  }
   const snoozeIds = await snoozeInboxItems(getDb(), {
+    items: items.map((item, index) => ({
+      reviewItemId: item.id,
+      triggers: [
+        ...(timerId ? [snoozeTimerTrigger(timerId)] : []),
+        ...eventTriggers[index]!,
+      ],
+    })),
     nowMs,
-    reviewItemIds,
-    timerId,
     userId: user.id,
   });
   // A heartbeat that claims the timer before the snoozes commit finds no
   // snooze and removes it. That can only happen once the wake time has
   // passed, so wake the snoozes here.
-  if (Date.now() >= input.wakeAtMs) {
+  if (wakeAtMs !== undefined && Date.now() >= wakeAtMs) {
     await settleInboxSnoozes(getDb(), { snoozeIds, state: "woken" });
   }
-  return reviewItemIds;
+  return items.map((item) => item.id);
 }
 
 /**

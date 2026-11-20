@@ -12,6 +12,7 @@ import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import type { EventSnooze } from "./snoozeChoices";
 
 const QUIET_BUTTON_CLASS =
   "cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus";
@@ -44,6 +45,8 @@ export function InboxStack(props: {
   dismissCount?: number;
   /** Dismiss: every open ask of the stack that the viewer can act on. */
   onDismiss?(): void;
+  /** Snooze on an Event of the subject that the stack's items share. */
+  eventSnooze?: EventSnooze | undefined;
   /** Snooze: every row of the stack. A snoozed stack has none. */
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -88,6 +91,7 @@ export function InboxStack(props: {
             names say what each button covers. */}
         {props.onSnooze ? (
           <RowSnoozeButton
+            eventSnooze={props.eventSnooze}
             look="quiet"
             name={`Snooze ${itemCount(props.keys.length)} in this stack`}
             onOpenChange={props.onSnoozeMenu}

@@ -49,6 +49,26 @@ const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
+// The Events of a GitHub pull request subject, as the API lists them.
+const PULL_REQUEST_RESOURCE = {
+  events: [
+    "pull_request.checks.failed",
+    "pull_request.checks.passed",
+    "pull_request.checks.recovered",
+    "pull_request.comment.created",
+    "pull_request.opened",
+    "pull_request.ready_for_review",
+    "pull_request.review.approved",
+    "pull_request.review.changes_requested",
+    "pull_request.review.commented",
+    "pull_request.review_comment.created",
+    "pull_request.merged",
+    "pull_request.closed_unmerged",
+    "pull_request.merge_conflict",
+  ],
+  namespace: "github",
+  resourceType: "pull_request",
+};
 const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
@@ -236,6 +256,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
@@ -265,6 +286,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Retry Slack uploads on rate limits",
         url: "https://github.com/getsentry/junior/pull/2188",
       },
@@ -280,6 +302,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
       },
@@ -339,6 +362,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         // As the GitHub plugin names it, with its number.
         title: "Retry a canary stage once on a lost agent (#418)",
         url: "https://github.com/getsentry/sentaur/pull/418",
@@ -459,6 +483,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Tabs in the dashboard sidebar",
         url: "https://github.com/getsentry/junior/pull/3052",
       },
@@ -475,6 +500,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Fix the stable list order",
         url: "https://github.com/getsentry/junior/pull/3037",
       },
@@ -583,7 +609,9 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
         (!body.reviewItemId || seed.id === body.reviewItemId),
     )
     .map((seed) => seed.id);
-  for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+  // A snooze with no time waits for its Event, which mock data never sends.
+  const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
+  for (const id of reviewItemIds) snoozes.set(id, wakeAtMs);
   return { reviewItemIds };
 }
 

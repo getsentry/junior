@@ -77,6 +77,49 @@ export async function addItem(
   return item!.id;
 }
 
+/** The pull request that `addPullRequestItem` names, and its Event id. */
+export const PULL_REQUEST = {
+  identifier: "getsentry/junior#1",
+  url: "https://github.com/getsentry/junior/pull/1",
+};
+
+/**
+ * Add an open action item for these Users about `PULL_REQUEST`. It is
+ * public in the Slack workspace, so every User there can see it.
+ */
+export async function addPullRequestItem(
+  conversationId: string,
+  assignees: User[],
+  title: string,
+): Promise<string> {
+  const item = await insertReviewItem(getDb(), {
+    addedByConversationId: conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: assignees.map((assignee) => assignee.id),
+    body: title,
+    conversationIds: [conversationId],
+    dedupeKey: title,
+    kind: "action",
+    nowMs: Date.now(),
+    request: {
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Approve" }, { label: "Reject" }],
+        },
+      ],
+      question: title,
+    },
+    subject: { id: PULL_REQUEST.url, title, url: PULL_REQUEST.url },
+    tenant: { provider: "slack", providerTenantId: "T123" },
+    title,
+    visibility: "public",
+  });
+  return item!.id;
+}
+
 /** Add an open notice for these Users. A notice waits on nobody. */
 export async function addNotice(
   conversationId: string,
@@ -121,6 +164,25 @@ export function api(fixture: ConversationFixture, viewer: User) {
       wakeAtMs: number,
     ) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
+    /** Snooze a row until an Event on each item's subject. */
+    snoozeOn: (
+      subject: { conversationId: string; reviewItemId?: string },
+      triggers: { eventType: string; outcome: "resolve" | "wake" }[],
+      wakeAtMs?: number,
+    ) =>
+      snoozes("POST", {
+        ...subject,
+        triggers,
+        // JSON leaves out an unset time.
+        wakeAt: wakeAtMs ? new Date(wakeAtMs).toISOString() : undefined,
+      }),
+    /** The subject of each item in the viewer's Inbox. */
+    subjects: async () =>
+      (
+        (await json("/review-items?for=viewer")) as {
+          items: { subject?: unknown }[];
+        }
+      ).items.map((item) => item.subject),
     unsnooze: (subject: { conversationId: string; reviewItemId?: string }) =>
       snoozes("DELETE", subject),
     /** What Snoozed shows: its count and its item titles. */

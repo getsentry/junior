@@ -23,6 +23,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
+import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
@@ -181,7 +182,7 @@ function WatchDetail(props: { watch: ConversationWatch }) {
         <div className="flex flex-wrap items-center gap-1">
           {events.map((event) => (
             <WatchChip key={event}>
-              {watchEventLabel(event, watch.resourceType)}
+              {eventLabel(event, watch.resourceType)}
             </WatchChip>
           ))}
           {filters.map(([key, value]) => (
@@ -213,15 +214,4 @@ function WatchChip(props: { children: ReactNode; filter?: boolean }) {
       {props.children}
     </Badge>
   );
-}
-
-/**
- * Turn an event type into a short trigger label. The row already names the
- * resource, so `pull_request.checks.failed` reads as "checks failed".
- */
-function watchEventLabel(event: string, resourceType: string): string {
-  const parts = event.split(".");
-  const rest =
-    parts[0] === resourceType && parts.length > 1 ? parts.slice(1) : parts;
-  return rest.join(" ").replaceAll("_", " ");
 }

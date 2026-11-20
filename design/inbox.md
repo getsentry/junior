@@ -104,7 +104,9 @@ Order and counts:
 
 Snooze:
 
-- Snooze on a row puts away only that item. It wakes at its time.
+- Snooze on a row puts away only that item. It wakes at its time, or on
+  an Event of its subject, such as a merge of its pull request. An Event
+  can also dismiss it, for a viewer who can dismiss it.
 - Snooze on a stack snoozes each of its items until the same time. An
   item that arrives later is not snoozed: it shows in the Inbox by itself,
   and the rest stay in Snoozed.
@@ -115,5 +117,3 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- A snooze lives in one browser. Another browser of the same viewer shows
-  the item. Server snoozes (getsentry/junior#3567, #3392) close this gap.

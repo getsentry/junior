@@ -474,6 +474,7 @@ export {
 export type {
   InboxSnoozeCreateBody,
   InboxSnoozeSubjectBody,
+  InboxSnoozeTrigger,
 } from "./schema/inbox-snooze";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

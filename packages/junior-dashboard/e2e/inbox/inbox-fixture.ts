@@ -128,6 +128,27 @@ export const migration = {
   title: "Pick the billing migration window",
 };
 
+// The Events of a GitHub pull request subject, as the API lists them.
+export const pullRequestResource = {
+  events: [
+    "pull_request.checks.failed",
+    "pull_request.checks.passed",
+    "pull_request.checks.recovered",
+    "pull_request.comment.created",
+    "pull_request.opened",
+    "pull_request.ready_for_review",
+    "pull_request.review.approved",
+    "pull_request.review.changes_requested",
+    "pull_request.review.commented",
+    "pull_request.review_comment.created",
+    "pull_request.merged",
+    "pull_request.closed_unmerged",
+    "pull_request.merge_conflict",
+  ],
+  namespace: "github",
+  resourceType: "pull_request",
+};
+
 // The GitHub plugin's ask for a Junior pull request: an action item with no
 // question. The mock Conversation has the object annotation for the same URL.
 export const prMerge = {
@@ -142,6 +163,7 @@ export const prMerge = {
   subject: {
     id: "https://github.com/getsentry/payments/pull/42",
     objectType: "code_change" as const,
+    resource: pullRequestResource,
     title: "Retry checkout writes after lock timeouts",
     url: "https://github.com/getsentry/payments/pull/42",
   },
@@ -160,6 +182,7 @@ export const prReview = {
   subject: {
     id: "https://github.com/getsentry/payments/pull/91",
     objectType: "code_change" as const,
+    resource: pullRequestResource,
     title: "Pin the release train",
     url: "https://github.com/getsentry/payments/pull/91",
   },
@@ -346,7 +369,9 @@ export async function mockReviewItems(
     if (request.method() === "POST") {
       // One snooze per open item that it hides; it replaces the last one.
       const reviewItemIds = itemsOf(body);
-      for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+      // A snooze with no time waits for its Event.
+      const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
+      for (const id of reviewItemIds) snoozes.set(id, untilMs);
       snoozeChanges++;
       return route.fulfill({ json: { reviewItemIds }, status: 201 });
     }
