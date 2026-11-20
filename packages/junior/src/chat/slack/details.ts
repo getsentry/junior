@@ -146,7 +146,7 @@ function toSlackMrkdwn(markdown: string): string {
   const withMarkdownLinks = markdown.replace(
     /<(https?:\/\/[^|>\s]+)\|([^>]+)>/g,
     (_, url: string, label: string) =>
-      `[${label.replace(/([[\]])/g, "\\$1")}](${url})`,
+      `[${label.replace(/([\\[\]])/g, "\\$1")}](${url})`,
   );
   return new SlackFormatConverter()
     .toResponseUrlText({ markdown: withMarkdownLinks })
