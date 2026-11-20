@@ -80,6 +80,8 @@ beforeEach(async () => {
     conversationId: CONVERSATION_ID,
     actorIdentityId: "identity:actor",
     state: "queued",
+    priority: 0,
+    source: "slack",
   });
 
   published = 0;

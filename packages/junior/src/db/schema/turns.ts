@@ -9,9 +9,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Source } from "@sentry/junior-plugin-api";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
+
+/** The kind of the Source that started a Turn. */
+type SourceKind = Source["kind"];
 
 /**
  * One row per Turn: its state and the lease of the invocation that runs its
@@ -30,6 +34,11 @@ export const juniorTurns = pgTable(
     state: text("state")
       .$type<"queued" | "running" | "completed" | "failed" | "cancelled">()
       .notNull(),
+    // Lower runs first. The scheduler sets it; core only sorts by it.
+    priority: integer("priority").notNull(),
+    // The kind of the Source that started the Turn. The scheduler compares
+    // it, with the Actor, when it attaches new input.
+    source: text("source").$type<SourceKind>().notNull(),
     stepSeq: integer("step_seq").default(0).notNull(),
     leaseEpoch: integer("lease_epoch").default(0).notNull(),
     leaseOwner: text("lease_owner"),
@@ -63,10 +72,19 @@ export const juniorTurns = pgTable(
       "junior_turns_counters_check",
       sql`${table.stepSeq} >= 0 and ${table.leaseEpoch} >= 0 and ${table.attempts} >= 0`,
     ),
-    // At most one active Turn per Conversation.
-    uniqueIndex("junior_turns_active_conversation_idx")
+    check("junior_turns_priority_check", sql`${table.priority} >= 0`),
+    check(
+      "junior_turns_source_check",
+      sql`${table.source} in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation')`,
+    ),
+    // At most one running Turn per Conversation. More Turns can wait queued.
+    uniqueIndex("junior_turns_running_conversation_idx")
       .on(table.conversationId)
-      .where(sql`${table.state} in ('queued', 'running')`),
+      .where(sql`${table.state} = 'running'`),
+    // The next queued Turn of a Conversation.
+    index("junior_turns_queued_priority_idx")
+      .on(table.conversationId, table.priority, table.createdAt)
+      .where(sql`${table.state} = 'queued'`),
     // Sweeper: steps whose invocation died.
     index("junior_turns_running_lease_idx")
       .on(table.leaseExpiresAt)

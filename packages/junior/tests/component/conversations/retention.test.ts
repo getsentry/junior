@@ -105,6 +105,8 @@ async function seedTurn(
     conversationId,
     actorIdentityId: "identity:turn-actor",
     state: "queued",
+    priority: 0,
+    source: "slack",
   });
   await executor
     .db()
@@ -117,6 +119,7 @@ async function seedTurn(
       payload: { text: "private input" },
       idempotencyKey: `slack-event:${conversationId}`,
       turnId,
+      sentAt: new Date(BASE_MS),
     });
   return turnId;
 }
