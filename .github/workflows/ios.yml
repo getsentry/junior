@@ -1,7 +1,7 @@
 name: iOS
 
-# Tests and builds apps/ios, and saves screenshots of its main screens for
-# pull request review.
+# Tests and builds apps/ios, and saves iPhone and iPad screenshots of its main
+# screens for pull request review.
 on:
   push:
     branches: [main]
@@ -84,3 +84,27 @@ jobs:
         with:
           name: ios-mock-server-log
           path: ${{ runner.temp }}/mock-server.log
+
+  ipad:
+    name: screenshots / ipad
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      # With regular width, lists and the open item show side by side.
+      JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M4)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
+      - name: Start the mock MCP server
+        run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
+      - name: Take screenshots
+        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-ipad-screenshots"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ipad-screenshots
+          path: ${{ runner.temp }}/ios-ipad-screenshots
+          if-no-files-found: error

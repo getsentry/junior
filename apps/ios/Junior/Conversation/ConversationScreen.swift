@@ -157,6 +157,7 @@ struct ConversationScreen: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
+          .readableWidth()
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)

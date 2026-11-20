@@ -47,7 +47,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(JUNIOR_BUNDLE_ID)
         PRODUCT_NAME: Junior
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone and iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Junior/Info.plist
@@ -60,6 +61,12 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Every orientation, which iPad multitasking requires.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIAppFonts:
           - InterVariable.ttf
           - OutfitVariable.ttf
