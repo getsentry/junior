@@ -44,11 +44,11 @@ import {
 } from "./access";
 import {
   conversationPinnedForUser,
-  conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
+  rootVisibleToViewer,
 } from "./membership";
 import {
   conversationFromRecordRow,
@@ -150,10 +150,7 @@ function conversationCodeRepositoryFilter(
         WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}
       )
     )`,
-    or(
-      eq(juniorDestinations.visibility, "public"),
-      viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
-    ),
+    rootVisibleToViewer(viewerUserId),
   );
 }
 

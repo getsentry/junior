@@ -76,6 +76,7 @@ import {
 import { mockChartPng } from "./chart-png";
 import { errorResponse } from "./errors";
 import { mountMockPeopleRoutes } from "./people-routes";
+import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -208,6 +209,7 @@ export function createMockReportingApi(): Hono<{
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
+  registerMockCodeChangeSearchRoutes(app);
   app.get("/code/repositories/:repositoryId", (c) => {
     const params = codeRepositoryParamsSchema.safeParse(c.req.param());
     if (!params.success) {

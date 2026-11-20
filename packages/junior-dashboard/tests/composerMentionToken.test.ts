@@ -1,9 +1,6 @@
 import { expect, it } from "vitest";
 
-import {
-  mentionTokenAt,
-  splitMentions,
-} from "../src/client/conversations/composerMentionToken";
+import { mentionTokenAt } from "../src/client/conversations/composerMentionToken";
 
 // `|` marks the caret.
 const at = (text: string) => {
@@ -25,17 +22,4 @@ it("skips an at sign in an email address or after a space", () => {
   expect(at("田中@exa|")).toBeUndefined();
   expect(at("@@x|")).toBeUndefined();
   expect(at("@riley |")).toBeUndefined();
-});
-
-it("splits Slack mention tokens out of message text", () => {
-  expect(splitMentions("hi <@U789> and <@U456>!")).toEqual([
-    { text: "hi " },
-    { slackUserId: "U789" },
-    { text: " and " },
-    { slackUserId: "U456" },
-    { text: "!" },
-  ]);
-  expect(splitMentions("no <@mention> here")).toEqual([
-    { text: "no <@mention> here" },
-  ]);
 });

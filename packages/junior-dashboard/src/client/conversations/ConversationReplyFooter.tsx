@@ -487,6 +487,7 @@ function ReplyFooter(props: {
             : undefined)
         }
         conversation={props.conversation}
+        linksWork
         ref={composerRef}
         label="Continue this conversation"
         placeholder={questionShown ? "Or type your answer…" : undefined}
