@@ -35,7 +35,7 @@ import {
 } from "../pull-request-outcomes/store.js";
 import {
   GITHUB_CONFLICT_GONE_REASON,
-  gitHubConflictNoticeKey,
+  gitHubConflictItemKey,
 } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
@@ -278,7 +278,7 @@ export async function closeEndedGitHubPullRequestItems(args: {
     const reason = ENDED_REASONS[args.state];
     await Promise.all([
       items.close({ dedupeKey: actionDedupeKey(target), ...reason }),
-      items.close({ dedupeKey: gitHubConflictNoticeKey(target), ...reason }),
+      items.close({ dedupeKey: gitHubConflictItemKey(target), ...reason }),
     ]);
   } catch (error) {
     logFailOpenFailure(
@@ -357,12 +357,12 @@ async function syncOne(
     // does not leave the desk with no next-action item.
     await Promise.all([
       closeLegacyItems(items, name),
-      // The same read closes the merge conflict notice from
+      // The same read closes the merge conflict item from
       // `merge-conflict-checks/policy.ts` when the conflict is gone.
       state.state !== "open" ||
       (state.mergeableState && state.mergeableState !== "dirty")
         ? items.close({
-            dedupeKey: gitHubConflictNoticeKey(target),
+            dedupeKey: gitHubConflictItemKey(target),
             ...(endedReason(state.state) ?? {
               reason: GITHUB_CONFLICT_GONE_REASON,
               status: "done",

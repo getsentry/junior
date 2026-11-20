@@ -3,6 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 
 import { useActorOpenCodeChanges, useDashboardCoreData } from "../api";
+import { ChangeSize } from "../components/ChangeSize";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
@@ -181,27 +182,44 @@ export function PullRequestChange(props: {
           "flex min-w-0 items-center justify-between gap-4 px-4 py-2.5 font-sans",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2.5 font-display text-base font-medium text-dashboard-text">
-          <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
-          {change.url ? (
-            <a
-              className="inline-flex min-w-0 items-center gap-1.5 text-inherit no-underline hover:underline"
-              href={change.url}
-              rel="noreferrer"
-              target="_blank"
-            >
+        <div className="grid min-w-0 gap-0.5">
+          <div className="flex min-w-0 items-center gap-2.5 font-display text-base font-medium text-dashboard-text">
+            <SidebarAnnotationIcon
+              decorative
+              icon="git-pull-request"
+              size={14}
+            />
+            {change.url ? (
+              <a
+                className="inline-flex min-w-0 items-center gap-1.5 text-inherit no-underline hover:underline"
+                href={change.url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+                  {title}
+                </span>
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="shrink-0"
+                  size={14}
+                />
+              </a>
+            ) : (
               <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                 {title}
               </span>
-              <ArrowUpRight aria-hidden="true" className="shrink-0" size={14} />
-            </a>
-          ) : (
-            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-              {title}
-            </span>
-          )}
+            )}
+          </div>
+          {/* A narrow row gives the title the width, so the size goes under
+              it, in line with the title. */}
+          <ChangeSize
+            className="pl-6 text-xs text-dashboard-text-muted sm:hidden"
+            size={change.size}
+          />
         </div>
         <div className="flex shrink-0 items-center gap-4 text-xs text-dashboard-text-muted">
+          <ChangeSize className="hidden sm:inline" size={change.size} />
           <span className="hidden sm:inline">
             {change.repository}{" "}
             <span className="tabular-nums">#{change.number}</span>

@@ -169,7 +169,7 @@ export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
 }
 
 /**
- * The status line of a notice folded into an item, such as "Merge conflict".
+ * The status line of a notice folded into an item, such as "Checks failed".
  * The item's card already names the subject, so the reference that plugin
  * titles add after ` · ` drops out.
  */

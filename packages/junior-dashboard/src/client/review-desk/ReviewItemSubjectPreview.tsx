@@ -23,6 +23,7 @@ import {
   useResolvedObject,
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import { AskKindIcon } from "./askKind";
 import { reviewItemSubjectHref } from "./reviewItemFormat";
 
 type Subject = NonNullable<ReviewItemPayload["subject"]>;
@@ -210,6 +211,44 @@ function SubjectDescription(props: { label: string; text: string }) {
         </button>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Say "Merge conflict" on an ask about a code change that conflicts with its
+ * target branch. It reads the live card, because a saved card keeps the
+ * merge state from when it was saved. It is only a line on the ask: it
+ * notifies nobody and counts nowhere.
+ */
+export function SubjectMergeConflict(props: { subject: Subject }) {
+  return (
+    <MessageObjectsProvider>
+      <MergeConflict {...props} />
+    </MessageObjectsProvider>
+  );
+}
+
+function MergeConflict(props: { subject: Subject }) {
+  const { subject } = props;
+  const href =
+    subject.objectType === "code_change" && subject.url
+      ? reviewItemSubjectHref(subject.url)
+      : undefined;
+  const { card, request } = useResolvedObject(href);
+  useEffect(() => {
+    if (href) request();
+  }, [href, request]);
+  if (card?.facts?.type !== "code_change" || card.facts.mergeable !== false) {
+    return null;
+  }
+  return (
+    <p
+      className="m-0 flex items-center gap-1.5 text-sm text-dashboard-text-muted"
+      data-merge-conflict=""
+    >
+      <AskKindIcon kind="FYI" />
+      Merge conflict
+    </p>
   );
 }
 
