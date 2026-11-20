@@ -1,7 +1,6 @@
-// Port of `serializeGenAiAttribute` in chat/logging.ts and the secret
-// redaction that it applies. A model request span of a public Conversation
-// records its messages through it. Keep the two in step: the span drift test
-// compares them.
+// Port of `serializeGenAiAttribute` in chat/logging.ts and the secret redaction
+// that it applies. A model request span of a public Conversation records its
+// messages through it. Keep the two in step with the core-drift skill.
 
 const SECRETS_RE = [
   /\b(sk-[A-Za-z0-9_-]{20,})\b/g,

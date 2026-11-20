@@ -1,5 +1,5 @@
-// Port of chat/pi/request-prefix-attributes.ts. Keep the two in step: the
-// span drift test compares them.
+// Port of chat/pi/request-prefix-attributes.ts. Keep the two in step with the
+// core-drift skill.
 import { createHash, type Hash } from "node:crypto";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { estimateImageTokens } from "@/core/model/image-tokens";
