@@ -41,7 +41,10 @@ export type ToolExecutionContext = {
   /** The model's id for this call. */
   callId: string;
   signal: AbortSignal;
-  /** Present only for tools that run commands or interact with the filesystem. */
+  /**
+   * The step's environment, when the caller gives one. Every call gets the
+   * same one. Tools that do not run commands or use files ignore it.
+   */
   environment?: ToolExecutionEnvironment;
 };
 
