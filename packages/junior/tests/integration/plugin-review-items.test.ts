@@ -1,3 +1,4 @@
+import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
 import type { User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
@@ -10,10 +11,7 @@ import {
   getReviewItem,
   listWaitingConversations,
 } from "@/chat/review-items/store";
-import {
-  createAddReviewItemTool,
-  createUpdateReviewItemTool,
-} from "@/chat/tools/review-items";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";

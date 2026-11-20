@@ -1,3 +1,4 @@
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
@@ -22,7 +23,7 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
-import { createEventTools } from "@/chat/tools/events";
+import { createEventTools } from "@/chat/tool-support/event-tools";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   getConversationEventStore,
@@ -32,7 +33,6 @@ import {
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";

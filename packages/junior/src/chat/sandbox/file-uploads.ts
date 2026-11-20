@@ -6,7 +6,7 @@ import {
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import * as z from "zod";
 
 /** Maximum single file size accepted by model-facing upload tools. */

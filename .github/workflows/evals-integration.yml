@@ -49,6 +49,9 @@ jobs:
               - 'packages/junior/src/chat/discovery.ts'
               - 'packages/junior/src/chat/services/context-compaction.ts'
               - 'packages/junior/src/chat/tools/**'
+              - 'packages/junior/src/chat/tool-support/**'
+              - 'packages/junior/src/chat/review-items/tools/**'
+              - 'packages/junior/src/chat/review-items/tool-support.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

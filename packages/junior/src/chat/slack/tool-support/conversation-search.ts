@@ -1,4 +1,4 @@
-import type { ConversationSearchChannelPort } from "@/chat/tools/search-conversations";
+import type { ConversationSearchChannelPort } from "@/chat/conversations/search";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { SlackTeamId } from "@/chat/slack/ids";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";

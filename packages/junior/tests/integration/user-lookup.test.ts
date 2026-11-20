@@ -825,7 +825,7 @@ describe("userLookup", () => {
 
   describe("registration", () => {
     it("is registered in createTools", async () => {
-      const { createTools } = await import("@/chat/tools/index");
+      const { createTools } = await import("@/chat/tool-support/create-tools");
       const tools = createTools(
         [],
         {},

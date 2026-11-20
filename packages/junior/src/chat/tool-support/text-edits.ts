@@ -1,6 +1,6 @@
 import { structuredPatch } from "diff";
-import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { normalizeToLf } from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 export interface TextReplacement {
   old_text: string;

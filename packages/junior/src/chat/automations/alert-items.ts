@@ -21,7 +21,7 @@ import {
   reviewItemRequestSchema,
   type ReviewItemRequest,
 } from "@/chat/review-items/evidence";
-import { USER_INPUT_LIMITS } from "@/chat/tools/runtime/user-input-request";
+import { USER_INPUT_LIMITS } from "@/chat/review-items/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
 import { AUTOMATION_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";

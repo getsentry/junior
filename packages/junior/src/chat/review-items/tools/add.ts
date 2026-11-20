@@ -2,11 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
-import {
-  deliverReviewItemChange,
-  type ReviewItemDelivery,
-  type ShowReviewItem,
-} from "@/chat/review-items/changes";
+import { deliverReviewItemChange } from "@/chat/review-items/changes";
 import {
   canAgentChangeReviewItem,
   AUTOMATION_REVIEW_ITEM_KEY_PREFIX,
@@ -20,56 +16,41 @@ import {
 import {
   activeParticipantUserIds,
   automationCreatorUserId,
-  EVERYONE_ASSIGNEE,
-  resolveAssignee,
   resolveAssignees,
   type ResolvedAssignees,
-  type FindMentionedUserId,
 } from "@/chat/review-items/assignees";
 import type {
   ReviewItemEvidence,
   ReviewItemRequest,
 } from "@/chat/review-items/evidence";
 import {
-  closeReviewItem,
   getOpenReviewItemByDedupeKey,
-  getReviewItem,
   insertReviewItem,
   ownerConversationId,
-  searchReviewItems,
   updateReviewItemContent,
   type ReviewItem,
   type ReviewItemContent,
-  type ReviewItemStatus,
   type ReviewItemVisibility,
 } from "@/chat/review-items/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   userInputRequestSchema,
   type UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-
-/** Deferred tool catalog source for the Review item tools after add. */
-export const INBOX_TOOL_SOURCE = {
-  id: "inbox",
-  description:
-    "Update and search Review items: work in the Inbox that needs a person.",
-} as const;
-
-const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 25;
-
-const assigneesSchema = z
-  .array(z.string().trim().min(1).max(320))
-  .min(1)
-  .max(20)
-  .describe(
-    "Who can act on the item. Each entry is `everyone`, an email, or a mention such as `<@U123>`. Everyone means any person who can see the item.",
-  );
+} from "@/chat/review-items/user-input-request";
+import {
+  assigneesSchema,
+  bodySchema,
+  conversationIdsSchema,
+  itemResult,
+  ownerLinks,
+  readableItem,
+  reviewItemDelivery,
+  titleSchema,
+  type ReviewItemToolContext,
+  type ReviewItemToolServices,
+} from "@/chat/review-items/tool-support";
 
 const subjectSchema = z
   .object({
@@ -134,23 +115,6 @@ const evidenceSchema = z
   )
   .max(10);
 
-const conversationIdsSchema = z
-  .array(z.string().trim().min(1).max(500))
-  .max(10);
-
-const titleSchema = z.string().trim().min(1).max(200);
-const bodySchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(4000)
-  .describe("Markdown details for the person.");
-
-type ReviewItemToolContext = Pick<
-  ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
->;
-
 /**
  * Pick the assignees of a new item when the agent names none: the User of
  * the Actor, or else the creator of the Automation of this run. A Turn with
@@ -177,18 +141,6 @@ async function defaultAssignees(
   };
 }
 
-/** What app setup gives the Review item tools. */
-export interface ReviewItemToolServices {
-  findMentionedUserId: FindMentionedUserId;
-  /** Read only after a change, so tool setup does not create a queue. */
-  queue: () => ConversationWorkQueue;
-  show: ShowReviewItem;
-}
-
-function delivery(services: ReviewItemToolServices): ReviewItemDelivery {
-  return { queue: services.queue(), show: services.show };
-}
-
 function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "action" && !hasRequest) {
     throw new ToolInputError("An action item needs a `request`.");
@@ -196,59 +148,6 @@ function requireRequest(kind: ReviewItem["kind"], hasRequest: boolean): void {
   if (kind === "notice" && hasRequest) {
     throw new ToolInputError("A notice has no `request`. Use kind `action`.");
   }
-}
-
-/** The owner Conversation of an item, as a list of Conversations to check. */
-function ownerLinks(item: ReviewItem | undefined): string[] {
-  const conversationId = item ? ownerConversationId(item) : undefined;
-  return conversationId ? [conversationId] : [];
-}
-
-async function readableItem(
-  id: string,
-  scope: ReviewItemAgentScope,
-): Promise<ReviewItem> {
-  const item = await getReviewItem(getDb(), id);
-  if (!item || !canReadReviewItem(item, scope.reader)) {
-    throw new ToolInputError(`Review item ${id} is not found.`);
-  }
-  return item;
-}
-
-/** Render one Review item for a tool result. */
-function itemResult(item: ReviewItem) {
-  return {
-    id: item.id,
-    kind: item.kind,
-    status: item.status,
-    title: item.title,
-    body: item.body,
-    assignees: [
-      ...(item.assignedToEveryone ? [EVERYONE_ASSIGNEE] : []),
-      ...item.assignees.map((assignee) => assignee.email),
-    ],
-    conversation_ids: item.conversationIds,
-    dedupe_key: item.dedupeKey,
-    visibility: item.visibility,
-    updated_at: item.updatedAt.toISOString(),
-    ...(item.subject ? { subject: item.subject } : undefined),
-    ...(item.automationId ? { automation_id: item.automationId } : undefined),
-    ...(item.request ? { request: requestResult(item.request) } : undefined),
-    ...(item.answer ? { answer: item.answer } : undefined),
-    ...(item.closedAt
-      ? {
-          closed_at: item.closedAt.toISOString(),
-          closed_by: item.closedBy?.email ?? "agent",
-        }
-      : undefined),
-    ...(item.closeReason ? { close_reason: item.closeReason } : undefined),
-  };
-}
-
-// A close of an item that was already closed changes nothing. The flag
-// tells the model that this call did not close it.
-function alreadyClosedResult(item: ReviewItem) {
-  return { already_closed: true, item: itemResult(item) };
 }
 
 function subjectInput(
@@ -351,23 +250,6 @@ function requestInput(
   evidence: ReviewItemEvidence[],
 ): ReviewItemRequest {
   return { ...question, ...(evidence.length > 0 ? { evidence } : undefined) };
-}
-
-/** Show the stored question with the tool's snake_case evidence keys. */
-function requestResult({ evidence, ...question }: ReviewItemRequest) {
-  return {
-    ...question,
-    ...(evidence
-      ? {
-          evidence: evidence.map(({ conversationId, ...entry }) => ({
-            ...entry,
-            ...(conversationId
-              ? { conversation_id: conversationId }
-              : undefined),
-          })),
-        }
-      : undefined),
-  };
 }
 
 /** Create the tool that adds a Review item or updates the open one. */
@@ -511,7 +393,7 @@ export function createAddReviewItemTool(
         }
         const item = await readableItem(existing.id, scope);
         await deliverReviewItemChange({
-          delivery: delivery(services),
+          delivery: reviewItemDelivery(services),
           item,
           nowMs: Date.now(),
         });
@@ -534,285 +416,11 @@ export function createAddReviewItemTool(
         );
       }
       await deliverReviewItemChange({
-        delivery: delivery(services),
+        delivery: reviewItemDelivery(services),
         item,
         nowMs: Date.now(),
       });
       return { created: true, item: itemResult(item) };
-    },
-  });
-}
-
-export const updateReviewItemToolDefinition = zodToolDefinition({
-  description:
-    "Change an open Review item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. A close of a closed item changes nothing and returns how it closed. You cannot submit the answer to an action item: only an assignee can.",
-  exposure: "deferred",
-  source: INBOX_TOOL_SOURCE,
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  inputSchema: z
-    .object({
-      id: z.string().trim().min(1),
-      title: titleSchema.nullable().optional(),
-      body: bodySchema.nullable().optional(),
-      assignees: assigneesSchema
-        .nullable()
-        .optional()
-        .describe("Replaces every assignee."),
-      conversation_ids: conversationIdsSchema
-        .nullable()
-        .optional()
-        .describe(
-          "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
-        ),
-      status: z
-        .enum(["done", "dismissed"])
-        .nullable()
-        .optional()
-        .describe("Close the item, for example when its pull request merged."),
-      reason: z
-        .string()
-        .trim()
-        .min(1)
-        .max(500)
-        .nullable()
-        .optional()
-        .describe("Why the item closed. Required with `status`."),
-    })
-    .strict(),
-  outputSchema: juniorToolOutputSchema,
-});
-
-/**
- * Create the tool that changes or closes a Review item. A close tells the
- * other linked Conversations.
- */
-export function createUpdateReviewItemTool(
-  context: ReviewItemToolContext,
-  services: ReviewItemToolServices,
-) {
-  return zodTool({
-    ...updateReviewItemToolDefinition,
-    execute: async (input) => {
-      const db = getDb();
-      const scope = await readReviewItemAgentScope(context);
-      const item = await readableItem(input.id, scope);
-      const changesContent =
-        input.title || input.body || input.assignees || input.conversation_ids;
-      // A retry of the same agent close finds the item closed. It still sends
-      // the close: the message has a key, so only missing messages go.
-      const retriesClose =
-        item.status !== "open" &&
-        !changesContent &&
-        !item.closedBy &&
-        input.status === item.status &&
-        input.reason === item.closeReason;
-      const closesOnly = !changesContent && input.status && input.reason;
-      if (item.status !== "open" && !retriesClose && !closesOnly) {
-        throw new ToolInputError(`Review item ${item.id} is already closed.`);
-      }
-      if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
-        throw new ToolInputError(
-          "A plugin added this item. Only the plugin or a person can change it.",
-        );
-      }
-      // An agent changes only the items that a Conversation owns.
-      if (!ownerConversationId(item)) {
-        throw new ToolInputError(
-          "No Conversation owns this item. It is an Automation alert, which closes when its Automation recovers. Only a person can dismiss it.",
-        );
-      }
-      if (!canAgentChangeReviewItem(item, scope)) {
-        throw new ToolInputError(
-          "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
-        );
-      }
-      // The first close wins, even with another status: a person's answer
-      // or dismiss stays on record.
-      if (item.status !== "open" && !retriesClose) {
-        return alreadyClosedResult(item);
-      }
-      if (input.status && !input.reason) {
-        throw new ToolInputError("Give a `reason` when you close an item.");
-      }
-      if (changesContent) {
-        // The Conversation that added the item always stays linked.
-        const conversationIds = [
-          ...new Set([
-            ...ownerLinks(item),
-            ...(input.conversation_ids ?? item.conversationIds),
-          ]),
-        ];
-        // This tool never changes visibility.
-        const visibility = item.visibility;
-        await requireReviewItemLinks({
-          allowedIds: new Set([
-            context.conversationId,
-            ...ownerLinks(item),
-            ...item.conversationIds,
-          ]),
-          conversationIds,
-          scope,
-          tenant: item.tenant,
-          visibility,
-        });
-        const assignees = input.assignees
-          ? await resolveAssignees(
-              db,
-              input.assignees,
-              item.tenant,
-              services.findMentionedUserId,
-            )
-          : {
-              everyone: item.assignedToEveryone,
-              userIds: item.assignees.map((assignee) => assignee.userId),
-            };
-        if (input.assignees) {
-          await requireReviewItemAssignees({
-            assignees,
-            automationId: item.automationId,
-            conversationIds: [context.conversationId, ...ownerLinks(item)],
-            scope,
-            visibility,
-          });
-        }
-        const updated = await updateReviewItemContent(db, {
-          assignedToEveryone: assignees.everyone,
-          assigneeUserIds: assignees.userIds,
-          body: input.body ?? item.body,
-          conversationIds,
-          id: item.id,
-          kind: item.kind,
-          nowMs: Date.now(),
-          title: input.title ?? item.title,
-          visibility,
-          ...(item.request ? { request: item.request } : undefined),
-          ...(item.subject ? { subject: item.subject } : undefined),
-        });
-        if (!updated) {
-          throw new ToolInputError(`Review item ${item.id} is already closed.`);
-        }
-      }
-      if (input.status && input.reason) {
-        const nowMs = Date.now();
-        const closed =
-          retriesClose ||
-          (await closeReviewItem(db, {
-            id: item.id,
-            nowMs,
-            reason: input.reason,
-            status: input.status,
-          }));
-        if (!closed) {
-          if (changesContent) {
-            throw new ToolInputError(
-              `Review item ${item.id} is already closed.`,
-            );
-          }
-          return alreadyClosedResult(await readableItem(item.id, scope));
-        }
-        const closedItem = await readableItem(item.id, scope);
-        await deliverReviewItemChange({
-          change: { kind: "closed", reason: input.reason },
-          delivery: delivery(services),
-          exceptConversationId: context.conversationId,
-          item: closedItem,
-          nowMs,
-        });
-        return { item: itemResult(closedItem) };
-      }
-      const changed = await readableItem(item.id, scope);
-      await deliverReviewItemChange({
-        delivery: delivery(services),
-        item: changed,
-        nowMs: Date.now(),
-      });
-      return { item: itemResult(changed) };
-    },
-  });
-}
-
-export const searchReviewItemsToolDefinition = zodToolDefinition({
-  description:
-    "Search Review items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
-  exposure: "deferred",
-  source: INBOX_TOOL_SOURCE,
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-  inputSchema: z
-    .object({
-      subject_id: z.string().trim().min(1).max(500).nullable().optional(),
-      status: z
-        .enum(["open", "done", "dismissed", "any"])
-        .nullable()
-        .optional()
-        .describe("Default `open`."),
-      assignee: z
-        .string()
-        .trim()
-        .min(1)
-        .max(320)
-        .nullable()
-        .optional()
-        .describe("`everyone`, an email, or a mention such as `<@U123>`."),
-      automation_id: z.string().trim().min(1).nullable().optional(),
-      conversation_id: z.string().trim().min(1).nullable().optional(),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(MAX_LIMIT)
-        .nullable()
-        .optional()
-        .describe(`Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`),
-    })
-    .strict(),
-  outputSchema: juniorToolOutputSchema,
-});
-
-/** Create the tool that searches Review items. */
-export function createSearchReviewItemsTool(
-  context: ReviewItemToolContext,
-  services: Pick<ReviewItemToolServices, "findMentionedUserId">,
-) {
-  return zodTool({
-    ...searchReviewItemsToolDefinition,
-    execute: async (input) => {
-      const db = getDb();
-      const scope = await readReviewItemAgentScope(context);
-      const status = input.status ?? "open";
-      const statuses: ReviewItemStatus[] =
-        status === "any" ? ["open", "done", "dismissed"] : [status];
-      const items = await searchReviewItems(db, scope.reader, {
-        limit: input.limit ?? DEFAULT_LIMIT,
-        statuses,
-        ...(input.assignee
-          ? {
-              assignee: await resolveAssignee(
-                db,
-                input.assignee,
-                scope.tenant,
-                services.findMentionedUserId,
-              ),
-            }
-          : undefined),
-        ...(input.automation_id
-          ? { automationId: input.automation_id }
-          : undefined),
-        ...(input.conversation_id
-          ? { conversationId: input.conversation_id }
-          : undefined),
-        ...(input.subject_id ? { subjectId: input.subject_id } : undefined),
-      });
-      return { count: items.length, items: items.map(itemResult) };
     },
   });
 }

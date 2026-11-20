@@ -3,7 +3,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eventCatalogEntry } from "@/chat/events/catalog";
 import { planToolExposure } from "@/chat/tool-exposure";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const { createSubscription } = vi.hoisted(() => ({
   createSubscription: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock("@/chat/events/store", () => ({
   createWatch: createSubscription,
 }));
 
-import { createEventTools } from "@/chat/tools/events";
+import { createEventTools } from "@/chat/tool-support/event-tools";
 
 const rootTurnTools = turnBehavior({
   kind: "root",

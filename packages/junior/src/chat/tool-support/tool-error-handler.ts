@@ -18,8 +18,8 @@ import {
 } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { isToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { isToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   suggestionCount,
   ToolNameMissError,

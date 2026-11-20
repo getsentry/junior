@@ -11,7 +11,7 @@ import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { AutomationDestination } from "./creator";
 import {
   requireToolDestination,

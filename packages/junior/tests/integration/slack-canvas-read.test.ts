@@ -194,7 +194,12 @@ describe("createSlackCanvasReadTool", () => {
 
     await expect(
       tool.execute({ canvas: "https://example.com/not-a-canvas" }, {}),
-    ).rejects.toThrow("Could not parse a Slack canvas/file ID");
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: expect.stringContaining(
+        "Could not parse a Slack canvas/file ID",
+      ),
+    });
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
   });
 

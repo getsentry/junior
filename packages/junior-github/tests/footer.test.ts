@@ -3,7 +3,7 @@ import {
   appendGitHubFooter,
   githubConversationIds,
   githubLinkedIssues,
-} from "../src/tools/footer.js";
+} from "../src/conversation-footer.js";
 
 const originalEnv = { ...process.env };
 const conversationId = "slack:C123:1712345.0001";
