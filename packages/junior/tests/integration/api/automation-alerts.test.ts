@@ -44,6 +44,7 @@ type Alert = {
   kind: string;
   owner: { id: string; kind: string };
   status: string;
+  title: string;
   visibility: string;
 };
 
