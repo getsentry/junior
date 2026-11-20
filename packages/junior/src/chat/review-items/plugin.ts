@@ -62,7 +62,7 @@ function choicesRequest(notice: PluginReviewNotice): ReviewItemRequest {
 }
 
 /**
- * Connect a plugin to the review desk for one Conversation. Dedupe keys are
+ * Connect a plugin to the Inbox for one Conversation. Dedupe keys are
  * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
  * cannot change them. A change sends no message to the Conversation. It
  * only shows the new state through `show`. An item is private when the

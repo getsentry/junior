@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import type { InboxSnoozeSubjectBody } from "@/api/schema/inbox-snooze";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
@@ -115,14 +116,13 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
+    /** Read one API path, with these request headers. */
+    request: (path: string, headers?: Record<string, string>) =>
+      app.request(`http://localhost/api${path}`, { headers }),
     /** Snooze a row until this time. */
-    snooze: (
-      subject: { conversationId: string; reviewItemId?: string },
-      wakeAtMs: number,
-    ) =>
+    snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
-    unsnooze: (subject: { conversationId: string; reviewItemId?: string }) =>
-      snoozes("DELETE", subject),
+    unsnooze: (subject: InboxSnoozeSubjectBody) => snoozes("DELETE", subject),
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (

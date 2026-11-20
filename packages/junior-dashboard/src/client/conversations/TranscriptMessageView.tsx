@@ -8,7 +8,7 @@ import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { ReviewItemChangeRow } from "../inbox/ReviewItemChangeRow";
 import { memo, type ReactNode } from "react";
 import { useHref } from "react-router";
 import { Link } from "lucide-react";

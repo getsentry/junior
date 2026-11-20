@@ -31,7 +31,7 @@ import {
   REVIEW_ITEMS_QUERY_KEY,
   reviewItemListQueryKey,
   useConversationReviewItemData,
-} from "../src/client/review-desk/queries";
+} from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 

@@ -1,7 +1,7 @@
 /**
  * Process-local Review items for mock reporting. Three Conversations ask the
  * viewer questions, so the questions above the message box, their transcript
- * rows, and the review desk can be checked without a database. GitHub
+ * rows, and the Inbox can be checked without a database. GitHub
  * plugin asks, FYI notices, and the alerts of the viewer's Automations that
  * need attention fill the rest of the inbox.
  */

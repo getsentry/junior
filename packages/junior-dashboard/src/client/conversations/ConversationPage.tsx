@@ -80,7 +80,7 @@ import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import {
   itemConversationId,
   reviewItemIdFromToolCall,
-} from "../review-desk/reviewItemFormat";
+} from "../inbox/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {

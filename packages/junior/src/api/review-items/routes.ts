@@ -245,7 +245,7 @@ function actionErrorResponse(error: unknown): Response {
   throw error;
 }
 
-/** Create the authenticated review desk routes. */
+/** Create the authenticated Inbox routes. */
 export function createReviewItemRoutes(services: {
   delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {

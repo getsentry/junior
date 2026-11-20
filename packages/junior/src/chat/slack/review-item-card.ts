@@ -165,7 +165,7 @@ export function buildSlackReviewItemCard(item: ReviewItem): {
   // element over the Slack limit and make the card update fail.
   const details = [
     item.status === "open" ? assigneeText(item) : closedNote(item),
-    ...(link ? [`<${link}|Open in the review desk>`] : []),
+    ...(link ? [`<${link}|Open in the Inbox>`] : []),
   ].map((part) => ({
     type: "mrkdwn" as const,
     text: truncate(part, MAX_CONTEXT_CHARS),
@@ -189,7 +189,7 @@ export function buildHiddenSlackReviewItemCard(item: ReviewItem): {
 } {
   const link = getDashboardReviewItemLink(item.id);
   const text = link
-    ? `This review item is not shown in this thread. <${link}|Open the review desk>.`
+    ? `This review item is not shown in this thread. <${link}|Open the Inbox>.`
     : "This review item is not shown in this thread.";
   return {
     blocks: [{ type: "context", elements: [{ type: "mrkdwn", text }] }],

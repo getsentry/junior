@@ -99,7 +99,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
    * Conversation that asked for 946 has its own conflict Watch.
    */
   const watches = { comments: true, conflicts: true, ownConflicts: true };
-  /** Review desk and publish calls that fail before one succeeds. */
+  /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   /** Dedupe keys of the open review items. */
@@ -128,7 +128,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         async upsert(notice) {
           if (failures.upsert > 0) {
             failures.upsert -= 1;
-            throw new Error("The review desk is down");
+            throw new Error("The Inbox is down");
           }
           // Like core, an open item with the key only gets new content.
           if (openNotices.has(notice.dedupeKey)) return;

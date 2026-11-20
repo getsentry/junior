@@ -255,7 +255,7 @@ export interface ReviewItemAgentScope {
 /**
  * Read the scope of an agent. The agent reads as its Conversation and
  * Automation, not as its Actor: an assignment lets a person see the item on
- * the review desk, not let an agent read it into another Conversation.
+ * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readReviewItemAgentScope(
   context: Pick<

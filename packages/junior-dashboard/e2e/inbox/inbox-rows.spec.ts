@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CONVERSATION_FEED_PAGE_VERSION_HEADER } from "@sentry/junior/api/schema";
+import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
@@ -313,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         const response = await route.fetch({
           headers: {
             ...route.request().headers(),
-            [CONVERSATION_FEED_PAGE_VERSION_HEADER]: "",
+            [CONTENT_VERSION_HEADER]: "",
           },
         });
         const feed = (await response.json()) as {

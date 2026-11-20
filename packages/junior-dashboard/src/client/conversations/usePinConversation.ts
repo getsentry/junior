@@ -3,6 +3,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { pinConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import {
   conversationFeedCacheRows,
   invalidateConversationFeeds,
@@ -54,10 +55,10 @@ export function usePinConversation(
       ? { archivedAt: null, pinnedAt, pinPosition: undefined }
       : { pinnedAt, pinPosition: undefined };
     setMarks(viewerMarks);
-    // Clear the etag so the next read gets a full body, not a 304 that keeps
-    // this local value.
     queryClient.setQueryData<DetailCache>(detailQueryKey, (detail) =>
-      detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
+      detail
+        ? withoutVersion({ ...detail, ...viewerMarks }, "detailEtag")
+        : detail,
     );
   };
   return useMutation({

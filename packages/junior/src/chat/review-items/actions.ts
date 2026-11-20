@@ -67,7 +67,7 @@ export function reviewItemChange(
 
 /**
  * Return whether a closed item is the result of this same action. An item
- * that a person's message closed never matches a card or desk action.
+ * that a person's message closed never matches a card or Inbox action.
  */
 function isSameClose(
   item: ReviewItem,
@@ -246,7 +246,7 @@ function messageAnswer(
  *   When the decision fails, all items stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the review desk. Each item closes as `done` with
+ * an answer on the card or the Inbox. Each item closes as `done` with
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.

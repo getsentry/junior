@@ -507,6 +507,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/\?view=prs$/);
     await page.goto(`${dashboard.baseURL}/review`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 
     // A closed item opens in Done.
     await page.goto(`${dashboard.baseURL}/review?item=${answered.id}`);
