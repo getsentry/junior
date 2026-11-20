@@ -9,25 +9,28 @@ import { agentNamePossessive } from "../agentName";
 import { ClampedDisplayText } from "../display-text/DisplayText";
 import { fetchDashboardJson } from "../http";
 
-// The last message Junior sent in the Turn, from its start to its end. The
-// page starts around the Turn's start, so a very long Turn can end past it.
+// The last message Junior sent in the Turn, from its start to its end, with
+// the people it mentions. The page starts around the Turn's start, so a very
+// long Turn can end past it.
 function turnLastMessage(
   events: readonly ConversationReportEvent[],
   turnId: string,
-): string | undefined {
+): (Pick<ConversationReportEvent, "mentions"> & { text: string }) | undefined {
   let inTurn = false;
-  let text: string | undefined;
-  for (const { data } of events) {
+  let message: ConversationReportEvent | undefined;
+  for (const event of events) {
+    const { data } = event;
     if (data.type === "turn_lifecycle" && data.turnId === turnId) {
       if (data.state !== "started") break;
       inTurn = true;
     } else if (data.type === "turn_lifecycle" && inTurn) {
       break;
     } else if (inTurn && data.type === "message" && data.role === "assistant") {
-      text = data.text;
+      message = event;
     }
   }
-  return text?.trim() || undefined;
+  const text = message?.data.type === "message" && message.data.text?.trim();
+  return text ? { mentions: message?.mentions, text } : undefined;
 }
 
 /**
@@ -39,7 +42,7 @@ function turnLastMessage(
 export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
   const { addedByConversationId: conversationId, addedByTurnId: turnId } =
     props.item;
-  const { data: text } = useQuery({
+  const { data: message } = useQuery({
     enabled: Boolean(turnId),
     // Not under ["dashboard", "conversations"]: every key there is a feed,
     // and the feed updates read each one as a feed.
@@ -54,7 +57,7 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
     select: (page) => turnLastMessage(page.events, turnId!),
     staleTime: 60_000,
   });
-  if (!text) return null;
+  if (!message) return null;
   const label = `${agentNamePossessive()} message`;
   return (
     <section
@@ -66,7 +69,8 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
         className="max-w-[80ch] leading-6"
         label={label}
         lines={4}
-        text={text}
+        mentions={message.mentions}
+        text={message.text}
       />
     </section>
   );

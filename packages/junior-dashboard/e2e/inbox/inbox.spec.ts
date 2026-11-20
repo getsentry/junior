@@ -743,7 +743,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       seq,
     });
     const reply = [
-      "The canary error rate is flat for 30 minutes.",
+      "The canary error rate is flat for 30 minutes, <@U0MOCKADA>.",
       ...Array.from({ length: 8 }, (_, index) => `Region ${index + 1} holds.`),
       "Roll out when ready.",
     ].join("\n\n");
@@ -770,12 +770,17 @@ test.describe("new UI", { tag: "@new" }, () => {
               text: "Checking the canary first.",
               type: "message",
             }),
-            event(4, {
-              messageId: "m-reply",
-              role: "assistant",
-              text: reply,
-              type: "message",
-            }),
+            {
+              ...event(4, {
+                messageId: "m-reply",
+                role: "assistant",
+                text: reply,
+                type: "message",
+              }),
+              mentions: [
+                { fullName: "Ada Lovelace", slackUserId: "U0MOCKADA" },
+              ],
+            },
             event(5, { state: "succeeded", turnId, type: "turn_lifecycle" }),
             event(6, {
               state: "started",
@@ -801,6 +806,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await head.click();
     const message = page.getByRole("region", { name: "Junior's message" });
     await expect(message).toContainText("The canary error rate is flat");
+    // The message names the person it mentions, as the transcript does.
+    await expect(message).toContainText("Ada Lovelace");
+    await expect(message).not.toContainText("U0MOCKADA");
     // Junior's message comes first, then its question, then the form, which
     // ends with Send on the right.
     const ask = page.locator("[data-inbox-item]").filter({ has: message });
