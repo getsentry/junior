@@ -86,7 +86,7 @@ import {
 } from "./pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
-import { InboxRedirect } from "../review-desk/InboxList";
+import { InboxRedirect } from "../review-desk/InboxRedirect";
 import {
   InboxListProvider,
   useInboxReturnPath,

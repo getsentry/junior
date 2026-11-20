@@ -194,6 +194,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Review items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockReviewItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       const ids = requestedConversationIds(route);
       await route.fulfill({
@@ -232,7 +235,6 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, item.title).click();
     const card = page.getByRole("region", {
@@ -284,6 +286,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks).toBeGreaterThan(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Review items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockReviewItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       await route.fulfill({
         json: {
@@ -307,7 +312,6 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, item.title).click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);

@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -17,7 +18,7 @@ import { inboxCounts } from "./inboxCounts";
 import { waitingPullRequestCount } from "./InboxPullRequests";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useAutomationAlerts } from "./automationAlerts";
-import { useInboxSnoozes } from "./inboxSnooze";
+import { useInboxSnoozes } from "./inboxSnoozes";
 import {
   useClosingReviewItemIds,
   useLinkedConversationTitles,
@@ -100,6 +101,40 @@ function useBuildInboxData(input: {
     forViewer: true,
     sort: "waiting",
   });
+  // Snoozed reads its rows from the server, like To do. It reads every
+  // page, so its rows match its count. Only the Inbox list shows them, so
+  // the read waits until a list mounts; the counts read on their own.
+  const [snoozedWanted, setSnoozedWanted] = useState(false);
+  const readSnoozed = useCallback(() => setSnoozedWanted(true), []);
+  const { items: snoozedItems, query: snoozedQuery } = useReviewItemsData({
+    enabled: signedIn && snoozedWanted,
+    forViewer: true,
+    snoozed: true,
+  });
+  const {
+    fetchNextPage: fetchNextSnoozed,
+    hasNextPage: moreSnoozed,
+    isError: snoozedFailed,
+    isFetching: fetchingSnoozed,
+    isPending: snoozedPending,
+  } = snoozedQuery;
+  useEffect(() => {
+    if (moreSnoozed && !fetchingSnoozed && !snoozedFailed) {
+      void fetchNextSnoozed();
+    }
+  }, [fetchNextSnoozed, fetchingSnoozed, moreSnoozed, snoozedFailed]);
+  const snoozedLoaded = !snoozedPending && !snoozedFailed && !moreSnoozed;
+  const snoozedItemIds = useMemo(
+    () =>
+      snoozedLoaded ? new Set(snoozedItems.map((item) => item.id)) : undefined,
+    [snoozedItems, snoozedLoaded],
+  );
+  const snoozes = useInboxSnoozes({
+    failed: snoozedFailed,
+    itemIds: snoozedItemIds,
+    itemsUpdatedAtMs: snoozedQuery.dataUpdatedAt,
+    listUpdatedAtMs: itemsQuery.dataUpdatedAt,
+  });
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -149,14 +184,19 @@ function useBuildInboxData(input: {
   // The viewer's actions in flight already took their items out. A read
   // that the server answered before an action lands has them still open.
   const closing = useClosingReviewItemIds();
+  // The server leaves snoozed items out of `loaded`, so a linked item joins
+  // only once the snoozes show that none hides it.
+  const linkedAwake =
+    linked?.status === "open" && snoozes.hidesItem(linked.id) === false;
   const read = useMemo(() => {
     const open = loaded.filter((item) => !closing.has(item.id));
-    return linked?.status === "open" &&
+    return linkedAwake &&
+      linked &&
       !closing.has(linked.id) &&
       !open.some((item) => item.id === linked.id)
       ? [...open, linked]
       : open;
-  }, [closing, linked, loaded]);
+  }, [closing, linked, linkedAwake, loaded]);
   // The kept item is extra while no loaded page holds it: only the link
   // keeps it in the list.
   const includedExtra =
@@ -200,7 +240,6 @@ function useBuildInboxData(input: {
   const serverCounts = useInboxCountData(signedIn).data;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const snoozes = useInboxSnoozes(nowMs, list);
   const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
@@ -225,13 +264,21 @@ function useBuildInboxData(input: {
     conversationById.get(id)?.displayTitle ??
     missingTitles[missingIds.indexOf(id)];
 
+  // The server leaves snoozed rows out of `list` and lists them in Snoozed.
   // A notice about the subject of an ask shows on that ask's row instead,
-  // and sleeps and wakes with it.
+  // and sleeps and wakes with it, so both lists fold together.
+  const snoozedIds = new Set(snoozedItems.map((item) => item.id));
   const { folded: foldedNotices, shown } = foldNotices(
-    list.filter((item) => !sweeper.isSwept(item.id)),
+    [
+      ...new Map(
+        [...list, ...snoozedItems].map((item) => [item.id, item]),
+      ).values(),
+    ].filter((item) => !sweeper.isSwept(item.id)),
   );
-  const asleep = snoozes.sleeps;
-  const awake = shown.filter((item) => !asleep(item));
+  // A row snoozed a moment ago stays out until the list refreshes.
+  const awake = shown.filter(
+    (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
+  );
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
   const isPinned = (conversationId: string) =>
     Boolean(conversationById.get(conversationId)?.pinnedAt);
@@ -245,7 +292,10 @@ function useBuildInboxData(input: {
   const asks = awake.filter((item) => item.kind === "action");
   const todoRows = todoRowsOf(awake);
   const grabRows = inboxBundles(asks.filter(itemUpForGrabs));
-  const snoozedRows = inboxBundles(shown.filter(asleep));
+  // An item woken a moment ago leaves Snoozed before the list refreshes.
+  const snoozedRows = inboxBundles(
+    shown.filter((item) => snoozedIds.has(item.id) && !snoozes.waking(item.id)),
+  );
 
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity, with its items. A Conversation outside the loaded feed joins
@@ -381,6 +431,20 @@ function useBuildInboxData(input: {
     releaseHeld,
     signedIn,
     snoozedRows,
+    /** Start reading Snoozed; the Inbox list calls it when it mounts. */
+    readSnoozed,
+    snoozedRead: {
+      failed: snoozedFailed,
+      /** Every page is read, so an empty list means nothing is snoozed. */
+      loaded: snoozedLoaded,
+      loading: fetchingSnoozed,
+      /** Loaded with no read in flight, so a missing row is not snoozed. */
+      settled:
+        !snoozedPending && !snoozedFailed && !moreSnoozed && !fetchingSnoozed,
+      // A later page retries that page, and keeps the rows already read.
+      retry: () =>
+        void (moreSnoozed ? fetchNextSnoozed() : snoozedQuery.refetch()),
+    },
     /** Automation alerts for To do: those the viewer has not put away. */
     todoAutomations,
     snoozes,

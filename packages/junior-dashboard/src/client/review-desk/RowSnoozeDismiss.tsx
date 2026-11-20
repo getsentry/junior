@@ -19,7 +19,7 @@ import {
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
-import { atLocalHour, snoozeChoicesAt } from "./inboxSnooze";
+import { atLocalHour, snoozeChoicesAt } from "./snoozeChoices";
 
 const MENU_ROW_CLASS =
   "flex cursor-pointer items-baseline justify-between gap-3 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
