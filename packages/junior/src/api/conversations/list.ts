@@ -614,7 +614,7 @@ export async function readConversationFeedFromSql(
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
-    readConversationTreeStates(conversationIds, options.viewer?.id),
+    readConversationTreeStates(db, conversationIds, options.viewer?.id),
     // A Thread shows only while its root is not archived.
     readFeedThreadRecords(
       db,

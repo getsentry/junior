@@ -254,7 +254,7 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
-    readConversationTreeStates([conversationId], options.viewer?.id),
+    readConversationTreeStates(getDb(), [conversationId], options.viewer?.id),
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from

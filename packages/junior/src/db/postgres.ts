@@ -102,41 +102,6 @@ class PostgresExecutor implements JuniorSqlExecutor {
     }
   }
 
-  async readWithoutJit<T>(
-    read: (db: JuniorDatabase) => Promise<T>,
-  ): Promise<T> {
-    const existingClient = this.transactionClient.getStore();
-    if (existingClient) {
-      // Rolling back to the savepoint undoes `SET LOCAL`. The read wrote
-      // nothing, so the rollback loses nothing.
-      const savepoint = `junior_savepoint_${++this.savepointId}`;
-      await existingClient.query(`SAVEPOINT ${savepoint}; SET LOCAL jit = off`);
-      try {
-        return await read(this.db());
-      } finally {
-        await existingClient.query(
-          `ROLLBACK TO SAVEPOINT ${savepoint}; RELEASE SAVEPOINT ${savepoint}`,
-        );
-      }
-    }
-
-    const client = await this.pool.connect();
-    try {
-      // One round trip starts the transaction and sets JIT off.
-      await client.query("BEGIN READ ONLY; SET LOCAL jit = off");
-      const result = await this.transactionClient.run(client, () =>
-        read(this.db()),
-      );
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
   async withLock<T>(lockName: string, callback: () => Promise<T>): Promise<T> {
     if (!lockName) {
       throw new Error("SQL lock name is required");

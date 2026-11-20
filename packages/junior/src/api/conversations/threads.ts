@@ -5,7 +5,6 @@ import {
   type ConversationTreeNode,
   readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
-import { getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationFeedItem } from "../schema/conversation-feed";
 import type { ConversationAccess } from "./access";
@@ -49,22 +48,18 @@ export async function readFeedThreadRecords(
 ) {
   if (rootIds.length === 0) return undefined;
   const [rows, tree] = await Promise.all([
-    // The status of each Thread plans at a cost that starts JIT, which
-    // costs more than the read.
-    getSqlExecutor().readWithoutJit((jitOffDb) =>
-      selectConversationRecords(jitOffDb)
-        .where(
-          and(
-            inArray(juniorConversations.rootConversationId, rootIds),
-            eq(juniorConversations.kind, "thread"),
-            isNull(juniorConversations.archivedAt),
-          ),
-        )
-        .orderBy(
-          desc(juniorConversations.lastActivityAt),
-          asc(juniorConversations.conversationId),
+    selectConversationRecords(db)
+      .where(
+        and(
+          inArray(juniorConversations.rootConversationId, rootIds),
+          eq(juniorConversations.kind, "thread"),
+          isNull(juniorConversations.archivedAt),
         ),
-    ),
+      )
+      .orderBy(
+        desc(juniorConversations.lastActivityAt),
+        asc(juniorConversations.conversationId),
+      ),
     readConversationTrees(db, rootIds),
   ]);
   if (rows.length === 0) return undefined;

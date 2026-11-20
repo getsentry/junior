@@ -1,12 +1,11 @@
-import { eq, sql } from "drizzle-orm";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import type { JuniorDatabase } from "@/db/db";
+import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
@@ -17,7 +16,6 @@ import {
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
-import { hasJuniorPostgresTestDatabase } from "../../../fixtures/sql";
 import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
@@ -38,16 +36,6 @@ import {
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
 
 /** Read the viewer's feed version token. */
-/** The `jit` setting that a statement on `db` plans with. */
-async function jitSetting(db: JuniorDatabase): Promise<string> {
-  // Any row anchors the select. The tests read it after they add a root.
-  const [row] = await db
-    .select({ jit: sql<string>`current_setting('jit')` })
-    .from(juniorConversations)
-    .limit(1);
-  return row!.jit;
-}
-
 async function feedToken(fixture: StatusFixture): Promise<string> {
   const response = await fixture.request("/api/versions");
   return ((await response.json()) as { conversations: string }).conversations;
@@ -420,49 +408,6 @@ describe("conversation tree state", () => {
     expect(await feedToken(fixture)).not.toBe(before);
   });
 
-  it.skipIf(!hasJuniorPostgresTestDatabase())(
-    "plans the status reads with JIT off and leaves other reads alone",
-    async () => {
-      const fixture = await createStatusFixture();
-      const conversationId = await recordSlackRoot(
-        fixture.conversationStore,
-        "1700000000.000580",
-      );
-      await fixture.conversationStore.createChild({
-        childConversationId: "agent:tree-jit-thread",
-        kind: "thread",
-        parentConversationId: conversationId,
-      });
-      const executor = getSqlExecutor();
-      const byDefault = await jitSetting(getDb());
-      expect(byDefault).toBe("on");
-
-      // Each status read records the setting it plans with.
-      const settings: string[] = [];
-      const readWithoutJit = executor.readWithoutJit.bind(executor);
-      vi.spyOn(executor, "readWithoutJit").mockImplementation(
-        async (read) =>
-          await readWithoutJit(async (db) => {
-            settings.push(await jitSetting(db));
-            return await read(db);
-          }),
-      );
-      await fixture.request("/api/versions");
-      await fixture.feedTree(conversationId);
-      await fixture.tree(conversationId);
-      // Versions; feed tree state and Threads; detail tree state.
-      expect(settings).toEqual(["off", "off", "off", "off"]);
-      vi.restoreAllMocks();
-
-      // The setting ends with the read, also inside a transaction.
-      await expect(jitSetting(getDb())).resolves.toBe(byDefault);
-      await executor.transaction(async () => {
-        await expect(executor.readWithoutJit(jitSetting)).resolves.toBe("off");
-        await expect(jitSetting(executor.db())).resolves.toBe(byDefault);
-      });
-    },
-  );
-
   it("reads the tree state of a feed page and a detail in one statement", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
@@ -480,15 +425,13 @@ describe("conversation tree state", () => {
       }
     };
     // The feed and the detail keep one budget however big the tree grows.
-    // Each JIT-off read adds BEGIN and COMMIT: two in the feed, one in the
-    // detail.
     const expectBudget = async (tree: {
       treeState: string;
       watching: boolean;
     }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
-        { statements: 24, serialRounds: 7 },
+        { statements: 20, serialRounds: 3 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -498,7 +441,7 @@ describe("conversation tree state", () => {
       );
       const detail = await expectSqlBudget(
         () => fixture.request(detailPath(conversationId)),
-        { statements: 22, serialRounds: 7 },
+        { statements: 20, serialRounds: 5 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
       expect({
