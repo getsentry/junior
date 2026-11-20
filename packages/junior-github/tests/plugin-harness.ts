@@ -136,8 +136,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
-          if (!openNotices.delete(input.dedupeKey)) return;
+          if (!openNotices.delete(input.dedupeKey)) return false;
           recorded.closedNotices.push(input.dedupeKey);
+          return true;
         },
       };
     },
@@ -273,10 +274,16 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
+  /** A person's Dismiss: core closes the item and tells the plugin nothing. */
+  const dismiss = (dedupeKey: string) => {
+    openNotices.delete(dedupeKey);
+  };
+
   return {
     ...recorded,
     answer,
     deliver,
+    dismiss,
     events,
     failures,
     heartbeat,

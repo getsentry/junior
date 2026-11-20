@@ -494,6 +494,26 @@ describe("merge conflict check on webhook events", () => {
       // Nothing is left to close.
       await checkAt(pushedAt + day + 2 * hour, "2");
       expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+
+      // The closed item was not dismissed, so when the conflict comes back
+      // and the fix still did not land, Junior asks again.
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 3 * hour, "1");
+      expect(h.notices).toHaveLength(2);
+    });
+
+    it("asks no more after a Dismiss, also after the conflict goes and comes back", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      h.dismiss("merge-conflict:getsentry/junior#946");
+
+      mergeability[946] = "MERGEABLE";
+      await checkAt(pushedAt + day + hour, "1");
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 2 * hour, "1");
+      expect(h.closedNotices).toEqual([]);
+      expect(h.notices).toHaveLength(1);
     });
 
     it("publishes no conflict for a draft", async () => {
@@ -621,6 +641,7 @@ describe("merge conflict check on webhook events", () => {
 
       // A Dismiss tells the plugin nothing. Junior asked once, so it does
       // not ask again, also after activity by a person.
+      h.dismiss("merge-conflict:getsentry/junior#946");
       reviewAt(pushedAt + 2 * day, "User");
       await checkAt(pushedAt + 2 * day + hour, "1");
       expect(h.notices).toHaveLength(1);

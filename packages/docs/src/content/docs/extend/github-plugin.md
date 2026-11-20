@@ -651,7 +651,8 @@ people work on it:
   person who asked for the pull request. It adds the item once after each
   Resume, so **Dismiss** ends these asks for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
-  closes.
+  closes. When the conflict goes away while the item is open, a later fix
+  that does not land adds the item again.
 - **Resume** counts as activity by a person, so the count starts again. It
   adds the pull request's watch again if it expired, so the event reaches
   the conversation, and publishes the event at once. Until a fix lands
