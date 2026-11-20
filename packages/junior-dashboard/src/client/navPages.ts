@@ -2,7 +2,7 @@ import { getDashboardAgentName } from "./agentName";
 import { peoplePath } from "./format";
 import { systemPluginsPath } from "./pages/system/SystemPlugins";
 import { pluginUserPagePath } from "./pages/user/pluginUserPageRoutes";
-import { INBOX_VIEW_LABELS, inboxViewPath } from "./review-desk/inboxModel";
+import { INBOX_VIEW_LABELS, inboxViewPath } from "./inbox/inboxModel";
 
 /**
  * One dashboard page that navigation links to. The command palette lists

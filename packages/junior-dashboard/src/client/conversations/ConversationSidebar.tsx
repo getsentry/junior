@@ -49,7 +49,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import { formatCompactAge } from "../time";
 import { conversationTurnIsActive } from "./turnActivity";
 

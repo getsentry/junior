@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { planItemRef } from "./tool-output";
 import type { PlanItem, PlanItemStatus } from "./types";
 
 const PLAN_LOCK_PREFIX = "junior:plan";
@@ -74,7 +75,7 @@ function requireKnownIds(rows: Map<number, PlanItemRow>, ids: number[]) {
   const unknown = ids.filter((id) => !rows.has(id));
   if (unknown.length > 0) {
     throw new ToolInputError(
-      `No plan item has id ${unknown.join(", ")}. Call updatePlan with no changes to list the open items.`,
+      `No plan item has id ${unknown.map(planItemRef).join(", ")}. Call updatePlan with no changes to list the open items.`,
     );
   }
 }
@@ -103,7 +104,7 @@ function validateChange(
       .map((row) => {
         const update = updates.get(row.id);
         return {
-          id: String(row.id),
+          id: planItemRef(row.id),
           status: update?.status ?? row.status,
           ...(update?.assignee
             ? assigneeColumns(update.assignee)

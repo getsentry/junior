@@ -1,5 +1,4 @@
 import { and, inArray, sql, type SQL } from "drizzle-orm";
-import { getSqlExecutor } from "@/chat/db";
 import * as z from "zod";
 import {
   readSubtreeEventWatermarks,
@@ -232,15 +231,7 @@ export async function readConversationAuxiliaryCostsFromSql(
 ): Promise<Map<string, ConversationTreeAuxiliaryCosts>> {
   if (conversationIds.length === 0) return new Map();
 
-  // Postgres expects each selected id to start a subtree walk. For one id
-  // the read plans far below the JIT threshold. For a page of ids it plans
-  // above it, and JIT then costs more than the read.
-  const readWatermarks = (jitDb: JuniorDatabase) =>
-    readSubtreeEventWatermarks(jitDb, conversationIds);
-  const watermarks =
-    conversationIds.length > 1
-      ? await getSqlExecutor().readWithoutJit(readWatermarks)
-      : await readWatermarks(db);
+  const watermarks = await readSubtreeEventWatermarks(db, conversationIds);
   const operationsByConversation = await readOperationsByConversation(
     db,
     watermarks,

@@ -174,8 +174,8 @@ describe("conversation list API viewer answers", () => {
     ).toBe(false);
 
     const response = await expectSqlBudget(() => read("/conversations"), {
-      statements: 27,
-      serialRounds: 11,
+      statements: 17,
+      serialRounds: 3,
     });
     expect(response.status).toBe(200);
     const rows = new Map(

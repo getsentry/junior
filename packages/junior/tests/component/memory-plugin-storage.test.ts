@@ -373,6 +373,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           },
         }),
       ]);
+      await fixture.sql.query("ALTER ROLE CURRENT_USER RESET jit_above_cost");
 
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
       expect(lines).toEqual([
@@ -380,10 +381,15 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
         `  junior-memory: applied ${memoryMigrationCount} migrations (${memoryMigrationCount} total)`,
         `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
-        expect.stringMatching(
-          /^Postgres JIT: (on|off) \((not )?available\)\.$/,
-        ),
+        "Set jit_above_cost to 10000000 for the app's role.",
       ]);
+      const [roleSetting] = await fixture.sql.query<{ setconfig: string[] }>(`
+SELECT setconfig
+FROM pg_db_role_setting
+WHERE setdatabase = 0
+  AND setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+`);
+      expect(roleSetting?.setconfig).toContain("jit_above_cost=10000000");
 
       lines.length = 0;
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
@@ -392,11 +398,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `  junior: up to date (${coreMigrationCount} migrations)`,
         `  junior-memory: up to date (${memoryMigrationCount} migrations)`,
         `Database is up to date (${totalMigrationCount} migrations).`,
-        expect.stringMatching(
-          /^Postgres JIT: (on|off) \((not )?available\)\.$/,
-        ),
       ]);
     } finally {
+      await fixture.sql.query("ALTER ROLE CURRENT_USER RESET jit_above_cost");
       await fixture.close();
     }
   }, 15_000);

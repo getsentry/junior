@@ -1,4 +1,4 @@
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import type { Conversation } from "../types";
 import {
   calendarDay,

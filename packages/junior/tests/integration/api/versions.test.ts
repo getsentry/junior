@@ -131,10 +131,9 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    // One read, with BEGIN and COMMIT around it to turn JIT off.
     const first = await expectSqlBudget(() => read(), {
-      statements: 3,
-      serialRounds: 3,
+      statements: 1,
+      serialRounds: 1,
     });
     expect(await read()).toEqual(first);
     expect(await detailVersion()).toBe(first.conversation);
@@ -472,10 +471,9 @@ describe("versions API", () => {
         )
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    // One read, with BEGIN and COMMIT around it to turn JIT off.
     const first = await expectSqlBudget(() => readVersions(app, onScreen), {
-      statements: 3,
-      serialRounds: 3,
+      statements: 1,
+      serialRounds: 1,
     });
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.

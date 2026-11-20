@@ -37,9 +37,41 @@ export async function readConversationAccessFromSql(
   conversationIds: readonly string[],
   viewer?: User,
 ): Promise<Map<string, ConversationAccess>> {
-  if (conversationIds.length === 0) return new Map();
+  const rows = await readConversationAccessRows(db, conversationIds);
+  const membershipConversationIds = new Set<string>();
+  for (const row of rows) {
+    membershipConversationIds.add(row.conversationId);
+    if (row.storedRootConversationId) {
+      membershipConversationIds.add(row.storedRootConversationId);
+    }
+  }
+  const participantRootIds =
+    viewer !== undefined
+      ? await conversationIdsWithParticipantUser(
+          db,
+          [...membershipConversationIds],
+          viewer.id,
+        )
+      : new Set<string>();
+  return conversationAccessFromRows(rows, participantRootIds);
+}
 
-  const rows = await db
+/** The stored tree and root Destination that access reads. */
+type ConversationAccessRow = Awaited<
+  ReturnType<typeof readConversationAccessRows>
+>[number];
+
+/**
+ * Read the stored tree and root Destination of each conversation. A caller
+ * that reads the viewer's participant rows itself passes these rows to
+ * `conversationAccessFromRows`.
+ */
+export async function readConversationAccessRows(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+) {
+  if (conversationIds.length === 0) return [];
+  return await db
     .select({
       conversationId: juniorConversations.conversationId,
       parentConversationId: juniorConversations.parentConversationId,
@@ -65,23 +97,17 @@ export async function readConversationAccessFromSql(
       eq(rootDestination.id, rootConversation.destinationId),
     )
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+}
 
-  const membershipConversationIds = new Set<string>();
-  for (const row of rows) {
-    membershipConversationIds.add(row.conversationId);
-    if (row.storedRootConversationId) {
-      membershipConversationIds.add(row.storedRootConversationId);
-    }
-  }
-  const participantRootIds =
-    viewer !== undefined
-      ? await conversationIdsWithParticipantUser(
-          db,
-          [...membershipConversationIds],
-          viewer.id,
-        )
-      : new Set<string>();
-
+/**
+ * Resolve access from `readConversationAccessRows`. `participantRootIds`
+ * holds the viewer's participant roots among the conversations and their
+ * stored roots, and is empty without a viewer.
+ */
+export function conversationAccessFromRows(
+  rows: readonly ConversationAccessRow[],
+  participantRootIds: ReadonlySet<string>,
+): Map<string, ConversationAccess> {
   return new Map(
     rows.map((row) => {
       const hasValidRoot =
@@ -147,6 +173,18 @@ export function canAddConversationMessages(
   access: ConversationAccess | undefined,
 ): boolean {
   return Boolean(access?.isParticipant || access?.visibility === "public");
+}
+
+/**
+ * The Slack workspace of a Conversation that the viewer can read. A mention
+ * in it must name a Slack user of that workspace.
+ */
+export function readableSlackTeamId(
+  access: ConversationAccess | undefined,
+): string | undefined {
+  return access?.canViewPrivateContent && access.tenant?.provider === "slack"
+    ? access.tenant.providerTenantId
+    : undefined;
 }
 
 /** Read viewer access for a bounded set of Conversations. */

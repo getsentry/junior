@@ -7,6 +7,10 @@ public protocol CredentialStore: Sendable {
   func save(_ credentials: OAuthCredentials?)
 }
 
+/// Sends one HTTP request. `URLSession` by default; the demo answers in
+/// process.
+public typealias HTTPTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
 /// Client for Junior's MCP server (`/api/mcp`), the public API. Each tool call
 /// is one JSON-RPC POST, which Junior answers with JSON. The client refreshes
 /// the access token before it expires and once more after a 401; an actor, so
@@ -15,14 +19,18 @@ public actor MCPClient {
   public nonisolated let server: JuniorServer
   private let store: CredentialStore
   private let session: URLSession
+  private let transport: HTTPTransport
   private var credentials: OAuthCredentials?
   private var refreshing: Task<OAuthCredentials, Error>?
   private var nextID = 0
 
-  public init(server: JuniorServer, store: CredentialStore, session: URLSession = .shared) {
+  public init(
+    server: JuniorServer, store: CredentialStore, session: URLSession = .shared, transport: HTTPTransport? = nil
+  ) {
     self.server = server
     self.store = store
     self.session = session
+    self.transport = transport ?? { request in try await session.data(for: request) }
     credentials = store.load().flatMap { $0.server == server ? $0 : nil }
   }
 
@@ -150,7 +158,7 @@ public actor MCPClient {
 
   private func load(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
     do {
-      let (data, response) = try await session.data(for: request)
+      let (data, response) = try await transport(request)
       return (data, response as! HTTPURLResponse)
     } catch {
       throw JuniorAPIError.offline(error.localizedDescription)

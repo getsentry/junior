@@ -38,7 +38,11 @@ export type EventResourceTypeLimits = {
 /** One source as a plugin or core registers it, before the catalog adds merged filters. */
 export type EventRegistrationInput = Pick<
   PluginEvents,
-  "events" | "resourceTypes" | "normalizeIdentifier" | "resourceUrl"
+  | "events"
+  | "resourceTypes"
+  | "normalizeIdentifier"
+  | "resourceForUrl"
+  | "resourceUrl"
 > & {
   /** Name people see for the source, such as GitHub. Defaults to the namespace. */
   displayName?: string;

@@ -122,7 +122,7 @@ describe("conversation child agents API", () => {
 
     const response = await expectSqlBudget(
       () => requestChildAgents(slackParentConversationId),
-      { statements: 10, serialRounds: 7 },
+      { statements: 8, serialRounds: 5 },
     );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer.childConversationId)).json(),

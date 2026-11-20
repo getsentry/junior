@@ -3,8 +3,10 @@
  * calls are already in history, so they get no block. A Turn adds a
  * `<plan-delta>` only for changes that others made since the highest
  * version that history shows. Compaction folds it all into one `<plan>`
- * snapshot of the open items. Both blocks start with that version as plain
- * text, and later deltas build on it.
+ * snapshot of the open items. A Turn context also gets that `<plan>` when
+ * history has not shown the plan for a few Turns, so stale items get closed.
+ * Both blocks start with that version as plain text, and later deltas build
+ * on it.
  */
 import type { PiMessage } from "@/chat/pi/messages";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
@@ -15,9 +17,16 @@ import {
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
+import { planItemRef } from "./tool-output";
+import {
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
+} from "@/chat/pi/transcript";
 import {
   isOpenPlanItemStatus,
   SELF_PLAN_ASSIGNEE,
+  UPDATE_PLAN_TOOL_NAME,
   type PlanItem,
   type PlanItemAssignee,
 } from "./types";
@@ -59,7 +68,7 @@ function renderItem(item: PlanItem, withAuthor: boolean): string {
   ];
   const notes = item.notes ? `\n  Notes: ${item.notes}` : "";
   return escapeTagText(
-    `- #${item.id} (${fields.join(", ")}): ${item.title}${notes}`,
+    `- ${planItemRef(item.id)} (${fields.join(", ")}): ${item.title}${notes}`,
   );
 }
 
@@ -74,28 +83,34 @@ function textParts(message: PiMessage): string[] {
   return content.flatMap((part) => (part.type === "text" ? [part.text] : []));
 }
 
-/**
- * Return the highest plan version that history shows, from runtime blocks
- * only: a `<plan-delta>` in a Turn context or a `<plan>` in a compaction
- * summary. Text that people write is escaped, so it cannot fake one.
- */
+// Highest plan version in the runtime blocks of one message: a
+// `<plan-delta>` in a Turn context or a `<plan>` in either a Turn context or
+// a compaction summary. Text that people write is escaped, so it cannot fake
+// one.
+function planBlockVersion(message: PiMessage): number {
+  let seen = 0;
+  for (const text of textParts(message)) {
+    if (
+      !startsWithTag(text, [TURN_CONTEXT_TAG]) &&
+      !isCompactionSummaryText(text)
+    ) {
+      continue;
+    }
+    for (const tag of [PLAN_SNAPSHOT_TAG, PLAN_DELTA_TAG]) {
+      for (const block of findTags(text, tag)) {
+        const version = VERSION_LINE.exec(block.body)?.[1];
+        if (version) seen = Math.max(seen, Number(version));
+      }
+    }
+  }
+  return seen;
+}
+
+/** Return the highest plan version that the runtime blocks of history show. */
 export function latestSeenPlanVersion(messages: readonly PiMessage[]): number {
   let seen = 0;
   for (const message of messages) {
-    for (const text of textParts(message)) {
-      if (
-        !startsWithTag(text, [TURN_CONTEXT_TAG]) &&
-        !isCompactionSummaryText(text)
-      ) {
-        continue;
-      }
-      for (const tag of [PLAN_SNAPSHOT_TAG, PLAN_DELTA_TAG]) {
-        for (const block of findTags(text, tag)) {
-          const version = VERSION_LINE.exec(block.body)?.[1];
-          if (version) seen = Math.max(seen, Number(version));
-        }
-      }
-    }
+    seen = Math.max(seen, planBlockVersion(message));
   }
   return seen;
 }
@@ -133,6 +148,56 @@ export function renderPlanSnapshot(items: readonly PlanItem[]): string | null {
         ? "The open items of your plan."
         : "Your plan has no open items."
     }`,
+    ...open.map((item) => renderItem(item, false)),
+  ]);
+}
+
+// A review comes back after this many inputs, about one per Turn, with no
+// plan change and no plan block. Each review is a plan block, so it cannot
+// repeat every Turn.
+const PLAN_REVIEW_INTERVAL = 3;
+
+// An input is a user message other than a Turn context, such as a prompt or
+// a steering message. A Turn context is its own message before the prompt.
+function isInput(message: PiMessage): boolean {
+  const texts = textParts(message);
+  return (
+    texts.length > 0 &&
+    !texts.some((text) => startsWithTag(text, [TURN_CONTEXT_TAG]))
+  );
+}
+
+function showsPlan(message: PiMessage): boolean {
+  if (isToolResultMessage(message)) {
+    return (
+      !isToolResultError(message) &&
+      normalizeToolNameFromResult(message) === UPDATE_PLAN_TOOL_NAME
+    );
+  }
+  return planBlockVersion(message) > 0;
+}
+
+/**
+ * Render every open item as a `<plan>` review, or null when the plan has no
+ * open items or history showed the plan recently. The model forgets to close
+ * items whose work ended, so a stale plan comes back on a fixed interval.
+ */
+export function renderPlanReview(
+  items: readonly PlanItem[],
+  messages: readonly PiMessage[],
+): string | null {
+  const open = items.filter((item) => isOpenPlanItemStatus(item.status));
+  if (open.length === 0) return null;
+  let inputs = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (showsPlan(message)) return null;
+    if (isInput(message)) inputs += 1;
+    if (inputs >= PLAN_REVIEW_INTERVAL) break;
+  }
+  if (inputs < PLAN_REVIEW_INTERVAL) return null;
+  return renderTag(PLAN_SNAPSHOT_TAG, {}, [
+    `Plan version ${planVersion(items)}. These items of your plan are still open. Close each one whose work ended.`,
     ...open.map((item) => renderItem(item, false)),
   ]);
 }

@@ -14,7 +14,6 @@ import {
   reviewItemForUser,
   reviewItemNeedsInput,
 } from "@/chat/review-items/access";
-import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations, juniorReviewItems } from "@/db/schema";
 
@@ -70,12 +69,11 @@ function needsUserSql(userId: string) {
  * Children use the visibility of their root, so a viewer who can see the
  * row may see its tree state. It shows no child's content.
  *
- * One SQL statement reads the trees. For a page of ids it runs with JIT
- * off, since its plan cost starts JIT, which costs more than the read. One
- * id plans far below the JIT threshold. Then two batched state reads check
+ * One SQL statement reads the trees, then two batched state reads check
  * Watches and Timers.
  */
 export async function readConversationTreeStates(
+  db: JuniorDatabase,
   conversationIds: readonly string[],
   viewerUserId: string | undefined,
 ): Promise<Map<string, ConversationTreeRead>> {
@@ -87,38 +85,33 @@ export async function readConversationTreeStates(
         scopeId,
       )} and ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)}))`
     : sql<boolean>`false`;
-  const readTrees = (db: JuniorDatabase) =>
-    db
-      .select({
-        conversationId: scopeId,
-        needsViewer,
-        working: sql<boolean>`bool_or(${conversationIsActiveSql(juniorConversations)})`,
-        // A stopped Conversation saves its Watch Events and starts no Turn.
-        watchable: sql<string[] | null>`(array_agg(${
-          juniorConversations.conversationId
-        } order by ${desc(juniorConversations.lastActivityAt)}) filter (where ${isNull(
-          juniorConversations.stoppedAt,
-        )}))[1:${WATCH_LOOKUP_LIMIT}]`,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        conversationSubtree(conversationIds),
-        eq(
-          conversationSubtreeColumns.conversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(
-        or(
-          eq(juniorConversations.conversationId, scopeId),
-          isNull(juniorConversations.archivedAt),
-        ),
-      )
-      .groupBy(scopeId);
-  const rows =
-    conversationIds.length > 1
-      ? await getSqlExecutor().readWithoutJit(readTrees)
-      : await readTrees(getDb());
+  const rows = await db
+    .select({
+      conversationId: scopeId,
+      needsViewer,
+      working: sql<boolean>`bool_or(${conversationIsActiveSql(juniorConversations)})`,
+      // A stopped Conversation saves its Watch Events and starts no Turn.
+      watchable: sql<string[] | null>`(array_agg(${
+        juniorConversations.conversationId
+      } order by ${desc(juniorConversations.lastActivityAt)}) filter (where ${isNull(
+        juniorConversations.stoppedAt,
+      )}))[1:${WATCH_LOOKUP_LIMIT}]`,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      conversationSubtree(conversationIds),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .where(
+      or(
+        eq(juniorConversations.conversationId, scopeId),
+        isNull(juniorConversations.archivedAt),
+      ),
+    )
+    .groupBy(scopeId);
   const watched = await listConversationsWithWatches({
     conversationIds: [...new Set(rows.flatMap((row) => row.watchable ?? []))],
   });
