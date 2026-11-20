@@ -31,7 +31,7 @@ Open this when making repository edits, not for read-only inspection.
 
 ## Package
 
-1. Reuse the current non-default branch or create a focused branch.
+1. Reuse the current non-default branch or create a focused branch. Name a new branch for the change, not for a person: when a tracker suggests a branch name, such as Linear's `gitBranchName`, remove its user prefix (`jane-doe/eng-123-fix-login` becomes `eng-123-fix-login`).
 2. Commit with repo conventions, else `<type>(<scope>): <Subject>` imperative present, no agent branding.
 3. Push with `git push -u origin BRANCH`.
    If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks. A watched PR gets `pull_request.merge_conflict` minutes later at the earliest, so do not wait for it.
