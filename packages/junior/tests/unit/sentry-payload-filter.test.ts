@@ -254,6 +254,8 @@ describe("Sentry private payload filtering", () => {
         "gen_ai.system_instructions": JSON.stringify([
           { type: "text", content: "private system" },
         ]),
+        "gen_ai.tool.definitions": JSON.stringify([{ name: "private_mcp" }]),
+        "gen_ai.embeddings.input": JSON.stringify(["private memory"]),
       },
       end_timestamp: 2,
       is_segment: false,
@@ -269,6 +271,8 @@ describe("Sentry private payload filtering", () => {
     expect(span.attributes?.["gen_ai.input.messages"]).toBeUndefined();
     expect(span.attributes?.["gen_ai.output.messages"]).toBeUndefined();
     expect(span.attributes?.["gen_ai.system_instructions"]).toBeUndefined();
+    expect(span.attributes?.["gen_ai.tool.definitions"]).toBeUndefined();
+    expect(span.attributes?.["gen_ai.embeddings.input"]).toBeUndefined();
     expect(span.attributes?.["app.conversation.payload_redacted"]).toBe(true);
   });
 
