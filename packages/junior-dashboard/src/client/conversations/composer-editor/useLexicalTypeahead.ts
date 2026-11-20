@@ -194,11 +194,12 @@ export function useLexicalTypeahead(
           };
         } else {
           clearInserted();
+          // Before the update, so the change it reports knows the chip.
+          onChipRef.current?.(insertion);
         }
         editor.update(() => $insertAtToken(current, insertion), {
           tag: INSERT_TAG,
         });
-        if (!("text" in insertion)) onChipRef.current?.(insertion);
       },
       registerKeys: (handler) => {
         const take = (event: KeyboardEvent | null, key: ComposerMenuKey) => {

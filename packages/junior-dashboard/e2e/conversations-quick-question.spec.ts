@@ -199,7 +199,26 @@ test("asks a quick question about selected reply text", async ({
     "aria-placeholder",
     "Ask a follow-up…",
   );
+  // A reference in a quick question links no work to the parent.
+  const linked: string[] = [];
+  await page.route("**/api/conversations/*/annotations", async (route) => {
+    if (route.request().method() === "POST") {
+      linked.push(route.request().postDataJSON().url);
+    }
+    await route.fallback();
+  });
   await composer.fill("And then?");
+  await composer.pressSequentially(" #3842");
+  const pulls = page
+    .getByRole("listbox", { name: "References" })
+    .getByRole("group", { name: "Pull requests" });
+  await expect(pulls.getByRole("option")).toHaveText([
+    /getsentry\/junior#3842/,
+  ]);
+  await composer.press("Enter");
+  await expect(composer.locator("[data-reference='code_change']")).toHaveText(
+    "junior#3842",
+  );
   await composer.press("Enter");
   await expect(panel.getByText("Answer 2.")).toBeVisible();
   // The retry finds the same fork. Follow-ups go to that fork.
@@ -213,8 +232,12 @@ test("asks a quick question about selected reply text", async ({
   ]);
   expect(messages.filter((message) => message.role === "user")).toEqual([
     { role: "user", text: "Why?" },
-    { role: "user", text: "And then?" },
+    {
+      role: "user",
+      text: "And then? <https://github.com/getsentry/junior/pull/3842|getsentry/junior#3842>",
+    },
   ]);
+  expect(linked).toEqual([]);
   await screenshot(page, "conversation-quick-question-answered");
 
   let kept = 0;

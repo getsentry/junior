@@ -168,6 +168,12 @@ type ConversationComposerProps = {
   compact?: boolean;
   /** The Conversation that this composer writes to, if it exists yet. */
   conversation?: ComposerConversation | undefined;
+  /**
+   * Add the work that a sent Message references to `conversation`'s linked
+   * work. A composer whose Messages go elsewhere, such as Quick question,
+   * leaves it off.
+   */
+  linksWork?: boolean;
   label: string;
   placeholder?: string | undefined;
   /**
@@ -260,7 +266,9 @@ export const ConversationComposer = memo(function ConversationComposer(
       ]),
     ),
   );
-  const attachLinkedWork = useAttachLinkedWork(props.conversation);
+  const attachLinkedWork = useAttachLinkedWork(
+    props.linksWork ? props.conversation : undefined,
+  );
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for

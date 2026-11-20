@@ -194,6 +194,39 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect.poll(() => linked).toEqual([PULL_REQUEST]);
 });
 
+test("a draft keeps the kind of a chip inserted last", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openThread(page, dashboard.baseURL);
+  await composer.pressSequentially("@reche");
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  const task = mentions
+    .getByRole("group", { name: "Tasks" })
+    .getByRole("option", { name: /Recheck pin order/ });
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  await expect(task).toHaveAttribute("aria-selected", "true");
+  await composer.press("Enter");
+  await expect(composer.locator("[data-reference='task']")).toBeVisible();
+
+  // Nothing is typed after the chip before the draft is stored.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.values(localStorage).some((value) =>
+          value.includes('"kind":"task"'),
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.reload();
+  await expect(
+    page
+      .getByRole("textbox", { name: "Continue this conversation" })
+      .locator("[data-reference='task']"),
+  ).toHaveText("Recheck pin order in Safari");
+});
+
 test("# stays text after a word character, before a space, and in a link", async ({
   page,
   dashboard,
