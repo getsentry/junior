@@ -1,5 +1,10 @@
 import { juniorArtifacts } from "./schema/artifacts";
 import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
+} from "./schema/memory";
+import {
   juniorAttachmentUploads,
   juniorAttachments,
   juniorMessageAttachments,
@@ -66,6 +71,9 @@ export {
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
   juniorInboxSnoozes,
@@ -109,6 +117,9 @@ export const juniorSqlSchema = {
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
   juniorInboxSnoozes,

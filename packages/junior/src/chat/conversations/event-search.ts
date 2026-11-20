@@ -56,8 +56,8 @@ import {
   bm25InverseDocumentFrequency,
   bm25NormalizedFrequency,
   bm25Saturation,
-  fuseRankedLists,
-} from "@sentry/junior-search";
+} from "@/search/bm25";
+import { fuseRankedLists } from "@/search/rank-fusion";
 import type { JuniorDatabase } from "@/db/db";
 import { setSpanAttributes } from "@/chat/logging";
 import {
@@ -66,7 +66,7 @@ import {
   juniorConversationEvents,
 } from "@/db/schema";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
-import { guardedCosineDistance } from "@sentry/junior-plugin-api/embeddings";
+import { guardedCosineDistance } from "@/db/embeddings";
 import { embedConversationQuery } from "./embedding";
 import { lexemesSql, searchedEventTextSql, seqIn } from "./event-lexemes";
 import {

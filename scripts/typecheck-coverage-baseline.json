@@ -90,10 +90,9 @@
   "packages/junior-google/tests/meet.test.ts",
   "packages/junior-google/tests/slides.test.ts",
   "packages/junior-linear/tests/webhook.test.ts",
-  "packages/junior-memory/tests/ranking.test.ts",
-  "packages/junior-memory/tests/storage.test.ts",
   "packages/junior-sentry/tests/webhook.test.ts",
   "packages/junior-vercel/tests/actions.test.ts",
   "packages/junior-vercel/tests/deployment.test.ts",
-  "packages/junior-vercel/tests/webhook.test.ts"
+  "packages/junior-vercel/tests/webhook.test.ts",
+  "packages/junior/tests/component/memory/storage.test.ts"
 ]

@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { juniorConversationEvents } from "./conversation-events";
 import { timestamptz } from "./timestamps";
-import { embeddingHalfvec } from "@sentry/junior-plugin-api/embeddings";
+import { embeddingHalfvec } from "@/db/embeddings";
 
 /**
  * One embedding per searchable Conversation event, for semantic search of the

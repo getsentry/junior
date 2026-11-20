@@ -41,7 +41,7 @@ export function useConversationMemories(conversationId: string) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationMemoryListSchema,
-        `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
+        `/api/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
         signal,
       ),
     queryKey: conversationSideReadQueryKey(conversationId, "memories"),

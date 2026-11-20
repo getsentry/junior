@@ -19,10 +19,11 @@ const MISS = { cacheRead: 0, cacheWrite: 100_000 };
 
 describe("cache warming savings", () => {
   it.each([
-    // An ideal warmer sends one warmup per 4m15s after the 5m10s grace.
-    ["a hit that needs one warmup", 9 * MINUTE, {}, 0.525, 0.575],
-    ["a hit that needs two warmups", 10 * MINUTE, {}, 0.475, 0.575],
-    ["a miss", 9 * MINUTE, { cacheRead: 0, cacheWrite: 100_000 }, 0.525, 0],
+    // An ideal warmer sends one warmup per 4m15s after the 5m10s grace. A
+    // warmup costs 1.1 reads.
+    ["a hit that needs one warmup", 9 * MINUTE, {}, 0.52, 0.575],
+    ["a hit that needs two warmups", 10 * MINUTE, {}, 0.465, 0.575],
+    ["a miss", 9 * MINUTE, { cacheRead: 0, cacheWrite: 100_000 }, 0.52, 0],
   ])("counts %s", (_name, gapMs, usage, oracleUsd, savedUsd) => {
     const savings = idlePeriodSavings({ ...period, ...usage, gapMs });
     expect(savings).toEqual({

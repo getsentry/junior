@@ -988,6 +988,20 @@
       "when": 1795201014126,
       "tag": "0140_review_item_owner_index",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1795201074126,
+      "tag": "0141_memory_core_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795201134126,
+      "tag": "0142_memory_core_indexes",
+      "breakpoints": true
     }
   ]
 }
