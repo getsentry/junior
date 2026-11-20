@@ -99,21 +99,26 @@ export function ComposerMenu(props: {
   const rows = sourceRows(props.sources);
   const listboxId = useId();
   const detailsId = useId();
-  const [activeIndex, setActiveIndex] = useState(0);
+  // The active row is kept by key: a source that loads later can add rows
+  // above it, and the highlight must stay on the same row.
+  const [activeKey, setActiveKey] = useState<string>();
   const [placement, setPlacement] = useState<MenuPlacement>();
   // A row becomes active after the pointer rests on it. Each move restarts
   // the wait, so a diagonal move to the details pane keeps the row.
   const hoverTimer = useRef<number>(undefined);
   const cancelHover = () => window.clearTimeout(hoverTimer.current);
   const open = typeahead.query !== undefined && rows.length > 0;
-  const active = Math.min(activeIndex, rows.length - 1);
+  const active = Math.max(
+    0,
+    rows.findIndex((row) => row.key === activeKey),
+  );
   const optionId = (index: number) => `${listboxId}-${index}`;
 
   // A new query starts at the first row.
   const [lastQuery, setLastQuery] = useState(typeahead.query);
   if (lastQuery !== typeahead.query) {
     setLastQuery(typeahead.query);
-    setActiveIndex(0);
+    setActiveKey(undefined);
   }
 
   // The composer moves with the layout, so follow it while the menu is open.
@@ -130,7 +135,7 @@ export function ComposerMenu(props: {
     if (!open) return;
     const move = (delta: number) => {
       cancelHover();
-      setActiveIndex((active + delta + rows.length) % rows.length);
+      setActiveKey(rows[(active + delta + rows.length) % rows.length]!.key);
     };
     const actions: Partial<Record<ComposerMenuKey, () => void>> = {
       down: () => move(1),
@@ -242,7 +247,7 @@ export function ComposerMenu(props: {
                   cancelHover();
                   if (index === active) return;
                   hoverTimer.current = window.setTimeout(
-                    () => setActiveIndex(index),
+                    () => setActiveKey(row.key),
                     HOVER_DWELL_MS,
                   );
                 }}

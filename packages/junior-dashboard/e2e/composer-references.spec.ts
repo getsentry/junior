@@ -119,6 +119,46 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   expect(linked).toHaveLength(2);
 });
 
+test("the active row stays put when a source above it loads", async ({
+  page,
+  dashboard,
+}) => {
+  // Hold the Conversation search, so its rows come in above the Task.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(
+    (url) => url.pathname === "/api/conversations" && url.searchParams.has("q"),
+    async (route) => {
+      await held;
+      await route.fallback();
+    },
+  );
+  const composer = await openThread(page, dashboard.baseURL);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  const task = mentions
+    .getByRole("group", { name: "Tasks" })
+    .getByRole("option", { name: /Recheck pin order/ });
+
+  await composer.pressSequentially("@sa");
+  await expect(
+    mentions.getByRole("group", { name: "People" }).getByRole("option"),
+  ).toHaveText([/Sam Ortiz/]);
+  await expect(task).toBeVisible();
+  await composer.press("ArrowDown");
+  await expect(task).toHaveAttribute("aria-selected", "true");
+
+  release();
+  await expect(
+    mentions.getByRole("group", { name: "Conversations" }).getByRole("option"),
+  ).not.toHaveCount(0);
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  await expect(task).toHaveAttribute("aria-selected", "true");
+  await composer.press("Enter");
+  await expect(composer.locator("[data-reference='task']")).toHaveText(
+    "Recheck pin order in Safari",
+  );
+});
+
 test("# finds pull requests and channels", async ({ page, dashboard }) => {
   const { linked, sent } = await recordWrites(page);
   const composer = await openThread(page, dashboard.baseURL);
