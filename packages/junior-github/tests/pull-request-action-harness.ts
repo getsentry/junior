@@ -24,7 +24,10 @@ const BOT_USER_ID = 264270552;
 
 let delivery = 0;
 
-function signedRequest(body: Record<string, unknown>, eventName: string) {
+export function signedRequest(
+  body: Record<string, unknown>,
+  eventName: string,
+) {
   const rawBody = JSON.stringify({ installation: { id: 456 }, ...body });
   const signature = `sha256=${createHmac("sha256", "test-secret")
     .update(rawBody)
@@ -41,7 +44,7 @@ function signedRequest(body: Record<string, unknown>, eventName: string) {
   });
 }
 
-const repository = {
+export const repository = {
   full_name: "getsentry/junior",
   id: 2001,
   name: "junior",

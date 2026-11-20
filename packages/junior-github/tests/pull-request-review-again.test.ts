@@ -8,9 +8,11 @@ import {
   mockGitHub,
   pullRequestAction,
   reviewRequested,
+  repository,
   reviewSubmitted,
   route,
   seedJuniorPullRequest,
+  signedRequest,
   stubGitHubAppEnv,
   type GitHubState,
   type ReviewItemCall,
@@ -23,6 +25,44 @@ describe("review again after a change request", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("checks the next action on a team review request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        requestedReviewers: ["Requester"],
+        reviews: [],
+        state: "open",
+      },
+      [],
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      // GitHub sends `requested_reviewer: null` when it asks a team.
+      await route(fixture, calls).handler(
+        signedRequest(
+          {
+            action: "review_requested",
+            pull_request: { number: 946, updated_at: "2026-07-02T10:00:00Z" },
+            repository,
+            requested_reviewer: null,
+            requested_team: { slug: "reviewers" },
+            sender: { login: "sentry-junior[bot]" },
+          },
+          "pull_request",
+        ),
+      );
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
   });
 
   it("asks the requester again after a push that follows their change request", async () => {

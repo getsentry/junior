@@ -141,25 +141,33 @@ const timestampSchema = z.iso.datetime({ offset: true });
 const loginSchema = z.object({ login: z.string().min(1) });
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 
+// GitHub sends null for a team review request's `requested_reviewer` and
+// for a deleted account, so the activity fields accept null.
 const pullRequestWebhookSchema = z.object({
   action: z.string(),
   pull_request: z.object({
     number: z.number().int().positive(),
-    updated_at: timestampSchema.optional(),
+    updated_at: timestampSchema.nullish(),
   }),
   repository: repositorySchema,
-  requested_reviewer: loginSchema.optional(),
+  requested_reviewer: loginSchema.nullish(),
   review: z
-    .object({ submitted_at: timestampSchema.nullish(), user: loginSchema })
-    .optional(),
-  sender: loginSchema.optional(),
+    .object({
+      submitted_at: timestampSchema.nullish(),
+      user: loginSchema.nullish(),
+    })
+    .nullish(),
+  sender: loginSchema.nullish(),
 });
 
 // The comment webhooks that a person or Junior's App sends by commenting
 // on a pull request. Only a pull request's issue carries `pull_request`.
 const commentWebhookSchema = z.object({
   action: z.literal("created"),
-  comment: z.object({ created_at: timestampSchema, user: loginSchema }),
+  comment: z.object({
+    created_at: timestampSchema,
+    user: loginSchema.nullish(),
+  }),
   issue: z
     .object({ number: z.number().int().positive(), pull_request: z.object({}) })
     .optional(),
@@ -189,7 +197,11 @@ function pullRequestActivity(
       login: event.requested_reviewer.login,
     };
   }
-  if (event.action === "submitted" && event.review?.submitted_at) {
+  if (
+    event.action === "submitted" &&
+    event.review?.submitted_at &&
+    event.review.user
+  ) {
     return {
       at: new Date(event.review.submitted_at),
       kind: "author",
@@ -210,11 +222,11 @@ export function pullRequestActionTargets(
     eventName === "pull_request_review_comment"
   ) {
     const parsed = commentWebhookSchema.safeParse(body);
-    const number = parsed.success
-      ? (parsed.data.issue ?? parsed.data.pull_request)?.number
-      : undefined;
-    if (!parsed.success || number === undefined) return [];
+    if (!parsed.success) return [];
     const { comment, repository } = parsed.data;
+    const number = (parsed.data.issue ?? parsed.data.pull_request)?.number;
+    // A comment by a deleted account is by neither Junior nor the requester.
+    if (number === undefined || !comment.user) return [];
     return [
       {
         activity: {
