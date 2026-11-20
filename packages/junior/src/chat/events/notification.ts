@@ -15,7 +15,10 @@ import type {
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import type { RuntimeInstructionInput } from "@/chat/agent/types";
+import type {
+  AgentInstructionInput,
+  RuntimeInstructionInput,
+} from "@/chat/agent/types";
 import {
   appendAndEnqueueInboundMessage,
   type AppendAndEnqueueInboundMessageResult,
@@ -227,12 +230,13 @@ function readEventTaskFacts(
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
  * their own inputs after the task. `rendered` replaces the input of an entry
- * by inbound message id, such as a person change to a Review item.
+ * by inbound message id, such as a person change to a Review item. A Lead's
+ * task on an entry follows it as an `agent` input, so it approves nothing.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
   rendered: ReadonlyMap<string, RuntimeInstructionInput> = new Map(),
-): RuntimeInstructionInput[] {
+): AgentInstructionInput[] {
   const groups = new Map<
     string,
     {
@@ -277,13 +281,15 @@ export function renderEventBatchInputs(
 
   const ownInputs = (entries: readonly InboundMessage[]) =>
     entries
-      .map(
-        (message): RuntimeInstructionInput =>
-          rendered.get(message.inboundMessageId) ?? {
-            kind: "runtime",
-            text: message.input.text.trim(),
-          },
-      )
+      .flatMap((message): AgentInstructionInput[] => [
+        rendered.get(message.inboundMessageId) ?? {
+          kind: "runtime",
+          text: message.input.text.trim(),
+        },
+        ...(message.input.leadTask
+          ? [{ kind: "agent" as const, text: message.input.leadTask }]
+          : []),
+      ])
       .filter((input) => input.text);
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
@@ -336,6 +342,7 @@ export function eventBatchMessageMeta(
   | "eventObjectType"
   | "eventType"
   | "events"
+  | "leadTask"
   | "reviewItemChanges"
   | "trustedSummary"
 > {
@@ -347,6 +354,11 @@ export function eventBatchMessageMeta(
   const primary = watched[0] ?? own[0];
   const metadata = (primary ?? messages[0])?.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return {};
+  // A Lead's task is not in the saved text, which action review reads on
+  // resume, so it is saved apart.
+  const leadTask = messages
+    .flatMap((message) => message.input.leadTask ?? [])
+    .join("\n\n");
   const events =
     watched.length > 1
       ? watched.flatMap(messageEvent)
@@ -361,6 +373,7 @@ export function eventBatchMessageMeta(
       ? { trustedSummary: metadata.event.trustedSummary }
       : undefined),
     ...(events.length ? { events } : undefined),
+    ...(leadTask ? { leadTask } : undefined),
     ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
   };
 }

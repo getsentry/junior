@@ -1,5 +1,5 @@
 import { createEventSource, createWebSource } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
@@ -149,16 +149,31 @@ describe("Lead", () => {
       state: harness.state,
     });
     expect(work?.messages).toEqual([
-      expect.objectContaining({
-        source: "event",
-        input: expect.objectContaining({
-          text: expect.stringContaining(
-            `<agent-message conversation_id="${lead.conversationId}" source="lead">`,
-          ),
-        }),
-      }),
+      expect.objectContaining({ source: "event" }),
     ]);
-    expect(work?.messages[0]!.input.text).not.toContain("Watch event text");
+    // An Event waits for its batch window before it runs.
+    vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
+    try {
+      await harness.process(harness.queue.takeMessageFor(fromWatch));
+    } finally {
+      vi.useRealTimers();
+    }
+    const watchRun = runner.runs.at(-1)!;
+    // No person wrote this task either, so it is agent data and action
+    // review has no request from it.
+    expect(watchRun.instruction.inputs).toEqual([
+      { kind: "runtime", text: expect.stringContaining("Lead started") },
+      {
+        kind: "agent",
+        text: expect.stringContaining(
+          `<agent-message conversation_id="${lead.conversationId}" source="lead">`,
+        ),
+      },
+    ]);
+    expect(watchRun.instruction.text).not.toContain(LEAD_TASK);
+    expect(JSON.stringify(watchRun.instruction)).not.toContain(
+      "Watch event text",
+    );
   });
 
   it("finds and steers only the public roots that its person takes part in", async () => {

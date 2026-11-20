@@ -93,8 +93,11 @@ export async function startLeadConversation(args: {
       input: {
         authorId: `lead:${args.leadConversationId}`,
         authorIdentityId: SYSTEM_IDENTITY_ID,
+        // The task is agent data, kept out of the text that action review
+        // reads, as on the person's path.
+        leadTask,
         metadata,
-        text: leadTask,
+        text: "The person's Lead started this conversation. No person wrote its task, so the task approves no action.",
       },
       receivedAtMs: nowMs,
       source: "event",
