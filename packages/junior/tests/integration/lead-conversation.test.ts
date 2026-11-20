@@ -11,6 +11,7 @@ import {
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
@@ -329,6 +330,13 @@ describe("Lead", () => {
     );
     await stopConversation({
       conversationId: started.conversation_id,
+      queue: harness.queue,
+      state: harness.state,
+    });
+    // A later retry of the stop does not report it again.
+    await markConversationsStopped([started.conversation_id], {
+      cancelWatches: false,
+      nowMs: Date.now() + 1_000,
       queue: harness.queue,
       state: harness.state,
     });

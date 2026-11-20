@@ -133,8 +133,8 @@ function statusEvent(
 /**
  * Deliver one status Event of a Conversation to the Watches that may still
  * read it. Only top-level Conversations are watched, so a Review item that a
- * child agent adds reports its root as waiting. `skip` runs only when a Watch matches, so a Conversation that no
- * one watches pays one Watch index read. The work that the Event reports
+ * child agent adds reports its root as waiting. `skip` runs only when a Watch
+ * matches, so a Conversation that no one watches pays one Watch index read. The work that the Event reports
  * already happened, so a failed delivery is logged and never fails that
  * work. A retry delivers the same Event key once.
  */
