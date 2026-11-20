@@ -14,7 +14,7 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // The open row. Every row has its own quick Snooze, so scope to this one.
@@ -34,8 +34,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
     await screenshot(page, "inbox-snooze", { view: "desktop" });
-    // The ask names no resource, so no Event can end its snooze.
-    await expect(page.getByRole("button", { name: "Event…" })).toHaveCount(0);
     const created = page.waitForRequest(
       (request) =>
         request.method() === "POST" &&
@@ -345,6 +343,125 @@ test.describe("new UI", { tag: "@new" }, () => {
       reviewItemId: ask.id,
       triggers: [{ eventType: "pull_request.checks.passed", outcome: "wake" }],
     });
+  });
+
+  test("an ask with no subject snoozes until an Event on a pasted pull request", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, rollout] });
+    await page.goto(`${dashboard.baseURL}/`);
+    await expandRow(rowHead(page, checkout));
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await menu.getByRole("button", { name: "Event…" }).click();
+    // The ask names no resource, so its Events come from the pasted page.
+    const link = menu.getByRole("textbox", { name: "Pull request or issue" });
+    await expect(link).toBeFocused();
+    await expect(menu.getByRole("group", { name: "Wake when" })).toHaveCount(0);
+    const pullRequest = "https://github.com/getsentry/junior/pull/2201";
+    await link.fill(pullRequest);
+    const wakeWhen = menu.getByRole("group", { name: "Wake when" });
+    await expect(wakeWhen.getByRole("button")).toHaveCount(
+      pullRequestResource.events.length,
+    );
+    await screenshot(page, "inbox-snooze-named-resource", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await wakeWhen.getByRole("button", { exact: true, name: "Merged" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: rollout.rootConversationId,
+      reviewItemId: rollout.id,
+      triggers: [
+        {
+          eventType: "pull_request.merged",
+          outcome: "wake",
+          resourceUrl: pullRequest,
+        },
+      ],
+    });
+    await expect(
+      page
+        .getByRole("region", { name: "To do" })
+        .getByRole("link", { name: new RegExp(checkout) }),
+    ).toHaveCount(0);
+  });
+
+  test("a pull request row snoozes until an Event on an issue that the viewer pastes", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(mobile);
+    await mockReviewItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await menu.getByRole("button", { name: "Event…" }).click();
+    const link = menu.getByRole("textbox", { name: "Pull request or issue" });
+    await expect(link).toHaveAttribute("placeholder", "This pull request");
+    const issue = "https://github.com/getsentry/junior/issues/77";
+    await link.fill(issue);
+    // The issue's Events replace those of the row's pull request.
+    const wakeWhen = menu.getByRole("group", { name: "Wake when" });
+    await expect(
+      wakeWhen.getByRole("button", { name: "Closed" }),
+    ).toBeVisible();
+    await expect(wakeWhen.getByRole("button", { name: "Merged" })).toHaveCount(
+      0,
+    );
+    await screenshot(page, "inbox-snooze-named-resource", {
+      lightTheme: true,
+      view: "mobile",
+    });
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await wakeWhen.getByRole("button", { name: "Closed" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: prReview.rootConversationId,
+      reviewItemId: prReview.id,
+      triggers: [
+        { eventType: "issue.closed", outcome: "wake", resourceUrl: issue },
+      ],
+    });
+    await expect(openRowOf(page)).toHaveCount(0);
+  });
+
+  test("a pasted link that the viewer cannot snooze on offers no Events", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await menu.getByRole("button", { name: "Event…" }).click();
+    const link = menu.getByRole("textbox", { name: "Pull request or issue" });
+    await link.fill("not a link");
+    await expect(link).toHaveAccessibleDescription(
+      "Paste a link to a pull request or issue.",
+    );
+    // The mock viewer cannot see this repository.
+    await link.fill("https://github.com/acme/private/pull/1");
+    await expect(link).toHaveAccessibleDescription(
+      "You cannot snooze on this link.",
+    );
+    await expect(menu.getByRole("group", { name: "Wake when" })).toHaveCount(0);
+    // Clearing the link offers the row's own pull request again.
+    await link.fill("");
+    await expect(
+      menu
+        .getByRole("group", { name: "Wake when" })
+        .getByRole("button", { exact: true, name: "Merged" }),
+    ).toBeVisible();
   });
 
   test("a row snoozed in another browser loads asleep", async ({

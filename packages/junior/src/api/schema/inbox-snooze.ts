@@ -9,15 +9,33 @@ export const inboxSnoozeSubjectSchema = z
   .strict();
 
 /**
- * An Event on an item's subject resource that ends its snooze: `wake`
- * shows the item again, and `resolve` dismisses it. The subject of each
- * item names the resource, so the request names only the Event type.
+ * An Event that ends a snooze: `wake` shows the item again, and `resolve`
+ * dismisses it. The Event is on the page at `resourceUrl`, such as another
+ * pull request, or on each item's subject when it is unset.
  */
 export const inboxSnoozeTriggerSchema = z
   .object({
     eventType: z.string().min(1),
     outcome: z.enum(["wake", "resolve"]),
+    resourceUrl: z.string().url().max(2000).optional(),
   })
+  .strict();
+
+/**
+ * An Event resource that a snooze can wait on, such as a pull request, and
+ * the Event types of its resource type.
+ */
+export const inboxSnoozeResourceSchema = z
+  .object({
+    events: z.array(z.string().min(1)).min(1),
+    namespace: z.string().min(1),
+    resourceType: z.string().min(1),
+  })
+  .strict();
+
+/** `GET /api/inbox/snoozes/resource` query: the page that a person names. */
+export const inboxSnoozeResourceQuerySchema = z
+  .object({ url: z.string().url().max(2000) })
   .strict();
 
 /**
@@ -44,3 +62,4 @@ export const inboxSnoozeSchema = z
 export type InboxSnoozeCreateBody = z.input<typeof inboxSnoozeCreateSchema>;
 export type InboxSnoozeSubjectBody = z.input<typeof inboxSnoozeSubjectSchema>;
 export type InboxSnoozeTrigger = z.output<typeof inboxSnoozeTriggerSchema>;
+export type InboxSnoozeResource = z.output<typeof inboxSnoozeResourceSchema>;

@@ -207,6 +207,20 @@ export async function resolveObjectLinkNow(
 }
 
 /**
+ * Return whether a link type of `plugin` claims the URL and lets the viewer
+ * see its object now. The web page card does not count: it shows what anyone
+ * can read signed out, not what the viewer can see.
+ */
+export async function viewerCanViewPluginLink(
+  viewer: User,
+  url: URL,
+  plugin: string,
+): Promise<boolean> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  return linkType?.owner === plugin && (await linkType.canView(viewer, url));
+}
+
+/**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
  * Conversation.

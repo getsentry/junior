@@ -473,11 +473,13 @@ export type {
 } from "./schema/review-item";
 export {
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
+  InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
 } from "./schema/inbox-snooze";

@@ -56,52 +56,49 @@ export function snoozeChoicesAt(nowMs: number): SnoozeChoice[] {
   );
 }
 
-/**
- * The Events that can end a snooze of a row's items: those of the resource
- * type that each item's subject names, such as a pull request.
- */
-interface SnoozeEvents {
+/** The Events of a resource that can end a snooze, such as a pull request. */
+export interface SnoozeEvents {
   /** Event types, in the order that their source lists them. */
   events: readonly string[];
   /** The resource type, so a label can leave it out. */
   resourceType: string;
-  /** The viewer can dismiss each item, so an Event can dismiss them. */
-  resolve: boolean;
-}
-
-/** Snooze a row until an Event on the subject of its items. */
-export interface EventSnooze {
-  choices: SnoozeEvents;
-  onSnooze(trigger: InboxSnoozeTrigger): void;
 }
 
 /**
- * The Event snooze of these items. Each item's subject must name a
- * resource of the same type, as the server aims the Event at each item's
- * own resource. Undefined when one does not, or the row cannot snooze.
+ * Snooze a row until an Event on the subject of its items, or on a page
+ * that the viewer names, such as another pull request.
  */
+export interface EventSnooze {
+  onSnooze(trigger: InboxSnoozeTrigger): void;
+  /** The viewer can dismiss each item, so an Event can dismiss them. */
+  resolve: boolean;
+  /**
+   * The Events of each item's subject. Unset when an item's subject names
+   * no resource, or one of another type, as the server aims the Event at
+   * each item's own resource.
+   */
+  subject: SnoozeEvents | undefined;
+}
+
+/** The Event snooze of these items. Undefined when the row cannot snooze. */
 export function eventSnoozeOf(
   items: readonly ReviewItemPayload[],
   onSnooze: ((trigger: InboxSnoozeTrigger) => void) | undefined,
 ): EventSnooze | undefined {
+  if (!onSnooze || items.length === 0) return undefined;
   const resource = items[0]?.subject?.resource;
-  if (
-    !onSnooze ||
-    !resource ||
-    items.some(
+  const shared =
+    resource &&
+    items.every(
       (item) =>
-        item.subject?.resource?.namespace !== resource.namespace ||
-        item.subject.resource.resourceType !== resource.resourceType,
-    )
-  ) {
-    return undefined;
-  }
+        item.subject?.resource?.namespace === resource.namespace &&
+        item.subject.resource.resourceType === resource.resourceType,
+    );
   return {
-    choices: {
-      events: resource.events,
-      resourceType: resource.resourceType,
-      resolve: items.every((item) => item.canAct),
-    },
     onSnooze,
+    resolve: items.every((item) => item.canAct),
+    subject: shared
+      ? { events: resource.events, resourceType: resource.resourceType }
+      : undefined,
   };
 }

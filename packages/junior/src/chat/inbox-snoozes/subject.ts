@@ -1,15 +1,15 @@
-import { normalizeEventIdentifier } from "@sentry/junior-plugin-api";
+import { normalizeEventIdentifier, type User } from "@sentry/junior-plugin-api";
+import { viewerCanViewPluginLink } from "@/api/objects/resolve";
 import {
   eventWatchUnavailable,
   type EventCatalog,
 } from "@/chat/events/catalog";
 
 /**
- * The Event resource that a Review item's subject names, and the Event
- * types of its resource type: the Events that can wake or resolve a snooze
- * of the item.
+ * An Event resource that a snooze can wait on, such as the one a Review
+ * item's subject names, and the Event types of its resource type.
  */
-interface SnoozeSubjectResource {
+export interface SnoozeResource {
   events: readonly string[];
   identifier: string;
   namespace: string;
@@ -26,7 +26,7 @@ interface SnoozeSubjectResource {
 export function snoozeSubjectResource(
   catalog: EventCatalog,
   url: string,
-): SnoozeSubjectResource | undefined {
+): SnoozeResource | undefined {
   for (const [namespace, registration] of Object.entries(catalog)) {
     const found = registration.resourceForUrl?.(url);
     if (!found) continue;
@@ -47,4 +47,23 @@ export function snoozeSubjectResource(
     };
   }
   return undefined;
+}
+
+/**
+ * Return the Event resource of a page that the viewer names, such as
+ * another pull request. An item's subject is already in the viewer's
+ * Inbox, but this page is not, so the plugin that owns its Events must let
+ * the viewer see the page now, as it does for the page's card.
+ */
+export async function viewerSnoozeResource(
+  viewer: User,
+  catalog: EventCatalog,
+  url: string,
+): Promise<SnoozeResource | undefined> {
+  const resource = snoozeSubjectResource(catalog, url);
+  return resource &&
+    URL.canParse(url) &&
+    (await viewerCanViewPluginLink(viewer, new URL(url), resource.namespace))
+    ? resource
+    : undefined;
 }

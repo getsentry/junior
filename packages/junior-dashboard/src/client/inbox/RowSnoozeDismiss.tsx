@@ -21,10 +21,12 @@ import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { eventLabel } from "../eventLabel";
 import { cn } from "../styles";
 import { formatTime } from "../time";
+import { useSnoozeResource } from "./inboxSnoozes";
 import {
   atLocalHour,
   snoozeChoicesAt,
   type EventSnooze,
+  type SnoozeEvents,
 } from "./snoozeChoices";
 
 const MENU_ROW_CLASS =
@@ -55,11 +57,11 @@ type SnoozePanel = "custom" | "event";
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
  * of the snooze times, Custom… for a picked date and time, and Event… for
- * an Event on the subject of the row's items. Number keys pick the menu
- * rows.
+ * an Event on the subject of the row's items or on a page that the viewer
+ * names. Number keys pick the menu rows.
  */
 export function RowSnoozeButton(props: {
-  /** Set when the row's items name a resource with Events. */
+  /** Set when the row can snooze until an Event. */
   eventSnooze?: EventSnooze | undefined;
   /** The action bar's look by default (`ButtonLook`). */
   look?: ButtonLook;
@@ -240,17 +242,44 @@ function sentenceCase(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** The Events that the panel offers, and the page that they are on. */
+function snoozeTarget(
+  url: string,
+  subject: SnoozeEvents | undefined,
+  named: ReturnType<typeof useSnoozeResource>,
+): { error?: string; events?: SnoozeEvents; resourceUrl?: string } {
+  switch (named.state) {
+    case "empty":
+      return { events: subject };
+    case "found":
+      return { events: named.resource, resourceUrl: url };
+    case "invalid":
+      return { error: "Paste a link to a pull request or issue." };
+    case "loading":
+      return {};
+    case "unavailable":
+      return { error: "You cannot snooze on this link." };
+  }
+}
+
 /**
- * Pick an Event on the subject of the row's items, such as a merge of its
- * pull request. Wake shows the items again then; Dismiss dismisses them,
- * for a viewer who can dismiss each one.
+ * Pick an Event that ends the snooze, such as a merge of a pull request.
+ * The Events are those of the row's subject, or of the pull request or
+ * issue that the viewer pastes, so any row can wait on another page. Wake
+ * shows the items again then; Dismiss dismisses them, for a viewer who can
+ * dismiss each one.
  */
 function EventSnoozePanel(props: { onBack(): void; snooze: EventSnooze }) {
+  const id = useId();
   const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
-  const { choices } = props.snooze;
+  const [url, setUrl] = useState("");
+  const { subject } = props.snooze;
+  const named = useSnoozeResource(url.trim());
+  const target = snoozeTarget(url.trim(), subject, named);
+  const { events } = target;
   return (
     <div className="grid gap-1 p-0.5">
-      {choices.resolve ? (
+      {props.snooze.resolve ? (
         <ToggleGroup
           aria-label="On the event"
           className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
@@ -267,23 +296,51 @@ function EventSnoozePanel(props: { onBack(): void; snooze: EventSnooze }) {
           </ToggleGroupItem>
         </ToggleGroup>
       ) : null}
-      <div
-        aria-label={outcome === "wake" ? "Wake when" : "Dismiss when"}
-        className="grid max-h-120 gap-0.5 overflow-y-auto"
-        role="group"
-      >
-        {choices.events.map((eventType, index) => (
-          <button
-            autoFocus={index === 0}
-            className={MENU_ROW_CLASS}
-            key={eventType}
-            onClick={() => props.snooze.onSnooze({ eventType, outcome })}
-            type="button"
-          >
-            {sentenceCase(eventLabel(eventType, choices.resourceType))}
-          </button>
-        ))}
+      <div className="grid gap-1 px-1.5 pt-1">
+        <Label className="text-xs text-muted-foreground" htmlFor={`${id}-url`}>
+          Pull request or issue
+        </Label>
+        <Input
+          aria-describedby={target.error ? `${id}-error` : undefined}
+          aria-invalid={target.error ? true : undefined}
+          autoFocus={!subject}
+          id={`${id}-url`}
+          onChange={(event) => setUrl(event.target.value)}
+          placeholder={
+            subject
+              ? `This ${subject.resourceType.replaceAll("_", " ")}`
+              : "Paste a link"
+          }
+          type="url"
+          value={url}
+        />
+        <FieldError id={`${id}-error`}>{target.error}</FieldError>
       </div>
+      {events ? (
+        <div
+          aria-label={outcome === "wake" ? "Wake when" : "Dismiss when"}
+          className="grid max-h-120 gap-0.5 overflow-y-auto"
+          role="group"
+        >
+          {events.events.map((eventType, index) => (
+            <button
+              autoFocus={index === 0 && url === ""}
+              className={MENU_ROW_CLASS}
+              key={eventType}
+              onClick={() =>
+                props.snooze.onSnooze({
+                  eventType,
+                  outcome,
+                  resourceUrl: target.resourceUrl,
+                })
+              }
+              type="button"
+            >
+              {sentenceCase(eventLabel(eventType, events.resourceType))}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="flex justify-end">
         <Button onClick={props.onBack} type="button" variant="ghost">
           Back
