@@ -73,10 +73,11 @@ boots, and deletes the device that it created. To use a simulator that is
 already booted, set `JUNIOR_IOS_REUSE_UDID`; the script installs the app there,
 removes it at the end, and does not shut that simulator down.
 
-`xcbuild.sh` shares one compilation cache per machine
-(`~/Library/Caches/ios-agent-build.noindex`) and keeps DerivedData in this
-checkout (`.build.noindex`). Checkout paths are remapped out of cache keys, so
-a new worktree reuses compiled work.
+## Logs
+
+Logs use the subsystem `io.sentry.junior`. Message text shows only in a debugger.
+Stream with `log stream --level debug --predicate 'subsystem == "io.sentry.junior"'`,
+use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 ## Launch arguments
 
