@@ -46,9 +46,9 @@ can act on it.
 
 Grouping:
 
-- A child Conversation, at any depth, rolls up to its root. The row shows
-  a quiet label that names the child, such as its Thread title, so the
-  reader knows which sub-thread asked.
+- A child Conversation, at any depth, rolls up to its root. The row shows a
+  quiet label that names the child, such as its Thread title, so the reader
+  knows which sub-thread asked.
 - An item rolls up only when the viewer can see its root, as
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
