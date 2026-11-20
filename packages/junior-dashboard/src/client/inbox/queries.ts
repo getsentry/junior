@@ -602,8 +602,9 @@ export function useFailedReviewItemAnswer(id: string) {
 
 /**
  * The error of the viewer's last action on an item, when that action failed.
- * An optimistic action unmounts the item's view, so the view that comes back
- * reads the error here.
+ * A docked question leaves the page when an answer or a dismiss starts. If
+ * the request then fails, the question comes back as a new component, which
+ * does not have the error, so it reads the error here.
  */
 export function useFailedReviewItemAction(id: string): Error | undefined {
   const errors = useMutationState({
