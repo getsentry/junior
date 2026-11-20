@@ -336,13 +336,9 @@ export function createConversationTurnWorker(
                 ? { requestText: userMessage.meta.requestText }
                 : undefined),
             },
-            ...(userMessage.meta?.leadTask
-              ? [{ kind: "agent" as const, text: userMessage.meta.leadTask }]
-              : []),
           ]
         : await webTurnInputs(
             turnInputs.map((message) => ({
-              leadTask: message.meta?.leadTask,
               reviewItemChange: message.meta?.reviewItemChanges?.[0],
               text: message.text,
             })),

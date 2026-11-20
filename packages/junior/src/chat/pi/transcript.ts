@@ -17,7 +17,6 @@ import {
   unwrapCurrentInstruction,
 } from "@/chat/current-instruction";
 import {
-  isAgentMessageText,
   isRuntimeInputText,
   readParentAgentTask,
   THREAD_CONTEXT_TAGS,
@@ -255,35 +254,13 @@ export function instructionTextForProjection(text: string): string {
  * text.
  */
 export function getUserMessageInstructionText(message: PiMessage): string {
-  return userMessageInstructionText(message, { agentMessages: true });
-}
-
-/**
- * Return the input text of one user message that can state the request: the
- * same text as `getUserMessageInstructionText`, without `<agent-message>`
- * parts. Action review reads it as the user's intent.
- */
-export function getUserMessageRequestText(message: PiMessage): string {
-  return userMessageInstructionText(message, { agentMessages: false });
-}
-
-function userMessageInstructionText(
-  message: PiMessage,
-  options: { agentMessages: boolean },
-): string {
   if (message.role !== "user") {
     return "";
   }
-  const allTexts =
+  const texts =
     typeof message.content === "string"
       ? [message.content]
       : message.content.flatMap((part) => textPartValue(part) ?? []);
-  const texts = options.agentMessages
-    ? allTexts
-    : allTexts.filter(
-        (text) =>
-          !isAgentMessageText(stripTags(text, THREAD_CONTEXT_TAGS).trim()),
-      );
   const inputs = texts.flatMap((text) => {
     const withoutContext = stripTags(text, THREAD_CONTEXT_TAGS).trim();
     if (isRuntimeInputText(withoutContext)) {

@@ -103,14 +103,6 @@ export function renderThreadContext(lines: readonly string[]): string {
 }
 
 /**
- * Return whether a prompt text part is a message that another agent wrote.
- * It is never a person's request.
- */
-export function isAgentMessageText(text: string): boolean {
-  return startsWithTag(text, ["agent-message"]);
-}
-
-/**
  * Return whether a prompt text part is a runtime-created input. Only the
  * runtime writes a part that starts with one of these tags: typed person
  * text is always inside `<current-instruction>`.

@@ -68,8 +68,6 @@ export interface AppendWebMessageInput {
   idempotencyKey: string;
   /** Review item change that this Message reports. */
   reviewItemChange?: ReviewItemChangeRecord | undefined;
-  /** Rendered task that the person's Lead wrote with this Message. */
-  leadTask?: string | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
@@ -179,7 +177,6 @@ export function buildWebInboundMessage(args: {
   messageId: string;
   nowMs?: number;
   reviewItemChange?: ReviewItemChangeRecord;
-  leadTask?: string | undefined;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -211,7 +208,6 @@ export function buildWebInboundMessage(args: {
       ...(args.reviewItemChange
         ? { reviewItemChange: args.reviewItemChange }
         : undefined),
-      ...(args.leadTask ? { leadTask: args.leadTask } : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
         ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
@@ -369,7 +365,6 @@ export async function appendAndEnqueueWebMessage(
         attachments,
         messageId,
         nowMs,
-        ...(input.leadTask && { leadTask: input.leadTask }),
         ...(input.reviewItemChange && {
           reviewItemChange: input.reviewItemChange,
         }),

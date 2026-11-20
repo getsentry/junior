@@ -101,11 +101,6 @@ const agentInputSchema = z
     metadata: z.record(z.string(), z.unknown()).optional(),
     /** Review item change that this input reports, on any Source. */
     reviewItemChange: reviewItemChangeRecordSchema.optional(),
-    /**
-     * Rendered task that the person's Lead wrote with this person's
-     * Message. It is context for the Turn and never part of the Message.
-     */
-    leadTask: z.string().min(1).optional(),
     text: z.string(),
   })
   .strict()

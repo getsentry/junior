@@ -97,32 +97,17 @@ async function requireTopLevelAgentAccess(args: {
 // says how to answer it.
 function renderTopLevelMessageInput(args: {
   senderConversationId: string;
-  source: "lead" | "top_level_agent";
   text: string;
-  writer: string;
 }): string {
   return renderUntrustedTag(
     "agent-message",
-    { conversation_id: args.senderConversationId, source: args.source },
-    args.writer,
+    {
+      conversation_id: args.senderConversationId,
+      source: "top_level_agent",
+    },
+    "Another top-level agent",
     args.text.trim(),
   );
-}
-
-/**
- * Render the task that a Lead sends with a Conversation that it starts, as
- * an escaped Turn input. It is context there, and it approves nothing.
- */
-export function renderLeadTaskInput(args: {
-  leadConversationId: string;
-  text: string;
-}): string {
-  return renderTopLevelMessageInput({
-    senderConversationId: args.leadConversationId,
-    source: "lead",
-    text: args.text,
-    writer: "The person's Lead",
-  });
 }
 
 /**
@@ -185,9 +170,7 @@ export async function enqueueTopLevelAgentMessage(args: {
         metadata,
         text: renderTopLevelMessageInput({
           senderConversationId: args.senderConversationId,
-          source: "top_level_agent",
           text: args.text,
-          writer: "Another top-level agent",
         }),
       },
       receivedAtMs: nowMs,

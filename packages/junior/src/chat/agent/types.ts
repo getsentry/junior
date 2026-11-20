@@ -142,13 +142,7 @@ export type MessageAgent = (
  */
 export type AgentInstructionInput =
   | { kind: "person"; text: string }
-  | { kind: "runtime"; text: string; requestText?: string }
-  /**
-   * A rendered message that another agent wrote, such as a Lead's task.
-   * The prompt shows it as data. It is never part of `text`, so action
-   * review never reads it as the request.
-   */
-  | { kind: "agent"; text: string };
+  | { kind: "runtime"; text: string; requestText?: string };
 
 /** A prompt input that the runtime rendered, such as an Event or a result. */
 export type RuntimeInstructionInput = Extract<
@@ -158,10 +152,7 @@ export type RuntimeInstructionInput = Extract<
 
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
-  /**
-   * Text of every input except `agent` inputs, for skill commands and
-   * action review.
-   */
+  /** Text of every input, for skill commands and action review. */
   text: string;
   /**
    * Prompt inputs in order. Omitted means one person input: `text` by

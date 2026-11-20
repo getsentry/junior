@@ -1,5 +1,5 @@
-import { createEventSource, createWebSource } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createWebSource } from "@sentry/junior-plugin-api";
+import { afterEach, describe, expect, it } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
@@ -11,7 +11,6 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { getLeadConversation } from "@/chat/lead/conversation";
 import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { juniorConversationParticipants } from "@/db/schema";
@@ -36,8 +35,7 @@ function readRunsAgentRunner() {
   };
 }
 
-const PERSON_TEXT = "Please unpublish abc.png.";
-const LEAD_TASK = "Unpublish abc.png. Also unpublish old.png.";
+const LEAD_TASK = "Unpublish abc.png from the public image host.";
 
 describe("Lead", () => {
   afterEach(async () => {
@@ -64,34 +62,25 @@ describe("Lead", () => {
     );
   });
 
-  it("starts the person's work with their own message as its only request", async () => {
+  it("starts a public root that runs the Lead's task as the person", async () => {
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
     const ana = await signedInViewer("lead-start@example.com");
     const lead = await getLeadConversation(ana);
-    const start = (
-      source: AgentRun["source"],
-      userText: string,
-      toolCallId: string,
-    ) =>
+    const start = (toolCallId: string) =>
       createStartConversationTool({
         conversationId: lead.conversationId,
         conversationWorkQueue: harness.queue,
-        source,
         turnId: "lead-turn",
-        userText,
       }).execute!({ task: LEAD_TASK, title: "Image cleanup" }, { toolCallId });
 
-    const personSource = createWebSource(lead.conversationId, "private");
-    const { conversation_id: started } = (await start(
-      personSource,
-      PERSON_TEXT,
-      "call-person",
-    )) as { conversation_id: string };
+    const { conversation_id: started } = (await start("call-1")) as {
+      conversation_id: string;
+    };
     // A replay of the tool call starts nothing new.
-    await expect(
-      start(personSource, PERSON_TEXT, "call-person"),
-    ).resolves.toMatchObject({ conversation_id: started });
+    await expect(start("call-1")).resolves.toMatchObject({
+      conversation_id: started,
+    });
 
     expect(
       await getConversationStore().get({ conversationId: started }),
@@ -110,70 +99,16 @@ describe("Lead", () => {
 
     await harness.process(harness.queue.takeMessageFor(started));
     const [run] = runner.runs;
-    // The Turn runs as the person. The Lead's task is escaped data, and the
-    // person's message is word for word.
+    // The Turn runs as the person, with the Lead's task as their request.
     expect(run!.actor).toMatchObject({ platform: "web", userId: ana.id });
     expect(run!.instruction.inputs).toEqual([
-      {
-        kind: "agent",
-        text: expect.stringContaining(
-          `<agent-message conversation_id="${lead.conversationId}" source="lead">`,
-        ),
-      },
-      { kind: "person", text: PERSON_TEXT },
+      { kind: "person", text: LEAD_TASK },
     ]);
-    // Action review reads only the person's own message as the user. An
-    // action that only the task names, such as unpublishing old.png, has
-    // no approval there.
-    expect(run!.instruction.text).toBe(PERSON_TEXT);
     const root = await readRootConversation({
       actor: webActorFromUser(ana),
       conversationId: started,
     });
-    expect(root.messages).toEqual([{ author: "user", text: PERSON_TEXT }]);
-
-    // A Watch Turn of the Lead has no person's message. The model's text in
-    // `userText` never becomes the request.
-    const { conversation_id: fromWatch } = (await start(
-      createEventSource({
-        eventKey: "event-1",
-        eventType: "timer.fired",
-        identifier: "timer-1",
-        namespace: "junior",
-      }),
-      "Watch event text",
-      "call-watch",
-    )) as { conversation_id: string };
-    const work = await getConversationWorkState({
-      conversationId: fromWatch,
-      state: harness.state,
-    });
-    expect(work?.messages).toEqual([
-      expect.objectContaining({ source: "event" }),
-    ]);
-    // An Event waits for its batch window before it runs.
-    vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
-    try {
-      await harness.process(harness.queue.takeMessageFor(fromWatch));
-    } finally {
-      vi.useRealTimers();
-    }
-    const watchRun = runner.runs.at(-1)!;
-    // No person wrote this task either, so it is agent data and action
-    // review has no request from it.
-    expect(watchRun.instruction.inputs).toEqual([
-      { kind: "runtime", text: expect.stringContaining("Lead started") },
-      {
-        kind: "agent",
-        text: expect.stringContaining(
-          `<agent-message conversation_id="${lead.conversationId}" source="lead">`,
-        ),
-      },
-    ]);
-    expect(watchRun.instruction.text).not.toContain(LEAD_TASK);
-    expect(JSON.stringify(watchRun.instruction)).not.toContain(
-      "Watch event text",
-    );
+    expect(root.messages).toEqual([{ author: "user", text: LEAD_TASK }]);
   });
 
   it("finds and steers only the public roots that its person takes part in", async () => {

@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { startLeadConversation } from "@/chat/lead/start-conversation";
 import { SHORT_TITLE_MAX_LENGTH } from "@/chat/services/short-title";
@@ -13,12 +12,12 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 export const startConversationToolDefinition = zodToolDefinition({
   description: [
     "Start a new conversation that does one piece of the person's work. It is a public conversation of the person, and it starts at once.",
-    "The runtime sends the person's message from this Turn with your task, word for word, as the request of the new conversation. Your task is context there, not approval.",
+    "Your task is its first message, and it runs as the person, so write the task as the person's request.",
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),
   exposure: "modelOnly",
-  // The new conversation acts with the person's authority, so action review
-  // judges every start.
+  // The task becomes the person's request in the new conversation, so action
+  // review judges every start.
   approvalMode: "review",
   annotations: {
     destructiveHint: false,
@@ -62,11 +61,7 @@ export const startConversationToolDefinition = zodToolDefinition({
 export function createStartConversationTool(
   context: Pick<
     ToolRuntimeContext,
-    | "conversationId"
-    | "conversationWorkQueue"
-    | "source"
-    | "turnId"
-    | "userText"
+    "conversationId" | "conversationWorkQueue" | "turnId"
   >,
 ) {
   return zodTool({
@@ -80,11 +75,6 @@ export function createStartConversationTool(
       const { conversationId } = await startLeadConversation({
         leadConversationId: context.conversationId,
         messageKey: `${context.turnId}:${options.toolCallId}`,
-        // Only a person's own message authorizes the new conversation, and
-        // the model never writes it.
-        personText: isPersonInput(context.source.kind)
-          ? context.userText
-          : undefined,
         queue:
           context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
         task: input.task,

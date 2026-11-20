@@ -59,9 +59,9 @@ Check the rows in this order. The first match decides.
 - One exception: a Lead may write into a public root where its person is a
   Participant. The Lead writes there for that person, as the person could.
   It never writes into another person's public root.
-- `startConversation` makes a public root from a Lead. The person's own
-  message from the Lead Turn goes into it, word for word, as the request.
-  The Lead's task goes with it as agent data, so it approves nothing.
+- `startConversation` makes a public root from a Lead. It runs as the
+  person, and the Lead's task is its first message. Action review judges
+  each `startConversation` call, as it does other tool calls.
 
 ## Rules for every surface
 

@@ -184,7 +184,6 @@ export function instructionForInputs(
   return {
     inputs,
     text: inputs
-      .filter((input) => input.kind !== "agent")
       .map((input) => input.text.trim())
       .filter(Boolean)
       .join("\n\n"),
@@ -211,20 +210,12 @@ export function turnRequestText(
   const inputs = instruction.inputs ?? [
     { kind: "person" as const, text: instruction.text },
   ];
-  return (
-    inputs
-      // A Lead's task is agent data, not the request.
-      .map((input) =>
-        (input.kind === "person"
-          ? input.text
-          : input.kind === "runtime"
-            ? (input.requestText ?? "")
-            : ""
-        ).trim(),
-      )
-      .filter(Boolean)
-      .join("\n\n")
-  );
+  return inputs
+    .map((input) =>
+      (input.kind === "person" ? input.text : (input.requestText ?? "")).trim(),
+    )
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // Render one prompt text part per input, in order. Inputs are never joined.
@@ -350,9 +341,9 @@ export function buildSteeringPiMessage(
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
     inputParts: [
-      message.kind === undefined || message.kind === "person"
-        ? buildUserTurnText(message.text, message.actor)
-        : message.text.trim(),
+      message.kind === "runtime"
+        ? message.text.trim()
+        : buildUserTurnText(message.text, message.actor),
     ],
     userAttachments: message.attachments ? [...message.attachments] : undefined,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
