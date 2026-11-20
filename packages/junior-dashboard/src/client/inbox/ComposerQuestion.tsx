@@ -357,7 +357,15 @@ function DockedQuestion(props: {
       props.afterAction(true);
     }
     try {
-      await action.mutateAsync({ body, id: item.id });
+      await action.mutateAsync({
+        body,
+        id: item.id,
+        // An answer to a question that a Turn asked starts a Turn in each
+        // linked Conversation. A plugin does the work of its item's answer.
+        ...(body.action === "submit" && item.addedByTurnId
+          ? { turnConversationIds: item.conversationIds }
+          : undefined),
+      });
     } catch (caught) {
       if (closing) props.onCloseShown(false);
       throw caught;

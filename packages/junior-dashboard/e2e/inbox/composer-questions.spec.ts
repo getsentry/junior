@@ -1,4 +1,7 @@
-import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  type ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -502,6 +505,67 @@ test.describe("new UI", { tag: "@new" }, () => {
         name: "Asked Approve the payments-v42 rollout",
       }),
     ).toContainText("Hold until Monday, the EU team is out.");
+  });
+
+  test("an answer to a question shows thinking before its Turn starts", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(desktop);
+    // A question that a Turn asked starts a Turn when answered. The mock
+    // questions have no Turn.
+    await page.route(
+      (url) =>
+        url.pathname === "/api/review-items" &&
+        url.searchParams.get("conversationId") === ONE_QUESTION_ID,
+      async (route) => {
+        const response = await route.fetch();
+        if (response.status() !== 200) return route.fulfill({ response });
+        const list = await response.json();
+        await route.fulfill({
+          json: {
+            ...list,
+            items: list.items.map((item: ReviewItemPayload) => ({
+              ...item,
+              addedByTurnId: "turn-qa",
+            })),
+          },
+          response,
+        });
+      },
+    );
+    const actions = "**/api/review-items/qa-rollout/actions";
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(actions, async (route) => {
+      await held;
+      await route.fulfill({
+        json: { error: "The rollout is locked." },
+        status: 409,
+      });
+    });
+    await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+    const question = page.getByRole("region", {
+      name: "Question: Approve the payments-v42 rollout",
+    });
+    const thinking = page
+      .getByRole("status")
+      .filter({ hasText: "Junior is thinking" });
+
+    await question.getByRole("button", { name: /Roll out/ }).click();
+    await expect(thinking).toBeVisible();
+    // A failed answer starts no Turn.
+    release();
+    await expect(question.getByText("The rollout is locked.")).toBeVisible();
+    await expect(thinking).toBeHidden();
+
+    await page.unroute(actions);
+    await question.getByRole("button", { name: /Roll out/ }).click();
+    await expect(question).toHaveCount(0);
+    // No detail read since the answer, so the snapshot cannot show its Turn.
+    await expect(thinking).toBeVisible();
   });
 
   test("Respond quotes into the message box under a question", async ({

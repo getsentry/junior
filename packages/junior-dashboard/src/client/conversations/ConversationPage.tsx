@@ -77,6 +77,7 @@ import {
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ChildConversationStatusPill } from "./ChildConversationStatus";
+import { useAnswerAwaitsTurn } from "../inbox/queries";
 import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
@@ -258,6 +259,8 @@ export function ConversationPage(props: {
     () => readConversationLink(searchParams) !== undefined,
   );
   const detail = props.detail;
+  // An answer to a docked question starts a Turn, so it shows thinking too.
+  const answerAwaitsTurn = useAnswerAwaitsTurn(conversationId, detail.snapshot);
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
   // the rest of the visit. It can come before the unread page loads.
   const [showLatest, setShowLatest] = useState(false);
@@ -830,7 +833,8 @@ export function ConversationPage(props: {
                         // Turn, so show thinking from Enter, not from the
                         // saved Turn start.
                         (conversationIsResponding(detail.data) ||
-                          detail.inlineMessages.length > 0)
+                          detail.inlineMessages.length > 0 ||
+                          answerAwaitsTurn)
                       }
                       onOpenSubagentTranscript={onOpenSubagentTranscript}
                       search={search}

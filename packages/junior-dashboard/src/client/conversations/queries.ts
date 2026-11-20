@@ -764,6 +764,8 @@ export function useConversationData(
      * matches `fetchedDetail` and the read position that came with it.
      */
     latest: detail.data,
+    /** The server snapshot that `data` shows, with its mailbox. */
+    snapshot: detailData,
     error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),

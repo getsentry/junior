@@ -345,6 +345,8 @@ const REVIEW_ITEM_ACTION_KEY = [...REVIEW_ITEMS_QUERY_KEY, "action"];
 const reviewItemActionVariablesSchema = z.object({
   body: reviewItemActionSchema,
   id: z.string(),
+  /** The Conversations where this action starts a Turn. */
+  turnConversationIds: z.array(z.string()).optional(),
 });
 
 /** One action on one Review item, as `useReviewItemAction` sends it. */
@@ -577,6 +579,41 @@ export function useClosingReviewItemIds(): ReadonlySet<string> {
   });
   const key = ids.filter(Boolean).sort().join("\n");
   return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
+ * Whether an answer of the viewer starts a Turn in this Conversation that
+ * the snapshot does not show yet: the action is in flight, the snapshot
+ * read its mailbox no later than the action, or the mailbox still has the
+ * answer.
+ * A Turn takes the answer out of the mailbox only after it starts.
+ */
+export function useAnswerAwaitsTurn(
+  conversationId: string,
+  snapshot:
+    | Pick<ConversationSnapshot, "mailbox" | "mailboxReadAtMs">
+    | undefined,
+): boolean {
+  const answers = useMutationState({
+    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { status, submittedAt } = mutation.state;
+      return action?.turnConversationIds?.includes(conversationId) &&
+        (status === "pending" || status === "success")
+        ? { id: action.id, pending: status === "pending", submittedAt }
+        : undefined;
+    },
+  });
+  return answers.some(
+    (answer) =>
+      answer &&
+      (answer.pending ||
+        (snapshot?.mailboxReadAtMs ?? 0) <= answer.submittedAt ||
+        snapshot?.mailbox?.messages.some(
+          (message) => message.reviewItemChange?.reviewItemId === answer.id,
+        )),
+  );
 }
 
 /**
