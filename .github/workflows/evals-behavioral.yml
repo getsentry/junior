@@ -65,6 +65,13 @@ jobs:
               - 'packages/junior/src/chat/tool-support/**'
               - 'packages/junior/src/chat/review-items/tools/**'
               - 'packages/junior/src/chat/review-items/tool-support.ts'
+              - 'packages/junior/src/chat/review-items/user-input-request.ts'
+              - 'packages/junior/src/chat/sandbox/edit-file.ts'
+              - 'packages/junior/src/chat/sandbox/file-uploads.ts'
+              - 'packages/junior/src/chat/sandbox/file-utils.ts'
+              - 'packages/junior/src/chat/sandbox/generated-files.ts'
+              - 'packages/junior/src/chat/sandbox/image-files.ts'
+              - 'packages/junior/src/chat/identities/lookup-providers.ts'
 
       - id: decision
         env:
