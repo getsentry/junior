@@ -27,11 +27,12 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
     requireViewer,
     validateRequest("json", inboxSnoozeCreateSchema, "Invalid snooze."),
     async (context) => {
-      const { wakeAt, ...subject } = context.req.valid("json");
+      const { triggers, wakeAt, ...subject } = context.req.valid("json");
       try {
         const reviewItemIds = await createViewerSnooze(context.get("viewer"), {
           subject,
-          wakeAtMs: Date.parse(wakeAt),
+          ...(triggers ? { triggers } : undefined),
+          ...(wakeAt ? { wakeAtMs: Date.parse(wakeAt) } : undefined),
         });
         return jsonResponse(
           inboxSnoozeSchema,

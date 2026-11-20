@@ -87,6 +87,19 @@ export const reviewItemSchema = z
          * `code_change` for a pull request. Unset when none claims it.
          */
         objectType: objectTypeSchema.optional(),
+        /**
+         * The Event resource that `url` names, such as a pull request, with
+         * the Event types that can wake or resolve a snooze of the item.
+         * Unset when no Event source claims it.
+         */
+        resource: z
+          .object({
+            events: z.array(z.string().min(1)).min(1),
+            namespace: z.string().min(1),
+            resourceType: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         title: z.string().min(1).optional(),
         url: z.string().min(1).optional(),
       })

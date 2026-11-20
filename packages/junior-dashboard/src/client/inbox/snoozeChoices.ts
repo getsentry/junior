@@ -1,3 +1,8 @@
+import type {
+  InboxSnoozeTrigger,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
+
 const HOUR_MS = 60 * 60 * 1000;
 
 /** A snooze choice, such as "Tomorrow morning". */
@@ -49,4 +54,54 @@ export function snoozeChoicesAt(nowMs: number): SnoozeChoice[] {
   return snoozeChoices.filter(
     (choice) => choice.beforeHour === undefined || hour < choice.beforeHour,
   );
+}
+
+/**
+ * The Events that can end a snooze of a row's items: those of the resource
+ * type that each item's subject names, such as a pull request.
+ */
+interface SnoozeEvents {
+  /** Event types, in the order that their source lists them. */
+  events: readonly string[];
+  /** The resource type, so a label can leave it out. */
+  resourceType: string;
+  /** The viewer can dismiss each item, so an Event can dismiss them. */
+  resolve: boolean;
+}
+
+/** Snooze a row until an Event on the subject of its items. */
+export interface EventSnooze {
+  choices: SnoozeEvents;
+  onSnooze(trigger: InboxSnoozeTrigger): void;
+}
+
+/**
+ * The Event snooze of these items. Each item's subject must name a
+ * resource of the same type, as the server aims the Event at each item's
+ * own resource. Undefined when one does not, or the row cannot snooze.
+ */
+export function eventSnoozeOf(
+  items: readonly ReviewItemPayload[],
+  onSnooze: ((trigger: InboxSnoozeTrigger) => void) | undefined,
+): EventSnooze | undefined {
+  const resource = items[0]?.subject?.resource;
+  if (
+    !onSnooze ||
+    !resource ||
+    items.some(
+      (item) =>
+        item.subject?.resource?.namespace !== resource.namespace ||
+        item.subject.resource.resourceType !== resource.resourceType,
+    )
+  ) {
+    return undefined;
+  }
+  return {
+    choices: {
+      events: resource.events,
+      resourceType: resource.resourceType,
+      resolve: items.every((item) => item.canAct),
+    },
+    onSnooze,
+  };
 }
