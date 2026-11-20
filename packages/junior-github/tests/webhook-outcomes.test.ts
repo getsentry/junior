@@ -109,7 +109,7 @@ it("combines open, merged, and closed pull requests into conversation work", asy
           state: "merged",
           conversationIds: ["conversation-merged", "conversation-shared"],
           openedAt: at,
-          mergedAt: at,
+          finishedAt: at,
           updatedAt: at,
         },
         {
@@ -120,7 +120,7 @@ it("combines open, merged, and closed pull requests into conversation work", asy
           state: "closed_unmerged",
           conversationIds: ["conversation-closed", "conversation-merged"],
           openedAt: at,
-          closedAt: closedAt,
+          finishedAt: closedAt,
           updatedAt: closedAt,
         },
       ]);
@@ -2427,13 +2427,11 @@ describe("GitHub-owned pull request outcomes", () => {
         .orderBy(juniorGitHubPullRequests.number);
       expect(rows).toMatchObject([
         {
-          closedAt: new Date("2026-07-03T12:00:00.000Z"),
-          mergedAt: new Date("2026-07-03T12:05:00.000Z"),
+          finishedAt: new Date("2026-07-03T12:05:00.000Z"),
           state: "merged",
         },
         {
-          closedAt: new Date("2026-07-04T12:05:00.000Z"),
-          mergedAt: null,
+          finishedAt: new Date("2026-07-04T12:05:00.000Z"),
           state: "closed_unmerged",
         },
       ]);
@@ -3453,7 +3451,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("stores the draft state from opens and draft changes", async () => {
+  it("writes the draft state from opens and draft changes", async () => {
     const fixture = await createGitHubFixture();
     const codeChanges: CodeChangeInput[] = [];
     try {
@@ -3482,27 +3480,19 @@ describe("GitHub-owned pull request outcomes", () => {
             }),
           ),
         );
-      const storedDraft = async () =>
-        (await fixture.db().select().from(juniorGitHubPullRequests))[0]?.draft;
-
       await deliver("opened", "2026-07-01T12:00:00.000Z", { draft: true });
-      expect(await storedDraft()).toBe(true);
       await deliver("ready_for_review", "2026-07-02T12:00:00.000Z", {
         draft: false,
       });
-      expect(await storedDraft()).toBe(false);
       // A late delivery cannot move the draft state back.
       await deliver("converted_to_draft", "2026-07-01T18:00:00.000Z", {
         draft: true,
       });
-      expect(await storedDraft()).toBe(false);
       await deliver("converted_to_draft", "2026-07-03T12:00:00.000Z", {
         draft: true,
       });
-      expect(await storedDraft()).toBe(true);
       // A close keeps the draft state.
       await deliver("closed", "2026-07-04T12:00:00.000Z", { draft: false });
-      expect(await storedDraft()).toBe(true);
 
       expect(codeChanges.map((change) => [change.state, change.draft])).toEqual(
         [

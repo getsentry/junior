@@ -202,14 +202,12 @@ describe("daily reconcile of open pull requests", () => {
       .select()
       .from(juniorGitHubPullRequests)
       .orderBy(juniorGitHubPullRequests.number);
-    expect(
-      rows.map((row) => [row.number, row.state, row.mergedAt, row.closedAt]),
-    ).toEqual([
-      [946, "merged", new Date(now - day), new Date(now - day)],
-      [947, "open", null, null],
-      [949, "closed_unmerged", null, new Date(now - day)],
-      [950, "open", null, null],
-      [951, "open", null, null],
+    expect(rows.map((row) => [row.number, row.state, row.finishedAt])).toEqual([
+      [946, "merged", new Date(now - day)],
+      [947, "open", null],
+      [949, "closed_unmerged", new Date(now - day)],
+      [950, "open", null],
+      [951, "open", null],
     ]);
     // An open pull request keeps its state and gets its current title.
     expect(
@@ -244,16 +242,10 @@ describe("daily reconcile of open pull requests", () => {
     expect(queries[1]?.sort()).toEqual([947, 950, 951]);
   });
 
-  it("writes a draft state that changed on GitHub", async () => {
+  it("writes the current draft state to the code index", async () => {
     drafts = new Set([947]);
     await h.heartbeat(now);
 
-    const [row] = await fixture
-      .db()
-      .select()
-      .from(juniorGitHubPullRequests)
-      .where(eq(juniorGitHubPullRequests.number, 947));
-    expect(row).toMatchObject({ draft: true, state: "open" });
     expect(
       h.codeChanges.map((change) => [
         change.number,
