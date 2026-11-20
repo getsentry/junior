@@ -867,7 +867,11 @@ export function ConversationPage(props: {
                       responding={
                         !detail.error &&
                         !history.newer &&
-                        conversationIsResponding(detail.data)
+                        // A send that history does not have yet starts a
+                        // Turn, so show thinking from Enter, not from the
+                        // saved Turn start.
+                        (conversationIsResponding(detail.data) ||
+                          detail.inlineMessages.length > 0)
                       }
                       onOpenSubagentTranscript={onOpenSubagentTranscript}
                       search={search}
