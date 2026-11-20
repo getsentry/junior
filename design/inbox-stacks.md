@@ -8,13 +8,12 @@ can act on it.
 
 ## Intent
 
-- One stack for each root Conversation. People start and follow root
-  Conversations. They usually do not know which Threads and Tasks run under
+- One stack for each root Conversation, or for each other owner of an
+  item, such as an Automation. People start and follow root Conversations. They usually do not know which Threads and Tasks run under
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
-  always one actionable item, such as a question or a pull request. A
-  Conversation row is a different row, for the Conversations view. A row
+  always one actionable item, such as a question or a pull request. A row
   action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
@@ -47,6 +46,10 @@ can act on it.
 
 Grouping:
 
+- Each item has one owner: the Conversation that added it, or an
+  Automation for its alerts. The owner sets who sees the item, its tenant,
+  and its stack. An Automation's alert takes its visibility from the
+  Automation's Destination, and stacks under the Automation alone.
 - A child Conversation, at any depth, rolls up to its root. The row shows a
   quiet label that names the child, such as its Thread title, so the reader
   knows which sub-thread asked.
@@ -104,16 +107,17 @@ Order and counts:
 
 Snooze:
 
-- Snooze on a row puts away only that item, until a time or an Event.
+- Snooze on a row puts away only that item, until a time or one of the
+  Events it picks on its subject or a page that the viewer can see.
 - Snooze on a stack snoozes each of its items until the same time. An
   item that arrives later is not snoozed: it shows in the Inbox by itself,
   and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row
   wakes only that item.
+- The server keeps each snooze, so every browser of the viewer agrees. A
+  new alert of an Automation is a new item, so it is not snoozed.
 
 ## Gaps
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- A snooze lives in one browser. Another browser of the same viewer shows
-  the item.

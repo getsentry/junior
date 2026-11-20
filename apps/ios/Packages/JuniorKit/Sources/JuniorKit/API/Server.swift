@@ -70,7 +70,9 @@ func describe(_ error: DecodingError) -> String {
   switch error {
   case .keyNotFound(let key, let context):
     return "Missing \(path(context.codingPath + [key]))."
-  case .typeMismatch(_, let context), .valueNotFound(_, let context), .dataCorrupted(let context):
+  case .typeMismatch(let type, let context), .valueNotFound(let type, let context):
+    return "Bad value at \(path(context.codingPath)), expected \(type)."
+  case .dataCorrupted(let context):
     return "Bad value at \(path(context.codingPath))."
   @unknown default:
     return "\(error)"

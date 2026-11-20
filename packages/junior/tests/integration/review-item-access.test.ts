@@ -50,7 +50,7 @@ async function addItem(input: {
   visibility: ReviewItemVisibility;
 }): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: input.conversationId,
+    owner: { id: input.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,
     body: "Body",

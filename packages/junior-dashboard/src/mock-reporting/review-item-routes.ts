@@ -3,6 +3,7 @@ import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
   apiErrorSchema,
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
   reviewItemActionSchema,
@@ -11,8 +12,7 @@ import {
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
 } from "@sentry/junior/api/schema";
-import { mockAutomationCollection } from "./automation-collection";
-import { NOW_MS, readMockAutomationList } from "./fixtures";
+import { NOW_MS } from "./fixtures";
 import {
   actOnMockReviewItem,
   readMockReviewItem,
@@ -22,6 +22,7 @@ import {
   snoozeMockRow,
   wakeMockRow,
 } from "./review-items";
+import { readMockSnoozeResource } from "./snooze-resources";
 
 function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -39,6 +40,7 @@ export function addMockReviewItemRoutes(
     const {
       conversationId,
       for: forViewer,
+      owner,
       q,
       snoozed,
       status,
@@ -51,22 +53,18 @@ export function addMockReviewItemRoutes(
         forViewer: forViewer === "viewer" && !q && !conversationId,
         q: q || undefined,
         snoozed: snoozed === "true",
-      }),
+      }).filter((item) => !owner || item.owner.kind === owner),
     });
   });
-  app.get("/review-items/count", (c) =>
-    jsonResponse(reviewItemCountSchema, {
+  app.get("/review-items/count", (c) => {
+    const { automations, ...counts } = readMockReviewItemCounts(NOW_MS);
+    return jsonResponse(reviewItemCountSchema, {
       ...(c.req.query("include")?.split(",").includes("automations")
-        ? {
-            automations: mockAutomationCollection(
-              readMockAutomationList(),
-              new URLSearchParams({ owner: "me", scope: "attention" }),
-            ).total,
-          }
+        ? { automations }
         : undefined),
-      ...readMockReviewItemCounts(NOW_MS),
-    }),
-  );
+      ...counts,
+    });
+  });
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,
@@ -85,6 +83,12 @@ export function addMockReviewItemRoutes(
     return item
       ? jsonResponse(reviewItemSchema, item)
       : errorResponse("Review item not found.", 404);
+  });
+  app.get("/inbox/snoozes/resource", (c) => {
+    const resource = readMockSnoozeResource(c.req.query("url") ?? "");
+    return resource
+      ? jsonResponse(inboxSnoozeResourceSchema, resource)
+      : errorResponse("A snooze cannot wait on this link.", 404);
   });
   app.post("/inbox/snoozes", async (c) => {
     const body = inboxSnoozeCreateSchema.safeParse(await c.req.json());

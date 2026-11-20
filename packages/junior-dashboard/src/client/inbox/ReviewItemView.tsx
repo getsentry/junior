@@ -7,12 +7,16 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { StatusChip } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { ChatLayout } from "../conversations/ChatLayout";
-import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
 import { ReviewItemObjects } from "./ReviewItemObjects";
-import { reviewItemStatusLabel } from "./reviewItemFormat";
+import {
+  itemConversationId,
+  itemOwnerLinkLabel,
+  itemOwnerPath,
+  reviewItemStatusLabel,
+} from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
 import { ReviewItemTitle } from "./ReviewItemPeople";
 import { reviewItemTitleText } from "./reviewItemFormat";
@@ -70,22 +74,23 @@ export function ReviewItemView(props: {
       for (const name of events) scroll.removeEventListener(name, stop);
     };
   }, []);
-  const source = item.automationId ? "Automation" : props.sourceTitle;
+  const source =
+    item.automationId || item.owner.kind === "automation"
+      ? "Automation"
+      : props.sourceTitle;
   // A notice has no question, so its text is what the card shows.
   const bodyInCard = item.kind === "notice" || !item.request;
   const body = (
-    <ReviewItemObjects conversationId={item.addedByConversationId}>
+    <ReviewItemObjects conversationId={itemConversationId(item)}>
       <DisplayText mentions={item.mentions} text={item.body} />
     </ReviewItemObjects>
   );
   const conversationLink = (
     <Link
       className={textLinkClass}
-      to={conversationPath(item.addedByConversationId, {
-        turnId: item.addedByTurnId,
-      })}
+      to={itemOwnerPath(item, { turnId: item.addedByTurnId })}
     >
-      Open conversation
+      {itemOwnerLinkLabel(item)}
       <ArrowRight aria-hidden="true" size={14} />
     </Link>
   );

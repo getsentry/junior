@@ -1,5 +1,4 @@
 import { getConversationEventStore, getDb } from "@/chat/db";
-import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
   isAgentInvocationResult,
@@ -47,19 +46,20 @@ async function selectTurnCards(
       if (
         data.type !== "tool_result" ||
         data["isError"] ||
-        typeof data["toolName"] !== "string" ||
-        !isRecord(data["details"])
+        typeof data["toolName"] !== "string"
       )
         continue;
-      if (data["details"]["timed_out"] === true) continue;
-      if (Array.isArray(data["details"]["removedCards"])) {
+      const details = data["details"];
+      if (typeof details !== "object" || details === null) continue;
+      if ("timed_out" in details && details.timed_out === true) continue;
+      if ("removedCards" in details && Array.isArray(details.removedCards)) {
         for (const ref of removedCardSchema
           .array()
-          .parse(data["details"]["removedCards"])) {
+          .parse(details.removedCards)) {
           selection.deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      for (const card of readMessageCardRefs(data["details"])) {
+      for (const card of readMessageCardRefs(details)) {
         const key = JSON.stringify([card.plugin, card.key]);
         if (!selection.deleted.has(key) && !selection.cards.has(key)) {
           selection.cards.set(key, card);

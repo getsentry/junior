@@ -77,7 +77,7 @@ async function mockWaitingConversation(
               ? [
                   {
                     ...reviewItem,
-                    addedByConversationId: waitingId,
+                    owner: { id: waitingId, kind: "conversation" },
                     rootConversationId: waitingId,
                     conversationIds: [waitingId],
                   },

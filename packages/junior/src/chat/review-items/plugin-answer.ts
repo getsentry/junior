@@ -9,7 +9,7 @@ import { createPluginConversationWatches } from "@/chat/plugins/watches";
 import { PLUGIN_REVIEW_ITEM_KEY_PREFIX, reviewItemPlugin } from "./access";
 import type { ReviewItemDelivery } from "./changes";
 import { createPluginReviewItems, PLUGIN_CHOICE_FIELD_ID } from "./plugin";
-import type { ReviewItem } from "./store";
+import { ownerConversationId, type ReviewItem } from "./store";
 
 /**
  * Give the answer of a plugin item with choices to the plugin that added it,
@@ -24,7 +24,9 @@ export async function answerPluginReviewItem(args: {
   const { item } = args;
   const pluginName = reviewItemPlugin(item.dedupeKey);
   const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
-  if (!pluginName || !choice) return;
+  // A plugin adds items only for a Conversation.
+  const conversationId = ownerConversationId(item);
+  if (!pluginName || !choice || !conversationId) return;
   const plugin = getPlugins().find((p) => p.manifest.name === pluginName);
   const hook = plugin?.hooks?.reviewItemAnswered;
   if (!plugin || !hook) return;
@@ -34,7 +36,7 @@ export async function answerPluginReviewItem(args: {
   await hook({
     ...basePluginContext(plugin),
     choice,
-    conversationId: item.addedByConversationId,
+    conversationId,
     dedupeKey: item.dedupeKey.slice(
       `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}${pluginName}:`.length,
     ),
@@ -50,9 +52,6 @@ export async function answerPluginReviewItem(args: {
         }),
     },
     state: createPluginState(pluginName),
-    watches: createPluginConversationWatches(
-      plugin,
-      item.addedByConversationId,
-    ),
+    watches: createPluginConversationWatches(plugin, conversationId),
   });
 }

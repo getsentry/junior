@@ -69,6 +69,7 @@ public struct OAuthClient: Sendable {
     let metadataURL = server.page("/.well-known/oauth-authorization-server")!
     let (data, response) = try await load(URLRequest(url: metadataURL))
     guard response.statusCode == 200, let metadata = try? JSONDecoder().decode(Metadata.self, from: data) else {
+      Log.oauth.error("Sign-in metadata got HTTP \(response.statusCode, privacy: .public)")
       throw JuniorAPIError.signIn("This Junior has no MCP sign-in (\(response.statusCode)).")
     }
     let verifier = randomToken(bytes: 32)
@@ -142,6 +143,9 @@ public struct OAuthClient: Sendable {
     let (data, response) = try await load(request)
     guard response.statusCode == 200 else {
       let error = try? JSONDecoder().decode(TokenError.self, from: data)
+      Log.oauth.error(
+        "\(fields["grant_type"] ?? "token", privacy: .public) got HTTP \(response.statusCode, privacy: .public): \(error?.error ?? "no error code", privacy: .public)"
+      )
       if error?.error == "invalid_grant", fields["grant_type"] == "refresh_token" { throw JuniorAPIError.signedOut }
       throw JuniorAPIError.signIn(error?.error_description ?? error?.error ?? "Junior returned \(response.statusCode).")
     }

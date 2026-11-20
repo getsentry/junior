@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
-import { closeReviewItem, getReviewItem } from "@/chat/review-items/store";
+import {
+  closeReviewItem,
+  getReviewItem,
+  insertReviewItem,
+} from "@/chat/review-items/store";
 import {
   juniorAutomations,
   juniorConversationParticipants,
@@ -647,5 +651,44 @@ describe("review item tools", () => {
         reason: "the entry was approved",
       }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
+  });
+
+  it("leaves Automation alerts to core", async () => {
+    await conversation("slack:CPUB:1.000001", "CPUB", "public");
+    const ana = await user("ana@example.com");
+    const agent = tools(automationRun("slack:CPUB:1.000001"));
+    const notice = {
+      kind: "notice",
+      title: "Digest failed",
+      body: "The last run failed.",
+      assignees: ["everyone"],
+    };
+    await expect(
+      execute(agent.add, { ...notice, dedupe_key: "automation:sched_1" }),
+    ).rejects.toThrow("belongs to an Automation alert");
+    // An alert that core added for a public Automation.
+    const alert = await insertReviewItem(getDb(), {
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "Last run failed.",
+      conversationIds: [],
+      dedupeKey: "automation:sched_1:run",
+      kind: "action",
+      nowMs: Date.now(),
+      owner: { id: "sched_1", kind: "automation" },
+      tenant: { provider: "slack", providerTenantId: "T123" },
+      title: "Daily digest",
+      visibility: "public",
+    });
+    await expect(
+      execute(agent.update, {
+        id: alert!.id,
+        status: "dismissed",
+        reason: "fixed",
+      }),
+    ).rejects.toThrow("It is an Automation alert");
+    expect(await getReviewItem(getDb(), alert!.id)).toMatchObject({
+      status: "open",
+    });
   });
 });

@@ -5,7 +5,7 @@ import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorReviewItemConversations, juniorReviewItems } from "@/db/schema";
 import { reviewItemVisibleTo, type ReviewItemReader } from "./access";
-import type { ReviewItem } from "./store";
+import { ownerConversationId, type ReviewItem } from "./store";
 
 // Each item keeps at most this many related items, newest first.
 const RELATED_ITEM_LIMIT = 10;
@@ -36,7 +36,7 @@ type Candidate = {
 
 /** The linked Conversations of an item that point to other work. */
 function linkedWork(item: ReviewItem): string[] {
-  return item.conversationIds.filter((id) => id !== item.addedByConversationId);
+  return item.conversationIds.filter((id) => id !== ownerConversationId(item));
 }
 
 function openVisible(reader: ReviewItemReader): SQL {

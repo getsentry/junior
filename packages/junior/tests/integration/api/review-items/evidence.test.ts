@@ -267,7 +267,7 @@ describe("review item evidence", () => {
     const start = Date.now();
     for (let index = 1; index <= 210; index += 1) {
       await insertReviewItem(getDb(), {
-        addedByConversationId: BUSY_ID,
+        owner: { id: BUSY_ID, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: "Busy release.",
