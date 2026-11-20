@@ -1,7 +1,10 @@
 import { and, desc, eq, gt, gte, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
-import { reviewItemNeedsInput } from "@/chat/review-items/access";
+import {
+  reviewItemNeedsInput,
+  reviewItemOwnedByConversation,
+} from "@/chat/review-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -197,7 +200,7 @@ export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
   const needsInput = sql`exists (select 1 from ${juniorReviewItems} where ${and(
-    eq(juniorReviewItems.addedByConversationId, conversation.conversationId),
+    reviewItemOwnedByConversation(conversation.conversationId),
     reviewItemNeedsInput(),
   )})`;
   return sql<ConversationReportStatus>`case

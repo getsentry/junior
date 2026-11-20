@@ -58,6 +58,11 @@ export const juniorAutomations = pgTable(
       (): AnyPgColumn => juniorAutomationRuns.id,
       { onDelete: "set null" },
     ),
+    /**
+     * When core last saw this Automation recover after a person dismissed
+     * its alert. A dismissed alert hides the Automation's alerts until then.
+     */
+    alertRecoveredAtMs: bigint("alert_recovered_at_ms", { mode: "number" }),
     namespace: text("namespace"),
     identifier: text("identifier"),
     record: jsonb("record")

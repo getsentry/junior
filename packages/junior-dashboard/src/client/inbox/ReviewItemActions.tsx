@@ -178,6 +178,8 @@ export function ReviewItemActions(props: {
             request={item.request}
             requestId={item.id}
             secondaryActions={secondaryActions}
+            // Core takes an Automation alert's step and reads no words.
+            words={item.owner.kind !== "automation"}
           />
         </div>
       ) : take || dismiss || props.extra ? (

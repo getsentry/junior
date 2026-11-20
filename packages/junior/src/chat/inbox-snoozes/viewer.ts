@@ -31,11 +31,13 @@ import {
 } from "./subject";
 import { scheduleInboxSnoozeTimer } from "./triggers";
 
-/** The Inbox row of a snooze: a root Conversation, or one item in it. */
-export interface InboxSnoozeSubject {
-  conversationId: string;
-  reviewItemId?: string;
-}
+/**
+ * The Inbox row of a snooze: a root Conversation, one item in it, or one
+ * item on its own.
+ */
+export type InboxSnoozeSubject =
+  | { conversationId: string; reviewItemId?: string }
+  | { conversationId?: undefined; reviewItemId: string };
 
 /** A snooze request that the viewer may not make, such as a past time. */
 export class InboxSnoozeInputError extends Error {}
@@ -82,20 +84,25 @@ interface RowItem {
 
 /**
  * Return the open Review items of the row that the viewer can see: the one
- * item, or every item in the root Conversation's row. A missing row and a
- * hidden row look the same.
+ * item, in the root Conversation's row when a root is given, or every item
+ * in the root Conversation's row. A missing row and a hidden row look the
+ * same.
  */
 async function visibleRowItems(
   user: User,
-  root: string,
+  root: string | undefined,
   reviewItemId: string | undefined,
 ): Promise<RowItem[]> {
   if (reviewItemId) {
     const item = await getReviewItem(getDb(), reviewItemId);
-    const roots = item ? await rootConversationIds(item.conversationIds) : [];
+    const inRow =
+      root === undefined ||
+      (item ? await rootConversationIds(item.conversationIds) : []).includes(
+        root,
+      );
     if (
       item?.status === "open" &&
-      roots.includes(root) &&
+      inRow &&
       (await canUserReadReviewItem(item, user))
     ) {
       return [
@@ -108,6 +115,7 @@ async function visibleRowItems(
     }
     return [];
   }
+  if (!root) return [];
   const reader = await reviewItemReaderForUserInConversation(user, root);
   return getDb()
     .select({
@@ -246,11 +254,16 @@ export async function createViewerSnooze(
   if (wakeAtMs !== undefined && wakeAtMs <= nowMs) {
     throw new InboxSnoozeInputError("The wake time must be in the future.");
   }
-  const root = await rootConversationId(input.subject.conversationId);
-  const items = root
-    ? await visibleRowItems(user, root, input.subject.reviewItemId)
-    : [];
-  if (!root || items.length === 0) {
+  const { conversationId, reviewItemId } = input.subject;
+  const root =
+    conversationId === undefined
+      ? undefined
+      : await rootConversationId(conversationId);
+  const items =
+    conversationId === undefined || root
+      ? await visibleRowItems(user, root, reviewItemId)
+      : [];
+  if (items.length === 0) {
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
   const triggers = input.triggers ?? [];
@@ -294,13 +307,17 @@ export async function unsnoozeViewerRow(
   user: User,
   subject: InboxSnoozeSubject,
 ): Promise<void> {
-  const root = await rootConversationId(subject.conversationId);
+  // One item wakes by its id alone. A root Conversation's row wakes as a
+  // whole.
+  const { conversationId, reviewItemId } = subject;
+  if (reviewItemId) {
+    await unsnoozeInboxRow(getDb(), { reviewItemId, userId: user.id });
+    return;
+  }
+  const root = conversationId && (await rootConversationId(conversationId));
   if (!root) return;
   await unsnoozeInboxRow(getDb(), {
     rootConversationId: root,
-    ...(subject.reviewItemId
-      ? { reviewItemId: subject.reviewItemId }
-      : undefined),
     userId: user.id,
   });
 }

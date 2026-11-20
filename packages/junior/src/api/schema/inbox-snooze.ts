@@ -1,12 +1,23 @@
 import * as z from "zod";
 
-/** The Inbox row of a snooze: one Conversation, or one item in it. */
-export const inboxSnoozeSubjectSchema = z
+const conversationRowSchema = z
   .object({
     conversationId: z.string().min(1),
     reviewItemId: z.string().min(1).optional(),
   })
   .strict();
+// An item whose owner is not a Conversation, such as an Automation alert,
+// has a row of its own.
+const itemRowSchema = z.object({ reviewItemId: z.string().min(1) }).strict();
+
+/**
+ * The Inbox row of a snooze: one Conversation, one item in it, or one item
+ * on its own.
+ */
+export const inboxSnoozeSubjectSchema = z.union([
+  conversationRowSchema,
+  itemRowSchema,
+]);
 
 /**
  * An Event that ends a snooze: `wake` shows the item again, and `resolve`
@@ -47,21 +58,25 @@ export const inboxSnoozeResourceQuerySchema = z
  */
 export const INBOX_SNOOZE_MAX_TRIGGERS = 30;
 
+const snoozeUntil = {
+  triggers: z
+    .array(inboxSnoozeTriggerSchema)
+    .min(1)
+    .max(INBOX_SNOOZE_MAX_TRIGGERS)
+    .optional(),
+  wakeAt: z.string().datetime().optional(),
+};
+
 /**
  * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
  * until `wakeAt` or one of `triggers` fires, whichever is first. A later
  * item in the row shows by itself.
  */
-export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
-  .extend({
-    triggers: z
-      .array(inboxSnoozeTriggerSchema)
-      .min(1)
-      .max(INBOX_SNOOZE_MAX_TRIGGERS)
-      .optional(),
-    wakeAt: z.string().datetime().optional(),
-  })
-  .strict()
+export const inboxSnoozeCreateSchema = z
+  .union([
+    conversationRowSchema.extend(snoozeUntil).strict(),
+    itemRowSchema.extend(snoozeUntil).strict(),
+  ])
   .refine((body) => body.wakeAt !== undefined || body.triggers !== undefined, {
     message: "Set wakeAt, triggers, or both.",
   });

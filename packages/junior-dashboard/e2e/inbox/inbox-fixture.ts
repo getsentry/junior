@@ -11,7 +11,7 @@ export const viewer = {
 };
 
 const base = {
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
@@ -31,7 +31,7 @@ export const conversationId = "slack:CQA123:1770003600.000200";
 // messages before it and a new one after it.
 export const rollout = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
@@ -120,7 +120,7 @@ const dismissedNotice = {
 // The agent added this item in the Conversation, so a message there closes it.
 export const migration = {
   ...license,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
@@ -136,7 +136,7 @@ export const pullRequestResource = PULL_REQUEST_RESOURCE;
 // question. The mock Conversation has the object annotation for the same URL.
 export const prMerge = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
   conversationIds: [conversationId],
@@ -156,7 +156,7 @@ export const prMerge = {
 // A second GitHub ask, so pull requests group by state.
 export const prReview = {
   ...prMerge,
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   body: "GitHub asks you to review **Pin the release train**.",
   conversationIds: [],
@@ -185,7 +185,7 @@ const pinPullRequest = {
 // The GitHub plugin's review ask, as it writes it: the URL alone on a line.
 export const pinReview = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
   conversationIds: [releaseConversationId],
@@ -208,7 +208,7 @@ export const pinChecks = {
 // A notice in the same Conversation about nothing that an ask names.
 export const releaseNotes = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "Release notes for 0.288.0 are drafted in the release PR.",
   conversationIds: [releaseConversationId],
@@ -221,7 +221,7 @@ export const releaseNotes = {
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,
-  addedByConversationId: "scheduler:daily-ops-digest",
+  owner: { id: "scheduler:daily-ops-digest", kind: "conversation" },
   rootConversationId: "scheduler:daily-ops-digest",
   assignedToEveryone: true,
   assignees: [],
@@ -236,7 +236,7 @@ export const digest = {
 // takes it.
 export const grab = {
   ...base,
-  addedByConversationId: "slack:CGRAB:1770003600.000300",
+  owner: { id: "slack:CGRAB:1770003600.000300", kind: "conversation" },
   rootConversationId: "slack:CGRAB:1770003600.000300",
   assignedToEveryone: true,
   assignees: [],
@@ -257,6 +257,46 @@ export const grab = {
   },
   title: "Cover the Friday deploy",
 };
+
+/**
+ * The alert of an Automation that needs its creator: a Review item that the
+ * Automation owns, with no Conversation.
+ */
+export function automationAlert(automationId: string, title: string) {
+  return {
+    ...base,
+    body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    createdAt: "2026-08-07T11:00:00.000Z",
+    id: `alert-${automationId}`,
+    owner: { id: automationId, kind: "automation" },
+    // An Automation's item has no root Conversation. JSON drops the key.
+    rootConversationId: undefined,
+    title,
+  };
+}
+
+/**
+ * The alert of a scheduled Automation whose last run failed, with the steps
+ * that core takes: Run again and Pause.
+ */
+export function failedRunAlert(automationId: string, title: string) {
+  return {
+    ...automationAlert(automationId, title),
+    body: "Last run failed.",
+    id: `alert-run-${automationId}`,
+    request: {
+      question: "Last run failed.",
+      fields: [
+        {
+          id: "step",
+          kind: "choice",
+          label: "Next step",
+          options: [{ label: "Run again" }, { label: "Pause" }],
+        },
+      ],
+    },
+  };
+}
 
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
@@ -290,7 +330,10 @@ export async function mockReviewItems(
     open?: unknown[];
     pageSize?: number;
     /** Snoozes that exist before the page loads. */
-    snoozes?: { conversationId: string; untilMs: number }[];
+    snoozes?: ({ untilMs: number } & (
+      | { conversationId: string; reviewItemId?: string }
+      | { reviewItemId: string }
+    ))[];
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
@@ -306,24 +349,24 @@ export async function mockReviewItems(
   const inRow = (
     conversationId: string,
     item: {
-      addedByConversationId: string;
       conversationIds: readonly string[];
-      rootConversationId: string;
+      owner: { id: string };
+      rootConversationId?: string;
     },
   ) =>
     item.rootConversationId === conversationId ||
-    item.addedByConversationId === conversationId ||
+    item.owner.id === conversationId ||
     item.conversationIds.includes(conversationId);
   /** The open items of a snooze subject: one item, or a row's items. */
   const itemsOf = (subject: {
-    conversationId: string;
+    conversationId?: string;
     reviewItemId?: string;
   }) =>
     open
       .filter((i) =>
         subject.reviewItemId
           ? i.id === subject.reviewItemId
-          : inRow(subject.conversationId, i),
+          : inRow(subject.conversationId!, i),
       )
       .map((i) => i.id);
   /**
@@ -405,15 +448,14 @@ export async function mockReviewItems(
           ).length,
           // One per Conversation row, as Snoozed lists them.
           snoozed: new Set(
-            open
-              .filter((i) => asleep(sleeping, i))
-              .map((i) => i.addedByConversationId),
+            open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
           ).size,
         },
       });
     }
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
+      const owner = url.searchParams.get("owner");
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
@@ -432,6 +474,7 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
+          (!owner || i.owner.kind === owner) &&
           `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
           (snoozedOnly
             ? asleep(sleeping, i)
