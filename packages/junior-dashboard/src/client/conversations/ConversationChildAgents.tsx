@@ -20,7 +20,7 @@ import type { StatusChipTone } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { formatConversationCostTotal, formatUsageTotal } from "../format";
-import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
@@ -62,12 +62,10 @@ export function useConversationChildAgents(
 ) {
   return useQuery({
     enabled,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationChildAgentsReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationChildAgentsReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "agents"),
     retry: false,
   });

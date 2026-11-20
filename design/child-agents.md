@@ -35,7 +35,7 @@ child chooses to report reaches the parent.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
-- A child agent never asks a person. It has no Review desk and does not
+- A child agent never asks a person. It has no Inbox and does not
   wait for a sign-in. Missing access is a blocked report to its parent.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.

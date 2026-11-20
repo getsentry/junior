@@ -33,7 +33,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { DisplayText } from "../../display-text/DisplayText";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
-import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../inbox/inboxQueries";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 import { automationOutcomeLabel } from "./automationOutcomes";

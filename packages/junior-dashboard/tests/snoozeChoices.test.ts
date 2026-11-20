@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { snoozeChoicesAt } from "../src/client/review-desk/snoozeChoices";
+import { snoozeChoicesAt } from "../src/client/inbox/snoozeChoices";
 
 /** The menu at a local clock, as label and local target time. */
 function menuAt(...clock: [number, number, number, number, number]) {

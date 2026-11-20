@@ -14,7 +14,7 @@ import { Field, FieldError, FieldLabel } from "../../components/ui/field";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
-import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../inbox/inboxQueries";
 import { AutomationDraftChanges } from "./AutomationDraftChanges";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";

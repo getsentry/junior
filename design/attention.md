@@ -4,8 +4,7 @@ A person's attention is the scarcest thing Junior spends. Junior asks for it
 only when the person gets an answer, a result, or a step that only they can
 take. All other work happens with no message, Review item, push, or count.
 This is a core principle of how the agent works, and every system follows
-it: agent replies and questions, Slack, the Review desk, the Inbox, push,
-and each plugin.
+it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Intent
 
@@ -46,7 +45,7 @@ and each plugin.
 - When Junior is blocked, it says what the person must do. "Junior stopped"
   with nothing to do takes attention and gives nothing back.
 - Junior asks a person only with a Review item
-  ([Review desk](./review-desk.md)).
+  ([Inbox](./inbox.md)).
 
 ## Gaps
 

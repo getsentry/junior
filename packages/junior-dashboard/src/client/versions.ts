@@ -13,7 +13,7 @@ import {
 } from "./conversations/queries";
 import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
-import { REVIEW_ITEMS_QUERY_KEY } from "./review-desk/queries";
+import { REVIEW_ITEMS_QUERY_KEY } from "./inbox/queries";
 import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;

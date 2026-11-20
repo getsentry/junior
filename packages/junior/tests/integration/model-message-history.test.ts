@@ -270,7 +270,7 @@ describe("model message history", () => {
     const delta = newText(second, third);
     expect(deltas(delta)).toBe(1);
     expect(delta).toContain(
-      `- #${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
+      `- TODO-${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
     );
     expect(delta).not.toContain("Draft the brief");
     // The block stays in history, so the next Turn does not send it again.

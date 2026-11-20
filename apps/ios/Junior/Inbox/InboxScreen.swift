@@ -54,7 +54,7 @@ final class InboxModel {
   }
 }
 
-/// Route `/review`: open Review items grouped as Needs you and FYI.
+/// Route `/inbox`: open Review items grouped as Needs you and FYI.
 struct InboxScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(InboxModel.self) private var model
