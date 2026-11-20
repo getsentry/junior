@@ -9,6 +9,7 @@
  * that address belongs to a trusted person and starts the work. The bot
  * cannot send email.
  */
+import pLimit from "p-limit";
 import type {
   HeartbeatHookContext,
   HeartbeatResult,
@@ -25,6 +26,8 @@ import { emailAsksAccount } from "./intent";
 import { readEmailRequest, type EmailRequest } from "./message";
 
 const HISTORY_CURSOR_KEY = "email-requests:history-id";
+// Messages one poll reads and judges at once.
+const MESSAGE_READS = 4;
 const POLL_LOCK_KEY = "email-requests:poll";
 // The host stops waiting for a plugin heartbeat after 25s.
 const POLL_LOCK_TTL_MS = 30_000;
@@ -152,8 +155,8 @@ async function pollInbox(
     }
     pageToken = page.nextPageToken;
   }
-  const handled = await Promise.all(
-    messageIds.map((id) => handleMessage(ctx, config, accessToken, id)),
+  const handled = await pLimit(MESSAGE_READS).map(messageIds, (id) =>
+    handleMessage(ctx, config, accessToken, id),
   );
   if (expired) {
     ctx.log.warn("google.email_request.history_expired", {});
@@ -169,16 +172,22 @@ export async function runEmailRequestHeartbeat(
   ctx: HeartbeatHookContext,
   config: GoogleConfig,
 ): Promise<HeartbeatResult> {
-  return await ctx.state.withLock(POLL_LOCK_KEY, POLL_LOCK_TTL_MS, async () => {
-    // No token until an admin connects the account again to grant Gmail.
-    // A rejected token disconnects the account, as it does for tools.
-    const accessToken = await readGoogleAccessToken(
-      ctx,
-      config,
-      GOOGLE_GMAIL_SCOPE,
-    );
-    return accessToken
-      ? { dispatchCount: await pollInbox(ctx, config, accessToken) }
-      : { dispatchCount: 0 };
-  });
+  const poll = await ctx.state.withLock(
+    POLL_LOCK_KEY,
+    POLL_LOCK_TTL_MS,
+    async () => {
+      // No token until an admin connects the account again to grant Gmail.
+      // A rejected token disconnects the account, as it does for tools.
+      const accessToken = await readGoogleAccessToken(
+        ctx,
+        config,
+        GOOGLE_GMAIL_SCOPE,
+      );
+      return accessToken
+        ? { dispatchCount: await pollInbox(ctx, config, accessToken) }
+        : { dispatchCount: 0 };
+    },
+  );
+  // Another heartbeat is reading the inbox.
+  return poll.acquired ? poll.value : { dispatchCount: 0 };
 }

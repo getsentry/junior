@@ -96,7 +96,7 @@ function createState(): PluginState & { values: Map<string, unknown> } {
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
-      return await callback();
+      return { acquired: true, value: await callback() };
     },
   };
 }

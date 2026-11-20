@@ -22,6 +22,7 @@
     "tests/docs.test.ts",
     "tests/files.test.ts",
     "tests/links.test.ts",
-    "tests/meet.test.ts"
+    "tests/meet.test.ts",
+    "tests/slides.test.ts"
   ]
 }
