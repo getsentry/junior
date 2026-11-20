@@ -218,6 +218,10 @@ describe("remote MCP HTTP", () => {
 
     expect(page.html).toContain("Connect iOS app");
     expect(page.html).toContain("junior.sentry.dev");
+    // The browser checks the redirect after the consent POST against this.
+    expect(page.contentSecurityPolicy).toContain(
+      "form-action 'self' junior-ios:",
+    );
     expect(`${callback.protocol}//${callback.host}${callback.pathname}`).toBe(
       redirectUri,
     );
