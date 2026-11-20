@@ -1,0 +1,68 @@
+# Context compaction
+
+A long Conversation keeps working when its history gets near the model's
+context window. Junior replaces older history with a summary, and keeps the
+prompt cache warm while a person is away, so that a return is fast and cheap.
+
+## Intent
+
+- A Turn does not stop because its history is too large. Compaction
+  replaces older history with a summary before the history fills the
+  context window.
+- A summary is ready before a Turn needs it, so a Turn rarely waits for a
+  summary call. Junior prepares it in the background from the background
+  compaction mark, below the compaction threshold.
+- In a Turn, history is replaced only at the compaction threshold. A
+  replacement rewrites the cached prompt, so the next request writes the
+  whole prefix to the cache again.
+- An idle Conversation costs as little as possible for the return that
+  comes next. Junior warms the cache only when the chance of a return pays
+  for the warmup. With Claude Opus 5.5 prices for one million tokens (input
+  $4, 5-minute cache write $5, cache read $0.20), a warmup reads the prefix
+  and a warm return saves one write minus one read. So warming pays when
+  more than 0.2 / (5 − 0.2), about 4%, of warmups reach a return.
+- At or above the background compaction mark, an idle Conversation compacts
+  instead of warming. A backtest of idle periods at that size found it
+  cheaper than warming, and the largest saving of the options that it
+  compared. About a third of returning Turns at that size compact in the
+  Turn anyway, and then pay for the full prefix and the compacted one. A
+  compacted prefix of about 120K tokens, against about 360K, also makes each
+  model call of the returning Turn about $0.05 cheaper to read.
+- Junior accepts a quality cost for that saving. About two thirds of the
+  Conversations that compact on idle would not have compacted in their
+  returning Turn. They get a summary in place of history that they would
+  have kept, which can make an answer worse.
+
+## Entry points
+
+- Dashboard: the "context compacted" row in a Conversation transcript.
+- Dashboard: Admin, Cache warming, to turn a paused provider back on.
+- Deployment settings: `JUNIOR_CACHE_WARMING_ENABLED` and
+  `JUNIOR_IDLE_COMPACTION_ENABLED`. Both are on by default.
+
+## Rules
+
+- Compaction on idle uses only a background summary that is ready. It
+  makes no summary call. When no summary is ready, Junior warms as it does
+  below the mark, and the next warmup checks again.
+- Compaction on idle waits until the cache is about to expire. A return
+  before that reads the full prefix from the cache, which costs less than a
+  write of the compacted prefix: about $0.07 against about $0.60.
+- After compaction on idle, Junior sends no warmups in that idle period.
+  The compacted prefix is not in the cache, so its warmup would be a cache
+  write. A return writes it once either way, so no return chance pays for
+  that warmup.
+- Compaction on idle never changes history under a running Turn. While a
+  Run holds the Conversation, Junior warms instead.
+- Compaction on idle runs only while cache warming is on.
+  `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns off only compaction on idle.
+
+## Gaps
+
+- An idle period whose request snapshot is too large to store gets no
+  warmups, so it does not compact on idle either. This breaks "at or above
+  the background compaction mark, an idle Conversation compacts instead of
+  warming".
+- The quality cost of compaction on idle is not measured, so nothing shows
+  when it outweighs the saving. This breaks "Junior accepts a quality cost
+  for that saving", which needs that cost to be known.

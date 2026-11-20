@@ -23,6 +23,7 @@ related:
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
+| `JUNIOR_IDLE_COMPACTION_ENABLED`            | No          | Operational kill switch for [compaction on idle](#prompt-cache-warming). Defaults to `true`; set `false` to warm large idle Conversations instead of compacting them.       |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
 | `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
@@ -410,6 +411,15 @@ likely to cost less than that write.
 - `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
   requests and drops warmups that are already in the queue. The default is
   `true`.
+- Compaction on idle: when the cached prefix is at or above the background
+  compaction mark (85% of the compaction threshold), a warmup first looks
+  for a background summary that is ready. When it finds one, the summary
+  replaces the history and warming stops for that idle period. The returning
+  turn reads a much smaller prefix, but it gets a summary in place of
+  history that it would have kept in that turn, which can make an answer
+  worse. When no summary is ready, or a turn runs, Junior warms as usual.
+  `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns this off. The default is
+  `true`.
 - While warming is on, Junior sends model requests with the short cache
   retention, so `PI_CACHE_RETENTION` does not change it. With
   `JUNIOR_CACHE_WARMING_ENABLED=false`, Pi's retention applies again.
@@ -417,7 +427,8 @@ likely to cost less than that write.
 Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
 `junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
 cost of the Conversation. The `app.cache_warming.trigger` log attribute is
-`idle` or `tool_wait`.
+`idle` or `tool_wait`. A warmup that compacted on idle has the skip reason
+`compacted_on_idle`.
 
 ## Install-wide config defaults
 

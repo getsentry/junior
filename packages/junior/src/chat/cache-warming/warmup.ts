@@ -31,6 +31,7 @@ import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import { mapBounded } from "@/chat/fan-out";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
 import {
   decideWarmup,
   gapSegment,
@@ -72,6 +73,7 @@ import {
   recordIdlePeriodSavings,
   recordWarmupCost,
 } from "./savings";
+import { compactOnIdle, mayCompactOnIdle } from "./idle-compaction";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
 import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
@@ -127,6 +129,12 @@ interface WarmState {
   reasoning?: ThinkingLevel;
   /** Unset in idle periods from before it was stored. */
   snapshot?: SnapshotSize;
+  /**
+   * Estimated system prompt and tool tokens of the request, for the size
+   * check of a compaction on idle. Set only for a prefix at or above the
+   * background compaction mark.
+   */
+  requestOverheadTokens?: number;
 }
 
 interface IdlePeriod {
@@ -347,6 +355,17 @@ async function startIdlePeriod(
       cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
       snapshot,
+      // The request folds leading system messages into its system prompt,
+      // so this counts them twice. That only makes the swap stricter.
+      ...(mayCompactOnIdle({ modelId: request.model.id, prefixTokens })
+        ? {
+            requestOverheadTokens: estimateRequestOverheadTokens(
+              request.context.systemPrompt ?? "",
+              request.context.tools ?? [],
+              request.model.id,
+            ),
+          }
+        : undefined),
     },
   };
 }
@@ -638,7 +657,9 @@ export function createCacheWarmingRecorder(
  * - `missed`: the warmup call did not read the cached prefix. It logs
  *   `cache_warming.warmup.failed` and reports to Sentry.
  * - `failed`: the warmup call threw.
- * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
+ * - `skipped`: `skip_reason` is `compacted_on_idle` (a ready background
+ *   summary replaced the history, so the idle period stops; see
+ *   `idle-compaction.ts`), `cache_expired`, `breaker_open`,
  *   `prompt_changed` (a newer deployment published another definitions
  *   fingerprint, so the idle period stops), `stopped` (warming stopped or
  *   the tools returned first; no log),
@@ -665,10 +686,11 @@ export function createCacheWarmingRecorder(
  * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
  * is the idle time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
- * five. Decision attributes are absent when the warmup skipped before the
- * decision. Of them, `timer_floor` is true for a warmup that only the timer
- * floor sends (`decideWarmup` reason `timer`). Cost and usage are absent
- * when no call completed.
+ * five. `idle_compaction` is the `IdleCompactionOutcome` of a warmup at or
+ * above the background compaction mark. Decision attributes are absent when
+ * the warmup skipped before the decision. Of them, `timer_floor` is true for
+ * a warmup that only the timer floor sends (`decideWarmup` reason `timer`).
+ * Cost and usage are absent when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
@@ -733,6 +755,24 @@ export async function runCacheWarmup(
         setOutcome("skipped", skipReason);
         await stop();
       };
+      // First, so a late warmup still leaves a small prefix for the return.
+      // When no summary is ready, warm as before; the next warmup checks
+      // again.
+      const idleCompaction = await compactOnIdle({
+        conversationId,
+        modelId: warm.modelId,
+        prefixTokens: warm.prefixTokens,
+        ...(warm.requestOverheadTokens !== undefined
+          ? { requestOverheadTokens: warm.requestOverheadTokens }
+          : undefined),
+      });
+      if (idleCompaction) {
+        attributes["app.cache_warming.idle_compaction"] = idleCompaction;
+      }
+      if (idleCompaction === "applied") {
+        await skip("compacted_on_idle");
+        return;
+      }
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
       if (warmupTooLate(message.cacheExpiresAtMs)) {
