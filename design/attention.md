@@ -49,11 +49,6 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Gaps
 
-- When Junior stops fixing a merge conflict on its pull request, after 2
-  days with no activity by a person or after 3 fixes, it adds a
-  `Merge conflict` notice for the requester in Slack and the Inbox. No agent
-  runs for it. This breaks "Junior owns the upkeep of its own work" and
-  "when Junior stops upkeep that it owns, it tells nobody".
 - Junior counts its own merges and force pushes for requested work as
   merge conflict fixes. So the fix limit can stop fixes on a pull request
   that people still work on. This breaks "Junior owns the upkeep of its own
