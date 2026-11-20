@@ -87,6 +87,24 @@ describe("plugin download URLs", () => {
     expect(storage.objects.has(request!.key)).toBe(false);
   });
 
+  it("deletes the copy and rethrows when signing fails", async () => {
+    const storage = {
+      ...createMemoryAttachmentStorage(),
+      async createDownloadUrl(): Promise<string> {
+        throw new Error("presign failed");
+      },
+    };
+    const downloadUrls = await pluginDownloadUrls(storage);
+
+    await expect(
+      downloadUrls!.create({
+        body: new Uint8Array([1, 2, 3]),
+        contentType: "image/png",
+      }),
+    ).rejects.toThrow("presign failed");
+    expect(storage.objects.size).toBe(0);
+  });
+
   it("is absent when the storage cannot sign reads", async () => {
     await expect(
       pluginDownloadUrls(createMemoryAttachmentStorage()),

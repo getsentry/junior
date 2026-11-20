@@ -27,10 +27,18 @@ export function createPluginDownloadUrls(
         contentType,
         key,
       });
-      const url = await sign({
-        expiresAtMs: Date.now() + DOWNLOAD_URL_TTL_MS,
-        key,
-      });
+      let url: string;
+      try {
+        url = await sign({
+          expiresAtMs: Date.now() + DOWNLOAD_URL_TTL_MS,
+          key,
+        });
+      } catch (error) {
+        // The caller never gets a delete handle, so remove the copy here.
+        // Best effort: the signing error is the failure that matters.
+        await storage.delete([key]).catch(() => undefined);
+        throw error;
+      }
       return { delete: () => storage.delete([key]), url };
     },
   };
