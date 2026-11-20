@@ -24,6 +24,45 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
+// The live cards of mock pull requests that conflict with main, so their
+// asks in the Inbox say "Merge conflict".
+const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/2188": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#2188",
+    label: "getsentry/junior#2188",
+    title: "Retry Slack uploads on rate limits",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "fix/slack-upload-retry",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+  "https://github.com/getsentry/payments/pull/91": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#91",
+    label: "getsentry/payments#91",
+    title: "Pin the release train to payments 4.2",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "release/pin-payments-4.2",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+};
+
 // The mock release thread links to one Google Doc, one Calendar event, and
 // one Drive file and folder.
 const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
@@ -472,6 +511,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     const object = webPageObjectCard(webPage);
     return [{ object: { ...object, plugin: "junior" }, url: href }];
   }
+  const pull = GITHUB_PULLS[url.href];
+  if (pull) return [{ object: { ...pull, url: href }, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
