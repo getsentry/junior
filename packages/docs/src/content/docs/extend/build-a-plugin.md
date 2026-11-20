@@ -488,7 +488,8 @@ Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
 `ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.reviewItems` as
-from a plugin route.
+from a plugin route. Use `ctx.decider.decide(...)` for a choice that depends
+on meaning, such as whether an email asks for work.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";

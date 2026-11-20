@@ -13,7 +13,10 @@ import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder } from "@/chat/plugins/model";
+import {
+  createPluginDecider,
+  createPluginEmbedder,
+} from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
@@ -126,6 +129,7 @@ export function createHeartbeatContext(args: {
     codeChanges: createCodeChangePublisher(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
+    decider: createPluginDecider(pluginName),
     embedder: createPluginEmbedder(pluginName),
     events: args.events,
     reviewItems: {

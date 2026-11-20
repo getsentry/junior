@@ -95,6 +95,7 @@ function memoryHeartbeatContext(args: {
       recordActivity: vi.fn(),
     },
     db: memoryDb(args.fixture),
+    decider: { decide: vi.fn() },
     embedder: args.embedder,
     events: { publish: vi.fn() },
     log: noopLogger,

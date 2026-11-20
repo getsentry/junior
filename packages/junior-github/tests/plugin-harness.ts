@@ -211,6 +211,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         },
       },
       db: fixture.db(),
+      decider: { decide: unused },
       embedder: { embedTexts: unused, model: "unused", provider: "unused" },
       events,
       log: {

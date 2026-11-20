@@ -4,7 +4,8 @@
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI.
  * Calendar, Docs, Sheets, and Slides tools and link cards use host-owned
- * egress, and the sandbox gets no Google credential.
+ * egress, and the sandbox gets no Google credential. With email requests on,
+ * the heartbeat also reads the account inbox (see `email/requests.ts`).
  */
 import {
   defineJuniorPlugin,
@@ -18,6 +19,7 @@ import {
   GOOGLE_ALLOWED_DOMAINS_ENV,
   GOOGLE_CLIENT_ID_ENV,
   GOOGLE_CLIENT_SECRET_ENV,
+  GOOGLE_EMAIL_REQUESTS_ENV,
   readGoogleConfig,
 } from "./config";
 import {
@@ -25,6 +27,7 @@ import {
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
+import { runEmailRequestHeartbeat } from "./email/requests";
 import { googleCalendarLinks } from "./links/calendar";
 import { googleFileLinks } from "./links/files";
 import { googleImages } from "./links/thumbnails";
@@ -63,6 +66,7 @@ export function googlePlugin(): PluginRegistration {
         [GOOGLE_CLIENT_SECRET_ENV]: {},
         [GOOGLE_ACCOUNT_EMAIL_ENV]: {},
         [GOOGLE_ALLOWED_DOMAINS_ENV]: {},
+        [GOOGLE_EMAIL_REQUESTS_ENV]: {},
       },
     },
     cli: {
@@ -76,6 +80,12 @@ export function googlePlugin(): PluginRegistration {
         const config = readGoogleConfig();
         return config
           ? createGoogleSetupRoutes({ config, db: ctx.db as GoogleDb })
+          : undefined;
+      },
+      async heartbeat(ctx) {
+        const config = readGoogleConfig();
+        return config?.emailRequests
+          ? await runEmailRequestHeartbeat(ctx, config)
           : undefined;
       },
       grantForEgress: googleGrantForEgress,
