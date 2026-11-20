@@ -1,7 +1,8 @@
 # Review desk
 
 The Review desk is where work waits for a person. Junior or a plugin adds a
-Review item: an action that asks a question, or a notice that only tells.
+Review item: an action that asks a question, or a notice that names a step
+for a person.
 Its assignees see it on the desk and in its linked Slack threads, and the
 first answer lets the work continue. The dashboard labels the desk "Inbox".
 
@@ -11,11 +12,12 @@ first answer lets the work continue. The dashboard labels the desk "Inbox".
   it is open, and the answer on record. A Slack message alone has none of
   these.
 - There is one way to ask a person, and only for a decision that is theirs
-  and blocks the work. Progress, offers, and scope choices are not items.
+  and blocks the work. Progress, status, offers, scope choices, and work
+  that Junior owns are not items ([Attention](./attention.md)).
   Whether Junior starts new work for the requester, such as a Thread that
   implements an issue it filed, is the requester's decision, not an offer.
-- A notice tells a person something that they must know or fix, such as a
-  failed or blocked Automation. It never asks.
+- A notice tells a person about something that they must fix, such as a
+  blocked Automation, and says what to do. It never asks.
 - Only an assignee answers, and the answer carries their authority. Junior,
   an Event, or a trigger never answers or approves for a person.
 - "Needs you" means one thing on every surface: an open action assigned to

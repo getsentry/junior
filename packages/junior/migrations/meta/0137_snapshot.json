@@ -1,5 +1,5 @@
 {
-  "id": "0b06bf22-27f7-4a07-a366-267071105b15",
+  "id": "eb2670a5-fe4c-45e3-8842-1430323e49fc",
   "prevId": "92170853-e7fa-4c70-a2a9-bed27e498a9f",
   "version": "7",
   "dialect": "postgresql",
@@ -4100,6 +4100,246 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.junior_inbox_snooze_triggers": {
+      "name": "junior_inbox_snooze_triggers",
+      "schema": "",
+      "columns": {
+        "snooze_id": {
+          "name": "snooze_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "match": {
+          "name": "match",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "junior_inbox_snooze_triggers_event_idx": {
+          "name": "junior_inbox_snooze_triggers_event_idx",
+          "columns": [
+            {
+              "expression": "namespace",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_inbox_snooze_triggers_snooze_idx": {
+          "name": "junior_inbox_snooze_triggers_snooze_idx",
+          "columns": [
+            {
+              "expression": "snooze_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk": {
+          "name": "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk",
+          "tableFrom": "junior_inbox_snooze_triggers",
+          "tableTo": "junior_inbox_snoozes",
+          "columnsFrom": [
+            "snooze_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_inbox_snooze_triggers_outcome_check": {
+          "name": "junior_inbox_snooze_triggers_outcome_check",
+          "value": "\"junior_inbox_snooze_triggers\".\"outcome\" in ('wake', 'resolve')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.junior_inbox_snoozes": {
+      "name": "junior_inbox_snoozes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "review_item_id": {
+          "name": "review_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_inbox_snoozes_snoozed_uidx": {
+          "name": "junior_inbox_snoozes_snoozed_uidx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "review_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_inbox_snoozes_settled_idx": {
+          "name": "junior_inbox_snoozes_settled_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_inbox_snoozes_review_item_idx": {
+          "name": "junior_inbox_snoozes_review_item_idx",
+          "columns": [
+            {
+              "expression": "review_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_inbox_snoozes_user_id_junior_users_id_fk": {
+          "name": "junior_inbox_snoozes_user_id_junior_users_id_fk",
+          "tableFrom": "junior_inbox_snoozes",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk": {
+          "name": "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+          "tableFrom": "junior_inbox_snoozes",
+          "tableTo": "junior_review_items",
+          "columnsFrom": [
+            "review_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_inbox_snoozes_state_check": {
+          "name": "junior_inbox_snoozes_state_check",
+          "value": "\"junior_inbox_snoozes\".\"state\" in ('snoozed', 'woken', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.junior_location_configurations": {
       "name": "junior_location_configurations",
       "schema": "",
@@ -4221,6 +4461,165 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.junior_plan_items": {
+      "name": "junior_plan_items",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_conversation_id": {
+          "name": "assignee_conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_user_id": {
+          "name": "assignee_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "changed_by_user_id": {
+          "name": "changed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_plan_items_in_progress_uidx": {
+          "name": "junior_plan_items_in_progress_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"assignee_conversation_id\", \"assignee_user_id\", \"conversation_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_plan_items\".\"status\" = 'in_progress'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_plan_items_assignee_user_id_junior_users_id_fk": {
+          "name": "junior_plan_items_assignee_user_id_junior_users_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "assignee_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "junior_plan_items_changed_by_user_id_junior_users_id_fk": {
+          "name": "junior_plan_items_changed_by_user_id_junior_users_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "changed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "junior_plan_items_conversation_id_fk": {
+          "name": "junior_plan_items_conversation_id_fk",
+          "tableFrom": "junior_plan_items",
+          "tableTo": "junior_conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_plan_items_pk": {
+          "name": "junior_plan_items_pk",
+          "columns": [
+            "conversation_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_plan_items_status_check": {
+          "name": "junior_plan_items_status_check",
+          "value": "\"junior_plan_items\".\"status\" in ('pending', 'in_progress', 'blocked', 'done', 'cancelled')"
+        },
+        "junior_plan_items_assignee_check": {
+          "name": "junior_plan_items_assignee_check",
+          "value": "\"junior_plan_items\".\"assignee_conversation_id\" is null or \"junior_plan_items\".\"assignee_user_id\" is null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.junior_push_subscriptions": {
@@ -5208,142 +5607,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_todos": {
-      "name": "junior_todos",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "assignee_conversation_id": {
-          "name": "assignee_conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "assignee_user_id": {
-          "name": "assignee_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "changed_by_user_id": {
-          "name": "changed_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_todos_assignee_user_id_junior_users_id_fk": {
-          "name": "junior_todos_assignee_user_id_junior_users_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "assignee_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_todos_changed_by_user_id_junior_users_id_fk": {
-          "name": "junior_todos_changed_by_user_id_junior_users_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "changed_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "junior_todos_conversation_id_fk": {
-          "name": "junior_todos_conversation_id_fk",
-          "tableFrom": "junior_todos",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_todos_pk": {
-          "name": "junior_todos_pk",
-          "columns": [
-            "conversation_id",
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_todos_status_check": {
-          "name": "junior_todos_status_check",
-          "value": "\"junior_todos\".\"status\" in ('open', 'in_progress', 'done', 'dropped')"
-        },
-        "junior_todos_assignee_check": {
-          "name": "junior_todos_assignee_check",
-          "value": "\"junior_todos\".\"assignee_conversation_id\" is null or \"junior_todos\".\"assignee_user_id\" is null"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.junior_users": {
       "name": "junior_users",
       "schema": "",
@@ -5579,8 +5842,8 @@
   "enums": {},
   "schemas": {},
   "sequences": {
-    "public.junior_todo_version_seq": {
-      "name": "junior_todo_version_seq",
+    "public.junior_plan_item_version_seq": {
+      "name": "junior_plan_item_version_seq",
       "schema": "public",
       "increment": "1",
       "startWith": "1",
