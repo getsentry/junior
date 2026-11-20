@@ -1,5 +1,6 @@
 import { githubPlugin } from "@sentry/junior-github";
 import type { User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -8,6 +9,7 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
+import { juniorReviewItems } from "@/db/schema";
 import {
   createEventAutomation,
   deleteEventAutomation,
@@ -269,6 +271,32 @@ describe("Automation alerts", () => {
     const [alert] = await alertApi(fixture, creator).alerts(task.id);
     expect(alert).toMatchObject({ visibility: "private" });
     expect((await alertApi(fixture, reader).item(alert!.id)).status).toBe(404);
+  });
+
+  it("adds the alert of an Automation that needed attention before alerts at the next heartbeat", async () => {
+    const creator = await user("creator@example.com");
+    const asCreator = alertApi(fixture, creator);
+    const task = scheduled(creator, {
+      status: "blocked",
+      statusReason: "GitHub access expired.",
+    });
+    await saveScheduledAutomation(getDb(), task);
+    // Before the cutover, a blocked Automation had no Review item.
+    await getDb()
+      .delete(juniorReviewItems)
+      .where(eq(juniorReviewItems.ownerId, task.id));
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+
+    await heartbeat();
+    const [alert] = await asCreator.alerts(task.id);
+    expect(alert).toMatchObject({
+      body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    });
+
+    // A dismissed alert stays closed at later heartbeats.
+    expect((await asCreator.dismiss(alert!.id)).status).toBe(200);
+    await heartbeat();
+    expect(await asCreator.alerts(task.id)).toEqual([]);
   });
 
   it("syncs the alert of an event trigger with the plugins at each heartbeat", async () => {

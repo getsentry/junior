@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notExists, notInArray, or } from "drizzle-orm";
 import { automationTaskDescription } from "@/chat/automations/task";
 import {
   automationEventCatalog,
@@ -242,13 +242,14 @@ export async function syncAutomationAlert(
 }
 
 /**
- * Sync the alerts of event Automations with the enabled plugins. A trigger
- * becomes unavailable or available again only when the plugins change, with
- * no write to the Automation, so the heartbeat calls this. It syncs each
- * event Automation whose trigger cannot work, and each one with an open
- * alert.
+ * Sync the alerts that no write to an Automation syncs. A plugin change can
+ * make an event trigger unavailable, or available again, with no write to
+ * the Automation. An Automation that needed attention before alerts were
+ * Review items has never synced. The heartbeat calls this. It syncs each
+ * event Automation whose trigger cannot work, each one with an open alert,
+ * and each blocked or failed Automation that has never had an alert.
  */
-export async function syncEventTriggerAlerts(
+export async function syncAutomationAlerts(
   db: JuniorDatabase,
   nowMs: number,
 ): Promise<void> {
@@ -281,6 +282,41 @@ export async function syncEventTriggerAlerts(
         eq(juniorAutomations.kind, "event"),
       ),
     );
-  const ids = [...new Set([...unavailable, ...alerted.map((row) => row.id)])];
+  const neverAlerted = await db
+    .select({ id: juniorAutomations.id })
+    .from(juniorAutomations)
+    .leftJoin(
+      juniorAutomationRuns,
+      eq(juniorAutomationRuns.id, juniorAutomations.lastRunId),
+    )
+    .where(
+      and(
+        or(
+          eq(juniorAutomations.status, "blocked"),
+          and(
+            eq(juniorAutomations.status, "active"),
+            inArray(juniorAutomationRuns.status, ["failed", "blocked"]),
+          ),
+        ),
+        notExists(
+          db
+            .select({ id: juniorReviewItems.id })
+            .from(juniorReviewItems)
+            .where(
+              and(
+                eq(juniorReviewItems.ownerKind, "automation"),
+                eq(juniorReviewItems.ownerId, juniorAutomations.id),
+              ),
+            ),
+        ),
+      ),
+    );
+  const ids = [
+    ...new Set([
+      ...unavailable,
+      ...alerted.map((row) => row.id),
+      ...neverAlerted.map((row) => row.id),
+    ]),
+  ];
   await mapBounded(ids, (id) => syncAutomationAlert(db, id, nowMs));
 }

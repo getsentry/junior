@@ -507,6 +507,25 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await screenshot(page, "review-desk-empty", { view: "desktop" });
 });
 
+test("an Automation alert names its Automation as its source", async ({
+  dashboard,
+  page,
+}) => {
+  const alert = {
+    ...base,
+    body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    id: "item-alert",
+    owner: { id: "scheduled-1", kind: "automation" },
+    rootConversationId: undefined,
+    title: "Weekly project summary",
+  };
+  await mockReviewItems(page, { open: [alert] });
+  await page.goto(`${dashboard.baseURL}/inbox`);
+  await expect(
+    page.getByRole("link", { name: /Weekly project summary/ }),
+  ).toContainText("Automation");
+});
+
 test("Send sends docked picks and asks before a message drops others", async ({
   dashboard,
   page,

@@ -150,7 +150,10 @@ export function InboxSidebar(props: {
     groups.slice(0, index).every((group) => group.items.length === 0);
   const itemRow = (item: ReviewItemPayload) => {
     const open = item.status === "open";
-    const source = item.automationId ? "Automation" : props.sourceTitle(item);
+    const source =
+      item.automationId || item.owner.kind === "automation"
+        ? "Automation"
+        : props.sourceTitle(item);
     const meta = [
       open ? undefined : reviewItemStatusLabel(item),
       source,
