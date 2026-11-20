@@ -1,14 +1,11 @@
 import { Hono } from "hono";
-import {
-  breakerStates,
-  closeBreaker,
-  connectedState,
-} from "@/chat/cache-warming/request";
-import { botConfig } from "@/chat/config";
+import { closeBreaker, connectedState } from "@/chat/cache-warming/request";
 import { logInfo } from "@/chat/logging";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingBreakerParamsSchema,
   cacheWarmingSavingsQuerySchema,
@@ -20,14 +17,15 @@ import {
   readSavingsRefill,
   startSavingsRefill,
 } from "@/chat/cache-warming/savings-refill";
+import { readCacheHealth, warmedBreakerStates } from "./health";
 import { readCacheWarmingSavings } from "./savings";
 import { validateRequest } from "../validation";
 import { requireAdmin } from "../viewer";
 
 /**
- * Create the cache warming routes: its savings for the System page, and
- * admin-only routes that re-fill the savings from history and show and close
- * the breakers.
+ * Create the cache warming routes: its savings and cache health for the
+ * System page, and admin-only routes that re-fill the savings from history and
+ * show and close the breakers.
  *
  * A breaker stops warming for every Conversation, so only a Junior admin can
  * close one before it closes by itself. A re-fill replaces counters that
@@ -50,6 +48,20 @@ export function createCacheWarmingRoutes(): Hono<JuniorApiEnv> {
       ),
   );
 
+  app.get(
+    "/health",
+    validateRequest(
+      "query",
+      cacheHealthQuerySchema,
+      "Invalid query parameters.",
+    ),
+    async (context) =>
+      jsonResponse(
+        cacheHealthReportSchema,
+        await readCacheHealth(context.req.valid("query").window),
+      ),
+  );
+
   app.get("/savings/refill", requireAdmin, async () =>
     jsonResponse(cacheWarmingSavingsRefillResponseSchema, {
       refill: await readSavingsRefill(),
@@ -67,13 +79,7 @@ export function createCacheWarmingRoutes(): Hono<JuniorApiEnv> {
 
   app.get("/breakers", requireAdmin, async () =>
     jsonResponse(cacheWarmingBreakerListSchema, {
-      // Only the agent model and its refusal fallback are warmed.
-      breakers: await breakerStates(await connectedState(), [
-        botConfig.modelId,
-        ...(botConfig.refusalFallbackModelId
-          ? [botConfig.refusalFallbackModelId]
-          : []),
-      ]),
+      breakers: await warmedBreakerStates(),
     }),
   );
 

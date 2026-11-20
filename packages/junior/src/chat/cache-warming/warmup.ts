@@ -71,6 +71,7 @@ import {
   type ModelRequest,
 } from "./request";
 import {
+  idlePeriodOutcome,
   idlePeriodSavings,
   recordIdlePeriodSavings,
   recordWarmupCost,
@@ -374,17 +375,19 @@ async function startIdlePeriod(
 
 // Count the savings of the idle period that this call ends. A period with no
 // warm state counts too, so the oracle shows the gaps that were never warmed.
+// `warmups` is the count of warmups that refreshed its cache.
 async function recordSavings(
   idle: IdlePeriod,
   request: ModelRequest,
   message: AssistantMessage,
+  warmups: number,
 ): Promise<void> {
   const prefixTokens = idle.warm?.prefixTokens ?? idle.prefixTokens;
   const ttlMs = idle.warm?.cacheTtlMs ?? providerCacheTtlMs(request.model.id);
   if (prefixTokens === undefined || ttlMs === undefined) return;
+  const gap = { cacheTtlMs: ttlMs, gapMs: request.startedAtMs - idle.sinceMs };
   const savings = idlePeriodSavings({
-    cacheTtlMs: ttlMs,
-    gapMs: request.startedAtMs - idle.sinceMs,
+    ...gap,
     prefixTokens,
     cacheRead: message.usage.cacheRead,
     cacheWrite: message.usage.cacheWrite,
@@ -395,7 +398,10 @@ async function recordSavings(
   await recordIdlePeriodSavings(
     idle.warm?.modelId ?? request.model.id,
     savings,
-    idle.warm !== undefined,
+    {
+      warmed: idle.warm !== undefined,
+      outcome: idlePeriodOutcome(gap, savings, warmups),
+    },
   );
 }
 
@@ -412,13 +418,14 @@ async function recordModelCall(
     conversationKey(conversationId),
   );
   const idle = previous?.idle;
+  let warmups = 0;
   if (idle?.warm) {
     const gapMs = request.startedAtMs - idle.sinceMs;
     if (gapMs > 0) {
       await recordGap(state, conversationId, idle.generation, idle.warm, gapMs);
     }
     await state.delete(snapshotKey(conversationId, idle.generation));
-    const warmups =
+    warmups =
       (await state.get<number>(warmupsKey(conversationId, idle.generation))) ??
       0;
     if (warmups > 0) {
@@ -432,7 +439,7 @@ async function recordModelCall(
       });
     }
   }
-  if (idle) await recordSavings(idle, request, message);
+  if (idle) await recordSavings(idle, request, message, warmups);
 
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.

@@ -41,7 +41,7 @@ type Subject = NonNullable<ReviewItemPayload["subject"]>;
  */
 export function ReviewItemSubjectPreview(props: {
   subject: Subject;
-  conversationId: string;
+  conversationId: string | undefined;
   /** The row's head shows the subject's size. */
   sizeShown?: boolean | undefined;
   titled?: boolean;
@@ -55,7 +55,7 @@ export function ReviewItemSubjectPreview(props: {
 
 function SubjectCard(props: {
   subject: Subject;
-  conversationId: string;
+  conversationId: string | undefined;
   sizeShown?: boolean | undefined;
   titled?: boolean;
 }) {
@@ -64,7 +64,8 @@ function SubjectCard(props: {
   const detail = useQuery(conversationDetailQueryOptions(props.conversationId));
   const saved = savedCard(detail.data?.annotations, subject, href);
   // Ask for a live card only once the saved ones are known.
-  const liveUrl = saved || detail.isPending ? undefined : href;
+  const liveUrl =
+    saved || (props.conversationId && detail.isPending) ? undefined : href;
   const live = useResolvedObject(liveUrl);
   const { request } = live;
   useEffect(() => {

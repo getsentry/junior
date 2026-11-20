@@ -6,15 +6,15 @@ import { conversationDetailQueryOptions } from "../conversations/queries";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 
 /**
- * Let Review item text show the objects saved on the Conversation that added
+ * Let Review item text show the objects saved on the Conversation that owns
  * the item. It reads that Conversation's detail from the cache only, so a
- * Conversation that the page did not load shows plain links, or the
- * `cards` that the caller already has.
+ * Conversation that the page did not load, or an item that no Conversation
+ * owns, shows plain links, or the `cards` that the caller already has.
  */
 export function ReviewItemObjects(props: {
   cards?: readonly OwnedObjectAnnotation[];
   children: ReactNode;
-  conversationId: string;
+  conversationId: string | undefined;
 }) {
   const annotations = useQuery({
     ...conversationDetailQueryOptions(props.conversationId),

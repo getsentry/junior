@@ -12,7 +12,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
   const question = {
-    addedByConversationId: CLOSED_ISSUE_ID,
+    owner: { id: CLOSED_ISSUE_ID, kind: "conversation" },
     rootConversationId: CLOSED_ISSUE_ID,
     assignedToEveryone: false,
     assignees: [

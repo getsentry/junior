@@ -436,6 +436,14 @@ cost of the Conversation. The `app.cache_warming.trigger` log attribute is
 `app.cache_warming.compact_cost_micro_usd`, `warm_cost_micro_usd`, and
 `stop_cost_micro_usd`.
 
+The System page shows cache warming in two panels. **Cache warming** shows the
+daily savings from Junior's database. **Cache health** reads the last 24 hours
+or 7 days from Junior's own Sentry telemetry: the prompt cache write share of
+agent calls, full rewrites, warmups, idle period outcomes, and breaker changes.
+It reads the project of `SENTRY_DSN` in the `SENTRY_ORG_SLUG` org with
+`SENTRY_READ_TOKEN`, an internal integration token with **Issue & Event** read
+access. Without them, the panel names the setting to add.
+
 ## Install-wide config defaults
 
 Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:

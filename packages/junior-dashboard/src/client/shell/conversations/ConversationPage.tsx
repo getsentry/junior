@@ -88,7 +88,10 @@ import {
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
 import { useReviewItemData } from "../../inbox/queries";
-import { reviewItemIdFromToolCall } from "../../inbox/reviewItemFormat";
+import {
+  itemConversationId,
+  reviewItemIdFromToolCall,
+} from "../../inbox/reviewItemFormat";
 import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
 import {
@@ -497,7 +500,7 @@ export function ConversationPage(props: {
         // A child Conversation can add an item to this one. Its Turn is not
         // in this transcript.
         turnId:
-          item.addedByConversationId === conversationId
+          itemConversationId(item) === conversationId
             ? item.addedByTurnId
             : undefined,
         version: (current?.version ?? 0) + 1,

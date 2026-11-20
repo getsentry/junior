@@ -34,6 +34,7 @@ import {
 import {
   answerLine,
   answerRows,
+  itemConversationId,
   reviewItemPath,
   reviewItemTitleText,
   reviewItemWaitsForAnswer,
@@ -69,7 +70,7 @@ function ReviewItemPreview(props: {
             <ReviewItemTitle item={props.item} links />
           </p>
           {/* A notice or a plugin item has no question: its text is the ask. */}
-          <ReviewItemObjects conversationId={props.item.addedByConversationId}>
+          <ReviewItemObjects conversationId={itemConversationId(props.item)}>
             <DisplayText
               mentions={props.item.mentions}
               text={request?.question ?? props.item.body}
@@ -110,7 +111,7 @@ function ChangeRow(props: {
   // the Inbox, as does an item from another Conversation.
   const scrollsToQuestion =
     showQuestion !== undefined &&
-    item.addedByConversationId === props.conversationId &&
+    itemConversationId(item) === props.conversationId &&
     (askLinked || item.addedByTurnId !== undefined);
   return (
     <section
@@ -342,7 +343,7 @@ export function ReviewItemAskRow(props: {
   // plugin ask without a question waits on the viewer but does not dock.
   const docked =
     reviewItemWaitsForAnswer(item) &&
-    item.addedByConversationId === props.conversationId;
+    itemConversationId(item) === props.conversationId;
   return (
     // The transcript marks the row for a moment when its question docks.
     <section

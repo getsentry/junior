@@ -18,9 +18,10 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 - An idle Conversation costs as little as possible for the return that
   comes next. Junior warms the cache only when the chance of a return pays
   for the warmup. With Claude Opus 5.5 prices for one million tokens (input
-  $4, 5-minute cache write $5, cache read $0.20), a warmup reads the prefix
-  and a warm return saves one write minus one read. So warming pays when
-  more than 0.2 / (5 − 0.2), about 4%, of warmups reach a return.
+  $4, 5-minute cache write $5, cache read $0.20), a warmup costs about 1.1
+  reads of the prefix ($0.22), and a warm return saves one write minus one
+  read. So warming pays when more than 0.22 / (5 − 0.2), about 4.6%, of
+  warmups reach a return. `design/cache-warming.md` owns that rule.
 - At or above the background compaction mark, an idle Conversation compacts
   instead of warming when that costs less. A returning Turn at that size is
   close to the compaction threshold, so it can compact in the Turn, and
@@ -48,14 +49,15 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   for the full prefix P and the compacted prefix C. Each cost is the
   expected price of the warmups and of the first request of a return in
   the idle horizon, with the return chances and prices of the warmup rule:
-  - Warm: a warmup reads P, and a return before the next slot reads P.
+  - Warm: a warmup costs about 1.1 reads of P, and a return before the
+    next slot reads P.
     The next slot chooses again.
   - Compact: a return writes C, and P gets no more warmups.
   - Stop: a return before the cache expires reads P. A later return
     writes P.
 - For P = 360K and C = 120K tokens, a compacted return costs
-  5 × 0.12 = $0.60, a warmup or a warm return 0.2 × 0.36 = $0.072, and a
-  cold return of P $1.80. So warming wins only while a return is likely
+  5 × 0.12 = $0.60, a warmup 0.22 × 0.36 ≈ $0.08, a warm return
+  0.2 × 0.36 = $0.072, and a cold return of P $1.80. So warming wins only while a return is likely
   before the warmups cost more than the write of C. A Conversation with a
   likely quick return, such as one that waits for a child agent, warms
   first and compacts at a later slot. Stop wins only when the return

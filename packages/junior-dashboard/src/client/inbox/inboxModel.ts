@@ -7,11 +7,12 @@ import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import type { Conversation } from "../types";
 
 import {
+  type InboxBundle,
   inboxBundles,
   itemNeedsViewer,
+  itemStackKey,
   itemUpForGrabs,
   reviewItemStatusLabel,
-  type InboxBundle,
 } from "./reviewItemFormat";
 
 /**
@@ -287,31 +288,30 @@ export function inboxItemKind(item: ReviewItemPayload): string {
 }
 
 /**
- * Group rows by Conversation. The Conversation that waited longest comes
- * first, so groups do not move while the reader works.
+ * Group rows by Conversation, or by another owner's stack. The group that
+ * waited longest comes first, so groups do not move while the reader works.
  */
 function byConversation(
   rows: readonly InboxBundle[],
-  titleOf: (conversationId: string) => string | undefined,
+  titleOf: (conversationId: string | undefined) => string | undefined,
 ): InboxSection[] {
   const groups = new Map<string, InboxBundle[]>();
-  for (const row of rows)
-    groups.set(row.conversationId, [
-      ...(groups.get(row.conversationId) ?? []),
-      row,
-    ]);
+  for (const row of rows) {
+    const key = itemStackKey(row.newest);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
   const oldest = (group: InboxBundle[]) =>
     Math.min(...group.map((row) => Date.parse(row.waitingSince)));
   return [...groups]
     .sort(
       ([aId, a], [bId, b]) => oldest(a) - oldest(b) || aId.localeCompare(bId),
     )
-    .map(([conversationId, group]) => ({
-      key: `c:${conversationId}`,
+    .map(([key, group]) => ({
+      key: `c:${key}`,
       // The rows lead with their item titles, so the heading never falls
       // back to one.
       label:
-        titleOf(conversationId) ??
+        titleOf(group[0]!.conversationId) ??
         group[0]!.newest.subject?.title ??
         "Untitled",
       rows: group,
@@ -324,7 +324,7 @@ function byConversation(
  */
 export function viewSections(
   rows: readonly InboxBundle[],
-  titleOf: (conversationId: string) => string | undefined,
+  titleOf: (conversationId: string | undefined) => string | undefined,
 ): InboxSection[] {
   return byConversation(rows, titleOf).filter(
     (section) => section.rows.length > 0,
@@ -354,12 +354,12 @@ export function automationAttentionGroup(
 /**
  * What a sweep would dismiss in some rows: notices (FYI) only. Every
  * action item stays, including one assigned to Everyone, and so does every
- * item of a pinned Conversation. Automations are not Review items, so a
- * sweep never sees them.
+ * item of a pinned Conversation. An Automation alert is an action item, so
+ * it stays too.
  */
 export function sweepOf(
   rows: readonly InboxBundle[],
-  isPinned: (conversationId: string) => boolean,
+  isPinned: (conversationId: string | undefined) => boolean,
 ): ReviewItemPayload[] {
   return rows
     .filter((row) => !isPinned(row.conversationId))
@@ -435,7 +435,7 @@ function linkedInboxRowKey(
   rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
 ): string | undefined {
   const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
-    bundles.some((bundle) => bundle.conversationId === item.rootConversationId)
+    bundles.some((bundle) => itemStackKey(bundle.newest) === itemStackKey(item))
       ? `${prefix}:${item.id}`
       : undefined;
   const grab = rowIn("grabs", rows.grabs);

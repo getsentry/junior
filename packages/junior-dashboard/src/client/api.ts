@@ -21,6 +21,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheHealthReportSchema,
   cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
@@ -657,6 +658,24 @@ export function useCacheWarmingSavings(days: number) {
       fetchDashboardJson(
         cacheWarmingSavingsReportSchema,
         `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/**
+ * Fetch the cache health of the last 24 hours or 7 days. The server reads it
+ * from Sentry and shares one answer between page loads for a minute.
+ */
+export function useCacheHealth(window: "24h" | "7d") {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "health", window],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheHealthReportSchema,
+        `/api/cache-warming/health?window=${window}`,
         signal,
       ),
     placeholderData: keepPreviousData,

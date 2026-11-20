@@ -188,8 +188,9 @@ describe("decideWarmup", () => {
 
     const first = decideWarmup({ ...input, idleMs: 4 * MINUTE });
     expect(first).toMatchObject({ warm: true });
-    // Earlier warmups are already paid: read / (write - read).
-    expect(first.threshold).toBeCloseTo(0.2 / 4.8);
+    // Earlier warmups are already paid: warmup / (write - read), where a
+    // warmup costs 1.1 reads.
+    expect(first.threshold).toBeCloseTo(0.22 / 4.8);
     const later = decideWarmup({ ...input, idleMs: 9 * MINUTE });
     expect(later).toMatchObject({ warm: false, reason: "unlikely_return" });
     expect(later.threshold).toBeCloseTo(first.threshold);
@@ -298,12 +299,13 @@ describe("decideWarmup", () => {
 
 describe("timerFloorMaxDueIdleMs", () => {
   it("warms for a timer only while the warmups cost less than a miss", () => {
-    // A miss costs 24 reads, so 23 warmups, one each 4.25 minutes, keep the
-    // cache until 102.75 minutes. The timer's Turn starts 2 minutes late.
-    expect(timerFloorMaxDueIdleMs(prices)).toBe(100.75 * MINUTE);
-    // A read at twice the price allows 11 warmups.
+    // A miss costs 4.8, about 21.8 warmups at 0.22, so 21 warmups, one each
+    // 4.25 minutes, keep the cache until 94.25 minutes. The timer's Turn
+    // starts 2 minutes late.
+    expect(timerFloorMaxDueIdleMs(prices)).toBe(92.25 * MINUTE);
+    // A read at twice the price allows 10 warmups.
     expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0.4 })).toBe(
-      49.75 * MINUTE,
+      45.5 * MINUTE,
     );
     expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0 })).toBe(0);
   });

@@ -1,22 +1,35 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   type InboxSnoozeCreateBody,
+  type InboxSnoozeResource,
   type InboxSnoozeSubjectBody,
-  type InboxSnoozeTrigger,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
 
 import { useToastManager } from "../components/ui/toast";
-import { deleteDashboardResource, post } from "../http";
+import { useDebouncedValue } from "../debouncedValue";
+import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { invalidateReviewItemCollections } from "./queries";
-import type { InboxBundle } from "./reviewItemFormat";
+import { itemConversationId, type InboxBundle } from "./reviewItemFormat";
+import type { CustomSnoozeEnd } from "./snoozeChoices";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
 
-/** When a snooze ends: at a time, as `Date.now()`, or on an Event. */
-export type SnoozeEnd = number | InboxSnoozeTrigger;
+/** When a snooze ends: at a time, as `Date.now()`, or a custom snooze. */
+export type SnoozeEnd = number | CustomSnoozeEnd;
+
+/** The API body of a snooze end. */
+function snoozeEndBody(end: SnoozeEnd) {
+  const untilMs = typeof end === "number" ? end : end.untilMs;
+  const triggers = typeof end === "number" ? [] : end.triggers;
+  return {
+    triggers: triggers.length > 0 ? triggers : undefined,
+    wakeAt: untilMs === undefined ? undefined : new Date(untilMs).toISOString(),
+  };
+}
 
 /** What the Snoozed list says about the viewer's snoozed rows. */
 interface SnoozedRead {
@@ -28,6 +41,25 @@ interface SnoozedRead {
   itemsUpdatedAtMs: number;
   /** When the Inbox list last read the server, as `Date.now()`. */
   listUpdatedAtMs: number;
+}
+
+/** The snooze subject of one item: its item in its root's row, or itself. */
+function itemSubject(item: ReviewItemPayload): InboxSnoozeSubjectBody {
+  return item.rootConversationId
+    ? { conversationId: item.rootConversationId, reviewItemId: item.id }
+    : { reviewItemId: item.id };
+}
+
+/**
+ * The snooze subject of a row: a root Conversation's stack, one item of it,
+ * or the item of an owner that is not a Conversation. Such an owner, an
+ * Automation, has one open alert at a time, so its stack is that item.
+ */
+function rowSubject(bundle: InboxBundle): InboxSnoozeSubjectBody {
+  if (!bundle.conversationId) return { reviewItemId: bundle.newest.id };
+  return bundle.key === bundle.conversationId
+    ? { conversationId: bundle.conversationId }
+    : { conversationId: bundle.conversationId, reviewItemId: bundle.key };
 }
 
 /**
@@ -77,12 +109,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
     hide(key, Infinity);
     startChange();
     try {
-      const body: InboxSnoozeCreateBody = {
-        ...subject,
-        ...(typeof end === "number"
-          ? { wakeAt: new Date(end).toISOString() }
-          : { triggers: [end] }),
-      };
+      const body: InboxSnoozeCreateBody = { ...subject, ...snoozeEndBody(end) };
       await post(inboxSnoozeSchema, SNOOZES_PATH, body);
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.
@@ -128,40 +155,19 @@ export function useInboxSnoozes(read: SnoozedRead) {
    * FYI notice, only that item.
    */
   const snooze = (bundle: InboxBundle, end: SnoozeEnd) =>
-    save(
-      bundle.key,
-      {
-        conversationId: bundle.conversationId,
-        ...(bundle.key === bundle.conversationId
-          ? undefined
-          : { reviewItemId: bundle.key }),
-      },
-      end,
-    );
+    save(bundle.key, rowSubject(bundle), end);
   /** Snooze one item until `end`. The rest of its stack stays. */
   const snoozeItem = (item: ReviewItemPayload, end: SnoozeEnd) =>
-    save(
-      item.id,
-      { conversationId: item.rootConversationId, reviewItemId: item.id },
-      end,
-    );
+    save(item.id, itemSubject(item), end);
   /** Wake a snoozed row now: undo the viewer's snoozes on its items. */
   const wake = (bundle: InboxBundle) =>
     unsnooze(
       bundle.items.map((item) => item.id),
-      {
-        conversationId: bundle.conversationId,
-        ...(bundle.key === bundle.conversationId
-          ? undefined
-          : { reviewItemId: bundle.key }),
-      },
+      rowSubject(bundle),
     );
   /** Wake one item now. The other items of its stack stay snoozed. */
   const wakeItem = (item: ReviewItemPayload) =>
-    unsnooze([item.id], {
-      conversationId: item.rootConversationId,
-      reviewItemId: item.id,
-    });
+    unsnooze([item.id], itemSubject(item));
   return {
     /**
      * The item's row was just snoozed, and the lists have not refreshed
@@ -170,10 +176,12 @@ export function useInboxSnoozes(read: SnoozedRead) {
      * those leave when the lists refresh.
      */
     hides: (item: ReviewItemPayload) =>
-      hiddenNow(item.id) ||
-      hiddenNow(item.rootConversationId) ||
-      hiddenNow(item.addedByConversationId) ||
-      item.conversationIds.some(hiddenNow),
+      [
+        item.id,
+        item.rootConversationId,
+        itemConversationId(item),
+        ...item.conversationIds,
+      ].some((key) => key !== undefined && hiddenNow(key)),
     /**
      * A snooze hides this item from the viewer. Undefined while that is
      * unknown: until Snoozed reads every page after the viewer's last
@@ -192,4 +200,35 @@ export function useInboxSnoozes(read: SnoozedRead) {
     /** The item was just woken, and the lists have not refreshed yet. */
     waking: (itemId: string) => waking.has(itemId),
   };
+}
+
+/** What the server says about the page that a person names for a snooze. */
+type SnoozeResourceRead =
+  | { state: "empty" | "invalid" | "loading" | "unavailable" }
+  | { resource: InboxSnoozeResource; state: "found" };
+
+/**
+ * The Events of the page at `url` that the viewer can snooze on, such as a
+ * pasted pull request. The server answers 404 for a page without Events or
+ * one that the viewer cannot see. It reads once the typing stops.
+ */
+export function useSnoozeResource(url: string): SnoozeResourceRead {
+  const settled = useDebouncedValue(url);
+  const query = useQuery({
+    enabled: settled !== "" && URL.canParse(settled),
+    queryFn: () =>
+      fetchDashboardJson(
+        inboxSnoozeResourceSchema,
+        `${SNOOZES_PATH}/resource?${new URLSearchParams({ url: settled })}`,
+      ),
+    queryKey: ["inbox-snooze-resource", settled],
+    retry: false,
+    staleTime: 60_000,
+  });
+  if (url === "") return { state: "empty" };
+  if (!URL.canParse(url)) return { state: "invalid" };
+  if (settled !== url || query.isPending) return { state: "loading" };
+  return query.data
+    ? { resource: query.data, state: "found" }
+    : { state: "unavailable" };
 }

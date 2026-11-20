@@ -79,7 +79,7 @@ async function closedItem(input: {
   pick?: string;
 }): Promise<void> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: input.conversationId,
+    owner: { id: input.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [input.closedBy.id],
     body: "The rollout waits on a go-ahead.",
@@ -167,11 +167,9 @@ describe("conversation list API viewer answers", () => {
       await (await read("/review-items?status=done,dismissed")).json(),
     );
     expect(closedPage.items).toHaveLength(50);
-    expect(
-      closedPage.items.some(
-        (item) => item.addedByConversationId === ROLLOUT_ID,
-      ),
-    ).toBe(false);
+    expect(closedPage.items.some((item) => item.owner.id === ROLLOUT_ID)).toBe(
+      false,
+    );
 
     const response = await expectSqlBudget(() => read("/conversations"), {
       statements: 17,

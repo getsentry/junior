@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 import {
   actorSchema,
+  destinationSchema,
   sourceSchema,
   type Actor,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
@@ -25,7 +25,7 @@ import type {
 } from "@/chat/oauth-authorization";
 import { buildSlackOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
 import type { KnownBlock } from "@slack/types";
-import { isRecord } from "@/chat/coerce";
+import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
@@ -59,63 +59,27 @@ type OAuthFlowInput = {
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+const optionalStateStringSchema = z.string().min(1).optional().catch(undefined);
+
+const oauthStatePayloadSchema = z.object({
+  userId: z.string(),
+  provider: z.string(),
+  actor: actorSchema.optional(),
+  channelId: optionalStateStringSchema,
+  destination: destinationSchema.optional(),
+  source: sourceSchema.optional(),
+  threadTs: optionalStateStringSchema,
+  resumeConversationId: optionalStateStringSchema,
+  resumeSessionId: optionalStateStringSchema,
+  scope: optionalStateStringSchema,
+});
 
 /** Parse OAuth callback state that was persisted before a provider redirect. */
 export function parseOAuthStatePayload(
   value: unknown,
 ): OAuthStatePayload | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  if (
-    typeof value["userId"] !== "string" ||
-    typeof value["provider"] !== "string"
-  ) {
-    return undefined;
-  }
-  const actor =
-    value["actor"] === undefined
-      ? undefined
-      : actorSchema.safeParse(value["actor"]);
-  if (value["actor"] !== undefined && (!actor || !actor.success)) {
-    return undefined;
-  }
-  const destination = parseDestination(value["destination"]);
-  if (value["destination"] !== undefined && !destination) {
-    return undefined;
-  }
-  const source =
-    value["source"] === undefined
-      ? undefined
-      : sourceSchema.safeParse(value["source"]);
-  if (value["source"] !== undefined && (!source || !source.success)) {
-    return undefined;
-  }
-  return {
-    userId: value["userId"],
-    provider: value["provider"],
-    ...(actor?.success ? { actor: actor.data } : undefined),
-    ...(optionalString(value["channelId"])
-      ? { channelId: optionalString(value["channelId"]) }
-      : undefined),
-    ...(destination ? { destination } : undefined),
-    ...(source?.success ? { source: source.data } : undefined),
-    ...(optionalString(value["threadTs"])
-      ? { threadTs: optionalString(value["threadTs"]) }
-      : undefined),
-    ...(optionalString(value["resumeConversationId"])
-      ? { resumeConversationId: optionalString(value["resumeConversationId"]) }
-      : undefined),
-    ...(optionalString(value["resumeSessionId"])
-      ? { resumeSessionId: optionalString(value["resumeSessionId"]) }
-      : undefined),
-    ...(optionalString(value["scope"])
-      ? { scope: optionalString(value["scope"]) }
-      : undefined),
-  };
+  const parsed = oauthStatePayloadSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Return the manifest-owned display label for a provider. */
