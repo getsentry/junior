@@ -27,6 +27,8 @@ import {
 
 type TraceAttributeValue = string | number | boolean | string[];
 type TraceAttributes = Record<string, TraceAttributeValue>;
+type PiAiOptions = NonNullable<Parameters<typeof Sentry.piAiIntegration>[0]>;
+type PiAiSpanResult = Parameters<NonNullable<PiAiOptions["onSpanEnd"]>>[2];
 
 /** Junior attributes for the `gen_ai.chat` spans of one model request. */
 interface ChatRequestTelemetry {
@@ -38,6 +40,11 @@ interface ChatRequestTelemetry {
 
 // The provider stream reads the telemetry of the request that started it.
 const chatRequestStorage = new AsyncLocalStorage<ChatRequestTelemetry>();
+// `onSpanEnd` can run outside the async context of the request.
+const endAttributesBySpan = new WeakMap<
+  Sentry.Span,
+  NonNullable<ChatRequestTelemetry["endAttributes"]>
+>();
 
 // The `sentry.origin` of the `gen_ai.chat` span that the SDK's
 // `piAiIntegration` starts around each pi-ai request.
@@ -180,6 +187,31 @@ function traceRequestPayload(
   };
 }
 
+// The SDK types the message structurally, because it does not depend on pi-ai.
+function isAssistantMessage(
+  message: PiAiSpanResult["response"],
+): message is AssistantMessage {
+  return message?.role === "assistant" && message.usage !== undefined;
+}
+
+/**
+ * `piAiIntegration` hook that adds the Junior attributes of the final message
+ * to the `gen_ai.chat` span of a pi-ai request, right before the span ends.
+ */
+export function setChatSpanEndAttributes(
+  span: Sentry.Span,
+  _call: unknown,
+  { response }: PiAiSpanResult,
+): void {
+  if (!isAssistantMessage(response)) {
+    return;
+  }
+  span.setAttributes({
+    ...buildEndAttributes(response),
+    ...endAttributesBySpan.get(span)?.(response),
+  });
+}
+
 /**
  * Adds Junior attributes to the `gen_ai.chat` span that the SDK's
  * `piAiIntegration` starts for each request. Register the result as the
@@ -200,19 +232,13 @@ export function withChatSpanAttributes(
       ...buildStartAttributes(context.messages),
       ...telemetry?.attributes,
     });
-    const stream = base(
+    if (telemetry?.endAttributes) {
+      endAttributesBySpan.set(span, telemetry.endAttributes);
+    }
+    return base(
       model,
       context,
       traceRequestPayload(span, traceResponseHeaders(span, options)),
     );
-    // The SDK ends the span in a `result()` callback that it adds after this
-    // function returns, so this callback runs first.
-    void stream.result().then((message) => {
-      span.setAttributes({
-        ...buildEndAttributes(message),
-        ...telemetry?.endAttributes?.(message),
-      });
-    });
-    return stream;
   };
 }

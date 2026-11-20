@@ -197,17 +197,17 @@ catalogs:
       specifier: 1.5.2
       version: 1.5.2
     '@sentry/browser':
-      specifier: 11.14.0
-      version: 11.14.0
+      specifier: 11.15.0
+      version: 11.15.0
     '@sentry/nitro':
-      specifier: 11.14.0
-      version: 11.14.0
+      specifier: 11.15.0
+      version: 11.15.0
     '@sentry/node':
-      specifier: 11.14.0
-      version: 11.14.0
+      specifier: 11.15.0
+      version: 11.15.0
     '@sentry/server-utils':
-      specifier: 11.14.0
-      version: 11.14.0
+      specifier: 11.15.0
+      version: 11.15.0
     '@sentry/starlight-theme':
       specifier: ^0.9.1
       version: 0.9.1
@@ -251,7 +251,7 @@ overrides:
 packageExtensionsChecksum: sha256-yO3rUISp2Y4ah1jg/R+Tkn/ZrTP8tMj6B0BkRdDGQqQ=
 
 patchedDependencies:
-  '@sentry/server-utils@11.14.0': 0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01
+  '@sentry/server-utils@11.15.0': 6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4
 
 importers:
 
@@ -443,13 +443,13 @@ importers:
         version: link:../junior-plugin-api
       '@sentry/nitro':
         specifier: 'catalog:'
-        version: 11.14.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))
+        version: 11.15.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))
       '@sentry/node':
         specifier: 'catalog:'
-        version: 11.14.0
+        version: 11.15.0
       '@sentry/server-utils':
         specifier: 'catalog:'
-        version: 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+        version: 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -627,7 +627,7 @@ importers:
         version: 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
       '@sentry/browser':
         specifier: 'catalog:'
-        version: 11.14.0
+        version: 11.15.0
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -5206,16 +5206,16 @@ packages:
       zod:
         optional: true
 
-  '@sentry/browser-utils@11.14.0':
-    resolution: {integrity: sha512-QyMFyX9l7vXUCYJ7DoE0Au13oFoOmJLB1XPk0tnq3XI8DYoBUP8i1I32xtVJ9O0XR2r2Kc/e3RIKY3Bxl2/BAw==}
+  '@sentry/browser-utils@11.15.0':
+    resolution: {integrity: sha512-P4DVs11PqLpll5GDfRdqh6s2RRi3/LP7v7CCGjTfebjyKL/lud/QebZ4UsZzgHF1vhwjy/QCM2w4FaCoqr20pw==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/browser@11.14.0':
-    resolution: {integrity: sha512-LqcMvAv6FOoJW7hB1kXT1vQqbm1+FZjFm5ZyWE2CUR7hO6rEY+qyUMoCdBgPiJRYVJMWau6wp5BRowWqvoSAeA==}
+  '@sentry/browser@11.15.0':
+    resolution: {integrity: sha512-oo2X3opEAgJ5I3doQjMagQLxvK3mtKw+mR0t2R0mVBHBFxxEVsVitj+mIH03Z1aZLqOyfhe0cO8DKbLTfTN8JQ==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/bundler-plugins@11.14.0':
-    resolution: {integrity: sha512-Afi4P+OLJP/fRjbt3h4r8ujBC9KulU9RB1pBhe8PgGHddo5hpXdn2eoDQMHPTnADqNONqqCP1DzbGwFmxVQkXA==}
+  '@sentry/bundler-plugins@11.15.0':
+    resolution: {integrity: sha512-SyqRR0H8DbVNQRaUNDy9mCQSqCVlYKxbmXkSErCOIUjfNWujsyVK5fnl5aIIYbDrj1Vy1TX8gAkmyPfMbMD/QQ==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
     peerDependencies:
       rollup: '>=3.2.0'
@@ -5230,12 +5230,12 @@ packages:
     resolution: {integrity: sha512-5aa3g/VOnMoL8yHbfkYIWBYC3BLgMudgRNBTKNMrcMEj1mE9aKIt/CYCG7sasijhiSU4nTcSEzyM2voIVzLCng==}
     engines: {node: '>=14'}
 
-  '@sentry/core@11.14.0':
-    resolution: {integrity: sha512-toRRdaZnm0anz/4gEkzyZC0yTCvR4R7U+024WQfjCwgklIFaYo9mjIBoElU8MJ1Sske0/RyvA0zltHfra6PvsQ==}
+  '@sentry/core@11.15.0':
+    resolution: {integrity: sha512-zsprEOu/voisojJFnDIhPd+GhycAli/aqjV752eQHiNOrAwAvigCadsSh2ND5e1AEycvSmZTxOOhCNjWzSZ4Ng==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/feedback@11.14.0':
-    resolution: {integrity: sha512-g6/UMRie3Cb4GE+0/fmxWmV0dtPDqrsk7298X4DiG1TPSj4EMB7JtTGjLaRCQyRhCHEoL2XfqQDFS2pWdNXOow==}
+  '@sentry/feedback@11.15.0':
+    resolution: {integrity: sha512-4WYfm1poYb2A8IbMXGjkOo+LFPTj27FUJYeCVNSRKEKuuySqdMcjfk8U9Si2cKEcJjFpvhITREiyNm77q91kyg==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/junior-dashboard@file:packages/junior-dashboard':
@@ -5267,28 +5267,28 @@ packages:
       redis:
         optional: true
 
-  '@sentry/nitro@11.14.0':
-    resolution: {integrity: sha512-3goirhmjqMFsTSijmz24HSUfK52T0E0+hnyZK8twsB/JysNHJnLoOcU9TUxj8YTOZnKxlK6L20TzlLTdpPwm4A==}
+  '@sentry/nitro@11.15.0':
+    resolution: {integrity: sha512-wYbShVVQpSiNUvEtfC3J5OjhYVhXFwdNP8wQnAAIAwlnZm2yOYYA+xyqCVxmlbtAxrIwDo1NKLnMUoAV0ZHb0A==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
     peerDependencies:
       nitro: '>=3.0.0-0 <4.0.0 || 3.0.260311-beta || 3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta'
 
-  '@sentry/node@11.14.0':
-    resolution: {integrity: sha512-dAxkiRg7vwI1j+/bv4EbshmtrGHmS6CeX1+4SFSYbvTqUSAd6GYGFnIeLdW2NcX2Y6qG7zKz9svv/wreCm7m8g==}
+  '@sentry/node@11.15.0':
+    resolution: {integrity: sha512-D+DXJGsJDeVJA6r5QZmLmym626ffg9Zrr4Z1b4wxURdyfwSYhQoBq7QhrrUFnF5tgHfV/iq1+ZyhFav7COqKIg==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/opentelemetry@11.14.0':
-    resolution: {integrity: sha512-K+Vg7nNnGg90w1QSvNDWJSABeuDnvqGxHEcBtjkrzApqz3CDQ0bq6q9dG8B5af1QT3YPGsQh7RG9qqDkxClcBQ==}
+  '@sentry/opentelemetry@11.15.0':
+    resolution: {integrity: sha512-0RoIi7EBuE2kl+HnixJIIdAEipELawed7ejUrWjidiNpSIMk6hygUON5SYfk0vZkFn+uEPsy3GN5hR7Re8g+NA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
 
-  '@sentry/replay-canvas@11.14.0':
-    resolution: {integrity: sha512-eKkWsIMv/EP2aCGkzuYDSdhCrRD6bc5WhfhFUPTTWcM4s9E+FFUBFZc8CBlIUBNomnPjUg4W0N9gvdg16ungvw==}
+  '@sentry/replay-canvas@11.15.0':
+    resolution: {integrity: sha512-vZXVJrHtnzTo21zHC/uNUJH5L2yP4L3/M2m+ctZgQykma5vgN9ljof3zp0Yo8JGO3hAZZ9fV8EdFKtHrfPtJSQ==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/replay@11.14.0':
-    resolution: {integrity: sha512-qGgTWOmGkSWokXLDung64T2EzQONIQJL1ahtHAd5XF9QvGQG6208sLM6ctXoh1wcyONnoRmVdabjQeY27QSPHA==}
+  '@sentry/replay@11.15.0':
+    resolution: {integrity: sha512-HgfH4B0y88OzdYADL45/jy/CCxB9+XtWOWxZG/luaXiScAO7q5q4B3FogqnP9k/81r/0uf6cGXODWitFB9o9dw==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/roach@0.3.0':
@@ -5300,12 +5300,12 @@ packages:
       vitest:
         optional: true
 
-  '@sentry/server-runtime-injection@11.14.0':
-    resolution: {integrity: sha512-oYNxjgEqHWsyuVk6lCcKlOH8NFbQ0kJfdfUqxVQpg9T0iaBcMEDPeDaZ9RRRhv7ybKV6KQbMMUhGhdIN9lyieQ==}
+  '@sentry/server-runtime-injection@11.15.0':
+    resolution: {integrity: sha512-aNOpbh1w1ivyoTqS2eOtC5O49KJL+i+xVd6KRyzVYldOKNtWdBATXPTjiUtTlH0ItnOgzg1cL4YAEhcd3vUqwg==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
-  '@sentry/server-utils@11.14.0':
-    resolution: {integrity: sha512-ipL76Amg5yX9Lkoo++6xdy0Gnmci08AoY8ygM9ECYflWLYlBMxDf/6jMnsqKjV4M6O2bUg+KR3IoSrviy0jlwA==}
+  '@sentry/server-utils@11.15.0':
+    resolution: {integrity: sha512-ASBVOTAaXLNL3P2icwKgnLBH1kljLFybXcQCvSH4WseZAxeLQJYm90N5p2LhWTpM+7E8uClQtbWzxYcLjUG7RA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/starlight-theme@0.9.1':
@@ -14857,24 +14857,24 @@ snapshots:
       typescript: 7.0.2
       zod: 4.6.7
 
-  '@sentry/browser-utils@11.14.0':
+  '@sentry/browser-utils@11.15.0':
     dependencies:
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
+      '@sentry/core': 11.15.0
       web-vitals: 6.2.3
 
-  '@sentry/browser@11.14.0':
+  '@sentry/browser@11.15.0':
     dependencies:
-      '@sentry/browser-utils': 11.14.0
+      '@sentry/browser-utils': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/feedback': 11.14.0
-      '@sentry/replay': 11.14.0
-      '@sentry/replay-canvas': 11.14.0
+      '@sentry/core': 11.15.0
+      '@sentry/feedback': 11.15.0
+      '@sentry/replay': 11.15.0
+      '@sentry/replay-canvas': 11.15.0
 
-  '@sentry/bundler-plugins@11.14.0':
+  '@sentry/bundler-plugins@11.15.0':
     dependencies:
-      '@sentry/core': 11.14.0
+      '@sentry/core': 11.15.0
       dotenv: 17.4.2
       glob: 14.0.6
       magic-string: 1.4.5
@@ -14883,13 +14883,13 @@ snapshots:
 
   '@sentry/conventions@0.33.0': {}
 
-  '@sentry/core@11.14.0':
+  '@sentry/core@11.15.0':
     dependencies:
       '@sentry/conventions': 0.33.0
 
-  '@sentry/feedback@11.14.0':
+  '@sentry/feedback@11.15.0':
     dependencies:
-      '@sentry/core': 11.14.0
+      '@sentry/core': 11.15.0
 
   '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
@@ -14897,7 +14897,7 @@ snapshots:
       '@dnd-kit/core': 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
       '@lexical/react': 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
-      '@sentry/browser': 11.14.0
+      '@sentry/browser': 11.15.0
       '@sentry/junior': file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@tanstack/react-query': 5.100.14(react@19.2.6)
@@ -15162,9 +15162,9 @@ snapshots:
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))
-      '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/nitro': 11.15.0(nitro@3.0.260522-beta(jiti@2.7.0))
+      '@sentry/node': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -15274,9 +15274,9 @@ snapshots:
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta)
-      '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/nitro': 11.15.0(nitro@3.0.260522-beta)
+      '@sentry/node': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -15386,9 +15386,9 @@ snapshots:
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sentry/nitro': 11.14.0
-      '@sentry/node': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/nitro': 11.15.0
+      '@sentry/node': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
       '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
@@ -15481,100 +15481,100 @@ snapshots:
       - webpack
       - ws
 
-  '@sentry/nitro@11.14.0':
+  '@sentry/nitro@11.15.0':
     dependencies:
-      '@sentry/bundler-plugins': 11.14.0
+      '@sentry/bundler-plugins': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/node': 11.14.0
-      '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/node': 11.15.0
+      '@sentry/server-runtime-injection': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
     transitivePeerDependencies:
       - rollup
       - webpack
 
-  '@sentry/nitro@11.14.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))':
+  '@sentry/nitro@11.15.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))':
     dependencies:
-      '@sentry/bundler-plugins': 11.14.0
+      '@sentry/bundler-plugins': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/node': 11.14.0
-      '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/node': 11.15.0
+      '@sentry/server-runtime-injection': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       nitro: 3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
     transitivePeerDependencies:
       - rollup
       - webpack
 
-  '@sentry/nitro@11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))':
+  '@sentry/nitro@11.15.0(nitro@3.0.260522-beta(jiti@2.7.0))':
     dependencies:
-      '@sentry/bundler-plugins': 11.14.0
+      '@sentry/bundler-plugins': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/node': 11.14.0
-      '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/node': 11.15.0
+      '@sentry/server-runtime-injection': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       nitro: 3.0.260522-beta(jiti@2.7.0)
     transitivePeerDependencies:
       - rollup
       - webpack
 
-  '@sentry/nitro@11.14.0(nitro@3.0.260522-beta)':
+  '@sentry/nitro@11.15.0(nitro@3.0.260522-beta)':
     dependencies:
-      '@sentry/bundler-plugins': 11.14.0
+      '@sentry/bundler-plugins': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/node': 11.14.0
-      '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/node': 11.15.0
+      '@sentry/server-runtime-injection': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       nitro: 3.0.260522-beta
     transitivePeerDependencies:
       - rollup
       - webpack
 
-  '@sentry/node@11.14.0':
+  '@sentry/node@11.15.0':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@sentry/bundler-plugins': 11.14.0
+      '@sentry/bundler-plugins': 11.15.0
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
-      '@sentry/opentelemetry': 11.14.0(@opentelemetry/api@1.9.1)
-      '@sentry/server-runtime-injection': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/opentelemetry': 11.15.0(@opentelemetry/api@1.9.1)
+      '@sentry/server-runtime-injection': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
     transitivePeerDependencies:
       - rollup
       - webpack
 
-  '@sentry/opentelemetry@11.14.0(@opentelemetry/api@1.9.1)':
+  '@sentry/opentelemetry@11.15.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
+      '@sentry/core': 11.15.0
 
-  '@sentry/replay-canvas@11.14.0':
+  '@sentry/replay-canvas@11.15.0':
     dependencies:
-      '@sentry/core': 11.14.0
-      '@sentry/replay': 11.14.0
+      '@sentry/core': 11.15.0
+      '@sentry/replay': 11.15.0
 
-  '@sentry/replay@11.14.0':
+  '@sentry/replay@11.15.0':
     dependencies:
-      '@sentry/browser-utils': 11.14.0
-      '@sentry/core': 11.14.0
+      '@sentry/browser-utils': 11.15.0
+      '@sentry/core': 11.15.0
 
   '@sentry/roach@0.3.0(vitest@4.1.12)':
     optionalDependencies:
       vitest: 4.1.12(@types/node@24.19.2)(msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.1)
 
-  '@sentry/server-runtime-injection@11.14.0':
+  '@sentry/server-runtime-injection@11.15.0':
     dependencies:
-      '@sentry/core': 11.14.0
-      '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
+      '@sentry/core': 11.15.0
+      '@sentry/server-utils': 11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
 
-  '@sentry/server-utils@11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)':
+  '@sentry/server-utils@11.15.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@sentry/conventions': 0.33.0
-      '@sentry/core': 11.14.0
+      '@sentry/core': 11.15.0
 
   '@sentry/starlight-theme@0.9.1(@astrojs/starlight@0.41.5(astro@7.3.3(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1))(typescript@6.0.3))':
     dependencies:

@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import {
+  setChatSpanEndAttributes,
   withChatRequestTelemetry,
   withChatSpanAttributes,
 } from "@/chat/pi/chat-span";
@@ -137,32 +138,24 @@ describe("withChatSpanAttributes", () => {
     });
   });
 
-  it("sets the end attributes before a later result() callback runs", async () => {
+  it("adds the end attributes of the request when the span ends", () => {
     const span = activeChatSpan();
-    const stream = createAssistantMessageEventStream();
-    const returned = withChatRequestTelemetry(
+    withChatRequestTelemetry(
       { endAttributes: () => ({ "app.compaction.next_input.size": 7 }) },
       () =>
-        withChatSpanAttributes(() => stream)(
+        withChatSpanAttributes(() => createAssistantMessageEventStream())(
           model,
           transcript([{ role: "user", content: "hi", timestamp: 0 }]),
           undefined,
         ),
     );
-    // Like the SDK, which ends the span in a `result()` callback that it adds
-    // after the provider returns.
-    const attributesAtEnd = returned.result().then(() => ({
-      ...span.attributes,
-    }));
 
-    const finalMessage = {
-      ...fakeMessage(),
-      usage: { ...fakeMessage().usage, cacheRead: 300, cacheWrite1h: 3 },
-    };
-    stream.push({ type: "done", reason: "stop", message: finalMessage });
+    const message = fakeMessage();
+    message.usage = { ...message.usage, cacheRead: 300, cacheWrite1h: 3 };
+    // The SDK runs the hook outside the request's async context.
+    setChatSpanEndAttributes(span as never, undefined, { response: message });
 
-    expect(returned).toBe(stream);
-    expect(await attributesAtEnd).toMatchObject({
+    expect(span.attributes).toMatchObject({
       "app.ai.usage.cache_write_1h": 3,
       "gen_ai.usage.cache_hit_ratio": 0.75,
       "app.compaction.next_input.size": 7,
@@ -170,20 +163,26 @@ describe("withChatSpanAttributes", () => {
     });
   });
 
-  it("records the provider error", async () => {
+  it("records the provider error", () => {
     const span = activeChatSpan();
-    const stream = createAssistantMessageEventStream();
-    withChatSpanAttributes(() => stream)(model, transcript([]), undefined);
-
-    const errorMessage = {
-      ...fakeMessage(),
-      stopReason: "error" as const,
-      errorMessage: "upstream exploded",
-    };
-    stream.push({ type: "error", reason: "error", error: errorMessage });
-    await stream.result();
+    setChatSpanEndAttributes(span as never, undefined, {
+      response: {
+        ...fakeMessage(),
+        stopReason: "error",
+        errorMessage: "upstream exploded",
+      },
+    });
 
     expect(span.attributes["error.type"]).toBeDefined();
+  });
+
+  it("ignores spans that ended without a message", () => {
+    const span = activeChatSpan();
+    setChatSpanEndAttributes(span as never, undefined, {
+      error: new Error("aborted"),
+    });
+
+    expect(span.setAttributes).not.toHaveBeenCalled();
   });
 
   it("hashes the provider request body and leaves it unchanged", async () => {
