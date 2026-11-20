@@ -52,3 +52,11 @@ Workspace account, so the user connects nothing.
   the event.
 - Only an admin connects Junior's account. A requester cannot connect it or
   use their own account instead.
+
+## Gaps
+
+- Junior reads a Meet transcript for any requester who is invited to the
+  meeting, also when the requester cannot open the transcript Doc. This
+  breaks "never reads or changes a file for a person who could not read or
+  change it themselves" and "reads a file or its comments only for a
+  requester who can open it".

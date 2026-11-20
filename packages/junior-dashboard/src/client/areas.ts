@@ -1,8 +1,8 @@
 import { useCodeOverviewData } from "./api";
 import type { Area } from "./components/layout/AreaSidebar";
-import type { DashboardHeaderNavItem } from "./inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "./shell/components/layout/DashboardHeader";
 import { codeRepositoryPath } from "./pages/code/codeRepositoryRoutes";
-import { memoryNavigationItems } from "./inbox/pages/memory/MemoryPageLayout";
+import { memoryNavigationItems } from "./shell/pages/memory/MemoryPageLayout";
 import { NAV_PAGES, navAreaPages } from "./navPages";
 import { systemNavigationItems } from "./pages/system/SystemNavigation";
 

@@ -29,6 +29,10 @@ import {
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
+import {
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+} from "./schema/inbox-snoozes";
 import { juniorStats } from "./schema/stats";
 import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
@@ -72,6 +76,8 @@ export {
   juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
@@ -116,6 +122,8 @@ export const juniorSqlSchema = {
   juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,

@@ -56,6 +56,8 @@ export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
 export type { DailyConversationActivity } from "./activity";
 export {
   codeActivityDaySchema,
+  codeChangeSearchQuerySchema,
+  codeChangeSearchReportSchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
@@ -65,14 +67,17 @@ export {
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
   IDLE_CHANGE_DAYS,
+  mentionableCodeChangeSchema,
 } from "./schema/code";
 export type {
   CodeActivityDay,
+  CodeChangeSearchReport,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
   CodeRepositoryReport,
   CodeRepositorySummary,
+  MentionableCodeChange,
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
@@ -118,7 +123,6 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
@@ -256,6 +260,7 @@ export type {
 export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
 } from "./schema/watch";
 export {
   conversationPlanItemSchema,
@@ -311,7 +316,7 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
 export type { ApiError } from "./schema/common";
 export {
   connectionListSchema,
@@ -466,5 +471,15 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export {
+  inboxSnoozeCreateSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
+export type {
+  InboxSnoozeCreateBody,
+  InboxSnoozeSubjectBody,
+  InboxSnoozeTrigger,
+} from "./schema/inbox-snooze";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

@@ -51,7 +51,7 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("the review desk question links its evidence and related items @classic", async ({
+test("the Inbox question links its evidence and related items @classic", async ({
   dashboard,
   page,
 }) => {

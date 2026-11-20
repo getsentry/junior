@@ -203,7 +203,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
  * Read what decides a merge conflict fix on one pull request: the review
  * decision, when it opened, and its latest pushes, reviews, and comments.
  * Pushes have their own window, so comments, which anyone can add, cannot
- * push Junior's earlier fixes out of it.
+ * push a person's latest push out of it.
  */
 export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
@@ -214,7 +214,7 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
         pushes: timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
           nodes {
             __typename
-            ... on PullRequestCommit { commit { committedDate parents { totalCount } author { user { login } } } }
+            ... on PullRequestCommit { commit { committedDate author { user { login } } } }
             ... on HeadRefForcePushedEvent { createdAt actor { __typename } }
           }
         }

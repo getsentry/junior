@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ReviewItemActions } from "../src/client/review-desk/ReviewItemActions";
+import { ReviewItemActions } from "../src/client/inbox/ReviewItemActions";
 import { readMockReviewItems } from "../src/mock-reporting/review-items";
 
 const [seed] = readMockReviewItems(Date.now(), {});

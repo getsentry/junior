@@ -62,8 +62,15 @@ describe("Schedule Creation", () => {
       }),
     );
 
+    // This case checks that a clear one-off reminder is set at once, not
+    // which tool sets it. A timer that wakes this Conversation also works.
     const creates = completedToolCalls("createAutomation", conversation);
-    expect(creates).toHaveLength(1);
+    const timers = completedToolCalls("watchTimer", conversation);
+    expect(creates.length + timers.length).toBe(1);
+    if (timers.length === 1) {
+      expect(timers[0]!.input).toMatchObject({ after_ms: 60_000 });
+      return;
+    }
     expect(creates[0]!.input).toMatchObject({
       trigger: {
         type: "schedule",

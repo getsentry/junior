@@ -80,8 +80,7 @@ import type {
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { createWatch, turnEvents } from "@/chat/events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
+import { createPluginWatches } from "@/chat/plugins/watches";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import {
@@ -878,53 +877,7 @@ export function getPluginTools(
       plugin: pluginName,
     });
     const mcp = pluginMcpContext(plugin, context);
-    const canSubscribe =
-      Boolean(plugin.events) && plugin.events?.isEnabled?.() !== false;
-    const events: ToolRegistrationHookContext["events"] = {
-      canSubscribe,
-      async subscribe(input) {
-        if (!canSubscribe) {
-          throw new Error("Watches are not available in this conversation.");
-        }
-        const registration = plugin.events;
-        const resourceType = registration?.resourceTypes.find(
-          (candidate) => candidate.type === input.resource.type,
-        );
-        if (
-          input.resource.namespace !== pluginName ||
-          !resourceType ||
-          input.events.length === 0 ||
-          input.events.some(
-            (eventType) => !resourceType.supportedEvents.includes(eventType),
-          )
-        ) {
-          throw new Error(
-            "Watch contains an event or resource that the plugin does not support.",
-          );
-        }
-        const subscription = await createWatch({
-          conversationId: context.conversationId,
-          events: input.events,
-          expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-          guidance: input.guidance,
-          intent: input.intent,
-          label: input.resource.label,
-          namespace: pluginName,
-          identifier: normalizeEventIdentifier(
-            registration,
-            input.resource.identifier,
-          ),
-          quietEvents: input.quietEvents,
-          resourceType: input.resource.type,
-        });
-        // Quiet Events never wake the Conversation, so the agent does not
-        // count on them. It can still watch them with watchEvents.
-        return {
-          events: turnEvents(subscription),
-          id: subscription.id,
-        };
-      },
-    };
+    const events = createPluginWatches(plugin, context.conversationId);
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     const onCost = createPluginModelCostRecorder({

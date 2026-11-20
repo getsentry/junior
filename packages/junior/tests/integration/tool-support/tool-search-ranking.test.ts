@@ -66,8 +66,8 @@ const RANKING_CASES = [
   ["read one conversation event", "conversations", "readConversationEvent"],
   ["list active watches", "resource-watches", "listWatches"],
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
-  ["find open review items", "review-desk", "searchReviewItems"],
-  ["update a review item", "review-desk", "updateReviewItem"],
+  ["find open review items", "inbox", "searchReviewItems"],
+  ["update a review item", "inbox", "updateReviewItem"],
   ["list automations", "automations", "searchAutomations"],
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],
