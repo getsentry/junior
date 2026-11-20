@@ -256,6 +256,7 @@ export type {
 export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
 } from "./schema/watch";
 export {
   conversationPlanItemSchema,
