@@ -13,12 +13,8 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { readGoogleConfig } from "../config";
-import {
-  formatInterval,
-  googleApiError,
-  googleApiRequest,
-  isTimeZone,
-} from "../tools/shared";
+import { googleApiError, googleApiRequest, isTimeZone } from "../google-api";
+import { formatInterval } from "../calendar/events";
 import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;

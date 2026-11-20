@@ -15,13 +15,13 @@ import {
   type FileReference,
   type GoogleFileType,
 } from "./files";
-import { driveQueryString, namedQuery } from "./search-files";
+import { driveQueryString, namedQuery } from "./queries";
 import {
   googleApiError,
   googleApiRequest,
   requesterEmail,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
 
 /** The Drive fields that the read check needs. */
 interface CheckedFile {

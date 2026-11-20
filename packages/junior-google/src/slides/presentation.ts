@@ -1,6 +1,6 @@
 /** Inputs shared by the Google Slides layout, thumbnail, and edit tools. */
 import * as z from "zod";
-import { fileReferenceSchema } from "./files";
+import { fileReferenceSchema } from "../drive/files";
 
 export const presentationReferenceSchema = fileReferenceSchema("Google Slides");
 

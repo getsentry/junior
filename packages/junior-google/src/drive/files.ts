@@ -6,7 +6,7 @@ import {
   googleApiError,
   googleApiRequest,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
 
 /** Google file types that the tools read, with their Drive MIME types. */
 const FILE_TYPES = {

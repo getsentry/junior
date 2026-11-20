@@ -4,14 +4,14 @@
  */
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { convertMarkdown, type ConvertedMarkdown } from "./doc-markdown";
-import { requireEditableFile, type EditableFile } from "./editable-file";
+import { convertMarkdown, type ConvertedMarkdown } from "./markdown";
+import { requireEditableFile, type EditableFile } from "../drive/editable-file";
 import {
   fileReferenceSchema,
   googleFileRequest,
   type FileReference,
-} from "./files";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
 
 /** Longest Markdown that one edit accepts. */
 const MAX_WRITE_CHARS = 100_000;

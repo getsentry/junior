@@ -4,8 +4,8 @@ import {
   googleFileRequest,
   MAX_CONTENT_CHARS,
   type FileReference,
-} from "./files";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
 
 /** Output fields of `readGoogleFile` for Slides. */
 export const slidesOutputFields = {
