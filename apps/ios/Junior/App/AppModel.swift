@@ -137,7 +137,7 @@ final class AppModel {
     drawerOpen = false
   }
 
-  /// Open a dashboard path (`/`, `/review?item=…`, `/conversations/…`,
+  /// Open a dashboard path (`/`, `/inbox?item=…`, `/conversations/…`,
   /// `/automations/…`, `/settings`) the way the web router does.
   func open(dashboardPath: String) {
     guard let components = URLComponents(string: dashboardPath) else { return }
@@ -148,7 +148,7 @@ final class AppModel {
     case "conversations" where parts.count > 1:
       place = .conversations
       path = [.conversation(parts[1])]
-    case "review":
+    case "inbox":
       place = .inbox
       path = item.map { [.reviewItem($0)] } ?? []
     case "automations" where parts.count > 1 && parts[1] != "runs":

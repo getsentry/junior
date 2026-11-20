@@ -1,7 +1,10 @@
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
+  hasUserPhoto,
   identityAvatarUrl,
-  readUserAvatarUrls,
+  type JoinedUserPhoto,
+  userAvatarUrlsFromJoinedPhotos,
 } from "@/chat/identities/avatar";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -13,12 +16,25 @@ import {
 } from "@/db/schema";
 import type { ActorIdentity } from "../schema/conversation";
 
+// The photo Identities of each row's user, joined into the same read.
+const userPhotos = alias(juniorIdentities, "user_photos");
+const userPhotoJoin = and(
+  eq(userPhotos.userId, juniorIdentities.userId),
+  hasUserPhoto(userPhotos),
+);
+
 const identityColumns = {
   avatarUrl: juniorIdentities.avatarUrl,
   displayName: juniorIdentities.displayName,
   email: juniorIdentities.email,
   handle: juniorIdentities.handle,
   identityId: juniorIdentities.id,
+  photo: {
+    avatarUrl: userPhotos.avatarUrl,
+    identityId: userPhotos.id,
+    provider: userPhotos.provider,
+    updatedAt: userPhotos.updatedAt,
+  },
   provider: juniorIdentities.provider,
   providerSubjectId: juniorIdentities.providerSubjectId,
   userDisplayName: juniorUsers.displayName,
@@ -32,6 +48,7 @@ type ParticipantIdentityRow = {
   email: string | null;
   handle: string | null;
   identityId: string;
+  photo: JoinedUserPhoto | null;
   provider: string;
   providerSubjectId: string;
   userDisplayName: string | null;
@@ -108,6 +125,7 @@ async function readParticipantRows(
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(userPhotos, userPhotoJoin)
       .where(inArray(juniorConversations.conversationId, [...conversationIds])),
     db
       .select({
@@ -121,6 +139,7 @@ async function readParticipantRows(
         eq(juniorIdentities.id, authors.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .leftJoin(userPhotos, userPhotoJoin)
       .innerJoin(
         juniorConversations,
         eq(juniorConversations.conversationId, authors.conversationId),
@@ -146,14 +165,10 @@ async function readParticipantRows(
 }
 
 // Group rows by Conversation, then by person, in first-appearance order.
-async function groupParticipants(
-  db: JuniorDatabase,
+function groupParticipants(
   rows: readonly ConversationParticipantRow[],
-): Promise<Map<string, Map<string, ActorIdentity>>> {
-  const userAvatarUrls = await readUserAvatarUrls(
-    db,
-    rows.flatMap((row) => (row.userId ? [row.userId] : [])),
-  );
+): Map<string, Map<string, ActorIdentity>> {
+  const userAvatarUrls = userAvatarUrlsFromJoinedPhotos(rows);
   const groups = new Map<string, Map<string, ActorIdentity>>();
   for (const row of rows) {
     const participant = participantIdentity(row, userAvatarUrls);
@@ -173,8 +188,7 @@ export async function readConversationParticipants(
   conversationIds: readonly string[],
 ): Promise<Map<string, ActorIdentity[]>> {
   if (conversationIds.length === 0) return new Map();
-  const groups = await groupParticipants(
-    db,
+  const groups = groupParticipants(
     await readParticipantRows(db, conversationIds),
   );
   return new Map(
@@ -201,18 +215,17 @@ export async function readConversationAuthors(
   const userIds = [
     ...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : []))),
   ];
-  const [groups, userIdentities] = await Promise.all([
-    groupParticipants(db, rows),
+  const groups = groupParticipants(rows);
+  const userIdentities =
     userIds.length > 0
-      ? db
+      ? await db
           .select({
             identityId: juniorIdentities.id,
             userId: juniorIdentities.userId,
           })
           .from(juniorIdentities)
           .where(inArray(juniorIdentities.userId, userIds))
-      : [],
-  ]);
+      : [];
   const group = groups.get(conversationId) ?? new Map<string, ActorIdentity>();
   const authors: Record<string, ActorIdentity> = {};
   for (const row of [...rows, ...userIdentities]) {

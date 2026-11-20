@@ -28,7 +28,7 @@ import { useComposerAutocorrect } from "../../conversations/composerAutocorrect"
 import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
 import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
-import { useInboxTabCountSetting } from "../../review-desk/inboxTabIcon";
+import { useInboxTabCountSetting } from "../../inbox/inboxTabIcon";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
 import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";

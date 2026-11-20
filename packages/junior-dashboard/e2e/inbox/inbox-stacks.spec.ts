@@ -105,6 +105,56 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("a click on a stack header's empty space opens its root, as its title does", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    // The header's buttons keep their own actions.
+    await stack
+      .getByRole("button", {
+        exact: true,
+        name: "Snooze 2 items in this stack",
+      })
+      .click();
+    await expect(page.getByRole("button", { name: "Tomorrow" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    // A click on the header itself, not on anything in it.
+    await stack.locator("[data-inbox-stack-head]").dispatchEvent("click");
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+  });
+
+  test("a right-click on a stack's title or card opens its root's Conversation menu", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    const menu = page.getByRole("menu");
+    await stack.getByRole("link").first().click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await rowOf(page, childReview)
+      .locator("[data-inbox-head]")
+      .click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    // A lone item row, out of any stack, has no Conversation menu.
+    await page.keyboard.press("Escape");
+    await rowOf(page, other)
+      .locator("[data-inbox-head]")
+      .click({ button: "right" });
+    await expect(menu).toHaveCount(0);
+  });
+
   test("a sub-thread's ask on its own names the sub-thread once, in its head", async ({
     dashboard,
     page,
@@ -488,80 +538,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     const heading = section.getByRole("button", { name: /^Up for grabs/ });
     await heading.click();
     await expect(heading).toHaveText("Up for grabs2");
-  });
-
-  test("a row snooze from before item snoozes keeps its items asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    // The old record snoozed the whole row, under its Conversation, until a
-    // newer item than its newest arrived.
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    await mockReviewItems(page, { open: [rollout, childReview, childLicense] });
-    await page.goto(`${dashboard.baseURL}/`);
-    // The newer ask shows by itself. The two it put away stay asleep.
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-  });
-
-  test("a row snooze from before item snoozes keeps its later page asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    // The row's older ask comes on the second page, after the first converts.
-    await mockReviewItems(page, {
-      open: [childReview, childLicense, rollout],
-      pageSize: 2,
-    });
-    let releaseLaterPages = () => {};
-    const laterPages = new Promise<void>((resolve) => {
-      releaseLaterPages = resolve;
-    });
-    await page.route(/\/api\/review-items\?.*cursor=/, async (route) => {
-      await laterPages;
-      await route.fallback();
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    releaseLaterPages();
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-
-    // Its newest ask wakes by itself, and leaves the Snoozed count.
-    const snoozed = nav.getByRole("link", { name: /^Snoozed/ });
-    await snoozed.click();
-    const row = page.locator(`li[data-inbox-row="${childReview.id}"]`);
-    await row.locator("[data-inbox-head]").click();
-    await row.getByRole("button", { exact: true, name: "Wake" }).click();
-    await expect(row).toHaveCount(0);
-    await expect(snoozed).toContainText("1");
   });
 });

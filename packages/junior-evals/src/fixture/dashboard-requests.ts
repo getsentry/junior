@@ -124,7 +124,7 @@ export async function steerQueuedWebMessage(
 }
 
 /**
- * Answer or dismiss one Review item as the person on the review desk does.
+ * Answer or dismiss one Review item as the person in the Inbox does.
  * Junior tells each linked Conversation about the change.
  */
 export async function actOnReviewItem(

@@ -88,20 +88,20 @@ export interface WebMessageInput {
 }
 
 /**
- * A person's answer or dismiss on the review desk, through
+ * A person's answer or dismiss in the Inbox, through
  * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
  * web Conversation and assigns it to the person, as `addReviewItem` would.
  */
 export interface ReviewItemActionInput {
   kind: "review_item_action";
   action: "submit" | "dismiss";
-  item: ReviewDeskItem;
+  item: InboxItem;
   /** The answer, by field id. */
   values?: Record<string, string[]>;
 }
 
 /** An open item that a `ReviewItemActionInput` acts on. */
-export interface ReviewDeskItem {
+export interface InboxItem {
   body: string;
   /** Without a request, the item is a notice. */
   request?: {
@@ -236,16 +236,16 @@ export function webMessage(
   return { kind: "web_message", text, ...options };
 }
 
-/** Answer a review desk item from the dashboard, by field id. */
+/** Answer a Review item from the dashboard, by field id. */
 export function reviewItemAnswer(
-  item: ReviewDeskItem,
+  item: InboxItem,
   values: Record<string, string[]>,
 ): ReviewItemActionInput {
   return { kind: "review_item_action", action: "submit", item, values };
 }
 
-/** Dismiss a review desk item from the dashboard. */
-export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
+/** Dismiss a Review item from the dashboard. */
+export function reviewItemDismiss(item: InboxItem): ReviewItemActionInput {
   return { kind: "review_item_action", action: "dismiss", item };
 }
 

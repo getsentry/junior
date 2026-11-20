@@ -31,7 +31,11 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+import {
+  activityPreviewText,
+  IDLE_CHANGE_DAYS,
+} from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
@@ -2493,7 +2497,7 @@ function summaryFromConversation(
             ? { mentions: activityEvent.mentions }
             : undefined),
           role: activityEvent.data.role as "assistant" | "user",
-          text: activityEvent.data.text,
+          text: activityPreviewText(activityEvent.data.text),
         }
       : undefined;
   const {
@@ -4063,9 +4067,8 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
         pluginName: "briefs",
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "148" },
-          { label: "conversations with a brief", value: "93" },
-          { label: "briefs · 30d", value: "61" },
+          { label: "briefs · 30d", tone: "good", value: "61" },
+          { label: "conversations with a brief · 30d", value: "38" },
           { label: "cost · 30d · retained", value: "$0.23" },
           {
             label: "average cost per brief · 30d · retained",
@@ -4123,6 +4126,17 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
+  // Sizes for some changes. #519 counts no deletions, so that part hides.
+  const sizes: Record<number, CodeChangeSize> = {
+    42: { additions: 86, changedFiles: 4, deletions: 12 },
+    85: { additions: 2, changedFiles: 1, deletions: 2 },
+    519: { additions: 64, changedFiles: 2 },
+    2330: { additions: 412, changedFiles: 9, deletions: 37 },
+    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+    2384: { additions: 18, changedFiles: 2, deletions: 5 },
+    2391: { additions: 148, changedFiles: 5, deletions: 21 },
+    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+  };
   const openChange = (
     number: number,
     repository: string,
@@ -4138,6 +4152,7 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
+    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,
@@ -4166,7 +4181,7 @@ export function readMockPeopleCode(
     ),
     openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
@@ -4189,7 +4204,7 @@ export function readMockPeopleCode(
     doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
       merged: 6,
     }),
-    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+    doneChange(2361, "getsentry/junior", "Add Inbox filters", 6, {
       merged: 4,
     }),
     doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {

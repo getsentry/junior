@@ -2,7 +2,7 @@ import { createContext, use, useSyncExternalStore } from "react";
 
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
 import { cn } from "../styles";
 import type { TranscriptListRow } from "./transcriptListRows";
 

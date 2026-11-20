@@ -14,10 +14,12 @@ import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
+import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
 import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -140,12 +142,14 @@ export function createJuniorApi(
       },
     }),
   );
+  app.route("/api/inbox/snoozes", createInboxSnoozeRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/cache-warming", createCacheWarmingRoutes());
+  app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));

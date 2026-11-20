@@ -87,7 +87,7 @@ const AGENT_INPUT_RULES = [
 /**
  * Block 2, `<automation-run>`: the job rules for a stored automation. No person
  * reads the run while it executes, so Junior does the work without waiting.
- * A decision that only a person can make goes on the review desk, and each
+ * A decision that only a person can make goes in the Inbox, and each
  * Turn ends with one answer tool.
  */
 const AUTOMATION_RUN_RULES = [
