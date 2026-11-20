@@ -4,7 +4,7 @@ import type { ToolDefinition } from "@/core/tool";
 import { runStep, type StepInput } from "@/core/turn/step";
 import {
   createAssistantMessage,
-  createModelComplete,
+  fakeModelClient,
 } from "../../../fixtures/model-stream";
 
 const user: Message = { role: "user", content: "hi", timestamp: 0 };
@@ -27,7 +27,9 @@ function stepInput(
   return {
     systemPrompt: "You are Junior.",
     tools: [],
-    complete: createModelComplete([]),
+    client: fakeModelClient([]),
+    model: { id: "test-model", reasoning: "none", privacy: "private" },
+    session: "conversation-1",
     replay: false,
     signal: new AbortController().signal,
     ...overrides,
@@ -54,7 +56,7 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         tools: [lookup],
-        complete: createModelComplete([
+        client: fakeModelClient([
           {
             type: "message",
             message: reply,
@@ -91,7 +93,7 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         tools: [lookup],
-        complete: createModelComplete([{ type: "message", message: reply }]),
+        client: fakeModelClient([{ type: "message", message: reply }]),
       }),
     );
     const toolStep = await runStep(
@@ -279,9 +281,7 @@ describe("runStep", () => {
     const modelStep = await runStep(
       stepInput({
         messages: [user],
-        complete: createModelComplete([
-          { type: "message", message: cutOffText },
-        ]),
+        client: fakeModelClient([{ type: "message", message: cutOffText }]),
       }),
     );
 
@@ -301,7 +301,7 @@ describe("runStep", () => {
     const result = await runStep(
       stepInput({
         messages: [user],
-        complete: createModelComplete([{ type: "message", message: failure }]),
+        client: fakeModelClient([{ type: "message", message: failure }]),
       }),
     );
 
@@ -328,7 +328,7 @@ describe("runStep", () => {
       stepInput({
         messages: [user],
         signal: duringModel.signal,
-        complete: createModelComplete([
+        client: fakeModelClient([
           {
             type: "error",
             errorMessage: "Request was aborted",
