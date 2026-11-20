@@ -60,11 +60,10 @@ In `apps/ios`, `make init` installs the tools and `make xcode` makes and opens t
 
 ### On an iPhone
 
-Sign in to Xcode with your Apple ID (Xcode › Settings › Accounts), put
-`DEVELOPMENT_TEAM = <team ID>` in `apps/ios/Local.xcconfig` (git ignores it),
-connect the iPhone with Developer Mode on, and run `apps/ios/scripts/device.sh`.
-A personal team also needs `JUNIOR_BUNDLE_ID = <a bundle ID of its own>` there,
-and its builds expire after 7 days.
+Run `make signing` in `apps/ios` with `MATCH_PASSWORD` set, connect the
+iPhone with Developer Mode on, and run `apps/ios/scripts/device.sh`. The iPhone
+must be in the match development profile. Without access to the match repo, sign
+with your own team in `apps/ios/Local.xcconfig`, as `Signing.xcconfig` shows.
 
 ### Machine rules
 
