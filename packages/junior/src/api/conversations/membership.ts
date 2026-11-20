@@ -111,19 +111,19 @@ export type ConversationViewerMarks = {
   pinPosition?: number;
 };
 
-/** Read personal pin marks for a bounded set of conversation roots. */
-export async function conversationViewerMarks(
+/**
+ * Read the roots among a bounded set where one person is a Participant, each
+ * with their pin marks. An unpinned root maps to empty marks.
+ */
+export async function readMemberParticipants(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  subject: ConversationMember | undefined,
+  member: ConversationMember | undefined,
 ): Promise<Map<string, ConversationViewerMarks>> {
-  if (!subject || conversationIds.length === 0) return new Map();
-  const marked = and(
-    inArray(juniorConversationParticipants.rootConversationId, [
-      ...conversationIds,
-    ]),
-    isNotNull(juniorConversationParticipants.pinnedAt),
-  );
+  if (!member || conversationIds.length === 0) return new Map();
+  const listed = inArray(juniorConversationParticipants.rootConversationId, [
+    ...conversationIds,
+  ]);
   const query = db
     .select({
       pinnedAt: juniorConversationParticipants.pinnedAt,
@@ -132,12 +132,9 @@ export async function conversationViewerMarks(
     })
     .from(juniorConversationParticipants);
   const rows =
-    "userId" in subject
+    "userId" in member
       ? await query.where(
-          and(
-            eq(juniorConversationParticipants.userId, subject.userId),
-            marked,
-          ),
+          and(eq(juniorConversationParticipants.userId, member.userId), listed),
         )
       : await query
           .innerJoin(
@@ -145,13 +142,13 @@ export async function conversationViewerMarks(
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(
-            and(eq(juniorUsers.primaryEmailNormalized, subject.email), marked),
+            and(eq(juniorUsers.primaryEmailNormalized, member.email), listed),
           );
   return new Map(
-    rows.flatMap((row) => {
-      const marks = viewerMarksFromParticipant(row);
-      return marks ? [[row.rootConversationId, marks] as const] : [];
-    }),
+    rows.map((row) => [
+      row.rootConversationId,
+      viewerMarksFromParticipant(row) ?? {},
+    ]),
   );
 }
 

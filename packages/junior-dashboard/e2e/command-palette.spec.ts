@@ -208,7 +208,7 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   );
   await composer.pressSequentially(" 1");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("Hold on 1");
+  await expect(composer).toHaveText("Hold on 1", { useInnerText: true });
 });
 
 test("jumps to a page from the command palette", async ({

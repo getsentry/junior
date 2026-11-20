@@ -699,6 +699,7 @@ export function projectConversationReportEventPage(args: {
     if (!data) continue;
 
     projected.push(
+      // oxlint-disable-next-line junior/no-response-schema-parse -- Stored read: each stored event payload is checked here, and MCP readers use the result with no other parse.
       conversationReportEventSchema.parse({
         seq: event.seq,
         createdAt: new Date(event.createdAtMs).toISOString(),

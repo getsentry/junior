@@ -2,7 +2,7 @@ import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";

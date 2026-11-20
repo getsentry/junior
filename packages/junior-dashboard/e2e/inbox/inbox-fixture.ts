@@ -1,5 +1,6 @@
 /** Review items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 
 export const viewer = {
@@ -188,15 +189,14 @@ export const pinReview = {
   title: "Review requested · #91",
 };
 
-// The GitHub plugin's merge conflict notice about the same pull request, with
-// the URL inside its sentence.
-export const pinConflict = {
+// A notice about the same pull request, with the URL inside its sentence.
+export const pinChecks = {
   ...pinReview,
-  body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+  body: "The required checks failed on **Pin the release train to payments 4.2**: https://github.com/getsentry/payments/pull/91",
   createdAt: "2026-08-07T09:40:00.000Z",
-  id: "item-pin-conflict",
+  id: "item-pin-checks",
   kind: "notice" as const,
-  title: "Merge conflict · #91",
+  title: "Checks failed · #91",
 };
 
 // A notice in the same Conversation about nothing that an ask names.
@@ -261,7 +261,10 @@ type MockItem = Omit<typeof license, "status"> & {
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
- * keeps an answered item open, so a test can answer it twice.
+ * keeps an answered item open, so a test can answer it twice. Snoozes live
+ * here too: a snoozed row leaves the viewer's lists until its time passes
+ * `now`, which is the test's clock. The versions token moves with them, as
+ * on the server.
  */
 export async function mockReviewItems(
   page: Page,
@@ -273,8 +276,15 @@ export async function mockReviewItems(
     automations?: () => number;
     failActions?: string[];
     keepOpen?: boolean;
+    /**
+     * The time a snooze's wake time is checked against: the page's pinned clock
+     * by default. A test that moves the clock passes the page's time.
+     */
+    now?: () => number | Promise<number>;
     open?: unknown[];
     pageSize?: number;
+    /** Snoozes that exist before the page loads. */
+    snoozes?: { conversationId: string; untilMs: number }[];
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
@@ -285,6 +295,81 @@ export async function mockReviewItems(
     prReady,
     migration,
   ]) as MockItem[];
+  // As on the server, a root Conversation's row also holds the items that
+  // link it.
+  const inRow = (
+    conversationId: string,
+    item: {
+      addedByConversationId: string;
+      conversationIds: readonly string[];
+      rootConversationId: string;
+    },
+  ) =>
+    item.rootConversationId === conversationId ||
+    item.addedByConversationId === conversationId ||
+    item.conversationIds.includes(conversationId);
+  /** The open items of a snooze subject: one item, or a row's items. */
+  const itemsOf = (subject: {
+    conversationId: string;
+    reviewItemId?: string;
+  }) =>
+    open
+      .filter((i) =>
+        subject.reviewItemId
+          ? i.id === subject.reviewItemId
+          : inRow(subject.conversationId, i),
+      )
+      .map((i) => i.id);
+  /**
+   * When each snoozed item wakes, by item id: as on the server, a snooze
+   * holds the open items of its subject, and a later item is not snoozed.
+   */
+  const snoozes = new Map(
+    (options.snoozes ?? []).flatMap((snooze) =>
+      itemsOf(snooze).map((id) => [id, snooze.untilMs] as const),
+    ),
+  );
+  /** Snoozes made or undone, which move the versions token as on the server. */
+  let snoozeChanges = 0;
+  /** The items that a snooze hides now. */
+  const snoozedRows = async () => {
+    const nowMs = await (options.now ?? (() => NOW_MS))();
+    return new Set(
+      [...snoozes].flatMap(([id, untilMs]) => (untilMs > nowMs ? [id] : [])),
+    );
+  };
+  const asleep = (sleeping: Set<string>, item: { id: string }) =>
+    sleeping.has(item.id);
+  await page.route("**/api/inbox/snoozes", async (route) => {
+    const request = route.request();
+    const body = request.postDataJSON();
+    if (request.method() === "POST") {
+      // One snooze per open item that it hides; it replaces the last one.
+      const reviewItemIds = itemsOf(body);
+      for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+      snoozeChanges++;
+      return route.fulfill({ json: { reviewItemIds }, status: 201 });
+    }
+    if (request.method() === "DELETE") {
+      // Without an item, every snooze in the row wakes.
+      for (const id of itemsOf(body)) snoozes.delete(id);
+      snoozeChanges++;
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+  await page.route("**/api/versions**", async (route) => {
+    const response = await route.fetch();
+    const versions = await response.json();
+    const sleeping = [...(await snoozedRows())].sort().join(",");
+    return route.fulfill({
+      json: {
+        ...versions,
+        reviewItems: `${versions.reviewItems}:${snoozeChanges}:${sleeping}`,
+      },
+      response,
+    });
+  });
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
@@ -293,10 +378,14 @@ export async function mockReviewItems(
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
+      const sleeping = await snoozedRows();
       const needsViewer = open.filter(
-        (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+        (i) =>
+          i.kind === "action" &&
+          i.canAct &&
+          !i.assignedToEveryone &&
+          !asleep(sleeping, i),
       );
-      const snoozed = url.searchParams.get("snoozed")?.split(",") ?? [];
       return route.fulfill({
         json: {
           automations: (options.automations ?? attentionCount)(),
@@ -306,7 +395,12 @@ export async function mockReviewItems(
           codeChanges: needsViewer.filter(
             (i) => i.subject?.objectType === "code_change",
           ).length,
-          snoozed: open.filter((i) => snoozed.includes(i.id)).length,
+          // One per Conversation row, as Snoozed lists them.
+          snoozed: new Set(
+            open
+              .filter((i) => asleep(sleeping, i))
+              .map((i) => i.addedByConversationId),
+          ).size,
         },
       });
     }
@@ -316,6 +410,11 @@ export async function mockReviewItems(
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
       const closed = (url.searchParams.get("status") ?? "open") !== "open";
+      // The viewer's Inbox leaves out snoozed rows, and Snoozed lists only
+      // them. A search and a Conversation's own list still show them.
+      const sleeping = await snoozedRows();
+      const forViewer = url.searchParams.get("for") === "viewer";
+      const snoozedOnly = url.searchParams.get("snoozed") === "true";
       const list = (
         closed
           ? [...archived].sort((x, y) => y.closedAt.localeCompare(x.closedAt))
@@ -325,7 +424,10 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
-          `${i.title}\n${i.body}`.toLowerCase().includes(q),
+          `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
+          (snoozedOnly
+            ? asleep(sleeping, i)
+            : !forViewer || Boolean(q || linked) || !asleep(sleeping, i)),
       );
       // The waiting sort lists what waits on the viewer first, then the
       // rest, newest first, as the server does. Otherwise items keep their
@@ -395,6 +497,7 @@ export async function mockViewerCodeChanges(
     draft?: boolean;
     idleDays: number;
     number: number;
+    size?: { additions?: number; changedFiles?: number; deletions?: number };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -424,6 +527,7 @@ export async function mockViewerCodeChanges(
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
+          ...(change.size ? { size: change.size } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,

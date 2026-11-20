@@ -1,7 +1,7 @@
 import * as z from "zod";
 import type { StateAdapter } from "chat";
 import type { LogEventName } from "@/chat/log-event-name";
-import { logException } from "@/chat/logging";
+import { logException, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { cacheKeyPrefix, createCache } from "@/chat/state/cache";
 import { withLock } from "@/chat/state/locks";
@@ -63,32 +63,65 @@ export function createCachedReport<T, const N extends string>(source: {
     );
   };
 
-  const refresh = async (state: StateAdapter): Promise<void> => {
-    try {
-      // A request that finds a reload running keeps the stale report.
-      await reload(state, (cached) => Date.now() < cached.refreshAtMs, 0);
-    } catch (error) {
-      logException(error, source.refreshFailedEvent);
-    }
-  };
-
-  return async ({ waitUntil }) => {
-    const state = getStateAdapter();
-    const parsed = cachedSchema.safeParse(
-      await createCache(state, CACHE_NAMESPACE).getOrLoad(source.key, load),
+  const refresh = (state: StateAdapter): Promise<void> =>
+    withSpan(
+      source.key,
+      "cache.refresh",
+      {},
+      async () => {
+        try {
+          // A request that finds a reload running keeps the stale report.
+          await reload(state, (cached) => Date.now() < cached.refreshAtMs, 0);
+        } catch (error) {
+          logException(error, source.refreshFailedEvent);
+        }
+      },
+      { "cache.key": [source.key] },
     );
-    let cached: Cached;
-    if (parsed.success) {
-      cached = parsed.data;
-    } else {
-      // An entry from an older report shape is reloaded once for all callers.
-      const reloaded = await reload(state, () => true, RELOAD_WAIT_MS);
-      // The cache only saves work, so a stuck reload must not block this caller.
-      cached = reloaded.acquired ? reloaded.value : (await load()).value;
-    }
-    if (Date.now() >= cached.refreshAtMs) {
-      waitUntil(() => refresh(state));
-    }
-    return cached.report;
-  };
+
+  return ({ waitUntil }) =>
+    // Sentry's cache convention: one `cache.get` span per read, named by key.
+    withSpan(
+      source.key,
+      "cache.get",
+      {},
+      async (setSpanAttributes) => {
+        const state = getStateAdapter();
+        let hit = true;
+        const loadOnMiss = () => {
+          hit = false;
+          return load();
+        };
+        const parsed = cachedSchema.safeParse(
+          await createCache(state, CACHE_NAMESPACE).getOrLoad(
+            source.key,
+            loadOnMiss,
+          ),
+        );
+        let cached: Cached;
+        if (parsed.success) {
+          cached = parsed.data;
+        } else {
+          hit = false;
+          // An entry from an older report shape is reloaded once for all callers.
+          const reloaded = await reload(state, () => true, RELOAD_WAIT_MS);
+          // The cache only saves work, so a stuck reload must not block this caller.
+          cached = reloaded.acquired ? reloaded.value : (await load()).value;
+        }
+        const now = Date.now();
+        const stale = now >= cached.refreshAtMs;
+        // Reports are small, so serializing the entry again to size it is cheap.
+        setSpanAttributes({
+          "cache.hit": hit,
+          "cache.item_size": Buffer.byteLength(JSON.stringify(cached)),
+          "app.cache.stale": stale,
+          "app.cache.age_ms": now - (cached.refreshAtMs - FRESH_MS),
+        });
+        if (stale) {
+          waitUntil(() => refresh(state));
+        }
+        return cached.report;
+      },
+      { "cache.key": [source.key] },
+    );
 }

@@ -85,16 +85,17 @@ export async function attachConversationMentions(
   };
 }
 
-/** Attach the people that each activity preview mentions, resolved at read time. */
+/**
+ * Attach the people that each activity preview mentions, resolved at read
+ * time. `tenants` holds the Slack workspace of each conversation, which the
+ * feed already read with its rows.
+ */
 export async function attachActivityPreviewMentions(
   executor: JuniorSqlDatabase,
   previews: ReadonlyMap<string, ConversationActivityPreview>,
+  tenants: ReadonlyMap<string, string>,
 ): Promise<Map<string, ConversationActivityPreview>> {
   const entries = [...previews];
-  const tenants = await loadConversationSlackTenantIds(
-    executor,
-    entries.map(([conversationId]) => conversationId),
-  );
   const mentions = await resolveMentions(
     executor,
     entries.map(([conversationId, preview]) => ({

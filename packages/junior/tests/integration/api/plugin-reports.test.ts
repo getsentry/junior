@@ -10,7 +10,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
-import { expectSqlBudget } from "../../fixtures/sql-budget";
+import { expectNoFullScan, expectSqlBudget } from "../../fixtures/sql-budget";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
@@ -69,6 +69,17 @@ describe("plugin reports API route", () => {
             createdAt,
           })),
         );
+      // A second version in the window counts as a Brief, not a Conversation.
+      await getDb().insert(juniorConversationBriefs).values({
+        conversationId: reports[1]!.conversationId,
+        version: 2,
+        turnId: "inside-turn-2",
+        throughSeq: 1,
+        content: conversationBriefFixture(),
+        searchText: "stored brief",
+        modelId: "test-model",
+        createdAt: windowStart,
+      });
       await getDb()
         .insert(juniorConversationEvents)
         .values(
@@ -95,9 +106,12 @@ describe("plugin reports API route", () => {
           })),
         );
 
-      const response = await expectSqlBudget(
-        () => createJuniorApi().request("http://localhost/api/plugin-reports"),
-        { statements: 2, serialRounds: 1 },
+      const response = await expectNoFullScan(() =>
+        expectSqlBudget(
+          () =>
+            createJuniorApi().request("http://localhost/api/plugin-reports"),
+          { statements: 2, serialRounds: 1 },
+        ),
       );
 
       expect(response.status).toBe(200);
@@ -110,9 +124,8 @@ describe("plugin reports API route", () => {
       expect(report).toMatchObject({
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "2" },
-          { label: "conversations with a brief", value: "2" },
-          { label: "briefs · 30d", value: "1" },
+          { label: "briefs · 30d", tone: "good", value: "2" },
+          { label: "conversations with a brief · 30d", value: "1" },
           { label: "cost · 30d · retained", value: "$0.0042" },
           {
             label: "average cost per brief · 30d · retained",

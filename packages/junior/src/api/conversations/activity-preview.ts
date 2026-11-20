@@ -9,6 +9,10 @@ import {
 } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  ACTIVITY_PREVIEW_MAX_LENGTH,
+  activityPreviewText,
+} from "../schema/activity-preview-text";
 import type { ConversationActivityPreview } from "../schema/conversation";
 
 /**
@@ -24,7 +28,10 @@ function latestMessage(
   return db
     .select({
       createdAt: juniorConversationEvents.createdAt,
-      text: text.as(`${role}_text`),
+      // One char past the limit, so the reader knows the text was cut.
+      text: sql<string>`left(${text}, ${ACTIVITY_PREVIEW_MAX_LENGTH + 1})`.as(
+        `${role}_text`,
+      ),
     })
     .from(juniorConversationEvents)
     .where(
@@ -103,13 +110,13 @@ export async function readConversationActivityPreviews(
         ? {
             createdAt: row.assistantAt.toISOString(),
             role: "assistant",
-            text: row.assistantText,
+            text: activityPreviewText(row.assistantText),
           }
         : row.userAt && row.userText !== null
           ? {
               createdAt: row.userAt.toISOString(),
               role: "user",
-              text: row.userText,
+              text: activityPreviewText(row.userText),
             }
           : undefined;
     if (preview) previews.set(row.conversationId, preview);

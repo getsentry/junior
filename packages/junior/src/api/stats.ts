@@ -1,5 +1,5 @@
 import { readStats } from "@/stats";
-import { statsReportSchema, type StatsReport } from "./schema/stats";
+import type { StatsReport } from "./schema/stats";
 
 const WINDOW_DAYS = 90;
 
@@ -12,10 +12,10 @@ export async function readStatsReport(): Promise<StatsReport> {
   startDate.setUTCDate(startDate.getUTCDate() - (WINDOW_DAYS - 1));
   const start = startDate.toISOString().slice(0, 10);
 
-  return statsReportSchema.parse({
+  return {
     generatedAt: now.toISOString(),
     stats: await readStats(start, end),
     windowEnd: end,
     windowStart: start,
-  });
+  };
 }

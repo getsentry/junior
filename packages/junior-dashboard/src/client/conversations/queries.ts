@@ -142,11 +142,6 @@ export function conversationDetailQueryOptions(
     fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
-    /**
-     * The versions poll refreshes this Conversation while it is idle, so
-     * the detail does not poll then.
-     */
-    versionsPoll?: boolean | undefined;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -181,15 +176,14 @@ export function conversationDetailQueryOptions(
         ),
       );
     },
+    // While idle, the versions poll refreshes every mounted detail.
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The open Conversation polls fast while a reply streams in.
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS
         : options?.awaitingMessage || conversationDetailIsLive(query.state.data)
           ? 2_000
-          : options?.versionsPoll
-            ? false
-            : 10_000,
+          : false,
     retry: false,
   });
 }
@@ -523,8 +517,6 @@ export function useConversationData(
      * position. Polls do not ask, so the server reads that page once.
      */
     unreadPageAtOpen?: boolean;
-    /** See `conversationDetailQueryOptions`. */
-    versionsPoll?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
@@ -584,7 +576,6 @@ export function useConversationData(
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
       unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
-      versionsPoll: options?.versionsPoll,
     }),
   });
   // A reopened Conversation shows the cached copy at once, but it can miss

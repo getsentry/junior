@@ -635,20 +635,31 @@ so for a pull request that Junior opened, the event publishes only while
 people work on it:
 
 - In the first 2 days after the latest push, review, or comment by a person,
-  or after the pull request opened, the event publishes at most once a day
-  and 3 times in total.
-- After that, or after the third event, Junior publishes no event. It adds
-  a review desk notice to the conversation that asked for the pull request.
-  The notice closes when the conflict is gone.
+  or after the pull request opened, the event publishes at most once a day,
+  and at most 3 times in a row with no activity by a person between them.
+- After that, Junior publishes no event. It adds a Review item with a
+  **Resume** button for the person who asked for the pull request. The item
+  closes when the conflict is gone, or when the pull request merges or
+  closes.
+- **Resume** counts as activity by a person, so the count starts again. It
+  adds the pull request's watch again if it expired, so the event reaches
+  the conversation, and publishes the event at once. Until a fix lands
+  after it, Junior publishes no event. If no fix lands in a day, Junior
+  adds the item again. Resume on a draft, or on a pull request that GitHub
+  can merge, does nothing.
 - After 3 days without activity by a person, Junior does nothing.
 - An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, until
-  the total limit. The ready to merge notice needs a clean merge state, so it
-  comes after the fix.
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
 
-Junior stores none of this. For each conflict, it reads the pull request's
-timeline and review decision from GitHub. Merges and force pushes by a bot
-count as earlier fixes. Each head commit publishes one event.
+For each conflict, Junior reads the pull request's timeline and review
+decision from GitHub, for the latest activity by a person. Only the events
+that Junior published for a fix count as fixes, so a merge or force push for
+work that a person asked for does not. Junior stores those, with the time of
+the latest Resume. Each head commit publishes one event. When the head
+commit is the same a day after its fix, the fix did not land, and Junior
+adds the item.
 
 </details>
 

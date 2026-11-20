@@ -242,7 +242,7 @@ export interface ReviewItemAgentScope {
 /**
  * Read the scope of an agent. The agent reads as its Conversation and
  * Automation, not as its Actor: an assignment lets a person see the item on
- * the review desk, not let an agent read it into another Conversation.
+ * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readReviewItemAgentScope(
   context: Pick<
@@ -288,6 +288,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
     .slice(PLUGIN_REVIEW_ITEM_KEY_PREFIX.length)
     .split(":", 1)[0];
   return plugin || undefined;
+}
+
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
 }
 
 /**

@@ -48,6 +48,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     checks: z
       .strictObject({ passed: count, failed: count, pending: count })
       .optional(),
+    /** False while an open change conflicts with its target branch. */
     mergeable: z.boolean().optional(),
     // The same counts as `codeChangeSizeSchema`.
     changedFiles: count.optional(),
