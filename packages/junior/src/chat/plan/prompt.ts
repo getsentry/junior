@@ -15,6 +15,7 @@ import {
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
+import { planItemRef } from "./tool-output";
 import {
   isOpenPlanItemStatus,
   SELF_PLAN_ASSIGNEE,
@@ -59,7 +60,7 @@ function renderItem(item: PlanItem, withAuthor: boolean): string {
   ];
   const notes = item.notes ? `\n  Notes: ${item.notes}` : "";
   return escapeTagText(
-    `- #${item.id} (${fields.join(", ")}): ${item.title}${notes}`,
+    `- ${planItemRef(item.id)} (${fields.join(", ")}): ${item.title}${notes}`,
   );
 }
 

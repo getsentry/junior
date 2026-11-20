@@ -2,7 +2,7 @@ import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { contentVersion, contentVersionHeaders } from "../content-version";
-import { jsonResponse, throwApiError } from "../http";
+import { emptyResponse, jsonResponse, throwApiError } from "../http";
 import { CONTENT_VERSION_HEADER } from "../schema/common";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
@@ -85,7 +85,10 @@ import {
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
-import { conversationWatchesReportSchema } from "../schema/watch";
+import {
+  conversationWatchesReportSchema,
+  watchParamsSchema,
+} from "../schema/watch";
 import {
   conversationPlanItemSchema,
   conversationPlanReportSchema,
@@ -133,7 +136,10 @@ import { steerConversationPendingMessagesForViewer } from "./steer-pending-messa
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
-import { requireConversationWatches } from "./watches";
+import {
+  cancelConversationWatchForViewer,
+  requireConversationWatches,
+} from "./watches";
 import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
 
 /** Create the HTTP routes owned by the conversations API. */
@@ -710,6 +716,21 @@ export function createConversationRoutes(
         conversationWatchesReportSchema,
         await requireConversationWatches(conversationId, { viewer }),
       );
+    },
+  );
+
+  app.delete(
+    "/:conversationId/watches/:watchId",
+    requireViewer,
+    validateRequest("param", watchParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { conversationId, watchId } = context.req.valid("param");
+      await cancelConversationWatchForViewer(
+        context.get("viewer"),
+        conversationId,
+        watchId,
+      );
+      return emptyResponse();
     },
   );
 

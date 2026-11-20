@@ -41,6 +41,7 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
   conversationPlanItemSchema,
   conversationPlanReportSchema,
   planItemStatusBodySchema,
@@ -128,7 +129,10 @@ import {
   recordMockSend,
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
-import { readMockConversationWatches } from "./watches";
+import {
+  cancelMockConversationWatch,
+  readMockConversationWatches,
+} from "./watches";
 import { addMockReviewItemRoutes } from "./review-item-routes";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
@@ -494,6 +498,18 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.delete("/conversations/:conversationId/watches/:watchId", (c) => {
+    const params = watchParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return cancelMockConversationWatch(
+      params.data.conversationId,
+      params.data.watchId,
+    )
+      ? new Response(null, { status: 204 })
+      : errorResponse("Watch not found.", 404);
   });
   app.get("/conversations/:conversationId/plan", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
