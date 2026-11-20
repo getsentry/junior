@@ -56,6 +56,8 @@ describe("Turn state", () => {
       conversationId: CONVERSATION_ID,
       actorIdentityId: "identity:actor",
       state: "queued",
+      priority: 0,
+      source: "slack",
     });
   });
 

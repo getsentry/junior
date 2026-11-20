@@ -1,5 +1,5 @@
 {
-  "id": "ef8480b2-6c1e-4d6a-96d7-6c52eb6770c6",
+  "id": "eeab576e-51ba-4abd-9862-f5ef4586087d",
   "prevId": "92170853-e7fa-4c70-a2a9-bed27e498a9f",
   "version": "7",
   "dialect": "postgresql",
@@ -5417,7 +5417,13 @@
           "name": "turn_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -5449,11 +5455,11 @@
           "method": "btree",
           "with": {}
         },
-        "junior_turn_inbox_pending_idx": {
-          "name": "junior_turn_inbox_pending_idx",
+        "junior_turn_inbox_turn_idx": {
+          "name": "junior_turn_inbox_turn_idx",
           "columns": [
             {
-              "expression": "conversation_id",
+              "expression": "turn_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5466,7 +5472,6 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_turn_inbox\".\"turn_id\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -5728,6 +5733,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "step_seq": {
           "name": "step_seq",
           "type": "integer",
@@ -5789,8 +5806,8 @@
         }
       },
       "indexes": {
-        "junior_turns_active_conversation_idx": {
-          "name": "junior_turns_active_conversation_idx",
+        "junior_turns_running_conversation_idx": {
+          "name": "junior_turns_running_conversation_idx",
           "columns": [
             {
               "expression": "conversation_id",
@@ -5800,7 +5817,35 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_turns\".\"state\" in ('queued', 'running')",
+          "where": "\"junior_turns\".\"state\" = 'running'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_turns_queued_priority_idx": {
+          "name": "junior_turns_queued_priority_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "priority",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_turns\".\"state\" = 'queued'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -5885,6 +5930,14 @@
         "junior_turns_counters_check": {
           "name": "junior_turns_counters_check",
           "value": "\"junior_turns\".\"step_seq\" >= 0 and \"junior_turns\".\"lease_epoch\" >= 0 and \"junior_turns\".\"attempts\" >= 0"
+        },
+        "junior_turns_priority_check": {
+          "name": "junior_turns_priority_check",
+          "value": "\"junior_turns\".\"priority\" >= 0"
+        },
+        "junior_turns_source_check": {
+          "name": "junior_turns_source_check",
+          "value": "\"junior_turns\".\"source\" in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation')"
         }
       },
       "isRLSEnabled": false

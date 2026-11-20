@@ -15,8 +15,9 @@ import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
 
 /**
- * Inputs for a Conversation. A row is pending until a model step writes it
- * into history and sets `turn_id` in the same transaction.
+ * Inputs for a Conversation. The scheduler sets `turn_id` when the row
+ * arrives. A row is read when the Conversation's history has an event with
+ * the `idempotency_key` `inbox:<row id>`.
  */
 export const juniorTurnInbox = pgTable(
   "junior_turn_inbox",
@@ -36,7 +37,11 @@ export const juniorTurnInbox = pgTable(
       sentryTrace: string;
       baggage?: string;
     }>(),
-    turnId: uuid("turn_id").references(() => juniorTurns.id),
+    turnId: uuid("turn_id")
+      .notNull()
+      .references(() => juniorTurns.id),
+    // The time the source gives for the input, such as a Slack message ts.
+    sentAt: timestamptz("sent_at").notNull(),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [
@@ -57,8 +62,7 @@ export const juniorTurnInbox = pgTable(
       table.conversationId,
       table.idempotencyKey,
     ),
-    index("junior_turn_inbox_pending_idx")
-      .on(table.conversationId, table.createdAt)
-      .where(sql`${table.turnId} is null`),
+    // The inputs of a Turn, in order.
+    index("junior_turn_inbox_turn_idx").on(table.turnId, table.createdAt),
   ],
 );

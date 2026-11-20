@@ -6,7 +6,8 @@ CREATE TABLE "junior_turn_inbox" (
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
 	"trace_context" jsonb,
-	"turn_id" uuid,
+	"turn_id" uuid NOT NULL,
+	"sent_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "junior_turn_inbox_kind_check" CHECK ("junior_turn_inbox"."kind" in ('message', 'account_connected')),
 	CONSTRAINT "junior_turn_inbox_payload_check" CHECK (jsonb_typeof("junior_turn_inbox"."payload") = 'object')
@@ -36,6 +37,8 @@ CREATE TABLE "junior_turns" (
 	"conversation_id" text NOT NULL,
 	"actor_identity_id" text NOT NULL,
 	"state" text NOT NULL,
+	"priority" integer NOT NULL,
+	"source" text NOT NULL,
 	"step_seq" integer DEFAULT 0 NOT NULL,
 	"lease_epoch" integer DEFAULT 0 NOT NULL,
 	"lease_owner" text,
@@ -48,7 +51,9 @@ CREATE TABLE "junior_turns" (
 	CONSTRAINT "junior_turns_state_check" CHECK ("junior_turns"."state" in ('queued', 'running', 'completed', 'failed', 'cancelled')),
 	CONSTRAINT "junior_turns_lease_check" CHECK (("junior_turns"."state" = 'running') = ("junior_turns"."lease_owner" is not null) and ("junior_turns"."state" = 'running') = ("junior_turns"."lease_expires_at" is not null)),
 	CONSTRAINT "junior_turns_ended_check" CHECK (("junior_turns"."state" in ('completed', 'failed', 'cancelled')) = ("junior_turns"."ended_at" is not null)),
-	CONSTRAINT "junior_turns_counters_check" CHECK ("junior_turns"."step_seq" >= 0 and "junior_turns"."lease_epoch" >= 0 and "junior_turns"."attempts" >= 0)
+	CONSTRAINT "junior_turns_counters_check" CHECK ("junior_turns"."step_seq" >= 0 and "junior_turns"."lease_epoch" >= 0 and "junior_turns"."attempts" >= 0),
+	CONSTRAINT "junior_turns_priority_check" CHECK ("junior_turns"."priority" >= 0),
+	CONSTRAINT "junior_turns_source_check" CHECK ("junior_turns"."source" in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation'))
 );
 --> statement-breakpoint
 ALTER TABLE "junior_turn_inbox" ADD CONSTRAINT "junior_turn_inbox_actor_identity_id_junior_identities_id_fk" FOREIGN KEY ("actor_identity_id") REFERENCES "public"."junior_identities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -59,9 +64,10 @@ ALTER TABLE "junior_turn_outbox" ADD CONSTRAINT "junior_turn_outbox_event_fk" FO
 ALTER TABLE "junior_turns" ADD CONSTRAINT "junior_turns_actor_identity_id_junior_identities_id_fk" FOREIGN KEY ("actor_identity_id") REFERENCES "public"."junior_identities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "junior_turns" ADD CONSTRAINT "junior_turns_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "junior_turn_inbox_idempotency_idx" ON "junior_turn_inbox" USING btree ("conversation_id","idempotency_key");--> statement-breakpoint
-CREATE INDEX "junior_turn_inbox_pending_idx" ON "junior_turn_inbox" USING btree ("conversation_id","created_at") WHERE "junior_turn_inbox"."turn_id" is null;--> statement-breakpoint
+CREATE INDEX "junior_turn_inbox_turn_idx" ON "junior_turn_inbox" USING btree ("turn_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "junior_turn_outbox_event_idx" ON "junior_turn_outbox" USING btree ("conversation_id","event_seq");--> statement-breakpoint
 CREATE INDEX "junior_turn_outbox_pending_idx" ON "junior_turn_outbox" USING btree ("created_at") WHERE "junior_turn_outbox"."state" = 'pending';--> statement-breakpoint
-CREATE UNIQUE INDEX "junior_turns_active_conversation_idx" ON "junior_turns" USING btree ("conversation_id") WHERE "junior_turns"."state" in ('queued', 'running');--> statement-breakpoint
+CREATE UNIQUE INDEX "junior_turns_running_conversation_idx" ON "junior_turns" USING btree ("conversation_id") WHERE "junior_turns"."state" = 'running';--> statement-breakpoint
+CREATE INDEX "junior_turns_queued_priority_idx" ON "junior_turns" USING btree ("conversation_id","priority","created_at") WHERE "junior_turns"."state" = 'queued';--> statement-breakpoint
 CREATE INDEX "junior_turns_running_lease_idx" ON "junior_turns" USING btree ("lease_expires_at") WHERE "junior_turns"."state" = 'running';--> statement-breakpoint
 CREATE INDEX "junior_turns_queued_updated_idx" ON "junior_turns" USING btree ("updated_at") WHERE "junior_turns"."state" = 'queued';
