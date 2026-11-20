@@ -20,10 +20,11 @@ import {
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
-import { createEventTools } from "@/chat/tool-support/event-tools";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
+import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   getConversationEventStore,
@@ -444,10 +445,14 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const childTools = createEventTools(
-        { ...context(), conversationId: child.childConversationId },
-        getEventCatalog(),
-      );
+      const childContext = {
+        ...context(),
+        conversationId: child.childConversationId,
+      };
+      const childTools = {
+        listWatches: createListWatchesTool(childContext),
+        watchTimer: createWatchTimerTool(childContext),
+      };
       const timer = (await execute(
         childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check the deploy again." },
@@ -824,8 +829,14 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const toolsFor = (conversationId: string) =>
-        createEventTools({ ...context(), conversationId }, getEventCatalog());
+      const toolsFor = (conversationId: string) => {
+        const toolContext = { ...context(), conversationId };
+        return {
+          listWatches: createListWatchesTool(toolContext),
+          stopWatchingResources: createStopWatchingResourcesTool(toolContext),
+          watchTimer: createWatchTimerTool(toolContext),
+        };
+      };
       const parentTools = toolsFor(parentConversationId);
       const watcherTools = toolsFor(watcher.childConversationId);
       const watchTimer = async (
