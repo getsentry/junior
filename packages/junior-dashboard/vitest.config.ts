@@ -35,13 +35,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@sentry\/junior\/api\/people\/profile$/,
-        replacement: path.resolve(
-          import.meta.dirname,
-          "../junior/src/api/people/profile.ts",
-        ),
-      },
-      {
         find: /^@sentry\/junior\/reporting$/,
         replacement: path.resolve(
           import.meta.dirname,
