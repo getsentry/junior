@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { idlePeriodSavings } from "@/chat/cache-warming/savings";
+import {
+  idlePeriodOutcome,
+  idlePeriodSavings,
+} from "@/chat/cache-warming/savings";
 
 const MINUTE = 60_000;
 // Anthropic prices per million tokens: a write costs 12.5 reads.
@@ -11,6 +14,8 @@ const period = {
   cacheReadPrice: 0.5,
   cacheWritePrice: 6.25,
 };
+
+const MISS = { cacheRead: 0, cacheWrite: 100_000 };
 
 describe("cache warming savings", () => {
   it.each([
@@ -35,5 +40,19 @@ describe("cache warming savings", () => {
     ["a model whose write costs no more", 9 * MINUTE, { cacheWritePrice: 0.5 }],
   ])("skips %s", (_name, gapMs, input) => {
     expect(idlePeriodSavings({ ...period, ...input, gapMs })).toBeUndefined();
+  });
+
+  it.each([
+    ["a hit", 10 * MINUTE, {}, 2, "saved"],
+    ["a miss with no warmups", 10 * MINUTE, MISS, 0, "not_warmed"],
+    // The return needed two warmups, so its cache expired after the first.
+    ["a miss after too few warmups", 10 * MINUTE, MISS, 1, "stopped_early"],
+    ["a miss after enough warmups", 10 * MINUTE, MISS, 2, "cache_lost"],
+  ])("names the outcome of %s", (_name, gapMs, usage, warmups, outcome) => {
+    const savings = idlePeriodSavings({ ...period, ...usage, gapMs });
+    if (!savings) throw new Error("expected the period to count");
+    expect(idlePeriodOutcome({ ...period, gapMs }, savings, warmups)).toBe(
+      outcome,
+    );
   });
 });
