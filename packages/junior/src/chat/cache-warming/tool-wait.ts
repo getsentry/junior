@@ -22,6 +22,7 @@ import * as z from "zod";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
 import {
   decideWarmup,
+  IDLE_HORIZON_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   MINUTE_MS,
   NO_REPLY_GAP_MS,
@@ -187,6 +188,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             conversationGapsMs: [],
             globalGapsMs: await state.getList<number>(TOOL_WAIT_GAPS_KEY),
             idleMs: Date.now() - request.startedAtMs,
+            idleHorizonMs: IDLE_HORIZON_MS,
             cacheExpiryIdleMs: cacheExpiresAtMs - request.startedAtMs,
             cacheTtlMs: cache.ttlMs,
             prefixTokens,

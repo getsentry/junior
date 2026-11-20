@@ -35,6 +35,7 @@ import {
   decideWarmup,
   gapSegment,
   IDLE_HORIZON_MS,
+  idleHorizonMs,
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
@@ -218,8 +219,37 @@ async function scheduleWarmup(
   await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);
 }
 
+// Send the horizon message of one step. Each step ends `IDLE_HORIZON_MS`
+// after the last, and the last step ends at the idle horizon.
+async function sendHorizon(
+  conversationId: string,
+  generation: string,
+  sinceMs: number,
+  warm: WarmState,
+  step: number,
+): Promise<void> {
+  const dueIdleMs = Math.min(
+    step * IDLE_HORIZON_MS,
+    idleHorizonMs(warm.waitingOn),
+  );
+  await sendCacheWarmup(
+    {
+      kind: "horizon",
+      conversationId,
+      generation,
+      ...(step > 1 ? { step } : undefined),
+    },
+    sinceMs + dueIdleMs - Date.now(),
+  );
+}
+
 // The reply and the horizon can run at the same time. Only the first one to
 // claim the idle period records its gap.
+//
+// Each list records a gap past its own idle horizon as no reply. Only the
+// waiting child segment of a child agent wait has a longer horizon, so the
+// segment's own list stays comparable with its other idle periods and with
+// the backfill.
 async function recordGap(
   state: ConnectedState,
   conversationId: string,
@@ -235,15 +265,19 @@ async function recordGap(
   if (!claimed) {
     return;
   }
+  const gapWithin = (horizonMs: number) =>
+    gapMs >= horizonMs ? NO_REPLY_GAP_MS : gapMs;
+  const decisionGapMs = gapWithin(idleHorizonMs(warm.waitingOn));
   await mapBounded(recordedSegments(warm), (segment) =>
-    state.appendToList(segmentGapsKey(segment), gapMs, {
-      maxLength: GLOBAL_GAPS_MAX,
-      ttlMs: GLOBAL_GAPS_TTL_MS,
-    }),
+    state.appendToList(
+      segmentGapsKey(segment),
+      segment === warm.segment ? gapWithin(IDLE_HORIZON_MS) : decisionGapMs,
+      { maxLength: GLOBAL_GAPS_MAX, ttlMs: GLOBAL_GAPS_TTL_MS },
+    ),
   );
   await state.appendToList(
     conversationGapsKey(conversationId, decisionSegment(warm)),
-    gapMs,
+    decisionGapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
       ttlMs: CONVERSATION_STATE_TTL_MS,
@@ -298,7 +332,7 @@ async function startIdlePeriod(
     request.context,
     // The timer floor can warm after the horizon, until the timer's Turn.
     Math.max(
-      IDLE_HORIZON_MS,
+      idleHorizonMs(waitingOn),
       (timerDueIdleMs ?? 0) + TIMER_START_DELAY_MS + idle.sinceMs - Date.now(),
     ),
   );
@@ -442,9 +476,12 @@ async function recordModelCall(
     const { generation } = next.idle;
     // Send the horizon first: a failed warmup send must not leave the idle
     // period without its no-reply gap.
-    await sendCacheWarmup(
-      { kind: "horizon", conversationId, generation },
-      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
+    await sendHorizon(
+      conversationId,
+      generation,
+      request.startedAtMs,
+      next.idle.warm,
+      1,
     );
     await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
@@ -687,6 +724,17 @@ export async function runCacheWarmup(
   const stop = () => state.delete(snapshotKey(conversationId, generation));
 
   if (message.kind === "horizon") {
+    const step = message.step ?? 1;
+    if (step * IDLE_HORIZON_MS < idleHorizonMs(warm.waitingOn)) {
+      await sendHorizon(
+        conversationId,
+        generation,
+        idle.sinceMs,
+        warm,
+        step + 1,
+      );
+      return;
+    }
     // The timer floor keeps warming until the timer's Turn.
     if (!timerPending(warm, Date.now() - idle.sinceMs)) {
       await stop();
@@ -786,6 +834,7 @@ export async function runCacheWarmup(
           ? { timerDueIdleMs: warm.timerDueIdleMs }
           : undefined),
         idleMs: Date.now() - idle.sinceMs,
+        idleHorizonMs: idleHorizonMs(warm.waitingOn),
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
         prefixTokens: warm.prefixTokens,
@@ -845,7 +894,7 @@ export async function runCacheWarmup(
       await state.set(
         warmupsKey(conversationId, generation),
         message.cycle,
-        IDLE_HORIZON_MS,
+        idleHorizonMs(warm.waitingOn),
       );
       // A reply during the warmup ended the idle period and deleted its
       // snapshot. Then the next warmup would do nothing.

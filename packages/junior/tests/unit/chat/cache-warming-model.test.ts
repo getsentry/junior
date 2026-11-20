@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHILD_WAIT_IDLE_HORIZON_MS,
   decideWarmup as decideWarmupAt,
+  IDLE_HORIZON_MS,
   NO_REPLY_GAP_MS,
   parentGapSegment,
   timerFloorMaxDueIdleMs,
@@ -21,11 +23,17 @@ function gaps(count: number, gapMs: number): number[] {
   return Array.from({ length: count }, () => gapMs);
 }
 
-// Most cases decide one minute before the current cache expires.
+// Most cases decide one minute before the current cache expires, with the
+// default idle horizon.
 const decideWarmup = (
-  input: Omit<WarmupDecisionInput, "cacheExpiryIdleMs"> &
-    Partial<Pick<WarmupDecisionInput, "cacheExpiryIdleMs">>,
-) => decideWarmupAt({ cacheExpiryIdleMs: input.idleMs + MINUTE, ...input });
+  input: Omit<WarmupDecisionInput, "cacheExpiryIdleMs" | "idleHorizonMs"> &
+    Partial<Pick<WarmupDecisionInput, "cacheExpiryIdleMs" | "idleHorizonMs">>,
+) =>
+  decideWarmupAt({
+    cacheExpiryIdleMs: input.idleMs + MINUTE,
+    idleHorizonMs: IDLE_HORIZON_MS,
+    ...input,
+  });
 
 describe("decideWarmup", () => {
   it("warms when people usually reply within the next cache TTL", () => {
@@ -99,6 +107,41 @@ describe("decideWarmup", () => {
         globalGapsMs: gaps(100, 56 * MINUTE),
         idleMs: 55 * MINUTE,
       }),
+    ).toMatchObject({ warm: false, reason: "horizon" });
+  });
+
+  it("warms past the default horizon only within a longer idle horizon", () => {
+    // A child agent's result usually returns after about 70 minutes.
+    const input = {
+      ...prices,
+      conversationGapsMs: [],
+      globalGapsMs: [...gaps(50, 70 * MINUTE), ...gaps(50, NO_REPLY_GAP_MS)],
+      prefixTokens: 200_000,
+      idleHorizonMs: CHILD_WAIT_IDLE_HORIZON_MS,
+    };
+
+    // The default horizon gives no credit for returns after it.
+    expect(
+      decideWarmup({
+        ...input,
+        idleMs: 50 * MINUTE,
+        idleHorizonMs: IDLE_HORIZON_MS,
+      }),
+    ).toMatchObject({ warm: false, reason: "unlikely_return" });
+    expect(decideWarmup({ ...input, idleMs: 50 * MINUTE })).toMatchObject({
+      warm: true,
+    });
+    expect(decideWarmup({ ...input, idleMs: 60 * MINUTE })).toMatchObject({
+      warm: true,
+    });
+    // Past the gap bin of the returns, the return chance stops warming
+    // before the horizon.
+    expect(decideWarmup({ ...input, idleMs: 95 * MINUTE })).toMatchObject({
+      warm: false,
+      reason: "unlikely_return",
+    });
+    expect(
+      decideWarmup({ ...input, idleMs: CHILD_WAIT_IDLE_HORIZON_MS }),
     ).toMatchObject({ warm: false, reason: "horizon" });
   });
 
