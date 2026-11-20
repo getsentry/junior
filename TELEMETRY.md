@@ -25,7 +25,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
-| `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `app.review_item.id`                | Review item                  | Inbox, delivery logs  |
 | `vcs.change.id`                     | Code change number           | code change record spans    |
 
 - `gen_ai.conversation.id` also names child agents. Count root Conversations

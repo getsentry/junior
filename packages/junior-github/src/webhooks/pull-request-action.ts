@@ -1,6 +1,6 @@
 /**
  * The next action of a Junior pull request for its requester, and its one
- * item on the review desk.
+ * item in the Inbox.
  *
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, approved, auto-merge is off, and GitHub's merge state
@@ -354,7 +354,7 @@ async function syncOne(
       });
     }
     // Close the old items only after the new one shows, so a failed show
-    // does not leave the desk with no next-action item.
+    // does not leave the Inbox with no next-action item.
     await Promise.all([
       closeLegacyItems(items, name),
       // The same read closes the merge conflict item from

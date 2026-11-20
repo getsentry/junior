@@ -35,7 +35,7 @@ import {
 } from "@/chat/scheduled-automations/types";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
-import type { ReviewDeskItem, SlackAuthor } from "./inputs";
+import type { InboxItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
 /** A Slack channel that automations and mentions can target. */
@@ -313,7 +313,7 @@ export async function insertReviewItem(args: {
  */
 export async function insertWebReviewItem(args: {
   conversationId: string;
-  item: ReviewDeskItem;
+  item: InboxItem;
   viewerEmail: string;
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);

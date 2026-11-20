@@ -9,6 +9,8 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/memories",
   "/settings",
   "/plugins/",
+  "/inbox",
+  // The old Inbox path renders once before it redirects to /inbox.
   "/review",
 ] as const;
 
@@ -53,9 +55,9 @@ export function buildPrimaryNavItems(input: {
       ? [
           {
             count: input.reviewCount,
-            key: "review",
+            key: "inbox",
             label: "Inbox",
-            to: "/review",
+            to: "/inbox",
           },
           { key: "automations", label: "Automations", to: "/automations" },
         ]

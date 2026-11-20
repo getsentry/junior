@@ -184,6 +184,7 @@ function dashboardHostRoutePaths(
     `${conversationsPath}/*`,
     pagePath("locations"),
     `${pagePath("locations")}/*`,
+    pagePath("inbox"),
     pagePath("review"),
     peoplePath,
     `${peoplePath}/*`,

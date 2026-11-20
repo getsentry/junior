@@ -108,7 +108,7 @@ export const juniorGitHubPullRequests = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     /**
      * The requester's next action that Junior last derived from GitHub, and
-     * shows on the review desk. Null when no action waits on them.
+     * shows in the Inbox. Null when no action waits on them.
      */
     nextAction: text("next_action").$type<GitHubPullRequestAction>(),
     /**
