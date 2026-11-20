@@ -399,6 +399,57 @@ describe("completeText", () => {
     expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(8_500);
   });
 
+  it("reports a spent budget when the model writes no text", async () => {
+    const ai = await vi.importActual<typeof import("ai")>("ai");
+    const { MockLanguageModelV4 } = await import("ai/test");
+    // Reasoning used the whole budget, so the SDK has no text to parse.
+    const model = new MockLanguageModelV4({
+      modelId: "openai/gpt-6-luna",
+      doGenerate: {
+        content: [],
+        finishReason: { unified: "length", raw: "max_output_tokens" },
+        usage: {
+          inputTokens: {
+            total: 100,
+            noCache: 100,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+          outputTokens: { total: 8_500, text: 0, reasoning: 8_500 },
+        },
+        warnings: [],
+      },
+    });
+    mocks.createGatewayProvider.mockReturnValueOnce({
+      chat: vi.fn(() => model),
+      embeddingModel: vi.fn((modelId: string) => ({ modelId })),
+      rerankingModel: vi.fn((modelId: string) => ({ modelId })),
+      transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
+    });
+    mocks.generateText.mockImplementationOnce(ai.generateText);
+    mocks.outputObject.mockImplementationOnce((options) =>
+      ai.Output.object(options as { schema: z.ZodTypeAny }),
+    );
+
+    const { completeObject } = await import("@/chat/pi/client");
+
+    await expect(
+      completeObject({
+        modelId: "openai/gpt-6-luna",
+        schema: z.object({ ok: z.boolean() }),
+        prompt: "return json",
+        maxTokens: 2_500,
+      }),
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({ kind: "invalid_response" });
+      expect(error.cause).toMatchObject({
+        name: "StructuredOutputLengthError",
+        message: "Structured output hit the output token limit",
+      });
+      return true;
+    });
+  });
+
   it.each([
     [
       "clamps to the output limit of a catalog model",

@@ -21,6 +21,13 @@ export function structuredOutputTokenLimit(
   return modelMaxTokens !== undefined ? Math.min(limit, modelMaxTokens) : limit;
 }
 
+/** Error for a structured output that spent its output token budget. */
+export function structuredOutputLengthError(): Error {
+  const error = new Error("Structured output hit the output token limit");
+  error.name = "StructuredOutputLengthError";
+  return error;
+}
+
 /**
  * Keep only the fixed message and stack of a failed structured output. The SDK
  * error's `text` and its parse or validation cause hold the raw model output.
@@ -31,12 +38,10 @@ export function structuredOutputErrorCause(
   error: NoObjectGeneratedError,
 ): Error {
   const spentBudget = error.finishReason === "length";
-  const cause = new Error(
-    spentBudget
-      ? "Structured output hit the output token limit"
-      : error.message,
-  );
-  cause.name = spentBudget ? "StructuredOutputLengthError" : error.name;
+  const cause = spentBudget
+    ? structuredOutputLengthError()
+    : new Error(error.message);
+  if (!spentBudget) cause.name = error.name;
   cause.stack = error.stack;
   return cause;
 }

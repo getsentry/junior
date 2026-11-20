@@ -58,6 +58,7 @@ import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   structuredOutputErrorCause,
+  structuredOutputLengthError,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
@@ -519,6 +520,15 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           }),
         }),
     );
+    // When the budget runs out before any text, the SDK parses no output and
+    // `result.output` throws a NoOutputGeneratedError without the finish
+    // reason. Report it as a spent budget, like a truncated object.
+    if (result.finishReason === "length" && result.text.length === 0) {
+      throw createProviderError(structuredOutputLengthError(), {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
     const object = result.output as z.infer<TSchema>;
     const costUsd = bestEffortObjectCompletionCost(
       params.modelId,
