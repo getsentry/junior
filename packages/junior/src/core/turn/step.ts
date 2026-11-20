@@ -6,12 +6,12 @@ import {
   toToolDeclaration,
   validateToolArguments,
   type AssistantMessage,
-  type Context,
   type JsonObject,
   type Message,
   type ToolCall,
   type ToolResultMessage,
 } from "@earendil-works/pi-ai";
+import type { ModelClient, ModelSettings } from "@/core/model/client";
 import { withSpan } from "@/core/telemetry";
 import type { ToolDefinition, ToolResult } from "@/core/tool";
 import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
@@ -24,11 +24,10 @@ export type StepInput = {
    */
   messages: Message[];
   tools: ToolDefinition[];
-  /** Makes one model request. A failed request returns a message with `stopReason: "error"`. */
-  complete: (
-    context: Context,
-    signal: AbortSignal,
-  ) => Promise<AssistantMessage>;
+  client: ModelClient;
+  model: ModelSettings;
+  /** The Conversation id, which keeps its model requests in one session. */
+  session: string;
   /**
    * True when an earlier attempt at this step did not commit, so its tool
    * calls may have run.
@@ -64,11 +63,15 @@ export async function runStep(input: StepInput): Promise<StepResult> {
 }
 
 async function requestModel(input: StepInput): Promise<StepResult> {
-  const reply = await input.complete(
+  const reply = await input.client.complete(
     {
-      systemPrompt: input.systemPrompt,
-      messages: input.messages,
-      tools: input.tools.map(toToolDeclaration),
+      model: input.model,
+      session: input.session,
+      context: {
+        systemPrompt: input.systemPrompt,
+        messages: input.messages,
+        tools: input.tools.map(toToolDeclaration),
+      },
     },
     input.signal,
   );

@@ -9,6 +9,7 @@
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import { publishTurnStep } from "@/core/turn/queue";
 import {
@@ -28,10 +29,14 @@ import type { JuniorSqlDatabase } from "@/db/db";
 const LEASE_CHECK_INTERVAL_MS = 1_000;
 
 /** The parts of a step's input that do not come from the Turn's history. */
-export type PreparedStep = Omit<StepInput, "messages" | "replay" | "signal">;
+export type PreparedStep = Omit<
+  StepInput,
+  "client" | "messages" | "replay" | "session" | "signal"
+>;
 
 type AdvanceTurnOptions = {
-  /** Builds the system prompt, tools and model for the claimed Turn. */
+  client: ModelClient;
+  /** Builds the system prompt, tools and model settings for the claimed Turn. */
   prepare: (turn: ClaimedTurn) => Promise<PreparedStep>;
   /** Names the invocation that holds the lease. */
   owner: string;
@@ -66,7 +71,7 @@ export async function advanceTurn(
       await failTurn(executor, claim, "attempts_exhausted");
       return;
     }
-    await runClaimedStep(executor, claim, options.prepare);
+    await runClaimedStep(executor, claim, options);
   } catch (error) {
     // The queue retries the message. With a live lease, the retry would claim
     // nothing and the Turn would stay running.
@@ -86,7 +91,7 @@ export async function advanceTurn(
 async function runClaimedStep(
   executor: JuniorSqlDatabase,
   claim: ClaimedTurn,
-  prepare: AdvanceTurnOptions["prepare"],
+  { client, prepare }: Pick<AdvanceTurnOptions, "client" | "prepare">,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
     executor,
@@ -98,6 +103,8 @@ async function runClaimedStep(
   const prepared = await prepare(claim);
   const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
+    client,
+    session: claim.conversationId,
     messages: projectConversationEvents(events).messages,
     // A later claim of the same step means an earlier attempt did not commit.
     replay: claim.attempts > 1,

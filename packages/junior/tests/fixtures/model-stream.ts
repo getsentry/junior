@@ -12,7 +12,7 @@ import {
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
-import type { StepInput } from "@/core/turn/step";
+import type { ModelClient } from "@/core/model/client";
 
 type ModelToolCall = {
   name: string;
@@ -136,23 +136,23 @@ export function createModelStream(
 }
 
 /**
- * Set the model output returned for each request of a core step, which takes
- * the model as its `complete` function.
+ * A model client that returns the model output for each request in order.
+ * Core steps take it in place of the real client.
  */
-export function createModelComplete(
-  outputs: FixedModelOutput[],
-): StepInput["complete"] {
+export function fakeModelClient(outputs: FixedModelOutput[]): ModelClient {
   const responses = outputs.map((output) => ({
     output,
     message: createAssistantMessage(output),
   }));
-  return (context, signal) => {
-    const next = responses.shift();
-    if (!next) {
-      return Promise.reject(
-        new Error("No model output is left for this request"),
-      );
-    }
-    return respond(next.output, next.message, context, signal);
+  return {
+    complete: (request, signal) => {
+      const next = responses.shift();
+      if (!next) {
+        return Promise.reject(
+          new Error("No model output is left for this request"),
+        );
+      }
+      return respond(next.output, next.message, request.context, signal);
+    },
   };
 }
