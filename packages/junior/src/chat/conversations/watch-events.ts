@@ -16,6 +16,7 @@ import {
   type EventRegistrationInput,
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/chat/conversations/event-access";
+import { readConversationRoot } from "@/chat/conversations/root";
 import { ingestEvent } from "@/chat/events/ingest";
 import { findMatchingWatches } from "@/chat/events/store";
 import { logException } from "@/chat/logging";
@@ -131,7 +132,8 @@ function statusEvent(
 
 /**
  * Deliver one status Event of a Conversation to the Watches that may still
- * read it. `skip` runs only when a Watch matches, so a Conversation that no
+ * read it. Only top-level Conversations are watched, so a Review item that a
+ * child agent adds reports its root as waiting. `skip` runs only when a Watch matches, so a Conversation that no
  * one watches pays one Watch index read. The work that the Event reports
  * already happened, so a failed delivery is logged and never fails that
  * work. A retry delivers the same Event key once.
@@ -147,11 +149,18 @@ export async function publishConversationStatus(
   },
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
-  const event = statusEvent(conversationId, status, nowMs);
+  let event = statusEvent(conversationId, status, nowMs);
   try {
+    if (status.type === "waiting") {
+      const root = await readConversationRoot(conversationId);
+      if (root && root.conversationId !== conversationId) {
+        event = statusEvent(root.conversationId, status, nowMs);
+      }
+    }
+    const watchedId = event.identifier;
     const watches = await findMatchingWatches({
       eventType: event.eventType,
-      identifier: conversationId,
+      identifier: watchedId,
       namespace: event.namespace,
       nowMs,
       state: options.state,
@@ -159,7 +168,7 @@ export async function publishConversationStatus(
     if (watches.length === 0 || (await options.skip?.())) return;
     await ingestEvent(event, {
       admit: async (watch) =>
-        await canReadConversation(watch.conversationId, conversationId),
+        await canReadConversation(watch.conversationId, watchedId),
       nowMs,
       queue: options.queue,
       state: options.state,

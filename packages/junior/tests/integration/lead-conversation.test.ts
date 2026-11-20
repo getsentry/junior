@@ -26,6 +26,7 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -227,6 +228,7 @@ describe("Lead", () => {
           events: [
             "conversation.completed",
             "conversation.failed",
+            "conversation.waiting",
             "conversation.stopped",
           ],
           identifier,
@@ -299,6 +301,32 @@ describe("Lead", () => {
       failureCode: "agent_run_failed",
       turnId: "root-turn-3",
     });
+    // A worker that loses the race to end a Turn reports the stored end,
+    // not its own.
+    await getConversationEventStore().append(started.conversation_id, [
+      {
+        idempotencyKey: "turn:root-turn-5:terminal",
+        createdAtMs: Date.now(),
+        data: {
+          type: "turn_completed",
+          turnId: "root-turn-5",
+          outcome: "success",
+        },
+      },
+    ]);
+    await lifecycle.fail({
+      conversationId: started.conversation_id,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      turnId: "root-turn-5",
+    });
+    // Only top-level Conversations are watched, so a child's action item
+    // reports its root as waiting.
+    await publishConversationStatus(
+      child,
+      { type: "waiting", reviewItemId: "lead-watch-item" },
+      { queue: harness.queue, state: harness.state },
+    );
     await stopConversation({
       conversationId: started.conversation_id,
       queue: harness.queue,
@@ -307,6 +335,8 @@ describe("Lead", () => {
     const statuses = [
       expect.stringContaining("conversation.completed"),
       expect.stringContaining("conversation.failed"),
+      expect.stringContaining("conversation.completed"),
+      expect.stringContaining("conversation.waiting"),
       expect.stringContaining("conversation.stopped"),
     ];
     expect(await heard(lead.conversationId)).toEqual(statuses);
@@ -327,6 +357,6 @@ describe("Lead", () => {
       .where(eq(juniorDestinations.id, root!.destinationId!));
     await endTurn("root-turn-4", ["person-message-4"]);
     expect(await heard(lead.conversationId)).toEqual(statuses);
-    expect(await heard(boWork.conversationId)).toHaveLength(4);
+    expect(await heard(boWork.conversationId)).toHaveLength(6);
   });
 });

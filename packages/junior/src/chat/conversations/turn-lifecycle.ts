@@ -120,23 +120,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
-    // A Turn that only Watch Events started reports nothing, so a watcher
-    // is not woken for each Event that the Conversation itself watches.
-    await this.publish(
-      input,
-      { type: "turn_completed", outcome: input.outcome, turnId: input.turnId },
-      async () => {
-        const inputs = await this.loadInputMessageIds(
-          input.conversationId,
-          input.turnId,
-        );
-        return (
-          inputs !== undefined &&
-          inputs.length > 0 &&
-          inputs.every(isEventInboundMessageId)
-        );
-      },
-    );
+    await this.publishTerminal(input);
   }
 
   /** Record a classified failure once. Do not store raw error text. */
@@ -156,11 +140,53 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
-    await this.publish(input, {
-      type: "turn_failed",
-      failureCode: input.failureCode,
-      turnId: input.turnId,
-    });
+    await this.publishTerminal(input);
+  }
+
+  /**
+   * Publish the stored terminal row of a Turn, not the caller's outcome.
+   * Only the first append stores it, so a worker that lost a race publishes
+   * the same outcome as the one that won.
+   */
+  private async publishTerminal(input: {
+    conversationId: string;
+    createdAtMs: number;
+    turnId: string;
+  }): Promise<void> {
+    const stored = await this.events.loadByIdempotencyKey(
+      input.conversationId,
+      `turn:${input.turnId}:terminal`,
+    );
+    if (stored?.data.type === "turn_failed") {
+      await this.publish(input, {
+        type: "turn_failed",
+        failureCode: stored.data.failureCode,
+        turnId: input.turnId,
+      });
+      return;
+    }
+    if (stored?.data.type !== "turn_completed") return;
+    // A Turn that only Watch Events started reports nothing, so a watcher
+    // is not woken for each Event that the Conversation itself watches.
+    await this.publish(
+      input,
+      {
+        type: "turn_completed",
+        outcome: stored.data.outcome,
+        turnId: input.turnId,
+      },
+      async () => {
+        const inputs = await this.loadInputMessageIds(
+          input.conversationId,
+          input.turnId,
+        );
+        return (
+          inputs !== undefined &&
+          inputs.length > 0 &&
+          inputs.every(isEventInboundMessageId)
+        );
+      },
+    );
   }
 }
 
