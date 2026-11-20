@@ -50,9 +50,7 @@ how the dashboard groups and acts on its rows.
   the work, such as Resume on a stopped merge conflict fix. It starts no
   Turn.
 - An item from a public Conversation is visible to the whole workspace.
-- Auto-archive never hides work that waits for a person. It skips a
-  Conversation while it or a child has an open action, an open Plan item
-  for a person, or an answer that its starter has not read.
+- Auto-archive never hides work that waits for a person.
 
 ## Gaps
 
@@ -67,5 +65,6 @@ how the dashboard groups and acts on its rows.
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
 - The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. The Inbox count and To do in the
-  new Inbox leave them out. This breaks "'Needs you' means one thing".
+  Everyone and actions with no assignees. To do in the new Inbox shows
+  actions with no assignees, and the Inbox count leaves them out. This
+  breaks "'Needs you' means one thing".

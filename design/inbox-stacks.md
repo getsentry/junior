@@ -13,8 +13,7 @@ can act on it.
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
-  always one actionable item, such as a question or a pull request. A
-  Conversation row is a different row, for the Conversations view. A row
+  always one actionable item, such as a question or a pull request. A row
   action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
@@ -22,7 +21,7 @@ can act on it.
   read stays useful.
 - A stack is a light grouping, not a new kind of row. It sits inside the
   To do, Up for grabs, and other sections, around the normal Inbox rows.
-  It uses the classic Inbox look and adds no color.
+  It adds no color.
 
 ## Entry points
 
@@ -47,10 +46,9 @@ can act on it.
 
 Grouping:
 
-- A child Conversation, at any depth, rolls up to its root. Every item has
-  the same root field, read from the root that each Conversation stores, so
-  depth costs nothing. The row shows a quiet label that names the child,
-  such as its Thread title, so the reader knows which sub-thread asked.
+- A child Conversation, at any depth, rolls up to its root. The row shows
+  a quiet label that names the child, such as its Thread title, so the
+  reader knows which sub-thread asked.
 - An item rolls up only when the viewer can see its root, as
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
@@ -116,5 +114,3 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
-- A snooze lives in one browser. Another browser of the same viewer shows
-  the item. Server snoozes (getsentry/junior#3567, #3392) close this gap.

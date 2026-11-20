@@ -21,7 +21,7 @@ result to a Slack Destination.
 
 ## Entry points
 
-- Slack: ask Junior in the conversation that should get the results.
+- Slack: ask Junior in a thread or DM.
 - Dashboard: Automations, and its Runs view.
 - MCP server: read-only search and fetch with the `automations:read` scope.
 
@@ -46,7 +46,7 @@ result to a Slack Destination.
   can fail when the creator is not connected, and an edit by someone else
   switches it back to Junior's credentials.
 - A failed run counts in the creator's Inbox To do, even when the reason
-  names no step for them, such as a run that did not finish in 24 hours.
+  names no step for them, such as a run that timed out.
   Slack does not tell them. This breaks "tells the creator only when they
   have a step to take".
 - When an Automation reaches the limit of automated Turns in a row, Junior
