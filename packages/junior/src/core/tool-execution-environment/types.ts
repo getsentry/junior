@@ -1,7 +1,7 @@
 /**
  * The machine where a tool runs commands and reads and writes files. A Vercel
  * Sandbox, a Docker container, and the local machine each implement it. Tools
- * that do not use commands or files do not get one.
+ * that do not use commands or files ignore it.
  *
  * It has files and commands together because every implementation has both.
  * Files are methods, not commands, so that binary content and paths do not
