@@ -3,8 +3,8 @@
  * summary can replace the history instead of a warmup.
  *
  * At or above the background compaction mark, a return to the full prefix
- * is close to the compaction threshold and can compact within its Turn, and each of its model calls reads
- * the full prefix. Swapping the summary in costs no model call, ends the
+ * is close to the compaction threshold and can compact within its Turn, and
+ * each of its model calls reads the full prefix. Swapping the summary in costs no model call, ends the
  * warmups, and the returning Turn reads a much smaller prefix. A return
  * before the cache expires reads the full prefix from the cache, which costs
  * less than a write of the compacted prefix. So the swap runs at a warmup
