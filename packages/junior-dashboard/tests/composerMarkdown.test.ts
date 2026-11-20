@@ -8,21 +8,33 @@ import {
   $writeComposerText,
 } from "../src/client/conversations/composer-editor/composerEditorText";
 import { COMPOSER_MARKDOWN_NODES } from "../src/client/conversations/composer-editor/composerMarkdown";
+import { ComposerReferenceNode } from "../src/client/conversations/composer-editor/ComposerReferenceNode";
 
 // Write message text into the editor, then read it back: what a restored
 // queued message sends.
 function roundTrip(text: string) {
   const editor = createEditor({
-    nodes: [ComposerMentionNode, ...COMPOSER_MARKDOWN_NODES],
+    nodes: [
+      ComposerMentionNode,
+      ComposerReferenceNode,
+      ...COMPOSER_MARKDOWN_NODES,
+    ],
     onError: (error) => {
       throw error;
     },
   });
   editor.update(
-    () => $writeComposerText(text, (slackUserId) => ({ slackUserId })),
+    () =>
+      $writeComposerText(text, {
+        origin: "https://junior.example",
+        person: (slackUserId) => ({ slackUserId }),
+        reference: () => undefined,
+      }),
     { discrete: true },
   );
   return editor.getEditorState().read(() => ({
+    chips: $dfs().filter(({ node }) => node instanceof ComposerReferenceNode)
+      .length,
     mentions: $dfs().filter(({ node }) => node instanceof ComposerMentionNode)
       .length,
     text: $readComposerText(),
@@ -48,10 +60,34 @@ it("reads message text back as the same Markdown", () => {
 });
 
 it("keeps mention tokens in code as text", () => {
-  expect(roundTrip("hi <@U1>")).toEqual({ mentions: 1, text: "hi <@U1>" });
-  expect(roundTrip("`<@U1>`")).toEqual({ mentions: 0, text: "`<@U1>`" });
+  expect(roundTrip("hi <@U1>")).toEqual({
+    chips: 0,
+    mentions: 1,
+    text: "hi <@U1>",
+  });
+  expect(roundTrip("`<@U1>`")).toEqual({
+    chips: 0,
+    mentions: 0,
+    text: "`<@U1>`",
+  });
   expect(roundTrip("```\n<@U1>\n```")).toEqual({
+    chips: 0,
     mentions: 0,
     text: "```\n<@U1>\n```",
+  });
+});
+
+it("turns reference tokens outside code into chips", () => {
+  const pr =
+    "<https://github.com/getsentry/junior/pull/3846|getsentry/junior#3846>";
+  expect(roundTrip(`**see** ${pr} in <#C123|general>`)).toEqual({
+    chips: 2,
+    mentions: 0,
+    text: `**see** ${pr} in <#C123|general>`,
+  });
+  expect(roundTrip(`\`${pr}\``)).toEqual({
+    chips: 0,
+    mentions: 0,
+    text: `\`${pr}\``,
   });
 });

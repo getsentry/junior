@@ -104,6 +104,8 @@ test("describes the skill reference at the caret @classic", async ({
   const skills = page.getByRole("grid", { name: "Skills" });
   const card = page.getByRole("group", { name: "$release-check" });
   await composer.fill("Run $rel");
+  // Enter before the menu opens sends the message.
+  await expect(skills).toBeVisible();
   await composer.press("Enter");
   await expect(composer).toHaveText("Run $release-check ", {
     useInnerText: true,

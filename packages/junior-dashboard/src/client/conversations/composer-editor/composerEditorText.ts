@@ -12,7 +12,13 @@ import {
   type TextNode,
 } from "lexical";
 
-import { mentionText, splitMentions } from "../composerMentionToken";
+import { mentionText } from "../composerMentionToken";
+import {
+  referenceText,
+  splitComposerText,
+  type ComposerReference,
+  type ComposerTextPart,
+} from "../composerReferences";
 import {
   $createComposerMentionNode,
   type ComposerMentionPerson,
@@ -22,11 +28,20 @@ import {
   $isInCode,
   COMPOSER_MARKDOWN,
 } from "./composerMarkdown";
+import { $createComposerReferenceNode } from "./ComposerReferenceNode";
 
-/** Find a person that the composer knows by Slack id. */
-export type LookupPerson = (
-  slackUserId: string,
-) => ComposerMentionPerson | undefined;
+/** What the composer knows about the people and references in its text. */
+export type ComposerLookup = {
+  /** The origin of the dashboard, whose Conversation links are references. */
+  origin: string;
+  /** A person that the composer knows by Slack id. */
+  person(slackUserId: string): ComposerMentionPerson | undefined;
+  /**
+   * A reference that the composer inserted, by its message text. It knows
+   * more than the text: a Task, or a state.
+   */
+  reference(text: string): ComposerReference | undefined;
+};
 
 /**
  * Read the draft as message text: Markdown, with each mention as `<@U…>`.
@@ -37,11 +52,15 @@ export function $readComposerText(): string {
   return $exportComposerMarkdown();
 }
 
-/** Replace the draft with message text. Each `<@U…>` becomes a mention. */
-export function $writeComposerText(text: string, lookup: LookupPerson): void {
+/**
+ * Replace the draft with message text. Its Markdown renders, each `<@U…>`
+ * becomes a mention, and each reference token of `splitComposerText`
+ * becomes a chip.
+ */
+export function $writeComposerText(text: string, lookup: ComposerLookup): void {
   $convertFromMarkdownString(text, COMPOSER_MARKDOWN, undefined, true);
   for (const { node } of $dfs()) {
-    if ($isTextNode(node)) $replaceMentionTokens(node, lookup);
+    if ($isTextNode(node)) $replaceComposerTokens(node, lookup);
   }
 }
 
@@ -59,17 +78,18 @@ export function $insertComposerMarkdown(text: string): void {
 }
 
 /**
- * Turn `<@U…>` in one text node into mentions, for pasted or restored text.
- * Code keeps the token as text. A caret in the node keeps its place in the
- * text, so one inside or right after a token lands after its mention.
+ * Turn the mention and reference tokens in one text node into chips, for
+ * pasted or restored text. Code keeps the tokens as text. A caret in the
+ * node keeps its place in the text, so one inside or right after a token
+ * lands after its chip.
  */
-export function $replaceMentionTokens(
+export function $replaceComposerTokens(
   node: TextNode,
-  lookup: LookupPerson,
+  lookup: ComposerLookup,
 ): void {
   const text = node.getTextContent();
-  if (!text.includes("<@") || $isInCode(node)) return;
-  const parts = splitMentions(text);
+  if (!text.includes("<") || $isInCode(node)) return;
+  const parts = splitComposerText(text, lookup.origin);
   if (parts.every((part) => "text" in part)) return;
   const selection = $getSelection();
   const caret =
@@ -77,19 +97,7 @@ export function $replaceMentionTokens(
       ? selection.anchor.offset
       : undefined;
   const format = node.getFormat();
-  const pieces: ComposerPiece[] = parts.map((part) =>
-    "slackUserId" in part
-      ? {
-          node: $createComposerMentionNode(
-            lookup(part.slackUserId) ?? { slackUserId: part.slackUserId },
-          ),
-          length: mentionText(part.slackUserId).length,
-        }
-      : {
-          node: $createTextNode(part.text).setFormat(format),
-          length: part.text.length,
-        },
-  );
+  const pieces = parts.map((part) => composerPiece(part, lookup, format));
   let last: LexicalNode = node;
   for (const piece of pieces) {
     last.insertAfter(piece.node);
@@ -114,4 +122,33 @@ function $placeCaret(pieces: ComposerPiece[], caret: number): void {
     }
     start = end;
   }
+}
+
+// One part of the text as a node, with the length of the text it stands for.
+function composerPiece(
+  part: ComposerTextPart,
+  lookup: ComposerLookup,
+  format: number,
+): ComposerPiece {
+  if ("text" in part) {
+    return {
+      node: $createTextNode(part.text).setFormat(format),
+      length: part.text.length,
+    };
+  }
+  if ("slackUserId" in part) {
+    return {
+      node: $createComposerMentionNode(
+        lookup.person(part.slackUserId) ?? { slackUserId: part.slackUserId },
+      ),
+      length: mentionText(part.slackUserId).length,
+    };
+  }
+  const text = referenceText(part.reference);
+  return {
+    node: $createComposerReferenceNode(
+      lookup.reference(text) ?? part.reference,
+    ),
+    length: text.length,
+  };
 }

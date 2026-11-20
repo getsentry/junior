@@ -41,6 +41,7 @@
     "tests/**/*.tsx",
     "oxlint/**/*.ts",
     "e2e/composer-stand-in.spec.ts",
+    "e2e/composer-references.spec.ts",
     "e2e/composer-typeahead.spec.ts",
     "e2e/composer-skill-menu.spec.ts",
     "e2e/conversation-watches.spec.ts",
