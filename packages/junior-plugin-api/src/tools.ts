@@ -106,6 +106,29 @@ export interface PluginEgress {
   }): Promise<Response>;
 }
 
+/** One private copy of some bytes that an outside service may read briefly. */
+export interface PluginDownloadUrl {
+  /**
+   * Plain HTTPS GET of the copy, with no headers. It is a bearer credential
+   * until it expires: do not log it or return it to the model.
+   */
+  url: string;
+  /** Delete the copy now. The URL expires on its own either way. */
+  delete(): Promise<void>;
+}
+
+/**
+ * Short-lived download URLs for an outside service that fetches bytes once
+ * and accepts only a URL, such as an image that Google Slides inserts.
+ */
+export interface PluginDownloadUrls {
+  /** Store `body` privately and sign a GET of it that expires within minutes. */
+  create(input: {
+    body: Uint8Array;
+    contentType: string;
+  }): Promise<PluginDownloadUrl>;
+}
+
 export const pluginToolContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }).strict(),
   z
@@ -823,6 +846,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   conversationLink?: { url: string };
   /** Decision model for narrow choices, such as checks on text a tool writes. */
   decider: PluginDecider;
+  /**
+   * Short-lived download URLs. Absent when the host storage cannot sign
+   * reads.
+   */
+  downloadUrls?: PluginDownloadUrls;
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

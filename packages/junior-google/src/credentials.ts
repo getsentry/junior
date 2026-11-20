@@ -146,14 +146,6 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/drive\/v3\/files$/,
   },
-  // Uploads a sandbox image that a Slides edit inserts.
-  "google.drive.file.create": {
-    access: "write",
-    writeCheck: "creates",
-    host: GOOGLE_API_DOMAIN,
-    method: "POST",
-    path: /^\/upload\/drive\/v3\/files$/,
-  },
   // `drive.file` limits the two permission writes to files that Junior's
   // OAuth client created.
   "google.drive.permission.create": {

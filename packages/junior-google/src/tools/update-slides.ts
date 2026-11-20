@@ -255,7 +255,7 @@ export const updateGoogleSlidesTool = definePluginTool({
   },
   describeProposal(input) {
     const images = sandboxImagePaths(input.requests).length;
-    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` First upload ${images} sandbox image(s) to your Drive, shared with anyone who has the link until the edit ends, then delete them.` : ""}`;
+    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` Google fetches ${images} sandbox image(s) from download URLs that expire within 5 minutes.` : ""}`;
   },
   description:
     "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",

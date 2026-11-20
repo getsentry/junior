@@ -3,27 +3,26 @@
  *
  * Google fetches the url of a createImage or replaceImage request once,
  * without credentials, and saves that URL with the image. A sandbox file has
- * no such URL. So each sandbox image is uploaded to the Drive of Junior's
- * account and shared with anyone who has the link only while the edit runs.
- * Then the upload is deleted, whether the edit applied or not, so the saved
- * URL opens nothing.
+ * no such URL. So Junior keeps a private copy of each sandbox image and gives
+ * Google a download URL that stops working within minutes.
  */
 import { posix } from "node:path";
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type PluginDownloadUrl,
+  type PluginDownloadUrls,
+} from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { newEditableFile, type EditableFile } from "../drive/editable-file";
-import {
-  googleApiError,
-  googleApiRequest,
-  type GoogleToolContext,
-} from "../google-api";
+import type { GoogleToolContext } from "../google-api";
 
 // Request kinds that take an image url. Each request has one key.
 const IMAGE_REQUEST_KINDS = ["createImage", "replaceImage"] as const;
 // Google takes images under 50 MB. It also refuses more than 25 megapixels,
 // which only Google checks.
 const MAX_IMAGE_BYTES = 50_000_000;
+// Google refuses an image url longer than 2 KB.
+const MAX_IMAGE_URL_LENGTH = 2048;
 const IMAGE_SIGNATURES = [
   {
     bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
@@ -32,13 +31,9 @@ const IMAGE_SIGNATURES = [
   { bytes: [0xff, 0xd8, 0xff], mimeType: "image/jpeg" },
   { bytes: [0x47, 0x49, 0x46, 0x38], mimeType: "image/gif" },
 ] as const;
-const DRIVE_CONCURRENCY = 4;
+const UPLOAD_CONCURRENCY = 4;
 
 const imageRequestSchema = z.object({ url: z.string() }).loose();
-const uploadedSchema = z.object({
-  id: z.string(),
-  webContentLink: z.string().optional(),
-});
 
 /** Return the image request in `request` when its url is a sandbox path. */
 function sandboxImage(request: Record<string, unknown>) {
@@ -60,18 +55,16 @@ export function sandboxImagePaths(
   ];
 }
 
-const reason = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
 /**
- * Read one sandbox image, upload it, and share it with anyone who has the
- * link. Return its download link. The upload goes on `uploads` as soon as it
- * exists, so the caller deletes it even when sharing fails.
+ * Read and check one sandbox image, then make its download URL. The URL goes
+ * on `links` as soon as it exists, so the caller deletes its copy even when a
+ * later check fails.
  */
-async function shareImage(
+async function imageUrl(
   ctx: GoogleToolContext,
+  downloadUrls: PluginDownloadUrls,
   path: string,
-  uploads: EditableFile[],
+  links: PluginDownloadUrl[],
 ): Promise<[string, string]> {
   const bytes = await ctx.sandbox.readFile(path);
   if (!bytes) {
@@ -88,61 +81,23 @@ async function shareImage(
   if (!mimeType) {
     throw new PluginToolInputError(`${path} is not a PNG, JPEG, or GIF.`);
   }
-
-  const created = await googleApiRequest(ctx, {
+  // The checked bytes are the bytes that Google gets.
+  const link = await downloadUrls.create({
     body: bytes,
-    headers: { "Content-Type": mimeType },
-    operation: "google.drive.file.create",
-    path: "/upload/drive/v3/files",
-    query: { fields: "id,webContentLink", uploadType: "media" },
+    contentType: mimeType,
   });
-  if (created.status !== 200) {
-    throw googleApiError("google.drive.file.create", created);
-  }
-  const uploaded = uploadedSchema.parse(created.body);
-  const file = newEditableFile({ fileId: uploaded.id }, posix.basename(path));
-  uploads.push(file);
-  if (!uploaded.webContentLink) {
-    throw new Error(`Drive returned no download link for ${path}.`);
-  }
-
-  const shared = await googleApiRequest(ctx, {
-    body: { role: "reader", type: "anyone" },
-    editable: file,
-    operation: "google.drive.permission.create",
-    path: `/drive/v3/files/${uploaded.id}/permissions`,
-  });
-  // Workspace sharing settings can forbid sharing a file with anyone who has
-  // the link. Google answers 400 or 403.
-  if (shared.status === 400 || shared.status === 403) {
+  links.push(link);
+  if (link.url.length > MAX_IMAGE_URL_LENGTH) {
     throw new PluginToolInputError(
-      `${googleApiError("google.drive.permission.create", shared).message}. Google Slides fetches an image only from a link that anyone can open, and the Workspace sharing settings of ${ctx.accountEmail} may not allow that link. Use a public image URL instead.`,
+      `The download URL for ${path} is longer than the 2 KB that Google Slides takes. Use a public image URL instead.`,
     );
   }
-  if (shared.status !== 200) {
-    throw googleApiError("google.drive.permission.create", shared);
-  }
-  return [path, uploaded.webContentLink];
-}
-
-async function deleteImage(
-  ctx: GoogleToolContext,
-  file: EditableFile,
-): Promise<void> {
-  const deleted = await googleApiRequest(ctx, {
-    editable: file,
-    operation: "google.drive.file.delete",
-    path: `/drive/v3/files/${file.ref.fileId}`,
-  });
-  if (deleted.status !== 204 && deleted.status !== 200) {
-    throw googleApiError("google.drive.file.delete", deleted);
-  }
+  return [path, link.url];
 }
 
 /**
  * Run `apply` with the requests, after each sandbox path used as an image
- * url is replaced by the link of its upload. Every upload is deleted before
- * this returns or throws.
+ * url is replaced by a short-lived download URL of a private copy.
  */
 export async function withSandboxImages<T>(
   ctx: GoogleToolContext,
@@ -161,54 +116,42 @@ export async function withSandboxImages<T>(
       );
     }
   }
+  const { downloadUrls } = ctx;
+  if (!downloadUrls) {
+    throw new PluginToolInputError(
+      "The storage of this install cannot sign short-lived download URLs, so you cannot insert a sandbox image. Use a public image URL instead.",
+    );
+  }
 
-  const uploads: EditableFile[] = [];
-  let outcome: { applied: true; value: T } | { applied: false; error: unknown };
+  const links: PluginDownloadUrl[] = [];
   try {
-    // Wait for every upload, even after one fails, so that each one is on
-    // `uploads` before the deletes start.
-    const shared = await pLimit(DRIVE_CONCURRENCY).map(paths, (path) =>
-      shareImage(ctx, path, uploads).then(
-        (link) => ({ link }),
+    // Wait for every image, even after one fails, so that each copy is on
+    // `links` before the deletes start.
+    const made = await pLimit(UPLOAD_CONCURRENCY).map(paths, (path) =>
+      imageUrl(ctx, downloadUrls, path, links).then(
+        (entry) => ({ entry }),
         (error: unknown) => ({ error }),
       ),
     );
-    const failed = shared.find((result) => "error" in result);
+    const failed = made.find((result) => "error" in result);
     if (failed) throw failed.error;
-    const links = new Map(
-      shared.flatMap((result) => ("link" in result ? [result.link] : [])),
+    const urls = new Map(
+      made.flatMap((result) => ("entry" in result ? [result.entry] : [])),
     );
-    const linked = requests.map((request) => {
-      const image = sandboxImage(request);
-      return image
-        ? { [image.kind]: { ...image.body, url: links.get(image.path) } }
-        : request;
-    });
-    outcome = { applied: true, value: await apply(linked) };
-  } catch (error) {
-    outcome = { applied: false, error };
-  }
-
-  const left = (
-    await pLimit(DRIVE_CONCURRENCY).map(uploads, (file) =>
-      deleteImage(ctx, file).then(
-        () => [],
-        (error: unknown) => [{ error, file }],
-      ),
-    )
-  ).flat();
-  if (left.length > 0) {
-    const files = left
-      .map(({ file }) => `${file.title} (${file.ref.fileId})`)
-      .join(", ");
-    const before = outcome.applied
-      ? "The edit applied"
-      : reason(outcome.error).replace(/\.$/, "");
-    throw new Error(
-      `${before}. Deleting the uploaded image ${files} failed: ${reason(left[0]?.error)}. Anyone with its link can still open it; delete it from the Drive of ${ctx.accountEmail}.`,
-      { cause: outcome.applied ? left[0]?.error : outcome.error },
+    return await apply(
+      requests.map((request) => {
+        const image = sandboxImage(request);
+        return image
+          ? { [image.kind]: { ...image.body, url: urls.get(image.path) } }
+          : request;
+      }),
+    );
+  } finally {
+    // Google has fetched each image by the time batchUpdate returns. Each URL
+    // stops working at its expiry whether or not its copy is deleted, so a
+    // failed delete exposes nothing and is not an error for the edit.
+    await pLimit(UPLOAD_CONCURRENCY).map(links, (link) =>
+      link.delete().catch(() => undefined),
     );
   }
-  if (!outcome.applied) throw outcome.error;
-  return outcome.value;
 }

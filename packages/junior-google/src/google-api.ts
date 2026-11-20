@@ -1,5 +1,6 @@
 import {
   PluginToolInputError,
+  type PluginDownloadUrls,
   type PluginEgress,
   type PluginSandbox,
   type User,
@@ -14,6 +15,8 @@ export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
   allowedDomains: string[];
+  /** Absent when the host storage cannot sign reads. */
+  downloadUrls?: PluginDownloadUrls;
   egress: PluginEgress;
   /** Holds full meeting records and slide thumbnails. */
   sandbox: Pick<PluginSandbox, "readFile" | "root" | "run" | "writeFile">;
@@ -106,7 +109,6 @@ const googleErrorSchema = z.object({
 export async function googleApiRequest(
   ctx: Pick<GoogleToolContext, "egress">,
   input: {
-    /** Sent as JSON, except bytes, which go as is with the caller's Content-Type. */
     body?: unknown;
     /** Required by operations that change an existing file. */
     editable?: EditableFile;
@@ -150,12 +152,7 @@ export async function googleApiRequest(
         "Content-Type": "application/json",
         ...input.headers,
       },
-      body:
-        input.body === undefined
-          ? null
-          : input.body instanceof Uint8Array
-            ? input.body
-            : JSON.stringify(input.body),
+      body: input.body === undefined ? null : JSON.stringify(input.body),
     }),
   });
   const body: unknown = response.headers.get("content-type")?.includes("json")

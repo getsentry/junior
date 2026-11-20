@@ -1,4 +1,4 @@
-id: no-google-new-editable-file-outside-file-creators
+id: no-google-new-editable-file-outside-create-doc
 valid:
   - "const file = await requireEditableFile(ctx, input.document, 'document');"
 invalid:
