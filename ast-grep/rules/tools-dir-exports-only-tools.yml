@@ -1,0 +1,69 @@
+# A `tools` directory holds only model-facing tools, one tool per file:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Helpers, schemas, and
+# shared types go in a feature module outside `tools`. The `ignores` entries
+# are files that broke this rule when it was added. Remove an entry when you
+# fix its file. Do not add entries.
+id: tools-dir-exports-only-tools
+language: TypeScript
+severity: error
+message: A file in a tools directory exports only its tool. Move this export to a module outside tools, such as tool-support or a feature directory.
+files:
+  - packages/*/src/**/tools/**/*.ts
+  - apps/**/src/**/tools/**/*.ts
+ignores:
+  - packages/junior-github/src/tools/footer.ts
+  - packages/junior-github/src/tools/stack-pull-request.ts
+  - packages/junior-github/src/tools/update-pull-request-feedback.ts
+  - packages/junior/src/chat/slack/tools/conversation-search.ts
+  - packages/junior/src/chat/slack/tools/send-files.ts
+  - packages/junior/src/chat/tools/definition.ts
+  - packages/junior/src/chat/tools/events.ts
+  - packages/junior/src/chat/tools/execute-tool.ts
+  - packages/junior/src/chat/tools/execution/build-sandbox-input.ts
+  - packages/junior/src/chat/tools/execution/plugin-tool-denied-error.ts
+  - packages/junior/src/chat/tools/execution/tool-error-handler.ts
+  - packages/junior/src/chat/tools/execution/tool-input-error.ts
+  - packages/junior/src/chat/tools/idempotency.ts
+  - packages/junior/src/chat/tools/index.ts
+  - packages/junior/src/chat/tools/load-attachment.ts
+  - packages/junior/src/chat/tools/operator-sql.ts
+  - packages/junior/src/chat/tools/registry.ts
+  - packages/junior/src/chat/tools/review-items.ts
+  - packages/junior/src/chat/tools/runtime/archive-agent.ts
+  - packages/junior/src/chat/tools/runtime/spawn-agent.ts
+  - packages/junior/src/chat/tools/runtime/user-input-request.ts
+  - packages/junior/src/chat/tools/sandbox/edit-file.ts
+  - packages/junior/src/chat/tools/sandbox/file-uploads.ts
+  - packages/junior/src/chat/tools/sandbox/file-utils.ts
+  - packages/junior/src/chat/tools/sandbox/generated-files.ts
+  - packages/junior/src/chat/tools/sandbox/image-files.ts
+  - packages/junior/src/chat/tools/sandbox/read-file.ts
+  - packages/junior/src/chat/tools/sandbox/text-edits.ts
+  - packages/junior/src/chat/tools/search-conversation-events.ts
+  - packages/junior/src/chat/tools/search-conversations.ts
+  - packages/junior/src/chat/tools/search-tools-rerank.ts
+  - packages/junior/src/chat/tools/search-tools.ts
+  - packages/junior/src/chat/tools/send-files.ts
+  - packages/junior/src/chat/tools/skill/load-skill.ts
+  - packages/junior/src/chat/tools/types.ts
+  - packages/junior/src/chat/tools/user-lookup.ts
+  - packages/junior/src/chat/tools/web/constants.ts
+  - packages/junior/src/chat/tools/web/fetch-content.ts
+  - packages/junior/src/chat/tools/web/network.ts
+utils:
+  tool-call:
+    any:
+      - pattern: definePluginTool($$$)
+      - pattern: zodTool($$$)
+      - pattern: $_SERVER.registerTool($$$)
+  # zodToolDefinition is the input and output contract of a core tool.
+  tool-part:
+    any:
+      - matches: tool-call
+      - pattern: zodToolDefinition($$$)
+rule:
+  kind: export_statement
+  not:
+    has:
+      stopBy: end
+      matches: tool-part

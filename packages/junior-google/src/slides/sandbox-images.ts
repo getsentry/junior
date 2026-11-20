@@ -12,12 +12,12 @@ import { posix } from "node:path";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { newEditableFile, type EditableFile } from "./editable-file";
+import { newEditableFile, type EditableFile } from "../drive/editable-file";
 import {
   googleApiError,
   googleApiRequest,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
 
 // Request kinds that take an image url. Each request has one key.
 const IMAGE_REQUEST_KINDS = ["createImage", "replaceImage"] as const;

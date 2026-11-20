@@ -15,7 +15,7 @@ import {
   requireFileType,
   type FileReference,
 } from "./files";
-import { requesterEmail, type GoogleToolContext } from "./shared";
+import { requesterEmail, type GoogleToolContext } from "../google-api";
 
 const EDIT_ROLES = new Set(["owner", "organizer", "fileOrganizer", "writer"]);
 // Stop after this many permission pages; a file rarely has more.

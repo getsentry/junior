@@ -6,6 +6,6 @@ files:
   - packages/junior-google/src/**/*.ts
 ignores:
   - packages/junior-google/src/tools/create-doc.ts
-  - packages/junior-google/src/tools/slide-images.ts
+  - packages/junior-google/src/slides/sandbox-images.ts
 rule:
   pattern: newEditableFile($$$ARGS)

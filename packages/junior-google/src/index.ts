@@ -30,7 +30,7 @@ import { googleFileLinks } from "./links/files";
 import { googleImages } from "./links/thumbnails";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
-import type { GoogleToolContext } from "./tools/shared";
+import type { GoogleToolContext } from "./google-api";
 import { cancelCalendarEventTool } from "./tools/cancel-event";
 import { createGoogleDocTool } from "./tools/create-doc";
 import { createCalendarEventTool } from "./tools/create-event";
