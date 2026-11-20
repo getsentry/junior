@@ -19,8 +19,8 @@ import {
   ComposerQuestionsLoadError,
   useComposerQuestions,
   type ComposerQuestionAnswers,
-} from "../review-desk/ComposerQuestion";
-import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
+} from "../inbox/ComposerQuestion";
+import { useConfirmUnsentAnswers } from "../inbox/UnsentAnswers";
 import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {

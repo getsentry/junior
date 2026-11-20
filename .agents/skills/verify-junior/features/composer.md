@@ -1,6 +1,6 @@
 # Composer
 
-The composer is the message box under the transcript of a Conversation ("Continue this conversation"). A message sent while Junior is idle shows in the transcript at once. A message sent while Junior replies waits in the queue above the box, where the user can edit, delete, or steer it. `Stop` ends the running Turn. The box keeps an unsent draft, takes files, and takes a quote of a selected reply. Typing `$` opens a menu of skills to insert, and `@` a menu of people to mention. It shows only in the Conversation view, not in the event log, and only to users who may reply. A question docked above the box is `review-desk#waiting`.
+The composer is the message box under the transcript of a Conversation ("Continue this conversation"). A message sent while Junior is idle shows in the transcript at once. A message sent while Junior replies waits in the queue above the box, where the user can edit, delete, or steer it. `Stop` ends the running Turn. The box keeps an unsent draft, takes files, and takes a quote of a selected reply. Typing `$` opens a menu of skills to insert, and `@` a menu of people to mention. It shows only in the Conversation view, not in the event log, and only to users who may reply. A question docked above the box is `inbox#waiting`.
 
 ## Sub-features
 

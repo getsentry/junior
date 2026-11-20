@@ -289,7 +289,7 @@ export function createMockMcpTools({ app, origin }) {
         : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-      url: `${origin}/review?item=${enc(item.id)}`,
+      url: `${origin}/inbox?item=${enc(item.id)}`,
     };
   }
 

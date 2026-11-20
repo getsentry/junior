@@ -4,7 +4,7 @@ import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
 
 /**
- * An item that a plugin puts on the review desk: a notice for information,
+ * An item that a plugin puts in the Inbox: a notice for information,
  * or an ask that waits on its assignees.
  */
 export interface PluginReviewNotice {
@@ -77,7 +77,7 @@ export interface ReviewItemAnsweredHookContext extends PluginContext {
   /** The closed item's id. It is the same on a retry of the same answer. */
   itemId: string;
   nowMs: number;
-  /** Review desk items, as from a plugin route. */
+  /** Review items in the Inbox, as from a plugin route. */
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
   /** Watches of the item's Conversation. */

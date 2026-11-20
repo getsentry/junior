@@ -53,7 +53,7 @@ type ReviewItemKind = "notice" | "action";
 
 /**
  * Close reason of an action item that a person answered with a reply in
- * its thread instead of on the card or the review desk.
+ * its thread instead of on the card or the Inbox.
  */
 export const REVIEW_ITEM_REPLIED_REASON = "Replied in thread";
 export type ReviewItemStatus = "open" | "done" | "dismissed";
