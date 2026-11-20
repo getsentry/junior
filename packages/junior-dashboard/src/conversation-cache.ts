@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
+  conversationFeedSchema,
+} from "@sentry/junior/api/schema";
 import type { MiddlewareHandler } from "hono";
 
 /** Revalidate mock detail reads on content, after the route checks viewer access. */
@@ -12,7 +16,7 @@ export const revalidateConversation: MiddlewareHandler = async (
 
   const report = (await context.res.clone().json()) as Record<string, unknown>;
   // The same route pattern also matches /conversations/stats.
-  if (typeof report.conversationId !== "string") return;
+  if (typeof report["conversationId"] !== "string") return;
   // generatedAt is the read time, not a change to the Conversation. The mailbox
   // has its own live watermark, so a poll that asks for it gets it alone.
   const { generatedAt: _generatedAt, mailbox, ...content } = report;
@@ -28,4 +32,27 @@ export const revalidateConversation: MiddlewareHandler = async (
         headers: context.res.headers,
       })
     : new Response(null, { status: 304, headers: context.res.headers });
+};
+
+/** Revalidate mock feed pages on content, like the core feed route. */
+export const revalidateConversationFeed: MiddlewareHandler = async (
+  context,
+  next,
+) => {
+  await next();
+  if (context.req.method !== "GET" || context.res.status !== 200) return;
+
+  const { generatedAt: _generatedAt, ...content } =
+    conversationFeedSchema.parse(await context.res.clone().json());
+  const version = createHash("sha256")
+    .update(JSON.stringify(content))
+    .digest("base64url");
+  context.header("cache-control", "private, no-store");
+  context.header(CONVERSATION_FEED_PAGE_VERSION_HEADER, version);
+  if (context.req.header(CONVERSATION_FEED_PAGE_VERSION_HEADER) !== version)
+    return;
+  context.res = new Response(null, {
+    status: 304,
+    headers: context.res.headers,
+  });
 };

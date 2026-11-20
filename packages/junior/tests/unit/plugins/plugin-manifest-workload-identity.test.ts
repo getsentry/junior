@@ -68,6 +68,36 @@ describe("workload identity manifest", () => {
       lines: credentials(GCP.slice(0, -1)),
       error: "Plugin example credentials.gcp.audience",
     },
+    {
+      name: "a JWT audience on a host that is not in domains",
+      lines: credentials([
+        ...GCP.slice(0, -1),
+        "    audience: https://other.example.com/*",
+      ]),
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL whose host is in credentials.domains",
+    },
+    {
+      name: "an ID token audience that is not an https URL",
+      lines: credentials([
+        ...GCP.slice(0, -2),
+        "    token: id-token",
+        "    audience: app.example.com",
+      ]),
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL whose host is in credentials.domains",
+    },
+    {
+      name: "an access token for a host that is not a Google API",
+      lines: credentials([
+        ...GCP.slice(0, -2),
+        "    token: access-token",
+        "    scopes:",
+        "      - https://www.googleapis.com/auth/bigquery.readonly",
+      ]),
+      error:
+        'Plugin example credentials.domains entry "app.example.com" is not a Google API host (*.googleapis.com), so it cannot get a gcp access-token',
+    },
   ])("rejects $name", ({ lines, error }) => {
     expect(() => parsePluginManifest(manifest(lines), "/tmp/example")).toThrow(
       error,

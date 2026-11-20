@@ -1,0 +1,8 @@
+{
+  "conversationId": "local:web:05bb5f8155e1310f04f70f32",
+  "messageId": "api-msg:2a6a08098de8f7800071634f",
+  "status": "accepted",
+  "pendingMessages": [],
+  "cursor": "eyJjb252ZXJzYXRpb25JZCI6ImxvY2FsOndlYjowNWJiNWY4MTU1ZTEzMTBmMDRmNzBmMzIiLCJzZXEiOi0xLCJ2ZXJzaW9uIjoxfQ.mock",
+  "url": "http://127.0.0.1:4317/conversations/local%3Aweb%3A05bb5f8155e1310f04f70f32"
+}

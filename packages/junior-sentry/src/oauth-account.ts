@@ -26,17 +26,17 @@ function nonBlankString(value: unknown): string | undefined {
 export function resolveSentryOAuthAccount(
   ctx: ResolveOAuthAccountHookContext,
 ): PluginProviderAccount | undefined {
-  const user = ctx.tokenResponse.user;
+  const user = ctx.tokenResponse["user"];
   if (!user || typeof user !== "object" || Array.isArray(user)) {
     return undefined;
   }
   const fields = user as Record<string, unknown>;
-  const id = nonBlankString(fields.id);
+  const id = nonBlankString(fields["id"]);
   if (!id) {
     return undefined;
   }
-  const name = nonBlankString(fields.name);
-  const label = nonBlankString(fields.email) ?? name;
+  const name = nonBlankString(fields["name"]);
+  const label = nonBlankString(fields["email"]) ?? name;
   return {
     id,
     ...(name ? { displayName: name } : undefined),

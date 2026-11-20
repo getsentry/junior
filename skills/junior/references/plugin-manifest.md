@@ -54,6 +54,7 @@ IAP. Junior mints it on the host from its Vercel OIDC token. Set exactly one of
 `gcp` or `azure`. Public docs: `packages/docs/src/content/docs/extend/workload-identity.md`.
 
 ```yaml
+tools-send-no-credential: true # curl sends no credential
 credentials:
   type: workload-identity
   domains:
@@ -219,6 +220,10 @@ accounts:
 - `oauth` requires `credentials.type: oauth-bearer` in `plugin.yaml`.
 - `workload-identity` rejects unknown keys, so `aws` fails. Top-level
   `api-headers` must not set the `credentials.header` name.
+- `workload-identity` `gcp.audience` must be an `https` URL on one of
+  `credentials.domains`. With `gcp.token: access-token`, every domain must be
+  a `*.googleapis.com` host. Two plugins cannot use the same service account
+  or Azure tenant and client ID.
 - `mcp.url` env refs must be declared in `env-vars`.
 - `mcp.headers` env refs must be declared in `env-vars` and must not declare
   defaults. Junior resolves them when it connects, so build output keeps only

@@ -131,7 +131,7 @@ export const workloadIdentityHandlers = [
       if (method === "generateIdToken") {
         return HttpResponse.json({
           token: unsignedJwt({
-            aud: body.audience,
+            aud: body["audience"],
             exp: expiresInSeconds(3600),
           }),
         });

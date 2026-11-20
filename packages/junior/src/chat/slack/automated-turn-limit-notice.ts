@@ -17,12 +17,12 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 
 async function releaseFailedNoticeClaim(args: {
   conversationId: string;
-  nowMs?: number;
+  nowMs?: number | undefined;
 }): Promise<void> {
   try {
     await clearAutomatedTurnLimitNoticeClaim(args);
   } catch (error) {
-    logException(error, "automated_turn_limit.notice_claim_clear_failed");
+    logException(error, "automated_turn_limit.notice.claim_clear_failed");
   }
 }
 
@@ -30,9 +30,9 @@ async function releaseFailedNoticeClaim(args: {
 export async function postAutomatedTurnLimitNoticeForConversation(args: {
   conversationId: string;
   maxTurns: number;
-  nowMs?: number;
+  nowMs?: number | undefined;
   /** Source of the Turn that hit the limit, when a Turn posts the notice. */
-  source?: Source;
+  source?: Source | undefined;
 }): Promise<boolean> {
   try {
     const conversation = await getConversationStore().get({
@@ -43,12 +43,19 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     const location = conversation?.parentConversationId
       ? undefined
       : conversation?.location;
-    if (!location || location.provider !== "slack") {
-      logWarn("automated_turn_limit.notice_skipped", {
+    // A thread that its Conversation detached from gets no notice.
+    if (
+      !location ||
+      location.provider !== "slack" ||
+      conversation?.deliveryPausedAtMs !== undefined
+    ) {
+      logWarn("automated_turn_limit.notice.skipped", {
         conversationId: args.conversationId,
-        "app.automated_turn_limit.reason": location
-          ? "unsupported_location"
-          : "missing_location",
+        "app.automated_turn_limit.reason": !location
+          ? "missing_location"
+          : location.provider !== "slack"
+            ? "unsupported_location"
+            : "delivery_paused",
       });
       await releaseFailedNoticeClaim({
         conversationId: args.conversationId,
@@ -70,7 +77,7 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     });
     return true;
   } catch (error) {
-    logException(error, "automated_turn_limit.notice_failed", {
+    logException(error, "automated_turn_limit.notice.failed", {
       conversationId: args.conversationId,
     });
     await releaseFailedNoticeClaim({

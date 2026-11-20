@@ -1,13 +1,14 @@
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
 import {
   getDashboardPersonLink,
   parseDashboardPersonLink,
 } from "@/chat/dashboard-link";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { userAvatarUrlsFromIdentities } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
-import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { readCachedUserByEmail } from "@/chat/identities/user-cache";
 import { personObjectCard } from "./cards";
 
 function linkEmail(url: URL): string | undefined {
@@ -29,52 +30,69 @@ export async function resolvePersonLink(
 ): Promise<ObjectAnnotation | undefined> {
   const email = normalizeIdentityEmail(linkEmail(url));
   if (!email) return undefined;
-  // One indexed read: the User with this primary email, as the People pages
-  // find them, and all of their user Identities.
-  const rows = await getDb()
-    .select({
-      avatarUrl: juniorIdentities.avatarUrl,
-      displayName: juniorIdentities.displayName,
-      handle: juniorIdentities.handle,
-      identityId: juniorIdentities.id,
-      provider: juniorIdentities.provider,
-      updatedAt: juniorIdentities.updatedAt,
-      userDisplayName: juniorUsers.displayName,
-      userEmail: juniorUsers.primaryEmail,
-      userId: juniorUsers.id,
-    })
-    .from(juniorUsers)
-    .innerJoin(
-      juniorIdentities,
-      and(
-        eq(juniorIdentities.userId, juniorUsers.id),
-        eq(juniorIdentities.kind, "user"),
-      ),
-    )
-    .where(eq(juniorUsers.primaryEmailNormalized, email));
-  const user = rows[0];
-  const canonicalUrl = user && getDashboardPersonLink(user.userEmail);
-  if (!user || !canonicalUrl) return undefined;
+  // The People pages find a person by the primary email of their User.
+  const cached = await readCachedUserByEmail(getDb(), email);
+  const canonicalUrl =
+    cached && getDashboardPersonLink(cached.user.primaryEmail);
+  if (!cached || !canonicalUrl) return undefined;
+  const { identities, user } = cached;
   // The Slack Identity has the handle and the name. Only account-linking
   // flows write a GitHub Identity on a User, so its handle is verified. This
   // is the same source as `userLookup`.
-  const slack = rows.find((row) => row.provider === "slack");
-  const githubHandle = rows
-    .flatMap((row) =>
-      row.provider === "github" && row.handle ? [row.handle] : [],
+  const slack = identities.find((identity) => identity.provider === "slack");
+  const githubHandle = identities
+    .flatMap((identity) =>
+      identity.provider === "github" && identity.handle
+        ? [identity.handle]
+        : [],
     )
     .sort()[0];
-  const avatarUrl = userAvatarUrlsFromIdentities(rows).get(user.userId);
-  const fullName =
-    user.userDisplayName?.trim() || (slack ?? user).displayName?.trim();
+  const avatarUrl = userAvatarUrlsFromIdentities(
+    identities.map((identity) => ({
+      ...identity,
+      identityId: identity.id,
+      userId: user.id,
+    })),
+  ).get(user.id);
+  // Without a User name, the Slack name wins over the name of any other
+  // Identity.
+  const fullName = [user, slack, ...identities]
+    .map((source) => source?.displayName?.trim())
+    .find(Boolean);
   return personObjectCard({
     ...(githubHandle ? { githubHandle } : undefined),
     person: {
-      email: user.userEmail,
+      email: user.primaryEmail,
       ...(avatarUrl ? { avatarUrl } : undefined),
       ...(fullName ? { fullName } : undefined),
       ...(slack?.handle ? { slackUserName: slack.handle } : undefined),
     },
     url: canonicalUrl,
   });
+}
+
+/**
+ * Resolve the card of the one known person who linked this provider account.
+ * Only account-linking flows put a provider Identity on a User, so the match
+ * is verified. Two people with the same handle get no card.
+ */
+export async function resolvePersonByAccount(account: {
+  handle: string;
+  provider: string;
+}): Promise<ObjectAnnotation | undefined> {
+  const rows = await getDb()
+    .selectDistinct({ email: juniorUsers.primaryEmail })
+    .from(juniorIdentities)
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, account.provider),
+        isNotNull(juniorIdentities.userId),
+        sql`lower(${juniorIdentities.handle}) = lower(${account.handle})`,
+      ),
+    )
+    .limit(2);
+  const link = rows.length === 1 && getDashboardPersonLink(rows[0]!.email);
+  return link ? await resolvePersonLink(new URL(link)) : undefined;
 }

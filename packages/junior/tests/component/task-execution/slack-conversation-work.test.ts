@@ -45,8 +45,10 @@ import {
 import type { TurnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
+import { usersInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
+  queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 import {
@@ -68,7 +70,6 @@ type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 interface ProcessQueuedSlackWorkArgs {
   getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
-  lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
   runNextPausedTurn?: SlackWorkerOptions["runNextPausedTurn"];
@@ -84,7 +85,6 @@ interface ProcessQueuedSlackWorkArgs {
 function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: args.getSlackAdapter,
-    lookupSlackUser: args.lookupSlackUser,
     runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
     runtime: args.runtime,
     state: args.state,
@@ -265,11 +265,6 @@ describe("Slack conversation work execution", () => {
     await expect(
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
-        lookupSlackUser: async () => ({
-          email: "david@example.com",
-          fullName: "David Cramer",
-          userName: "dcramer",
-        }),
         queue,
         runtime: {
           handleNewMention,
@@ -464,7 +459,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      telemetry?: TurnInputTelemetry;
+      telemetry?: TurnInputTelemetry | undefined;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -567,6 +562,7 @@ describe("Slack conversation work execution", () => {
         slackEnvelope({
           text: `<@${SLACK_BOT_USER_ID}> identify me`,
           ts: "1712345.0003",
+          user: "U0DCRAMER",
         }),
       ),
       services: {
@@ -586,15 +582,20 @@ describe("Slack conversation work execution", () => {
         throw new Error("unexpected subscribed route");
       },
     };
+    // The worker's profile lookup. A user that no other test looks up, so
+    // the Slack profile cache is cold.
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "U0DCRAMER",
+        userName: "dcramer",
+        realName: "David Cramer",
+        email: "david@example.com",
+      }),
+    });
 
     await expect(
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
-        lookupSlackUser: async () => ({
-          email: "david@example.com",
-          fullName: "David Cramer",
-          userName: "dcramer",
-        }),
         queue,
         runtime,
         state,
@@ -602,7 +603,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(capturedMessage?.author).toMatchObject({
-      userId: "U123",
+      userId: "U0DCRAMER",
       userName: "dcramer",
       fullName: "David Cramer",
     });
@@ -611,7 +612,7 @@ describe("Slack conversation work execution", () => {
       fullName: "David Cramer",
       platform: "slack",
       teamId: "T123",
-      userId: "U123",
+      userId: "U0DCRAMER",
       userName: "dcramer",
     });
   });
@@ -1644,7 +1645,7 @@ describe("Slack conversation work execution", () => {
     const observed: boolean[] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
-        observed.push(hooks.isFinalAttempt === true);
+        observed.push(hooks.isFinalAttempt);
         throw new Error("runtime failed before ack");
       },
       handleSubscribedMessage: async () => {

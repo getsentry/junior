@@ -24,12 +24,15 @@ export type SlackFileRef = NonNullable<SlackThreadReply["files"]>[number];
 export async function listChannelMessages(input: {
   channelId: SlackChannelId;
   limit: number;
-  cursor?: string;
-  oldest?: SlackMessageTs;
-  latest?: SlackMessageTs;
-  inclusive?: boolean;
-  maxPages?: number;
-}): Promise<{ messages: SlackChannelMessage[]; nextCursor?: string }> {
+  cursor?: string | undefined;
+  oldest?: SlackMessageTs | undefined;
+  latest?: SlackMessageTs | undefined;
+  inclusive?: boolean | undefined;
+  maxPages?: number | undefined;
+}): Promise<{
+  messages: SlackChannelMessage[];
+  nextCursor?: string | undefined;
+}> {
   const client = getSlackClient();
   const channelId = input.channelId;
   const targetLimit = Math.max(1, Math.min(input.limit, 1000));
@@ -38,6 +41,7 @@ export async function listChannelMessages(input: {
   let cursor = input.cursor;
   let pages = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (messages.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - messages.length));
@@ -63,6 +67,7 @@ export async function listChannelMessages(input: {
       break;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     messages: messages.slice(0, targetLimit),
@@ -75,7 +80,7 @@ export async function listThreadReplies(input: {
   channelId: SlackChannelId;
   threadTs: SlackMessageTs;
   limit?: number;
-  maxPages?: number;
+  maxPages?: number | undefined;
   targetMessageTs?: string[];
 }): Promise<SlackThreadReply[]> {
   const client = getSlackClient();
@@ -92,6 +97,7 @@ export async function listThreadReplies(input: {
   let cursor: string | undefined;
   let pages = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (replies.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - replies.length));
@@ -124,6 +130,7 @@ export async function listThreadReplies(input: {
       break;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return replies.slice(0, targetLimit);
 }
@@ -139,6 +146,11 @@ export interface SlackConversationInfo {
   isIm: boolean;
   isMpim: boolean;
   isMember?: boolean;
+}
+
+/** Return whether anyone in the workspace can read the conversation. */
+export function isPublicSlackChannel(info: SlackConversationInfo): boolean {
+  return info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
 }
 
 /** Load conversation metadata used for cross-channel read access checks. */
@@ -194,4 +206,58 @@ export async function joinPublicChannel(
     3,
     { action: "conversations.join", idempotent: true },
   );
+}
+
+// A private channel with more members than this does not show the viewer as
+// a member, so a card for it fails closed.
+const MAX_MEMBER_PAGES = 5;
+
+/** Return whether a Slack user is a member of a channel, DM, or group DM. */
+export async function isConversationMember(
+  channelId: SlackChannelId,
+  userId: string,
+): Promise<boolean> {
+  const client = getSlackClient();
+  let cursor: string | undefined;
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
+  for (let page = 0; page < MAX_MEMBER_PAGES; page += 1) {
+    const response = await withSlackRetries(
+      () =>
+        client.conversations.members({
+          channel: channelId,
+          cursor,
+          limit: 1000,
+        }),
+      3,
+      { action: "conversations.members", idempotent: true },
+    );
+    if (response.members?.includes(userId)) return true;
+    cursor = response.response_metadata?.next_cursor || undefined;
+    if (!cursor) return false;
+  }
+  /* oxlint-enable no-await-in-loop */
+  return false;
+}
+
+/** Read one message by its timestamp. A thread reply needs its thread. */
+export async function getChannelMessage(input: {
+  channelId: SlackChannelId;
+  messageTs: SlackMessageTs;
+  threadTs?: SlackMessageTs | undefined;
+}): Promise<SlackThreadReply | undefined> {
+  const client = getSlackClient();
+  const response = await withSlackRetries(
+    () =>
+      client.conversations.replies({
+        channel: input.channelId,
+        ts: input.threadTs ?? input.messageTs,
+        oldest: input.messageTs,
+        latest: input.messageTs,
+        inclusive: true,
+        limit: 2,
+      }),
+    3,
+    { action: "conversations.replies", idempotent: true },
+  );
+  return response.messages?.find((message) => message.ts === input.messageTs);
 }

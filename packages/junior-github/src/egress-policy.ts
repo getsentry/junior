@@ -122,16 +122,16 @@ function githubGraphqlPermissionDeniedMessage(
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.errors)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed["errors"])) {
     return undefined;
   }
-  for (const error of parsed.errors) {
-    if (!isRecord(error) || typeof error.message !== "string") {
+  for (const error of parsed["errors"]) {
+    if (!isRecord(error) || typeof error["message"] !== "string") {
       continue;
     }
-    const message = error.message;
+    const message = error["message"];
     if (
-      error.type === "NOT_FOUND" &&
+      error["type"] === "NOT_FOUND" &&
       /\bCould not resolve to a Repository with the name\b/.test(message)
     ) {
       return `GitHub GraphQL could not access the repository: ${message}`;
@@ -183,8 +183,8 @@ function githubErrorMessage(bodyText: string | undefined): string | undefined {
   }
   try {
     const parsed: unknown = JSON.parse(bodyText);
-    return isRecord(parsed) && typeof parsed.message === "string"
-      ? parsed.message.trim()
+    return isRecord(parsed) && typeof parsed["message"] === "string"
+      ? parsed["message"].trim()
       : undefined;
   } catch {
     return undefined;
@@ -196,7 +196,15 @@ async function githubForbiddenPermissionDeniedMessage(
 ): Promise<string | undefined> {
   const sso = ctx.response.headers.get("x-github-sso");
   if (sso?.startsWith("required")) {
-    const url = sso.match(/\burl=(https:\/\/github\.com\/\S+)/)?.[1];
+    // The header looks like `required; url=https://github.com/orgs/...`.
+    const url = sso
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("url="))
+      ?.slice("url=".length);
+    if (url && URL.parse(url)?.origin !== "https://github.com") {
+      return "GitHub requires SAML SSO authorization for this credential.";
+    }
     return `GitHub requires SAML SSO authorization for this credential.${url ? ` Authorize it at ${url}` : ""}`;
   }
   const message = githubErrorMessage(

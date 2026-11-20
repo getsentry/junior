@@ -11,10 +11,10 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldError, FieldLabel } from "../../components/ui/field";
-import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
+import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
 import { AutomationDraftChanges } from "./AutomationDraftChanges";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
@@ -28,6 +28,7 @@ import {
   scheduleDraft,
   type AutomationDraft,
 } from "./automationDraft";
+import { getDashboardAgentName } from "../../agentName";
 
 /** Keep edits until the user saves or discards them. */
 export function AutomationEditor(props: {
@@ -35,7 +36,6 @@ export function AutomationEditor(props: {
   summary: AutomationSummary;
   returnPath: string;
 }) {
-  const toast = useToastManager();
   const [original, setOriginal] = useState(props.automation);
   const [draft, setDraft] = useState(() =>
     createAutomationDraft(props.automation),
@@ -80,17 +80,10 @@ export function AutomationEditor(props: {
     );
   const save = useMutation({
     mutationFn: () => patch(automationEditSchema, url, update),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
       allowLeave.current = true;
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
-      toast.add({
-        title: "Automation saved",
-        description: "Changes apply to future work.",
-        type: "success",
-      });
-      navigate(props.returnPath);
+      await refreshChangedAutomation(queryClient, updated);
+      void navigate(props.returnPath);
     },
     onError: (error) => {
       setFields(error instanceof DashboardApiError ? (error.fields ?? {}) : {});
@@ -294,8 +287,8 @@ export function AutomationEditor(props: {
             title="What to do"
             detail={
               draft.task.kind === "instruction"
-                ? "Give Junior a clear instruction and a name you can find later."
-                : "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does."
+                ? `Give ${getDashboardAgentName()} a clear instruction and a name you can find later.`
+                : `Pick a skill for ${getDashboardAgentName()} to run. Add context only when this automation needs more than the skill does.`
             }
           >
             <Field>
@@ -376,7 +369,7 @@ export function AutomationEditor(props: {
           <AutomationFormSection
             changed={changes.credentialMode !== undefined}
             title="Credentials"
-            detail="Choose which connected accounts Junior can use."
+            detail={`Choose which connected accounts ${getDashboardAgentName()} can use.`}
           >
             <RadioGroup
               aria-label="Credential mode"

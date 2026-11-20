@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_automations_creator_slack_idx" ON "junior_automations" USING btree ("team_id","creator_slack_user_id") WHERE "junior_automations"."status" <> 'deleted';

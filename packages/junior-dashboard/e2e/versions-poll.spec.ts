@@ -2,7 +2,8 @@ import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
 } from "@sentry/junior/api/schema";
-import { withRequestedMailbox } from "./harness";
+import { requestedConversationIds, withRequestedMailbox } from "./harness";
+import { mockReviewItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
 
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -16,6 +17,7 @@ test("refreshes idle reads only when their version moves", async ({
   const detailPath = `/api/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`;
   const versions = {
     conversation: "1:1",
+    conversationIds: [] as string[],
     conversations: "feed-1",
     reviewItems: "review-1",
     spend: "spend-1",
@@ -26,8 +28,18 @@ test("refreshes idle reads only when their version moves", async ({
   let slackReply = false;
   await page.route("**/api/versions*", async (route) => {
     versionReads += 1;
-    await route.fulfill({ json: versions });
+    const { conversation, conversationIds: _, ...tokens } = versions;
+    versions.conversationIds = requestedConversationIds(route);
+    await route.fulfill({
+      json: {
+        ...tokens,
+        conversationDetails: Object.fromEntries(
+          versions.conversationIds.map((id) => [id, conversation]),
+        ),
+      },
+    });
   });
+  const feedStatuses: number[] = [];
   await page.route(
     (url) => url.pathname === "/api/conversations",
     async (route) => {
@@ -35,6 +47,14 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
+  page.on("response", (response) => {
+    if (
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === "/api/conversations"
+    ) {
+      feedStatuses.push(response.status());
+    }
+  });
   await page.route(
     (url) => url.pathname === detailPath,
     async (route) => {
@@ -93,6 +113,12 @@ test("refreshes idle reads only when their version moves", async ({
   await expect
     .poll(() => feedReads, { timeout: 15_000 })
     .toBeGreaterThan(settled.feedReads);
+  // The mock feed did not change, so the page comes back with no body and
+  // the list keeps its rows.
+  await expect.poll(() => feedStatuses.at(-1)).toBe(304);
+  await expect(
+    page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
+  ).toBeVisible();
 });
 
 test.describe("checks less often while the reader is away", () => {
@@ -112,7 +138,12 @@ test.describe("checks less often while the reader is away", () => {
     await page.route("**/api/versions*", async (route) => {
       const at = await page.evaluate(() => Date.now());
       await route.fulfill({
-        json: { conversations: "mock", reviewItems: "mock", spend: "mock" },
+        json: {
+          conversationDetails: {},
+          conversations: "mock",
+          reviewItems: "mock",
+          spend: "mock",
+        },
       });
       checks.push(at);
     });
@@ -129,12 +160,164 @@ test.describe("checks less often while the reader is away", () => {
     await page.clock.fastForward(5_000);
     await page.clock.fastForward(5_000);
     await answered(4);
-    expect(checks[3]! - checks[2]!).toBeGreaterThanOrEqual(10_000);
+    expect(checks[3] - checks[2]).toBeGreaterThanOrEqual(10_000);
 
     // Input checks at once and goes back to every 5s.
     await page.mouse.move(10, 10);
     await answered(5);
     await page.clock.fastForward(5_000);
     await answered(6);
+  });
+});
+
+test.describe("refreshes each Conversation on screen from its token", () => {
+  test.use({ controlTimers: true });
+  test("an Inbox card shows its pull request merged when the token moves @new", async ({
+    page,
+    dashboard,
+  }) => {
+    // The release Conversation saved the card of this pull request.
+    const releaseId = "slack:CQA456:1770021600.000600";
+    const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
+    const item = {
+      ...prReview,
+      addedByConversationId: releaseId,
+      id: "item-pr-versions",
+      rootConversationId: releaseId,
+    };
+    let token = "1:1";
+    let merged = false;
+    let detailReads = 0;
+    // The Conversation ids of each answered check.
+    const checks: string[][] = [];
+    const answered = async (count: number) => {
+      await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
+    };
+    await page.route("**/api/versions*", async (route) => {
+      const ids = requestedConversationIds(route);
+      await route.fulfill({
+        json: {
+          conversationDetails: Object.fromEntries(
+            ids.filter((id) => id === releaseId).map((id) => [id, token]),
+          ),
+          conversations: "mock",
+          reviewItems: "mock",
+          spend: "mock",
+        },
+      });
+      checks.push(ids);
+    });
+    await page.route(
+      (url) => url.pathname === detailPath,
+      async (route) => {
+        detailReads += 1;
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+          },
+        });
+        const report = withRequestedMailbox(route, await response.json());
+        if (merged) {
+          for (const annotation of report.annotations) {
+            if (annotation.key === "getsentry/payments#91") {
+              annotation.status = "merged";
+            }
+          }
+        }
+        const headers = response.headers();
+        delete headers["content-length"];
+        headers[CONVERSATION_VERSION_HEADER] = token;
+        await route.fulfill({ headers, json: report });
+      },
+    );
+    await mockReviewItems(page, { open: [item] });
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await rowHead(page, item.title).click();
+    const card = page.getByRole("region", {
+      name: "Pull request: Pin the release train to payments 4.2",
+    });
+    await expect(card.getByText("open", { exact: true })).toBeVisible();
+
+    // The check asks for the card's Conversation, though it is not open.
+    const tick = async () => {
+      const count = checks.length;
+      await page.clock.fastForward(5_000);
+      await answered(count + 1);
+    };
+    await tick();
+    expect(checks.at(-1)).toContain(releaseId);
+
+    // An unchanged token reads nothing, with no timed poll of the detail.
+    const settled = detailReads;
+    for (let step = 0; step < 6; step += 1) await tick();
+    expect(detailReads).toBe(settled);
+
+    // The moved token refreshes the card.
+    merged = true;
+    token = "1:2";
+    await page.clock.fastForward(5_000);
+    await expect(card.getByText("merged", { exact: true })).toBeVisible();
+    expect(detailReads).toBe(settled + 1);
+  });
+
+  test("a card whose Conversation read failed reads it again @new", async ({
+    page,
+    dashboard,
+  }) => {
+    const releaseId = "slack:CQA456:1770021600.000600";
+    const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
+    const item = {
+      ...prReview,
+      addedByConversationId: releaseId,
+      id: "item-pr-versions-retry",
+      rootConversationId: releaseId,
+    };
+    let failing = true;
+    let detailReads = 0;
+    let checks = 0;
+    // Let each answered check finish, and the reads it starts begin.
+    const tick = async () => {
+      const count = checks;
+      await page.clock.fastForward(5_000);
+      await expect.poll(() => checks).toBeGreaterThan(count);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
+    };
+    await page.route("**/api/versions*", async (route) => {
+      await route.fulfill({
+        json: {
+          conversationDetails: {},
+          conversations: "mock",
+          reviewItems: "mock",
+          spend: "mock",
+        },
+      });
+      checks += 1;
+    });
+    await page.route(
+      (url) => url.pathname === detailPath,
+      async (route) => {
+        detailReads += 1;
+        // A transient server error.
+        if (failing) {
+          await route.fulfill({ json: { error: "busy" }, status: 503 });
+          return;
+        }
+        await route.fallback();
+      },
+    );
+    await mockReviewItems(page, { open: [item] });
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await rowHead(page, item.title).click();
+    await expect.poll(() => detailReads).toBeGreaterThan(0);
+    // The reads that mounting the row starts are done after one check.
+    await tick();
+
+    // Once the server answers again, the next check reads the detail.
+    failing = false;
+    const settled = detailReads;
+    await tick();
+    await expect.poll(() => detailReads).toBeGreaterThan(settled);
   });
 });

@@ -14,6 +14,7 @@ export async function persistWithRetry(
   persist: () => Promise<void>,
 ): Promise<void> {
   let lastError: unknown;
+  /* oxlint-disable no-await-in-loop -- Retry only after the attempt before fails. */
   for (let attempt = 1; attempt <= PERSIST_ATTEMPTS; attempt += 1) {
     try {
       await persist();
@@ -25,5 +26,6 @@ export async function persistWithRetry(
       }
     }
   }
+  /* oxlint-enable no-await-in-loop */
   throw lastError;
 }

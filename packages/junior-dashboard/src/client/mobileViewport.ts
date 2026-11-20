@@ -160,6 +160,9 @@ export function useMobileViewportHeight(
       }
       if (lastOffsetTop !== "") {
         root.style.removeProperty(viewportOffsetTopProperty);
+        document.documentElement.style.removeProperty(
+          viewportOffsetTopProperty,
+        );
         lastOffsetTop = "";
       }
       if (lastKeyboardOpen !== "") {
@@ -241,6 +244,11 @@ export function useMobileViewportHeight(
         }
         if (lastOffsetTop !== nextOffsetTop) {
           root.style.setProperty(viewportOffsetTopProperty, nextOffsetTop);
+          // Toasts portal outside the shell and follow the same pan.
+          document.documentElement.style.setProperty(
+            viewportOffsetTopProperty,
+            nextOffsetTop,
+          );
           lastOffsetTop = nextOffsetTop;
         }
         if (lastKeyboardOpen !== nextKeyboardOpen) {

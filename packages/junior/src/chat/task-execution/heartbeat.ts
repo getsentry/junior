@@ -11,6 +11,7 @@ import {
   isInvalidConversationRecordError,
   listActiveConversationIds,
   pruneActiveConversation,
+  type BeforeWorkStops,
   type ConversationWorkState,
 } from "./store";
 
@@ -32,10 +33,7 @@ function heartbeatIdempotencyKey(
 /** Requeue expired leases and stranded mailbox work without running the agent. */
 export async function recoverConversationWork(args: {
   /** Ends what a conversation owns when its last attempt loses its worker. */
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: BeforeWorkStops;
   limit?: number;
   nowMs: number;
   queue: ConversationWorkQueue;
@@ -57,6 +55,7 @@ export async function recoverConversationWork(args: {
   });
 
   for (const conversationId of ids) {
+    // oxlint-disable-next-line no-await-in-loop -- Recovery writes shared work indexes, so one Conversation at a time keeps lock waits short.
     await withLogContext({ conversationId }, async () => {
       let work: ConversationWorkState | undefined;
       try {

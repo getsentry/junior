@@ -20,6 +20,8 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
+import { useInboxUi } from "../uiShell";
+import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -66,7 +68,7 @@ function SuggestedLabel(props: { className?: string }) {
 
 // Names the number key of a docked choice. The button already says it to
 // screen readers in `aria-keyshortcuts`.
-function ShortcutHint(props: { value?: string }) {
+function ShortcutHint(props: { value?: string | undefined }) {
   if (!props.value) return null;
   return (
     <Kbd aria-hidden="true" className="max-md:hidden">
@@ -79,7 +81,11 @@ function ShortcutHint(props: { value?: string }) {
 // at a glance. The control inside keeps its own focus ring.
 function ChoiceOption(props: {
   control: ReactNode;
-  option: { description?: string; label: string; recommended?: boolean };
+  option: {
+    description?: string | undefined;
+    label: string;
+    recommended?: boolean | undefined;
+  };
 }) {
   const { option } = props;
   return (
@@ -178,7 +184,7 @@ function ChoiceField(props: {
 
 function TextField(props: {
   className?: string;
-  description?: string;
+  description?: string | undefined;
   disabled: boolean;
   label: string;
   onChange(value: string): void;
@@ -216,7 +222,12 @@ function TextField(props: {
  * the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
- * the form has picks or text that the reader has not sent.
+ * the form has picks or text that the reader has not sent. `draft` fills the
+ * form once, when it mounts. Without it, the form starts from the answers
+ * saved by `requestId` (the Review item id) as the reader made them, so it
+ * shows them again after it unmounts or the page reloads. Restored answers
+ * are still unsent. They clear when the item closes, which a sent answer
+ * does.
  *
  * `docked` is for the question above the message box. The message box takes
  * the reader's own words and sends the picks, so Other…, the note, and the
@@ -225,6 +236,8 @@ function TextField(props: {
  */
 export function UserInputForm(props: {
   docked?: boolean;
+  /** An answer to start from, such as one that failed to send. */
+  draft?: Pick<UserInputAnswer, "other" | "values">;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
   ref?: Ref<UserInputFormHandle>;
@@ -232,21 +245,53 @@ export function UserInputForm(props: {
   requestId: string;
   secondaryActions?: ReactNode;
 }) {
+  const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
-  const [picked, setPicked] = useState<string>();
+  // A failed button answer comes back with its choice picked.
+  const [picked, setPicked] = useState(() => {
+    const field = buttonUserInputField(props.request);
+    return field && props.draft?.values[field.id]?.[0];
+  });
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
-  const [values, setValues] = useState<Record<string, string[]>>({});
-  const [other, setOther] = useState("");
-  const [writeOther, setWriteOther] = useState(false);
+  // A docked form has no note, so it neither shows nor sends a saved one,
+  // and keeps it saved for the full form.
+  const [draft] = useState(() =>
+    props.draft
+      ? { other: props.draft.other ?? "", values: props.draft.values }
+      : readAnswerDraft(props.requestId),
+  );
+  const [values, setValues] = useState(draft.values);
+  const [other, setOther] = useState(props.docked ? "" : draft.other);
+  // Only Other… puts saved answers of a button request in a form, so a saved
+  // draft opens it again. A failed draft with no note was a button pick.
+  const [writeOther, setWriteOther] = useState(
+    () =>
+      !props.docked &&
+      (Boolean(draft.other) ||
+        (!props.draft && Object.keys(draft.values).length > 0)),
+  );
   const buttonField = writeOther
     ? undefined
     : buttonUserInputField(props.request);
   // Other… unmounts the button that had focus, so move focus to the note.
+  // A restored note does not take focus.
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const focusNoteRef = useRef(false);
   useEffect(() => {
-    if (writeOther) noteRef.current?.focus();
+    if (!writeOther || !focusNoteRef.current) return;
+    focusNoteRef.current = false;
+    noteRef.current?.focus();
   }, [writeOther]);
+
+  function changeValues(fieldId: string, fieldValues: string[]) {
+    setValues((current) => ({ ...current, [fieldId]: fieldValues }));
+    saveAnswerDraft(props.requestId, { values: { [fieldId]: fieldValues } });
+  }
+  function changeOther(next: string) {
+    setOther(next);
+    saveAnswerDraft(props.requestId, { other: next });
+  }
 
   // A ref blocks a second click before React renders the disabled controls.
   // The lock stays after a sent answer; only a failed send can retry.
@@ -300,22 +345,32 @@ export function UserInputForm(props: {
     }
   }
 
+  const sendButton = (
+    <Button disabled={sending} type="submit" variant="default">
+      Send
+    </Button>
+  );
   const secondary = props.secondaryActions ? (
     <div className="flex flex-wrap gap-1 sm:ml-auto">
       {props.secondaryActions}
     </div>
   ) : null;
   // Slack cards show the same button, so both surfaces take a free-text
-  // answer when no choice fits.
-  const otherButton = props.docked ? null : (
-    <Button
-      variant="outline"
-      disabled={sending}
-      onClick={() => setWriteOther(true)}
-    >
-      Other…
-    </Button>
-  );
+  // answer when no choice fits. One choice is a plugin's action, such as
+  // Resume. The plugin reads no words, so it has no Other….
+  const otherButton =
+    props.docked || buttonField?.options.length === 1 ? null : (
+      <Button
+        variant="outline"
+        disabled={sending}
+        onClick={() => {
+          focusNoteRef.current = true;
+          setWriteOther(true);
+        }}
+      >
+        Other…
+      </Button>
+    );
   // Number keys pick the first nine choices.
   const shortcut = (index: number) =>
     props.docked && index < 9 ? String(index + 1) : undefined;
@@ -402,9 +457,7 @@ export function UserInputForm(props: {
                 disabled={sending}
                 key={field.id}
                 label={field.label}
-                onChange={(value) =>
-                  setValues((current) => ({ ...current, [field.id]: [value] }))
-                }
+                onChange={(value) => changeValues(field.id, [value])}
                 value={values[field.id]?.[0] ?? ""}
               />
             ) : (
@@ -412,9 +465,7 @@ export function UserInputForm(props: {
                 disabled={sending}
                 field={field}
                 key={field.id}
-                onChange={(picked) =>
-                  setValues((current) => ({ ...current, [field.id]: picked }))
-                }
+                onChange={(picked) => changeValues(field.id, picked)}
                 values={values[field.id] ?? []}
               />
             ),
@@ -425,7 +476,7 @@ export function UserInputForm(props: {
               description={USER_INPUT_NOTE.description}
               disabled={sending}
               label={USER_INPUT_NOTE.label}
-              onChange={setOther}
+              onChange={changeOther}
               ref={noteRef}
               value={other}
             />
@@ -433,12 +484,15 @@ export function UserInputForm(props: {
           {/* A docked form sends from the message box, so this row can be
               empty there. */}
           {props.docked && fieldCount < 2 && !secondary ? null : (
-            <div className="flex flex-wrap items-center gap-2">
-              {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="default">
-                  Send
-                </Button>
+            // Send is the main action. The new UI ends the row with it, on
+            // the right; the current UI starts the row with it.
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2",
+                inbox && "justify-end",
               )}
+            >
+              {props.docked || inbox ? null : sendButton}
               {fieldCount > 1 ? (
                 <span
                   aria-live="polite"
@@ -448,6 +502,7 @@ export function UserInputForm(props: {
                 </span>
               ) : null}
               {secondary}
+              {props.docked || !inbox ? null : sendButton}
             </div>
           )}
         </form>

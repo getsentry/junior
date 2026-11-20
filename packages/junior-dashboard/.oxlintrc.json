@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["../../tools/oxlint/type-aware.json"],
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": [
     "@tanstack/eslint-plugin-query",
@@ -22,6 +23,30 @@
     {
       "name": "px-geometry",
       "specifier": "./oxlint/px-geometry.ts"
+    },
+    {
+      "name": "image-src",
+      "specifier": "./oxlint/image-src.ts"
+    },
+    {
+      "name": "time-format",
+      "specifier": "./oxlint/time-format.ts"
+    },
+    {
+      "name": "query-invalidation",
+      "specifier": "./oxlint/query-invalidation.ts"
+    },
+    {
+      "name": "radius",
+      "specifier": "./oxlint/radius.ts"
+    },
+    {
+      "name": "toast",
+      "specifier": "./oxlint/toast.ts"
+    },
+    {
+      "name": "nav-pages",
+      "specifier": "./oxlint/nav-pages.ts"
     }
   ],
   "ignorePatterns": [
@@ -39,6 +64,8 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
@@ -71,6 +98,9 @@
     "display-text/no-raw-display-text": "error",
     "text-control/no-raw-text-control": "error",
     "px-geometry/px-constant-sizes-element": "error",
+    "image-src/no-raw-external-image-src": "error",
+    "query-invalidation/no-broad-query-invalidation": "error",
+    "query-invalidation/no-refetch-interval": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -115,6 +145,62 @@
   },
   "overrides": [
     {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "junior/no-regex-url-parsing": "error",
+        "junior/no-value-switch": "error"
+      }
+    },
+    {
+      "files": ["src/client/**"],
+      "rules": {
+        "time-format/no-raw-time-format": "error",
+        "toast/no-actionless-success": "error"
+      }
+    },
+    {
+      "files": ["src/**"],
+      "rules": {
+        "junior/bounded-fan-out": "error",
+        "junior/prefer-map-bounded": "error",
+        "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "rules": {
+        "radius/no-large-radius": "error"
+      }
+    },
+    {
+      "files": ["src/client/**"],
+      "rules": {
+        "nav-pages/listed-page-path": "error"
+      }
+    },
+    {
+      "files": [
+        "src/client/navPages.ts",
+        "src/client/classic/**",
+        "src/client/components/ProfileMenu.tsx",
+        "src/client/components/layout/DashboardHeader.tsx",
+        "src/client/components/layout/NavRail.tsx",
+        "src/client/conversations/HomeSummary.tsx",
+        "src/client/pages/automations/AutomationsPageLayout.tsx",
+        "src/client/pages/code/RepositoryPage.tsx",
+        "src/client/primaryNav.ts"
+      ],
+      "rules": {
+        "nav-pages/listed-page-path": "off"
+      }
+    },
+    {
+      "files": ["src/client/time.ts"],
+      "rules": {
+        "time-format/no-raw-time-format": "off"
+      }
+    },
+    {
       "files": ["src/client/components/ui/**"],
       "rules": {
         "text-control/no-raw-text-control": "off"
@@ -128,9 +214,58 @@
       }
     },
     {
-      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "files": [
+        "src/client/conversations/ConversationSectionList.tsx",
+        "src/client/inbox/conversations/ConversationSectionList.tsx"
+      ],
       "rules": {
         "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/**",
+        "e2e/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "oxlint/**/*.test.ts"
+      ],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-misused-promises": [
+          "error",
+          {
+            "checksVoidReturn": false
+          }
+        ],
+        "typescript/no-unnecessary-type-assertion": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["e2e/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "eslint/no-empty-pattern": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/dashboard-plugin-routes.test.ts",
+        "tests/dashboard-shell-routes.test.ts",
+        "tests/dashboard-host-routes.test.ts",
+        "tests/dashboard-routes.test.ts",
+        "tests/route-name-telemetry.test.ts",
+        "tests/telemetry-components.test.tsx",
+        "tests/telemetry-metrics.test.tsx"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "off"
       }
     }
   ]

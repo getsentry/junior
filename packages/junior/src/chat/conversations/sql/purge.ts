@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
+import { deletePlanItems } from "@/chat/plan/store";
 import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
@@ -14,6 +15,7 @@ import {
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
+import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
 
@@ -45,6 +47,7 @@ async function discoverConversationTree(
     [root.conversationId, root],
   ]);
   let frontier = [root.conversationId];
+  /* oxlint-disable no-await-in-loop -- Each level reads the children of the level before. */
   while (frontier.length > 0) {
     const children = await executor
       .db()
@@ -63,6 +66,7 @@ async function discoverConversationTree(
       }
     }
   }
+  /* oxlint-enable no-await-in-loop */
   return [...all.values()];
 }
 
@@ -128,6 +132,10 @@ export async function selectExpiredRoots(
           and review_items.status = 'open'
           and review_items.automation_id is null
       )
+      or exists (
+        select 1 from junior_plan_items plan_items
+        where plan_items.conversation_id = tree.conversation_id
+      )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
         and (
@@ -190,9 +198,9 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. Non-public content also loses its
- * Briefs and the Review items that it added. The metadata rows themselves
- * survive.
+ * conversations keep only safe metadata. Plan items go with the transcript.
+ * Non-public content also loses its Briefs and the Review items that it
+ * added. The metadata rows themselves survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -233,6 +241,7 @@ export async function purgeConversationTree(
           // child creation after discovery. Acquire every event lock before row
           // locks so a child writer can finish without deadlocking on its parent
           // relationship.
+          /* oxlint-disable no-await-in-loop -- Take event locks in tree order so writers cannot deadlock. */
           for (const conversation of tree.slice(1)) {
             await withConversationEventLock(
               executor,
@@ -240,6 +249,7 @@ export async function purgeConversationTree(
               async () => undefined,
             );
           }
+          /* oxlint-enable no-await-in-loop */
 
           const roots = await executor
             .db()
@@ -299,6 +309,7 @@ export async function purgeConversationTree(
             .db()
             .delete(juniorConversationEvents)
             .where(inArray(juniorConversationEvents.conversationId, ids));
+          await deleteMessageLinks(executor, ids);
           await executor
             .db()
             .delete(juniorAgentInvocations)
@@ -323,6 +334,8 @@ export async function purgeConversationTree(
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
+          // Plan items hold titles and notes from the transcript.
+          await deletePlanItems(executor, ids);
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic

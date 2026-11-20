@@ -7,6 +7,7 @@ import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { createApiHeadersBroker } from "./auth/api-headers-broker";
 import { createWorkloadIdentityBroker } from "./auth/workload-identity-broker";
+import { workloadIdentityKey } from "./workload-identity-manifest";
 import {
   discoverInstalledPluginPackageContent,
   type InstalledPluginPackageContent,
@@ -30,6 +31,7 @@ interface LoadedPluginState {
   pluginMigrationRoots: Map<string, string>;
   pluginsByName: Map<string, PluginDefinition>;
   signature: string;
+  workloadIdentityToPlugin: Map<string, string>;
 }
 
 interface PluginCatalogSource {
@@ -42,7 +44,7 @@ interface PluginCatalogSource {
 
 interface PluginCatalogRuntimeState {
   loadedPluginState?: LoadedPluginState;
-  pluginConfig?: PluginCatalogConfig;
+  pluginConfig?: PluginCatalogConfig | undefined;
 }
 
 export interface PluginCatalogRuntime {
@@ -87,6 +89,7 @@ function createLoadedPluginState(signature: string): LoadedPluginState {
     pluginConfigKeys: new Set(),
     pluginsByName: new Map(),
     packageSkillRoots: new Set(),
+    workloadIdentityToPlugin: new Map(),
   };
 }
 
@@ -119,6 +122,21 @@ function registerPluginManifest(
     }
   }
 
+  // All plugins federate as one Vercel principal. One identity per plugin
+  // keeps a manifest from minting tokens for another plugin's identity.
+  const identity =
+    manifest.credentials?.type === "workload-identity"
+      ? workloadIdentityKey(manifest.credentials)
+      : undefined;
+  const identityOwner = identity
+    ? state.workloadIdentityToPlugin.get(identity)
+    : undefined;
+  if (identityOwner) {
+    throw new Error(
+      `Duplicate workload identity ${identity} in plugin "${manifest.name}" already declared by plugin "${identityOwner}"`,
+    );
+  }
+
   const definition: PluginDefinition = {
     manifest,
     dir: pluginDir,
@@ -137,6 +155,9 @@ function registerPluginManifest(
   }
   for (const domain of providerDomains(manifest)) {
     state.domainToPlugin.set(domain, manifest.name);
+  }
+  if (identity) {
+    state.workloadIdentityToPlugin.set(identity, manifest.name);
   }
 }
 
@@ -410,7 +431,7 @@ function logLoadedPlugins(state: LoadedPluginState): void {
       continue;
     }
     loggedPluginNames.add(plugin.manifest.name);
-    logInfo("plugin.loaded", {
+    logInfo("plugin.manifest.loaded", {
       "app.plugin.name": plugin.manifest.name,
       "app.plugin.config_key_count": plugin.manifest.configKeys.length,
       "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),

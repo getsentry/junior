@@ -4,6 +4,7 @@ import type { JuniorApiEnv } from "../route";
 import {
   codeOverviewReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
 } from "../schema/code";
 import { validateRequest } from "../validation";
@@ -23,9 +24,15 @@ export function createCodeRoutes(): Hono<JuniorApiEnv> {
       codeRepositoryParamsSchema,
       "Invalid route parameters.",
     ),
+    validateRequest(
+      "query",
+      codeRepositoryQuerySchema,
+      "Invalid query parameters.",
+    ),
     async (context) => {
       const { repositoryId } = context.req.valid("param");
-      const report = await readCodeRepository(repositoryId);
+      const { state } = context.req.valid("query");
+      const report = await readCodeRepository(repositoryId, { state });
       if (!report) throwApiError(404, "Repository not found.");
       return jsonResponse(codeRepositoryReportSchema, report);
     },

@@ -13,6 +13,7 @@ import {
 import { packTar } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { sleep } from "@/chat/sleep";
+import { mapBounded } from "@/chat/fan-out";
 
 // Module overview: the lifecycle of one sandbox container.
 //
@@ -85,8 +86,8 @@ export interface CreateContainerInput {
   timeoutMs: number;
   /** Keep the container and its files after it stops. */
   persistent: boolean;
-  vcpus?: number;
-  signal?: AbortSignal;
+  vcpus?: number | undefined;
+  signal?: AbortSignal | undefined;
 }
 
 function isStatus(error: unknown, status: number): boolean {
@@ -127,12 +128,16 @@ async function pruneNetworks(): Promise<void> {
     Name: string;
     Labels: Record<string, string>;
   }>("networks");
-  for (const network of networks) {
-    if (used.has(network.Labels[DOCKER_SANDBOX_LABEL])) continue;
-    // An egress relay is not a sandbox, but it holds the network.
-    await forceRemove(egressRelayName(network.Name));
-    await removeNetwork(network.Name);
-  }
+  await mapBounded(
+    networks.filter(
+      (network) => !used.has(network.Labels[DOCKER_SANDBOX_LABEL]),
+    ),
+    async (network) => {
+      // An egress relay is not a sandbox, but it holds the network.
+      await forceRemove(egressRelayName(network.Name));
+      await removeNetwork(network.Name);
+    },
+  );
 }
 
 async function createNetwork(name: string, signal?: AbortSignal) {
@@ -149,6 +154,7 @@ async function createNetwork(name: string, signal?: AbortSignal) {
     const subnet = `${SUBNET_PREFIX}.${index}.0/24`;
     if (taken.has(subnet)) continue;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Try the next free subnet only after the one before fails.
       await dockerJson({
         method: "POST",
         path: "/networks/create",
@@ -208,6 +214,7 @@ function toContainer(details: ContainerInspect): SandboxContainer {
 async function waitUntilReady(id: string, signal?: AbortSignal) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    // oxlint-disable-next-line no-await-in-loop -- Poll until the container is ready.
     const result = await runRawExec(
       id,
       {
@@ -221,6 +228,7 @@ async function waitUntilReady(id: string, signal?: AbortSignal) {
       signal,
     );
     if (result.exitCode === 0) return;
+    // oxlint-disable-next-line no-await-in-loop -- Wait before the next readiness check.
     await sleep(READY_POLL_MS, signal);
   }
   throw new Error(`Sandbox container ${id} did not become ready`);

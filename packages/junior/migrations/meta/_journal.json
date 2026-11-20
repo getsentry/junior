@@ -736,6 +736,230 @@
       "when": 1794493721940,
       "tag": "0104_code_change_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794515341853,
+      "tag": "0105_attachment_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794521047106,
+      "tag": "0106_conversation_agent_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794557567747,
+      "tag": "0107_attachment_deferred_download",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794691958927,
+      "tag": "0109_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794695127545,
+      "tag": "0110_code_change_repository_state_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1794763565188,
+      "tag": "0111_attachment_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1794763804002,
+      "tag": "0112_attachment_url_fill",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1794765736832,
+      "tag": "0113_attachment_url_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1794825420550,
+      "tag": "0114_plan_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1794909660518,
+      "tag": "0115_automation_creator_slack_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1794921922374,
+      "tag": "0116_conversation_event_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1794933607046,
+      "tag": "0117_automation_last_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1794933647013,
+      "tag": "0118_automation_last_run_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1794949484361,
+      "tag": "0119_money_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1794949505801,
+      "tag": "0120_conversation_cost_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1794989656613,
+      "tag": "0121_people_list_metric_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1794995536190,
+      "tag": "0122_automation_rollout_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1795012788195,
+      "tag": "0123_cache_warming_history_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1795061211128,
+      "tag": "0124_artifact_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1795061235342,
+      "tag": "0125_artifact_public_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1795066026189,
+      "tag": "0126_artifact_drop_public",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1795066711486,
+      "tag": "0127_artifact_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1795066724447,
+      "tag": "0128_artifact_path_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1795079989863,
+      "tag": "0129_review_item_answered_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1795082429315,
+      "tag": "0130_review_item_status_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1795107367020,
+      "tag": "0131_brief_outcome_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1795107382017,
+      "tag": "0132_brief_outcome_status_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1795124236838,
+      "tag": "0133_brief_created_at_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1795127096428,
+      "tag": "0134_slack_person_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1795128922192,
+      "tag": "0135_code_change_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1795130573919,
+      "tag": "0136_merge_conflict_notice_dismiss",
+      "breakpoints": true
     }
   ]
 }

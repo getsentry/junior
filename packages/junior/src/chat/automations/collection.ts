@@ -12,12 +12,16 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
+  lte,
   ne,
   notInArray,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
   juniorAutomationRuns,
@@ -66,16 +70,18 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         : undefined,
     ),
   )!;
-  const runs = juniorAutomationRuns;
-  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
-      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
-      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
+  const lastRun = juniorAutomationRuns;
+  const lastRunNeedsAttention = sql<boolean>`coalesce(${lastRun.status} in ('failed', 'blocked'), false)`;
+  // When the last run ended, or else when the Automation was created.
+  const activityAtMs = sql<number>`coalesce(${lastRun.completedAtMs}, ${automation.createdAtMs})`;
   return db
     .select({
       kind: automation.kind,
       id: automation.id,
       title: automation.title,
       createdAtMs: automation.createdAtMs,
+      lastRunId: automation.lastRunId,
+      activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
       state: sql<string>`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
         "last_run_needs_attention",
@@ -116,14 +122,27 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
+    .leftJoin(lastRun, eq(lastRun.id, automation.lastRunId))
     .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
 }
 
+// `eventTriggerProblems` decides, the same check that the tools and the
+// dashboard use, so SQL does not keep its own copy of the rules.
+function eventTriggerAvailable(
+  catalog: ReturnType<typeof automationEventCatalog>,
+  trigger: unknown,
+): boolean {
+  const parsed = eventAutomationTriggerSchema.safeParse(trigger);
+  return (
+    parsed.success &&
+    registeredEventTriggerProblems(catalog, parsed.data).length === 0
+  );
+}
+
 /**
  * List the accessible event automations whose trigger cannot work with the
- * enabled plugins. `eventTriggerProblems` decides, the same check that the
- * tools and the dashboard use, so SQL does not keep its own copy of the rules.
+ * enabled plugins.
  */
 async function unavailableEventAutomationIds(
   collection: ReturnType<typeof viewerAutomationCollection>,
@@ -133,22 +152,19 @@ async function unavailableEventAutomationIds(
     .select({ id: collection.id, trigger: collection.trigger })
     .from(collection)
     .where(eq(collection.kind, "event"));
-  return rows.flatMap((row) => {
-    const trigger = eventAutomationTriggerSchema.safeParse(row.trigger);
-    const available =
-      trigger.success &&
-      registeredEventTriggerProblems(catalog, trigger.data).length === 0;
-    return available ? [] : [row.id];
-  });
+  return rows.flatMap((row) =>
+    eventTriggerAvailable(catalog, row.trigger) ? [] : [row.id],
+  );
 }
 
-/** Read an SQL page and complete, access-scoped counts and filter options. */
-export async function readAutomationCollection(
-  viewer: AutomationViewer,
-  input: AutomationListQuery,
+/**
+ * Build the filters for Automations whose trigger cannot work and for those
+ * that need attention: blocked, an unavailable trigger, or a last run that
+ * failed or blocked. Paused and completed Automations never need attention.
+ */
+async function attentionFilters(
+  collection: ReturnType<typeof viewerAutomationCollection>,
 ) {
-  const db = getDb();
-  const collection = viewerAutomationCollection(viewer);
   const unavailableIds = await unavailableEventAutomationIds(collection);
   const unavailable =
     unavailableIds.length > 0
@@ -162,6 +178,67 @@ export async function readAutomationCollection(
       eq(collection.lastRunNeedsAttention, true),
     ),
   );
+  return { attention, unavailable };
+}
+
+/**
+ * Count the viewer's own Automations that need attention, the rows that the
+ * Inbox lists from `scope=attention&owner=me`. One query reads the owned
+ * candidates, and the trigger check runs on the event ones.
+ */
+export async function countOwnedAutomationsNeedingAttention(
+  viewer: AutomationViewer,
+): Promise<number> {
+  const collection = viewerAutomationCollection(viewer);
+  const rows = await getDb()
+    .select({
+      kind: collection.kind,
+      lastRunNeedsAttention: collection.lastRunNeedsAttention,
+      state: collection.state,
+      trigger: collection.trigger,
+    })
+    .from(collection)
+    .where(
+      and(
+        eq(collection.owned, true),
+        notInArray(collection.state, ["paused", "completed"]),
+        or(
+          eq(collection.state, "blocked"),
+          eq(collection.kind, "event"),
+          eq(collection.lastRunNeedsAttention, true),
+        ),
+      ),
+    );
+  const catalog = automationEventCatalog(getEventCatalog());
+  return rows.filter(
+    (row) =>
+      row.state === "blocked" ||
+      row.lastRunNeedsAttention ||
+      (row.kind === "event" && !eventTriggerAvailable(catalog, row.trigger)),
+  ).length;
+}
+
+/** Where a page of `sort=activity` ends: its last row's activity and ID. */
+export type AutomationActivityPosition = { activityAtMs: number; id: string };
+
+/** A viewer's access-scoped collection and the filters of one list query. */
+export type AutomationListSelection = {
+  collection: ReturnType<typeof viewerAutomationCollection>;
+  where: SQL | undefined;
+};
+
+/** Build the access-scoped collection and the filters of one list query. */
+export async function selectViewerAutomations(
+  viewer: AutomationViewer,
+  input: AutomationListQuery,
+): Promise<AutomationListSelection> {
+  const collection = viewerAutomationCollection(viewer);
+  // The trigger check reads every accessible event Automation, so only the
+  // filters that use it pay for it.
+  const { attention, unavailable } =
+    input.scope === "attention" || input.state === "unavailable"
+      ? await attentionFilters(collection)
+      : { attention: undefined, unavailable: undefined };
   const where = and(
     input.scope === "mine"
       ? eq(collection.owned, true)
@@ -177,6 +254,7 @@ export async function readAutomationCollection(
         ? unavailable
         : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
+    input.owner === "me" ? eq(collection.owned, true) : undefined,
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,
@@ -186,6 +264,123 @@ export async function readAutomationCollection(
       ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.skill}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
+  return { collection, where };
+}
+
+/**
+ * Read one `sort=activity` page: the rows after `after`, newest activity
+ * first. `next` is set when more rows follow.
+ */
+export async function readAutomationActivityPage(
+  { collection, where }: AutomationListSelection,
+  pageSize: number,
+  after?: AutomationActivityPosition,
+) {
+  const db = getDb();
+  const limit = pageSize + 1; // One extra row tells whether more follow.
+  // Sorting the collection by its last run's end time would read the last
+  // run of every row. Instead, walk runs newest first and keep each run that
+  // is a listed Automation's last run, and merge the Automations that have no
+  // run yet by creation time.
+  const run = alias(juniorAutomationRuns, "page_run");
+  const withRun = db
+    .select({
+      activityAtMs: sql<number>`${run.completedAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(run)
+    .innerJoin(collection, eq(collection.lastRunId, run.id))
+    .where(
+      and(
+        where,
+        after
+          ? and(
+              lte(run.completedAtMs, after.activityAtMs),
+              sql`(${run.completedAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`,
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(run.completedAtMs), desc(collection.id))
+    .limit(limit);
+  const withoutRun = db
+    .select({
+      activityAtMs: sql<number>`${collection.createdAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(collection)
+    .where(
+      and(
+        where,
+        isNull(collection.lastRunId),
+        after
+          ? sql`(${collection.createdAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(collection.createdAtMs), desc(collection.id))
+    .limit(limit);
+  const rows = await unionAll(withRun, withoutRun)
+    .orderBy(desc(sql.identifier("activity_at_ms")), desc(sql.identifier("id")))
+    .limit(limit);
+  const pageRows = rows.slice(0, pageSize);
+  const last = pageRows.at(-1);
+  return {
+    rows: pageRows,
+    ...(rows.length > pageSize && last
+      ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
+      : undefined),
+  };
+}
+
+/** Read an SQL page by offset and complete, access-scoped counts and filter options. */
+export async function readAutomationCollection(
+  viewer: AutomationViewer,
+  input: AutomationListQuery,
+) {
+  const selection = await selectViewerAutomations(viewer, input);
+  const { collection, where } = selection;
+  const facets = await readAutomationFacets(selection);
+  const page = Math.min(
+    input.page,
+    Math.max(1, Math.ceil(facets.total / input.pageSize)),
+  );
+  const order =
+    input.sort === "oldest"
+      ? asc(collection.createdAtMs)
+      : input.sort === "title"
+        ? asc(
+            sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}, ${collection.skill}))`,
+          )
+        : input.sort === "activity"
+          ? desc(collection.activityAtMs)
+          : desc(collection.createdAtMs);
+  const rows = await getDb()
+    .select({ id: collection.id, kind: collection.kind })
+    .from(collection)
+    .where(where)
+    .orderBy(order, desc(collection.id))
+    .limit(input.pageSize)
+    .offset((page - 1) * input.pageSize);
+  return { rows, page, pageSize: input.pageSize, ...facets };
+}
+
+/**
+ * Read the match total, the scope counts, and the creator and Destination
+ * options. Separate statements run in parallel on their own connections,
+ * which measured faster than one grouped statement.
+ */
+export async function readAutomationFacets({
+  collection,
+  where,
+}: AutomationListSelection) {
+  const db = getDb();
   const [totals, counts, creators, destinations] = await Promise.all([
     db.select({ total: count() }).from(collection).where(where),
     db
@@ -216,31 +411,8 @@ export async function readAutomationCollection(
         collection.destination,
       ),
   ]);
-  const total = totals[0]!.total;
-  const page = Math.min(
-    input.page,
-    Math.max(1, Math.ceil(total / input.pageSize)),
-  );
-  const order =
-    input.sort === "oldest"
-      ? asc(collection.createdAtMs)
-      : input.sort === "title"
-        ? asc(
-            sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}, ${collection.skill}))`,
-          )
-        : desc(collection.createdAtMs);
-  const rows = await db
-    .select({ id: collection.id, kind: collection.kind })
-    .from(collection)
-    .where(where)
-    .orderBy(order, desc(collection.id))
-    .limit(input.pageSize)
-    .offset((page - 1) * input.pageSize);
   return {
-    rows,
-    total,
-    page,
-    pageSize: input.pageSize,
+    total: totals[0]!.total,
     counts: counts[0]!,
     creators,
     destinations,

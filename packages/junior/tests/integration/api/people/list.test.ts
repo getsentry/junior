@@ -6,20 +6,58 @@ import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import {
+  expectNoFullScan,
+  expectSqlBudget,
+  measureSql,
+} from "../../../fixtures/sql-budget";
+import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import { recordTurn, seedPeople, turnActorIdentityId } from "./fixture";
 
 describe("people list API", () => {
-  test("serves the route through its response schema", async () => {
+  test("serves a cached list and refreshes it once when stale", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
     const fixture = createConfiguredJuniorSqlFixture();
+    const background = createWaitUntilCollector();
+    const api = createJuniorApi({ waitUntil: background.fn });
+    const readPeople = async () => {
+      const response = await api.request("http://localhost/api/people");
+      expect(response.status).toBe(200);
+      return actorDirectoryReportSchema.parse(await response.json());
+    };
+
     try {
       await migrateSchema(fixture.sql);
-      const response = await createJuniorApi().request(
-        "http://localhost/api/people",
-      );
-      expect(response.status).toBe(200);
-      actorDirectoryReportSchema.parse(await response.json());
+      const uncached = await measureSql(readPeople);
+      expect(uncached.sql.statements).toBe(4);
+      const first = uncached.result;
+      expect(first.people).toEqual([]);
+
+      await seedPeople(fixture);
+      vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
+      const fresh = await measureSql(readPeople);
+      expect(fresh.sql.statements).toBe(0);
+      expect(fresh.result).toEqual(first);
+      expect(background.pendingCount()).toBe(0);
+
+      // A stale list is served at once. Concurrent requests start one
+      // refresh between them.
+      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      const stale = await measureSql(async () => {
+        const reports = await Promise.all([readPeople(), readPeople()]);
+        expect(background.pendingCount()).toBe(2);
+        await background.flush();
+        return reports;
+      });
+      expect(stale.result).toEqual([first, first]);
+      expect(stale.sql.statements).toBe(4);
+
+      const refreshed = await readPeople();
+      expect(refreshed.people.length).toBeGreaterThan(0);
     } finally {
+      vi.useRealTimers();
       await fixture.close();
     }
   });
@@ -68,35 +106,58 @@ describe("people list API", () => {
         nowMs: Date.parse("2026-06-12T12:30:00.000Z"),
         source: "slack",
       });
+      // Dana's last Turn is older than every range.
+      const danaActor = {
+        email: "dana@example.com",
+        fullName: "Dana Example",
+        platform: "slack",
+        slackUserId: "UDANA",
+        teamId: "T1",
+      } as const;
+      await store.recordActivity({
+        actor: danaActor,
+        conversationId: "slack:C3:dormant",
+        destination: {
+          channelId: "C3",
+          platform: "slack",
+          teamId: "T1",
+        },
+        nowMs: Date.parse("2026-01-05T09:00:00.000Z"),
+        source: "slack",
+      });
       for (const [conversationId, actor, at] of [
         ["slack:C1:duplicate-day", aliceActor, "2026-06-12T12:00:00.000Z"],
         ["slack:C2:shared-day", bobActor, "2026-06-12T12:30:00.000Z"],
+        ["slack:C3:dormant", danaActor, "2026-01-05T09:00:00.000Z"],
+        ["slack:C3:dormant", danaActor, "2026-02-20T09:00:00.000Z"],
       ] as const) {
         await recordTurn(fixture, {
           actor,
           atMs: Date.parse(at),
           conversationId,
-          runId: `turn-${conversationId}`,
+          runId: `turn-${conversationId}-${at}`,
         });
       }
 
-      const report = await readPeopleListFromSql();
+      // One round of bounded reads, whatever the history length. Each read
+      // of a big table uses an index.
+      const report = await expectNoFullScan(() =>
+        expectSqlBudget(() => readPeopleListFromSql(), {
+          statements: 4,
+          serialRounds: 1,
+        }),
+      );
 
       expect(report.people.map((person) => person.actor.email)).toEqual([
         "bob@example.com",
         "alice@example.com",
         "later@example.com",
+        "dana@example.com",
       ]);
       const alice = report.people.find(
         (person) => person.actor.email === "alice@example.com",
       );
       expect(alice).toMatchObject({
-        active: 1,
-        activeDays: 2,
-        conversations: 3,
-        durationMs: 1_500,
-        failed: 1,
-        tokens: 150,
         actor: {
           email: "alice@example.com",
           fullName: "Alice Example",
@@ -118,6 +179,27 @@ describe("people list API", () => {
         costUsd: 0,
         durationMs: 0,
         priorCostUsd: 0,
+      });
+      // The list keeps a person with no Turn in any range, with their
+      // all-time Turn range.
+      expect(
+        report.people.find(
+          (person) => person.actor.email === "dana@example.com",
+        ),
+      ).toEqual({
+        actor: {
+          email: "dana@example.com",
+          fullName: "Dana Example",
+          slackUserId: "UDANA",
+        },
+        firstSeenAt: "2026-01-05T09:00:00.000Z",
+        lastSeenAt: "2026-02-20T09:00:00.000Z",
+        windows: Object.fromEntries(
+          [1, 7, 30, 90].map((range) => [
+            range,
+            { conversations: 0, costUsd: 0, durationMs: 0, priorCostUsd: 0 },
+          ]),
+        ),
       });
       expect(
         report.people.some(
@@ -193,17 +275,13 @@ describe("people list API", () => {
       const person = (email: string) =>
         report.people.find((entry) => entry.actor.email === email);
       expect(person("ana@example.com")).toMatchObject({
-        conversations: 1,
-        durationMs: 1_000,
-        windows: { 7: { conversations: 1, costUsd: 0.1 } },
+        windows: { 7: { conversations: 1, costUsd: 0.1, durationMs: 1_000 } },
       });
       // Ben did not start the Conversation, but his Turn counts it for him.
       expect(person("ben@example.com")).toMatchObject({
         actor: { fullName: "Ben Example" },
-        conversations: 1,
-        durationMs: 1_000,
         lastSeenAt: "2026-06-14T11:00:00.000Z",
-        windows: { 7: { conversations: 1, costUsd: 0.3 } },
+        windows: { 7: { conversations: 1, costUsd: 0.3, durationMs: 1_000 } },
       });
       // Ana ran two Turns on two days in her own Conversation. It failed.
       for (const [turnId, at, status] of [

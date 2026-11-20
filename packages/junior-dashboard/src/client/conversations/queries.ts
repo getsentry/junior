@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as z from "zod";
 import {
@@ -12,7 +13,6 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationPendingMessagesReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
@@ -29,10 +29,12 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
+import { postWebMessage } from "./attachmentUploads";
 import {
   conversationFeedCacheRows,
   mapConversationFeedCache,
   type ConversationFeedCache,
+  invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
 import {
@@ -130,7 +132,7 @@ export function conversationDetailIsLive(
   snapshot: ConversationSnapshot | undefined,
 ): boolean {
   return (
-    snapshot?.status === "active" ||
+    conversationTurnIsActive(snapshot) ||
     Boolean(snapshot?.mailbox?.messages.length) ||
     Boolean(snapshot?.mailbox?.authorization)
   );
@@ -142,14 +144,9 @@ export function conversationDetailQueryOptions(
   options?: {
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
-    fastPollUntilMs?: number;
+    fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
-    /**
-     * The versions poll refreshes this Conversation while it is idle, so
-     * the detail does not poll then.
-     */
-    versionsPoll?: boolean;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -184,14 +181,14 @@ export function conversationDetailQueryOptions(
         ),
       );
     },
+    // While idle, the versions poll refreshes every mounted detail.
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The open Conversation polls fast while a reply streams in.
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS
         : options?.awaitingMessage || conversationDetailIsLive(query.state.data)
           ? 2_000
-          : options?.versionsPoll
-            ? false
-            : 10_000,
+          : false,
     retry: false,
   });
 }
@@ -227,9 +224,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -246,9 +243,7 @@ export function useCreateConversation() {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(accepted.conversationId),
@@ -297,9 +292,7 @@ export function useForkConversation(sourceConversationId: string) {
             status: "accepted",
           }),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
     },
   });
 }
@@ -317,12 +310,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[] | undefined;
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -358,9 +351,7 @@ export function useAppendConversationMessage(conversationId: string) {
             accepted.messageId,
           ),
       );
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      void invalidateConversationFeeds(queryClient);
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(conversationId),
@@ -418,16 +409,14 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         );
       }
     },
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
+    // Do not await the refreshes. An edit waits for this mutation before its
+    // files join the composer.
+    onSettled: () => {
+      void invalidateConversationFeeds(queryClient);
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }
@@ -533,8 +522,6 @@ export function useConversationData(
      * position. Polls do not ask, so the server reads that page once.
      */
     unreadPageAtOpen?: boolean;
-    /** See `conversationDetailQueryOptions`. */
-    versionsPoll?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
@@ -594,7 +581,6 @@ export function useConversationData(
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
       unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
-      versionsPoll: options?.versionsPoll,
     }),
   });
   // A reopened Conversation shows the cached copy at once, but it can miss
@@ -834,7 +820,7 @@ export async function readConversationData(
   options?: {
     /** Also read the mailbox, before history, in the same request. */
     mailbox?: boolean;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
   },
 ): Promise<ConversationSnapshot> {
   const query = new URLSearchParams();
@@ -919,7 +905,10 @@ function withCachedEvents(
 function withDetailEtag<T extends ConversationDetailReport>(
   report: T,
   response: Response,
-): T & { conversationVersion?: string; detailEtag?: string } {
+): T & {
+  conversationVersion?: string | undefined;
+  detailEtag?: string | undefined;
+} {
   return {
     ...report,
     conversationVersion:

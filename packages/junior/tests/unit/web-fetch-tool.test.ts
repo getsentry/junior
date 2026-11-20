@@ -52,10 +52,7 @@ describe("web fetch tool", () => {
 
     const tool = createWebFetchTool({});
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/article" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/article" }, {});
 
     expect(result).toEqual({
       url: safeUrl.toString(),
@@ -80,26 +77,23 @@ describe("web fetch tool", () => {
         headers: { "content-type": "image/png" },
       }),
     );
-    const writeGeneratedArtifacts = vi.fn(async () => [
+    const writeGeneratedFiles = vi.fn(async () => [
       {
         bytes: Buffer.from("png-bytes").byteLength,
         filename: "logo.png",
         mimeType: "image/png",
-        path: "/tmp/junior/artifacts/logo.png",
+        path: "/tmp/jr/gen/0123456789ab/logo.png",
       },
     ]);
 
     const tool = createWebFetchTool(
-      { writeGeneratedArtifacts },
+      { writeGeneratedFiles },
       { canSendFilesToActiveConversation: true },
     );
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/logo.png" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/logo.png" }, {});
 
-    expect(writeGeneratedArtifacts).toHaveBeenCalledWith([
+    expect(writeGeneratedFiles).toHaveBeenCalledWith([
       {
         data: Buffer.from("png-bytes"),
         filename: "logo.png",
@@ -114,7 +108,7 @@ describe("web fetch tool", () => {
           bytes: Buffer.from("png-bytes").byteLength,
           filename: "logo.png",
           mimeType: "image/png",
-          path: "/tmp/junior/artifacts/logo.png",
+          path: "/tmp/jr/gen/0123456789ab/logo.png",
         },
       ],
     });
@@ -130,21 +124,18 @@ describe("web fetch tool", () => {
         headers: { "content-type": "image/png" },
       }),
     );
-    const writeGeneratedArtifacts = vi.fn(async () => [
+    const writeGeneratedFiles = vi.fn(async () => [
       {
         bytes: Buffer.from("png-bytes").byteLength,
         filename: "local.png",
         mimeType: "image/png",
-        path: "/tmp/junior/artifacts/local.png",
+        path: "/tmp/jr/gen/0123456789ab/local.png",
       },
     ]);
 
-    const tool = createWebFetchTool({ writeGeneratedArtifacts });
+    const tool = createWebFetchTool({ writeGeneratedFiles });
     const execute = tool.execute!;
-    const result = await execute(
-      { url: "https://example.com/local.png" },
-      {} as never,
-    );
+    const result = await execute({ url: "https://example.com/local.png" }, {});
 
     expect(JSON.stringify(result)).not.toContain("sendFiles");
     expect(result).toMatchObject({

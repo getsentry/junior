@@ -1,6 +1,15 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import * as z from "zod";
+import {
+  bm25InverseDocumentFrequency,
+  bm25NormalizedFrequency,
+  bm25Saturation,
+} from "@sentry/junior-search";
+import type { ConversationModelCost } from "@/chat/core-model";
+import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
+import { rerankSearchCandidates } from "@/chat/tools/search-tools-rerank";
+import { summarizeInputSchema } from "@/chat/tool-support/schema-summary";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -14,7 +23,6 @@ const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
 // Drop matches that score below this share of the best match, so a query
 // returns the tools that fit it instead of every tool that shares one word.
 const MIN_RELATIVE_SCORE = 0.3;
-const BM25_K1 = 1.2;
 // Length normalization per field. Long tool descriptions add usage guidance,
 // not more topics, so they get a weaker length penalty than the other fields.
 const BM25_B = [0.75, 0.3, 0.75] as const;
@@ -22,6 +30,12 @@ const BM25_B = [0.75, 0.3, 0.75] as const;
 // A synonym match counts for less than an exact match, so a tool that uses
 // the query's own word still ranks first.
 const SYNONYM_WEIGHT = 0.6;
+
+// The word match is clear when the best tool's name has the query's action
+// and object, and the next tool scores below this share of the best. Else
+// the model reranks the top candidates.
+const CLEAR_LEAD_RATIO = 0.7;
+const RERANK_CANDIDATE_COUNT = 20;
 
 // A full action and object match on the tool name doubles the score. Names
 // say what a tool does more reliably than its description words do.
@@ -44,6 +58,12 @@ const SEARCH_SYNONYM_GROUPS = [
   ["watch", "subscribe", "monitor", "follow"],
   ["save", "store", "remember", "memorize"],
 ];
+
+// Query words that also match another action, in one direction only. A
+// search tool can also list, but a list tool cannot search by text.
+const ONE_WAY_SYNONYMS: Record<string, string[]> = {
+  list: ["search"],
+};
 
 // Short forms in queries that mean exactly the same as their long form. Only
 // the query is expanded: most tools have a `repo` parameter, so expanding
@@ -104,9 +124,11 @@ const searchToolsToolSchema = z
     tool_name: z.string(),
     description: z.string(),
     source: z.string().optional(),
-    input_schema: z.unknown(),
-    call_notes: z.array(z.string()),
-    annotations: z.record(z.string(), z.unknown()),
+    // The best match of a query has its full schema. Other results have
+    // `params` only, so one search does not pay for every schema.
+    input_schema: z.unknown().optional(),
+    params: z.string().optional(),
+    call_notes: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -235,7 +257,10 @@ function queryTerms(query: string): QueryTerm[] {
   ];
   return unique.map((term) => {
     const weights: QueryTerm = new Map();
-    for (const synonym of synonymsByTerm.get(term) ?? []) {
+    for (const synonym of [
+      ...(synonymsByTerm.get(term) ?? []),
+      ...(ONE_WAY_SYNONYMS[term] ?? []),
+    ]) {
       weights.set(synonym, SYNONYM_WEIGHT);
     }
     weights.set(term, 1);
@@ -268,10 +293,10 @@ function parameterText(schema: unknown): string[] {
   }
   const record = schema as Record<string, unknown>;
   const text: string[] = [];
-  if (typeof record.description === "string") {
-    text.push(record.description);
+  if (typeof record["description"] === "string") {
+    text.push(record["description"]);
   }
-  const properties = record.properties;
+  const properties = record["properties"];
   if (properties && typeof properties === "object") {
     for (const [name, property] of Object.entries(properties)) {
       text.push(name, ...parameterText(property));
@@ -347,8 +372,10 @@ function prepareSearchDocuments(
 ): SearchDocument[] {
   const toolNames = new Set(Object.keys(tools));
   return Object.entries(tools)
-    .filter(([, definition]) =>
-      source ? definition.source?.id === source : true,
+    .filter(
+      ([, definition]) =>
+        effectiveToolExposure(definition) !== "direct" &&
+        (source ? definition.source?.id === source : true),
     )
     .map(([name, definition]) => ({
       name,
@@ -391,10 +418,9 @@ function scoreQueryTerms(
     ).length;
     return {
       weights,
-      inverseDocumentFrequency: Math.log(
-        1 +
-          (documents.length - documentFrequency + 0.5) /
-            (documentFrequency + 0.5),
+      inverseDocumentFrequency: bm25InverseDocumentFrequency(
+        documents.length,
+        documentFrequency,
       ),
     };
   });
@@ -412,13 +438,15 @@ function weightedTermFrequency(
     if (termFrequency === 0) {
       return weighted;
     }
-    const averageLength = averageLengths[fieldIndex] ?? 0;
-    const lengthRatio = averageLength === 0 ? 1 : field.length / averageLength;
     return (
       weighted +
       SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-        (termFrequency /
-          (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
+        bm25NormalizedFrequency(
+          termFrequency,
+          field.length,
+          averageLengths[fieldIndex] ?? 0,
+          BM25_B[fieldIndex]!,
+        )
     );
   }, 0);
 }
@@ -435,10 +463,7 @@ function scoreSearchDocument(
     let best = 0;
     for (const [term, weight] of weights) {
       const frequency = weightedTermFrequency(document, term, averageLengths);
-      best = Math.max(
-        best,
-        (weight * frequency * (BM25_K1 + 1)) / (frequency + BM25_K1),
-      );
+      best = Math.max(best, weight * bm25Saturation(frequency));
     }
     return score + inverseDocumentFrequency * best;
   }, 0);
@@ -453,16 +478,16 @@ function nameMatch(document: SearchDocument, query: QueryTerm[]): number {
     return 0;
   }
   let best = 0;
-  query.forEach((term, actionIndex) => {
+  for (const [actionIndex, term] of query.entries()) {
     const actionWeight = term.get(action) ?? 0;
     if (actionWeight === 0) {
-      return;
+      continue;
     }
     const covered = objects.filter((object) =>
       query.some((other, index) => index !== actionIndex && other.has(object)),
     ).length;
     best = Math.max(best, (actionWeight * covered) / objects.length);
-  });
+  }
   return best;
 }
 
@@ -484,51 +509,77 @@ function namesActionAndObject(
   );
 }
 
-/** Rank matching catalog tools while keeping source filtering deterministic. */
-function searchCatalogTools(
+export interface CatalogSearch {
+  /** Tools that fit the query, best first. */
+  matches: string[];
+  /**
+   * A wider word-match list, best first, when the word match cannot tell
+   * which tool fits. Empty when one tool clearly wins or nothing matched.
+   */
+  unclearCandidates: string[];
+}
+
+/**
+ * Rank the deferred catalog tools that match the query by word match. Says
+ * when the word match cannot tell which tool fits, so the model reranks.
+ */
+export function searchCatalogTools(
   tools: Record<string, AnyToolDefinition>,
   query: string,
   source: string | null,
-): string[] {
+): CatalogSearch {
   const documents = prepareSearchDocuments(tools, source);
-  if (!query.trim()) {
-    return documents
-      .map(({ name }) => name)
-      .sort((left, right) => left.localeCompare(right));
-  }
-
   const searchTerms = queryTerms(query);
   if (searchTerms.length === 0) {
-    return [];
+    return { matches: [], unclearCandidates: [] };
   }
   const scoredTerms = scoreQueryTerms(searchTerms, documents);
   const averageLengths = averageFieldLengths(documents);
-  const matched = documents
-    .map((document) => ({
-      document,
-      score: scoreSearchDocument(document, scoredTerms, averageLengths),
-      nameMatch: nameMatch(document, searchTerms),
-    }))
-    .filter(({ score }) => score > 0);
-  if (
-    !matched.some(({ nameMatch }) => nameMatch > 0) &&
-    namesActionAndObject(documents, searchTerms)
-  ) {
-    return [];
-  }
-  const scored = matched
-    .map(({ document, score, nameMatch }) => ({
-      name: document.name,
-      score: score * (1 + NAME_MATCH_BOOST * nameMatch),
-    }))
+  const ranked = documents
+    .map((document) => {
+      const score = scoreSearchDocument(document, scoredTerms, averageLengths);
+      const match = nameMatch(document, searchTerms);
+      return {
+        name: document.name,
+        nameMatch: match,
+        score: score * (1 + NAME_MATCH_BOOST * match),
+      };
+    })
+    .filter(({ score }) => score > 0)
     .sort(
       (left, right) =>
         right.score - left.score || left.name.localeCompare(right.name),
     );
-  const minScore = (scored[0]?.score ?? 0) * MIN_RELATIVE_SCORE;
-  return scored
-    .filter(({ score }) => score >= minScore)
-    .map(({ name }) => name);
+  const noFit =
+    !ranked.some(({ nameMatch }) => nameMatch > 0) &&
+    namesActionAndObject(documents, searchTerms);
+  const minScore = (ranked[0]?.score ?? 0) * MIN_RELATIVE_SCORE;
+  const fitting = noFit ? [] : ranked.filter(({ score }) => score >= minScore);
+  const [best, next] = ranked;
+  const clear =
+    !noFit &&
+    best !== undefined &&
+    best.nameMatch > 0 &&
+    (next === undefined || next.score < CLEAR_LEAD_RATIO * best.score);
+  return {
+    matches: fitting.map(({ name }) => name),
+    unclearCandidates: clear
+      ? []
+      : ranked.slice(0, RERANK_CANDIDATE_COUNT).map(({ name }) => name),
+  };
+}
+
+/** List every catalog tool in a source, or in all sources, by name. */
+function listCatalogTools(
+  tools: Record<string, AnyToolDefinition>,
+  source: string | null,
+): string[] {
+  return Object.entries(tools)
+    .filter(([, definition]) =>
+      source ? definition.source?.id === source : true,
+    )
+    .map(([name]) => name)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function callNotes(definition: AnyToolDefinition): string[] {
@@ -579,9 +630,15 @@ function selectedSourceSummaries(
   return knownSources.filter((source) => matchedSourceIds.has(source.id));
 }
 
+/**
+ * Tell the model that a `params` preview is not enough to call a tool. Both
+ * the searchTools description and the Code Mode hint use it.
+ */
+export const PARAMS_PREVIEW_HINT =
+  "A result with only params is a preview: search its exact name to get its input_schema before you call it.";
+
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
-  const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name.";
+  const intro = `Search the executable tool catalog. Deferred tools are grouped by source. List a source, or search with a query. The first result of a query has its full input_schema. ${PARAMS_PREVIEW_HINT} Then call the tool with executeTool and its exact tool_name.`;
   if (knownSources.length === 0) {
     return intro;
   }
@@ -597,25 +654,32 @@ function toolMetadata(
   name: string,
   definition: AnyToolDefinition,
   includeSource: boolean,
+  includeSchema: boolean,
 ) {
+  const notes = callNotes(definition);
   return {
     tool_name: name,
     description: summarizeModelVisibleDescription(definition.description),
     ...(includeSource && definition.source
       ? { source: definition.source.id }
       : undefined),
-    input_schema: definition.inputSchema,
-    call_notes: callNotes(definition),
-    annotations: definition.annotations ?? {},
+    ...(includeSchema
+      ? { input_schema: definition.inputSchema }
+      : { params: summarizeInputSchema(definition.inputSchema) }),
+    ...(notes.length > 0 ? { call_notes: notes } : undefined),
   };
 }
 
 /**
  * Create the model-visible search tool for the executable tool catalog.
  * Direct tools stay out of results: the model already has their schemas.
+ *
+ * @runBuilt searchTools
  */
 export function createSearchToolsTool(
   allCatalogTools: Record<string, AnyToolDefinition>,
+  /** The Conversation that pays for a rerank model call. */
+  rerankCost: ConversationModelCost,
 ) {
   const catalogTools = Object.fromEntries(
     Object.entries(allCatalogTools).filter(
@@ -660,21 +724,48 @@ export function createSearchToolsTool(
       .strict(),
     outputSchema: searchToolsOutputSchema,
     privateTraceResult: (result) => ({
-      tools: result.tools.map(({ tool_name, description, input_schema }) => ({
-        tool_name,
-        description,
-        input_schema,
-      })),
+      tools: result.tools.map(
+        ({ tool_name, description, input_schema, params }) => ({
+          tool_name,
+          description,
+          input_schema,
+          params,
+        }),
+      ),
     }),
-    execute: async ({ query, source, max_results }) => {
+    execute: async ({ query, source, max_results }, { signal }) => {
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;
       const requestedSource = source ?? null;
       const sourceExists =
         requestedSource === null ||
         knownSources.some((candidate) => candidate.id === requestedSource);
-      const allMatches = sourceExists
-        ? searchCatalogTools(catalogTools, query ?? "", requestedSource)
-        : [];
+      const hasQuery = Boolean(query?.trim());
+      const search = !sourceExists
+        ? { matches: [], unclearCandidates: [] }
+        : hasQuery
+          ? searchCatalogTools(catalogTools, query!, requestedSource)
+          : {
+              matches: listCatalogTools(catalogTools, requestedSource),
+              unclearCandidates: [],
+            };
+      let allMatches = search.matches;
+      if (search.unclearCandidates.length > 0) {
+        allMatches =
+          (await rerankSearchCandidates({
+            query: query!,
+            cost: rerankCost,
+            candidates: search.unclearCandidates.map((name) => ({
+              name,
+              source: catalogTools[name]!.source?.id,
+              description: summarizeModelVisibleDescription(
+                catalogTools[name]!.description,
+              ),
+            })),
+            signal,
+          })) ?? allMatches;
+      } else if (hasQuery) {
+        setSpanAttributes({ "app.tool_search.rerank.ran": false });
+      }
       const matches = allMatches.slice(0, maxResults);
       const sources = !sourceExists
         ? knownSources
@@ -691,11 +782,17 @@ export function createSearchToolsTool(
               )
             : knownSources;
       const totalEligibleTools = sourceExists
-        ? searchCatalogTools(catalogTools, "", requestedSource).length
+        ? listCatalogTools(catalogTools, requestedSource).length
         : 0;
       const includePerToolSource = requestedSource === null;
-      const renderedTools = matches.map((name) =>
-        toolMetadata(name, catalogTools[name]!, includePerToolSource),
+      // A source listing is not ranked, so it shows no full schema.
+      const renderedTools = matches.map((name, index) =>
+        toolMetadata(
+          name,
+          catalogTools[name]!,
+          includePerToolSource,
+          hasQuery && index === 0,
+        ),
       );
       const result: z.infer<typeof searchToolsOutputSchema> = {
         query: query ?? null,

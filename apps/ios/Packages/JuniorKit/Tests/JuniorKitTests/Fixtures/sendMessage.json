@@ -1,0 +1,8 @@
+{
+  "conversationId": "internal:question-qa",
+  "messageId": "api-msg:fdd6fbd2dd6e0783755cef4d",
+  "status": "accepted",
+  "pendingMessages": [],
+  "cursor": "eyJjb252ZXJzYXRpb25JZCI6ImludGVybmFsOnF1ZXN0aW9uLXFhIiwic2VxIjo2LCJ2ZXJzaW9uIjoxfQ.mock",
+  "url": "http://127.0.0.1:4317/conversations/internal%3Aquestion-qa"
+}

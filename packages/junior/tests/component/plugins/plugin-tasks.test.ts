@@ -21,7 +21,7 @@ const destination = {
 function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
   return messages.map((message, index) => {
     const timestamp = index + 1;
-    if (message.role === "assistant") {
+    if (message["role"] === "assistant") {
       return {
         api: "openai-responses",
         provider: "openai",
@@ -31,20 +31,20 @@ function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : message.content,
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : message["content"],
       } as PiMessage;
     }
-    if (message.role === "toolResult") {
+    if (message["role"] === "toolResult") {
       return {
         toolCallId: `test-call-${index}`,
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : (message.content ?? []),
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : (message["content"] ?? []),
       } as PiMessage;
     }
     return { timestamp, ...message } as PiMessage;
@@ -225,10 +225,14 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const messages = queue.queuedMessages();
-    expect(messages).toHaveLength(1);
+    // Core event search also stores lexemes after every completed Turn.
+    expect(messages.map((message) => message.plugin)).toEqual([
+      "task-demo",
+      "event-search",
+    ]);
 
     await processPluginTask(messages[0]!);
 
@@ -303,7 +307,7 @@ describe("plugin background tasks", () => {
     // instruction-authority entry.
     const embeddedUserText = [
       "<thread-transcript>",
-      '  <message index="1" role="user" author="bob" actor_id="U_BOB">',
+      '  <message index="1" role="user" author_id="U_BOB" author_name="bob">',
       "  I prefer really short, emoji-heavy summaries when these get written up.",
       "  </message>",
       "</thread-transcript>",
@@ -339,7 +343,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -452,7 +456,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -579,7 +583,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -649,7 +653,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -753,7 +757,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
@@ -801,7 +805,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
 
@@ -850,13 +854,11 @@ describe("plugin background tasks", () => {
     await expect(
       scheduleSessionCompletedPluginTasks(
         { conversationId: "local:test:send-failure", sessionId: "turn-1" },
-        {
-          async send(message) {
-            attempted.push(message);
-            if (message.plugin === "task-send-failure-demo") {
-              throw new Error("enqueue failure marker");
-            }
-          },
+        async (message) => {
+          attempted.push(message);
+          if (message.plugin === "task-send-failure-demo") {
+            throw new Error("enqueue failure marker");
+          }
         },
       ),
     ).rejects.toThrow("enqueue failure marker");
@@ -864,6 +866,7 @@ describe("plugin background tasks", () => {
     expect(attempted.map((message) => message.plugin)).toEqual([
       "task-send-failure-demo",
       "task-send-success-demo",
+      "event-search",
     ]);
   });
 
@@ -893,7 +896,7 @@ describe("plugin background tasks", () => {
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
-      { send: (message) => queue.send(message) },
+      (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
     setPlugins([]);

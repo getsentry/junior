@@ -30,17 +30,19 @@ import {
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
-  durationMs?: number;
-  errorMessage?: string;
-  providerError?: unknown;
+  durationMs?: number | undefined;
+  errorMessage?: string | undefined;
+  /** Sentry event that reported this failed run. The agent run sets it. */
+  eventId?: string | undefined;
+  providerError?: unknown | undefined;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
   reasoningLevel?: TurnReasoningLevel;
-  stopReason?: string;
+  stopReason?: string | undefined;
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   usedPrimaryText: boolean;
 }
 
@@ -56,8 +58,8 @@ export interface AgentRunResult {
   blocked?: BlockedReport;
   /** Set when the run ended with no reply. */
   noReply?: NoReply;
-  sandboxRef?: SandboxRef;
-  piMessages?: PiMessage[];
+  sandboxRef?: SandboxRef | undefined;
+  piMessages?: PiMessage[] | undefined;
   diagnostics: AgentTurnDiagnostics;
 }
 
@@ -65,12 +67,12 @@ export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
   toolCalls: string[];
-  sandboxRef?: SandboxRef;
+  sandboxRef?: SandboxRef | undefined;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
   reasoningLevel: TurnReasoningLevel;
   assistantUserName?: string;
   modelId: string;
@@ -104,14 +106,19 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n");
+  // A `noReply` call ends the Turn with nothing posted, whatever text the run
+  // also wrote.
+  const noReplyCall = readNoReply(newMessages);
+  const primaryText = noReplyCall
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
   // A tool-call tail is not a no-reply. Only the tool, or a final response that
   // is only a legacy marker, is.
   const terminalTexts = terminalAssistantMessages.map((message) =>
@@ -120,9 +127,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const legacyMarkerOnly =
     terminalTexts.some((text) => isLegacyNoReplyMarker(text)) &&
     terminalTexts.every((text) => !text || isLegacyNoReplyMarker(text));
-  const noReply = primaryText
-    ? undefined
-    : (readNoReply(newMessages) ?? (legacyMarkerOnly ? {} : undefined));
+  const noReply =
+    noReplyCall ?? (!primaryText && legacyMarkerOnly ? {} : undefined);
   const noReplyRequested = Boolean(noReply);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
@@ -214,9 +220,9 @@ function buildDiagnostics(
   result: {
     outcome: AgentTurnDiagnostics["outcome"];
     usedPrimaryText: boolean;
-    stopReason?: string;
-    errorMessage?: string;
-    lastAssistant?: unknown;
+    stopReason?: string | undefined;
+    errorMessage?: string | undefined;
+    lastAssistant?: unknown | undefined;
   },
 ): AgentTurnDiagnostics {
   const { outcome, errorMessage, lastAssistant } = result;

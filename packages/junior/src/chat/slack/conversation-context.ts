@@ -123,7 +123,7 @@ export function resolveSlackChannelTypeFromMessage(
     return undefined;
   }
 
-  const channelType = (raw as Record<string, unknown>).channel_type;
+  const channelType = (raw as Record<string, unknown>)["channel_type"];
   return typeof channelType === "string"
     ? toSlackEventChannelType(channelType.trim())
     : undefined;
@@ -131,12 +131,12 @@ export function resolveSlackChannelTypeFromMessage(
 
 /** Build Slack conversation facts available to runtime consumers. */
 export function resolveSlackConversationContext(input: {
-  botUserId?: string;
-  channelId?: string;
-  channelName?: string;
-  channelTopic?: string;
-  channelDescription?: string;
-  channelType?: SlackEventChannelType;
+  botUserId?: string | undefined;
+  channelId?: string | undefined;
+  channelName?: string | undefined;
+  channelTopic?: string | undefined;
+  channelDescription?: string | undefined;
+  channelType?: SlackEventChannelType | undefined;
 }): SlackConversationContext | undefined {
   const type =
     typeFromSlackChannelType(input.channelType) ??
@@ -163,9 +163,10 @@ export function resolveSlackConversationContext(input: {
 /** Build Slack conversation facts from Junior's persisted Slack thread id. */
 export function resolveSlackConversationContextFromThreadId(input: {
   threadId?: string;
-  channelName?: string;
+  channelName?: string | undefined;
   visibility?: SlackConversationVisibility;
 }): SlackConversationContext | undefined {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const slackThread = parseSlackThreadId(input.threadId);
   const context = resolveSlackConversationContext({
     channelId: slackThread?.channelId,

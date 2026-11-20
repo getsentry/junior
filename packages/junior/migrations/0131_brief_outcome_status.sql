@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversation_briefs" ADD COLUMN "outcome_status" text;

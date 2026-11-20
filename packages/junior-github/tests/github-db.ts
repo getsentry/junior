@@ -1,30 +1,16 @@
 import {
-  getPostgresWorkerDatabaseUrl,
-  parsePostgresHarnessConfig,
-} from "@sentry/junior-testing/postgres";
+  createPostgresTestFixture,
+  type PostgresTestFixture,
+} from "@sentry/junior-testing/postgres/fixture";
 import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import { inject } from "vitest";
 import type { GitHubDb } from "../src/db/database";
 import { githubSqlSchema } from "../src/db/schema";
 
-export interface GitHubFixture {
-  db(): GitHubDb;
-  close(): Promise<void>;
-}
+export type GitHubFixture = PostgresTestFixture<GitHubDb>;
 
-/**
- * Connect to this worker's migrated database. The setup file empties its
- * tables before each test.
- */
+/** Connect to this worker's migrated GitHub plugin database. */
 export async function createGitHubFixture(): Promise<GitHubFixture> {
-  const config = parsePostgresHarnessConfig(inject("githubPostgresHarness"));
-  const pool = new pg.Pool({
-    application_name: config.applicationName,
-    connectionString: await getPostgresWorkerDatabaseUrl(config),
-  });
-  return {
-    db: () => drizzle(pool, { schema: githubSqlSchema }),
-    close: () => pool.end(),
-  };
+  return await createPostgresTestFixture((pool) =>
+    drizzle(pool, { schema: githubSqlSchema }),
+  );
 }

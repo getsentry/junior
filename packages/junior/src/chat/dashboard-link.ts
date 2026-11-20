@@ -15,7 +15,9 @@ let dashboardConversationLinkOptions:
   | undefined;
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {
@@ -38,17 +40,17 @@ function normalizeDashboardPath(
 function resolveDashboardBaseURL(
   config: DashboardConversationLinkOptions,
 ): string {
-  const explicit = config.baseURL ?? process.env.JUNIOR_BASE_URL;
+  const explicit = config.baseURL ?? process.env["JUNIOR_BASE_URL"];
   if (explicit?.trim()) {
     return stripTrailingSlashes(withHttps(explicit.trim()));
   }
 
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
   if (vercelProd) {
     return stripTrailingSlashes(withHttps(vercelProd));
   }
 
-  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const vercelUrl = process.env["VERCEL_URL"]?.trim();
   if (vercelUrl) {
     return stripTrailingSlashes(withHttps(vercelUrl));
   }
@@ -84,6 +86,23 @@ export function getDashboardConversationLink(
 ): string | undefined {
   return resolveDashboardPath(
     `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+/**
+ * Return whether a URL is under the core dashboard base path. Other pages on
+ * the same host are not Junior's.
+ */
+export function isDashboardLink(url: URL): boolean {
+  const root = resolveDashboardPath("/");
+  if (!root) return false;
+  const base = new URL(root);
+  const prefix = base.pathname.endsWith("/")
+    ? base.pathname
+    : `${base.pathname}/`;
+  return (
+    url.origin === base.origin &&
+    (url.pathname.startsWith(prefix) || `${url.pathname}/` === prefix)
   );
 }
 

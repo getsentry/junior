@@ -1,7 +1,7 @@
 import * as Sentry from "@/chat/sentry";
 
 function getSentryOrgSlug(): string | undefined {
-  const slug = process.env.SENTRY_ORG_SLUG?.trim();
+  const slug = process.env["SENTRY_ORG_SLUG"]?.trim();
   return slug || undefined;
 }
 
@@ -70,12 +70,5 @@ export function buildSentryEventUrl(eventId: string): string | undefined {
   return buildSentryOrgPath({
     path: "issues/",
     query: { query: eventId },
-  });
-}
-
-/** Build a Sentry trace URL only when the runtime has enough Sentry config. */
-export function buildSentryTraceUrl(traceId: string): string | undefined {
-  return buildSentryOrgPath({
-    path: `performance/trace/${encodeURIComponent(traceId)}/`,
   });
 }

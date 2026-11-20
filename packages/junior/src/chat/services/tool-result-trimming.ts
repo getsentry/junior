@@ -18,7 +18,7 @@ const EDGE_CHARS = 500;
 /** One replacement-history message and the event it was copied from. */
 export interface TrimmableEntry {
   message: PiMessage;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Counts of what trimming removed, for telemetry. */
@@ -113,9 +113,9 @@ export function trimToolResults<T extends TrimmableEntry>(
   entries: T[],
 ): { entries: T[]; trimming: ToolResultTrimming } {
   let latestInstructionIndex = -1;
-  entries.forEach((entry, index) => {
+  for (const [index, entry] of entries.entries()) {
     if (hasTurnInput(entry.message)) latestInstructionIndex = index;
-  });
+  }
   const trimming: ToolResultTrimming = { trimmedResults: 0, removedChars: 0 };
   const trimmed = entries.map((entry, index) => {
     if (

@@ -57,7 +57,7 @@ function escapeHtml(value: string): string {
 }
 
 function errorResponse(error: string, headers?: HeadersInit): Response {
-  return Response.json({ error }, { headers, status: 403 });
+  return Response.json({ error }, { headers: headers ?? {}, status: 403 });
 }
 
 /** Build the Set-Cookie value that keeps the token, or clears it. */
@@ -276,7 +276,11 @@ async function withPreviewBanner(
   const text = live
     ? `You are seeing a preview of ${liveLink}. Read-only. <a href="/?${DEMO_PARAM}" style="color:inherit;text-decoration:underline">Use demo data</a>`
     : `Demo data. <a href="/?${LIVE_PARAM}" style="color:inherit;text-decoration:underline">Use live data from ${host}</a>`;
-  const banner = `<div role="status" style="position:fixed;z-index:2147483647;left:0.75rem;bottom:calc(0.75rem + env(safe-area-inset-bottom));display:flex;gap:0.5rem;align-items:center;padding:0.375rem 0.75rem;border-radius:9999px;background:#6c5fc7;color:#fff;font:600 12px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / 0.3)"><span>${text}</span><button type="button" aria-label="Hide" onclick="this.parentElement.remove()" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></div>`;
+  // On desktop the banner sits above the dashboard pane's profile footer,
+  // which is 4.25rem tall, so both stay in view. Windows 45rem and taller
+  // give the new UI's footer a second spend row, about 1rem more. Phones
+  // have no footer.
+  const banner = `<style>#junior-preview-banner{position:fixed;z-index:2147483647;left:0.75rem;bottom:calc(0.75rem + env(safe-area-inset-bottom));max-width:18.5rem;display:flex;gap:0.5rem;align-items:center;padding:0.375rem 0.75rem;border-radius:0.75rem;background:#6c5fc7;color:#fff;font:600 12px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / 0.3)}@media (min-width:768px){#junior-preview-banner{bottom:calc(4.75rem + env(safe-area-inset-bottom))}}@media (min-width:768px) and (min-height:45rem){#junior-preview-banner{bottom:calc(5.75rem + env(safe-area-inset-bottom))}}</style><div id="junior-preview-banner" role="status"><span>${text}</span><button type="button" aria-label="Hide" onclick="this.parentElement.remove()" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></div>`;
   // Classic scripts run before the deferred client module.
   const script = live
     ? "<script>delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;</script>"
@@ -337,7 +341,7 @@ export function withLivePreview<Rest extends unknown[]>(
 export function withExampleLivePreview<Rest extends unknown[]>(
   app: FetchApp<Rest>,
 ): FetchApp<Rest> {
-  const liveOrigin = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
+  const liveOrigin = process.env["JUNIOR_DASHBOARD_LIVE_ORIGIN"]?.trim();
   if (!liveOrigin) return app;
   if (exampleDashboardAuthRequired()) {
     throw new Error(

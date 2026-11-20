@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
@@ -22,7 +23,10 @@ function toolContext(responses: Response[]) {
   };
   return {
     fetch,
-    tool: createGitHubResolvePullRequestReviewThreadTool(ctx, BOT_EMAIL),
+    tool: bindPluginTool(
+      createGitHubResolvePullRequestReviewThreadTool(BOT_EMAIL),
+      ctx,
+    ),
   };
 }
 

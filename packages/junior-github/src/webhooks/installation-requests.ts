@@ -14,8 +14,10 @@ import {
 import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
+  PULL_REQUEST_CONFLICT_HISTORY,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
+import { loadLatestReviews } from "../pull-request-reviews.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 import {
   graphqlReactionContent,
@@ -155,7 +157,11 @@ export async function loadPullRequestLifecycles(
  */
 export async function searchOpenPullRequestMergeability(
   env: GitHubInstallationEnv,
-  input: { after?: string; author: string; repositoryFullName: string },
+  input: {
+    after?: string | undefined;
+    author: string;
+    repositoryFullName: string;
+  },
 ): Promise<unknown> {
   const { name } = splitRepository(
     input.repositoryFullName,
@@ -173,6 +179,30 @@ export async function searchOpenPullRequestMergeability(
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/** Read the merge conflict history of one pull request, with a read-only token. */
+export async function loadPullRequestConflictHistory(
+  env: GitHubInstallationEnv,
+  pullRequest: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    pullRequest.repositoryFullName,
+    "pull request conflict history",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...PULL_REQUEST_CONFLICT_HISTORY,
+      variables: { name, number: pullRequest.number, owner },
     },
     method: "POST",
     token: token.token,
@@ -320,21 +350,19 @@ export async function loadRepositoryRole(
 const pullRequestSchema = z.object({
   auto_merge: z.object({}).nullable().optional(),
   draft: z.boolean().optional(),
+  head: z.object({ sha: z.string().min(1) }),
   html_url: z.string().url(),
   mergeable_state: z.string().nullable().optional(),
   merged: z.boolean(),
+  // The people whose review is still requested. Teams are listed apart.
+  requested_reviewers: z
+    .array(z.object({ login: z.string().min(1) }))
+    .optional(),
   state: z.enum(["open", "closed"]),
   title: z.string(),
 });
 
-const reviewsSchema = z.array(
-  z.object({
-    state: z.string(),
-    user: z.object({ login: z.string() }).nullable(),
-  }),
-);
-
-/** The pull request facts that decide whether it is ready to merge. */
+/** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
    * At least one approval, and no reviewer still requests changes. Read
@@ -343,28 +371,41 @@ export interface GitHubPullRequestMergeState {
   approved: boolean;
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
+  /**
+   * The commit of the requester's latest change request, when that is their
+   * latest review. Read only when the pull request is open, not a draft, and
+   * GitHub does not ask the requester for a review, or it can merge cleanly.
+   */
+  changesRequestedCommit?: string;
   draft: boolean;
+  /** The commit at the head of the pull request. */
+  headSha: string;
   /**
    * GitHub's `mergeable_state`, such as `clean` or `blocked`. `clean` means
    * that the required reviews and every check and status passed, and there
    * are no conflicts. Undefined when GitHub has not computed it yet.
    */
   mergeableState?: string;
+  /** Logins of the people whose review GitHub still requests. */
+  requestedReviewers: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
 }
 
 /**
- * Read whether a pull request is ready to merge, with a read-only token.
- * GitHub computes `mergeable_state` after a change, so an unknown state is
- * read once more. Reviews load only for an open pull request that is not a
- * draft, has no auto-merge, and can merge cleanly. Each reviewer counts by their latest
- * approval, change request, or dismissal. Comments do not change the result.
+ * Read whether a pull request is ready to merge, and whether the requester
+ * changed their review, with a read-only token. GitHub computes
+ * `mergeable_state` after a change, so an unknown state is read once more.
+ * Reviews load for an open pull request that is not a draft, when it can
+ * merge cleanly or GitHub does not ask the requester for a review. Each
+ * reviewer counts by their latest approval, change request, or dismissal.
+ * Comments do not change the result.
  */
 export async function loadPullRequestMergeState(
   env: GitHubInstallationEnv,
   pullRequest: { number: number; repositoryFullName: string },
+  requesterLogin: string | undefined,
 ): Promise<GitHubPullRequestMergeState> {
   const { owner, name } = splitRepository(
     pullRequest.repositoryFullName,
@@ -391,40 +432,48 @@ export async function loadPullRequestMergeState(
       approved: false,
       autoMerge: Boolean(pull.auto_merge),
       draft: pull.draft === true,
+      headSha: pull.head.sha,
       ...(mergeableState ? { mergeableState } : undefined),
+      requestedReviewers: (pull.requested_reviewers ?? []).map(
+        (reviewer) => reviewer.login,
+      ),
       state: pull.merged ? ("merged" as const) : pull.state,
       title: pull.title,
       url: pull.html_url,
     };
   };
   let state: GitHubPullRequestMergeState = await readPull();
-  if (state.state !== "open" || state.draft || state.autoMerge) return state;
-  if (!state.mergeableState) state = await readPull();
-  if (state.mergeableState !== "clean") return state;
-
-  // A later page can hold a newer review, so read every page. GitHub lists
-  // reviews oldest first.
-  const reviews: z.infer<typeof reviewsSchema> = [];
-  for (let page = 1; ; page++) {
-    const batch = reviewsSchema.parse(
-      await read(`/reviews?per_page=100&page=${page}`),
+  if (state.state !== "open" || state.draft) return state;
+  const canMerge = !state.autoMerge;
+  if (canMerge && !state.mergeableState) state = await readPull();
+  const login = requesterLogin?.toLowerCase();
+  // GitHub stops asking a reviewer once they review. After a change request,
+  // the requester's review is still wanted when new commits come in.
+  const readsChanges =
+    login !== undefined &&
+    !state.requestedReviewers.some(
+      (reviewer) => reviewer.toLowerCase() === login,
     );
-    reviews.push(...batch);
-    if (batch.length < 100) break;
+  const readsApproval = canMerge && state.mergeableState === "clean";
+  if (!readsApproval && !readsChanges) return state;
+
+  const latestReviews = await loadLatestReviews(
+    async (query) => await read(`/reviews?${query}`),
+  );
+  const reviewStates = [...latestReviews.values()].map(
+    (review) => review.state,
+  );
+  if (readsApproval) {
+    state.approved =
+      reviewStates.includes("APPROVED") &&
+      !reviewStates.includes("CHANGES_REQUESTED");
   }
-  const latestReviews = new Map<string, string>();
-  for (const review of reviews) {
-    if (
-      review.user &&
-      review.state !== "COMMENTED" &&
-      review.state !== "PENDING"
-    ) {
-      latestReviews.set(review.user.login.toLowerCase(), review.state);
-    }
+  const requesterReview = login ? latestReviews.get(login) : undefined;
+  if (
+    requesterReview?.state === "CHANGES_REQUESTED" &&
+    requesterReview.commit_id
+  ) {
+    state.changesRequestedCommit = requesterReview.commit_id;
   }
-  const reviewStates = [...latestReviews.values()];
-  state.approved =
-    reviewStates.includes("APPROVED") &&
-    !reviewStates.includes("CHANGES_REQUESTED");
   return state;
 }

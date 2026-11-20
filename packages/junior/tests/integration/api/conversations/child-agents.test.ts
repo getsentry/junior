@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import {
@@ -19,6 +20,8 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 async function requestDetail(conversationId: string, etag?: string) {
   return await createJuniorApi().request(
@@ -117,7 +120,10 @@ describe("conversation child agents API", () => {
         eq(juniorConversations.conversationId, helper.childConversationId),
       );
 
-    const response = await requestChildAgents(slackParentConversationId);
+    const response = await expectSqlBudget(
+      () => requestChildAgents(slackParentConversationId),
+      { statements: 8, serialRounds: 5 },
+    );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer.childConversationId)).json(),
     );
@@ -257,6 +263,31 @@ describe("conversation child agents API", () => {
       conversationId: slackParentConversationId,
       kind: "root",
       label: "Renamed plan",
+    });
+  });
+
+  it("labels a child that no Agent invocation names from its agent config", async () => {
+    const { conversationStore } = await prepareSlackParentConversation();
+    const childId = await spawnChildWithoutAgentInvocation({
+      actor: slackInvocationInput.actor,
+      conversationStore,
+      idempotencyKey: "agent-tree-without-agent-invocation",
+      parentConversationId: slackParentConversationId,
+      queue: createConversationWorkQueueTestAdapter(),
+      agentConfig: { agentType: "explore", fork: true },
+      title: "Claim check",
+    });
+
+    const response = await requestDetail(childId);
+    expect(
+      conversationDetailReportSchema.parse(await response.json())
+        .agentTree?.[1],
+    ).toEqual({
+      agentType: "explore",
+      conversationId: childId,
+      fork: true,
+      kind: "task",
+      label: "Claim check",
     });
   });
 

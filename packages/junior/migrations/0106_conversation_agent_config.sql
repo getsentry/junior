@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "agent_config_json" jsonb;

@@ -3,10 +3,7 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { throwApiError } from "../http";
-import {
-  conversationWatchesReportSchema,
-  type ConversationWatchesReport,
-} from "../schema/watch";
+import { type ConversationWatchesReport } from "../schema/watch";
 import { readConversationAccessFromSql } from "./access";
 
 /**
@@ -16,7 +13,7 @@ import { readConversationAccessFromSql } from "./access";
  */
 export async function requireConversationWatches(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationWatchesReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");
@@ -67,5 +64,5 @@ export async function requireConversationWatches(
     };
   });
 
-  return conversationWatchesReportSchema.parse({ conversationId, watches });
+  return { conversationId, watches };
 }

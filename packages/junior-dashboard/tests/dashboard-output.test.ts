@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DASHBOARD_CLIENT_ENTRY_NAME,
   DASHBOARD_PUBLIC_ASSET_NAME,
@@ -90,6 +90,9 @@ describe.sequential("dashboard Nitro production output", () => {
       path.join(os.tmpdir(), "junior-dashboard-output-"),
     );
     const originalCwd = process.cwd();
+    // The built app resolves its viewer through the state cache. This job
+    // runs no Redis server, so an ambient REDIS_URL must not reach one.
+    vi.stubEnv("JUNIOR_STATE_ADAPTER", "memory");
 
     try {
       writeFixture(root);
@@ -136,8 +139,10 @@ describe.sequential("dashboard Nitro production output", () => {
       for (const file of staticFiles) {
         expect(file).toMatch(DASHBOARD_PUBLIC_ASSET_NAME);
       }
-      const clientFile = staticFiles.find((file) =>
-        DASHBOARD_CLIENT_ENTRY_NAME.test(file),
+      // The page loads the classic shell for a viewer without the setting.
+      const clientFile = staticFiles.find(
+        (file) =>
+          file.startsWith("classic-") && DASHBOARD_CLIENT_ENTRY_NAME.test(file),
       );
       expect(clientFile).toBeDefined();
 
@@ -228,6 +233,7 @@ describe.sequential("dashboard Nitro production output", () => {
       expect(notFound.status).toBe(404);
     } finally {
       process.chdir(originalCwd);
+      vi.unstubAllEnvs();
       fs.rmSync(root, { force: true, recursive: true });
     }
   }, 60_000);

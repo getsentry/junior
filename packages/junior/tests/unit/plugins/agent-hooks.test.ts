@@ -103,6 +103,8 @@ const TEST_EGRESS = {
   },
 };
 
+const dispatchForIdentity = async () => ({ status: "not_linked" as const });
+
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -319,7 +321,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),
@@ -497,7 +499,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),
@@ -618,6 +620,7 @@ describe("agent plugin hooks", () => {
     let resolveActor:
       | ToolRegistrationHookContext["users"]["resolveActor"]
       | undefined;
+    let disabled: Record<string, string> = { writeTool: "Read-only Turn." };
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -632,44 +635,58 @@ describe("agent plugin hooks", () => {
           events: { "demo.completed": { reach: "resource" } },
         },
         hooks: {
-          tools(ctx) {
+          tools() {
+            return {
+              demoTool: demoPluginTool("Demo tool", "review"),
+              writeTool: demoPluginTool("Write tool"),
+            };
+          },
+          disabledTools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
             expect(ctx.events.canSubscribe).toBe(true);
             resolveActor = ctx.users.resolveActor;
-            return {
-              demoTool: demoPluginTool("Demo tool", "review"),
-            };
+            return disabled;
           },
         },
       }),
     ]);
+    const context = {
+      turnTools: rootTurnTools,
+      conversationId: "slack:DDM:1712345.0001",
+      destination: SLACK_DESTINATION,
+      actor: TEST_ACTOR,
+      egress: TEST_EGRESS,
+      resolveActorIdentity: async () => ({ identity, user }),
+      source: SLACK_SOURCE,
+      workspace: {} as any,
+    };
     try {
-      const tools = getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: "slack:DDM:1712345.0001",
-        destination: SLACK_DESTINATION,
-        actor: TEST_ACTOR,
-        egress: TEST_EGRESS,
-        resolveActorIdentity: async () => ({ identity, user }),
-        source: SLACK_SOURCE,
-        workspace: {} as any,
-      });
+      const tools = getPluginTools(context);
 
       await expect(resolveActor?.()).resolves.toEqual({ identity, user });
       expect(tools).toHaveProperty("agentDemo_demoTool");
-      expect(tools.demoTool).toBeUndefined();
-      expect(tools.agentDemo_demoTool?.identity).toEqual({
+      expect(tools["demoTool"]).toBeUndefined();
+      expect(tools["agentDemo_demoTool"]?.identity).toEqual({
         id: "agent-demo.demoTool",
         name: "demoTool",
         plugin: "agent-demo",
       });
-      expect(tools.agentDemo_demoTool?.source).toEqual({
+      expect(tools["agentDemo_demoTool"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
-      expect(tools.agentDemo_demoTool?.approvalMode).toBe("review");
-      expect(tools.agentDemo_demoTool?.describeProposal?.({})).toBe(
+      expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("review");
+      expect(tools["agentDemo_demoTool"]?.describeProposal?.({})).toBe(
         "Demo tool proposal",
+      );
+      expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
+      expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
+        "Read-only Turn.",
+      );
+
+      disabled = { missingTool: "No tool." };
+      expect(() => getPluginTools(context)).toThrow(
+        'Plugin "agent-demo" disabled unknown tool "missingTool"',
       );
     } finally {
       setPlugins(previous);
@@ -707,11 +724,14 @@ describe("agent plugin hooks", () => {
           isEnabled: () => enabled,
         },
         hooks: {
-          tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(enabled);
+          tools() {
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
+          },
+          disabledTools(ctx) {
+            expect(ctx.events.canSubscribe).toBe(enabled);
+            return {};
           },
         },
       }),
@@ -790,11 +810,14 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(false);
+          tools() {
             return {
               prototypeTool,
             };
+          },
+          disabledTools(ctx) {
+            expect(ctx.events.canSubscribe).toBe(false);
+            return {};
           },
         },
       }),
@@ -809,24 +832,23 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(Object.getPrototypeOf(tools.agentDemo_prototypeTool)).toBe(
-        prototypeTool,
+      expect(tools["agentDemo_prototypeTool"]?.description).toBe(
+        "Prototype tool",
       );
-      expect(tools.prototypeTool).toBeUndefined();
-      expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
-      expect(tools.agentDemo_prototypeTool?.identity).toEqual({
+      expect(tools["prototypeTool"]).toBeUndefined();
+      expect(tools["agentDemo_prototypeTool"]?.approvalMode).toBe("auto");
+      expect(tools["agentDemo_prototypeTool"]?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",
         plugin: "agent-demo",
       });
-      expect(tools.agentDemo_prototypeTool?.source).toEqual({
+      expect(tools["agentDemo_prototypeTool"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
-      const prototypeResult = (await tools.agentDemo_prototypeTool?.execute?.(
-        {},
-        {},
-      )) as ReturnType<PrototypeTool["execute"]> | undefined;
+      const prototypeResult = (await tools[
+        "agentDemo_prototypeTool"
+      ]?.execute?.({}, {})) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
         message: "done",
       });
@@ -862,7 +884,7 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_demoTool).toBeDefined();
+      expect(tools["agentDemo_demoTool"]).toBeDefined();
       expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
     } finally {
       setPlugins(previous);
@@ -897,8 +919,8 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_directTool?.exposure).toBe("direct");
-      expect(tools.agentDemo_defaultTool?.exposure).toBe("deferred");
+      expect(tools["agentDemo_directTool"]?.exposure).toBe("direct");
+      expect(tools["agentDemo_defaultTool"]?.exposure).toBe("deferred");
     } finally {
       setPlugins(previous);
     }
@@ -930,7 +952,7 @@ describe("agent plugin hooks", () => {
         source: LOCAL_SOURCE,
         workspace: {} as any,
       });
-      expect(tools.agentDemo_deployment_create?.identity).toEqual({
+      expect(tools["agentDemo_deployment_create"]?.identity).toEqual({
         id: "agent-demo.deployment_create",
         name: "deployment_create",
         plugin: "agent-demo",
@@ -970,8 +992,8 @@ describe("agent plugin hooks", () => {
           workspace: {} as any,
         },
       );
-      expect(tools.loadSkill).toBeDefined();
-      expect(tools.agentDemo_loadSkill).toBeDefined();
+      expect(tools["loadSkill"]).toBeDefined();
+      expect(tools["agentDemo_loadSkill"]).toBeDefined();
     } finally {
       setPlugins(previous);
     }
@@ -1005,7 +1027,10 @@ describe("agent plugin hooks", () => {
           },
         },
         hooks: {
-          tools(ctx) {
+          tools() {
+            return {};
+          },
+          disabledTools(ctx) {
             captured = ctx;
             return {};
           },
@@ -1149,7 +1174,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async (_event: Event) => {});
-      const routes = getPluginRoutes({ events: { publish } });
+      const routes = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1205,7 +1233,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1271,7 +1302,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1306,6 +1340,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1340,6 +1375,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1379,6 +1415,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1757,7 +1794,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "replace me"
+              ctx.tool.input["command"] === "replace me"
             ) {
               ctx.decision.replaceInput({
                 ...ctx.tool.input,
@@ -1768,7 +1805,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "denied"
+              ctx.tool.input["command"] === "denied"
             ) {
               ctx.decision.deny("blocked by plugin");
             }
@@ -1776,7 +1813,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "redirected"
+              ctx.tool.input["command"] === "redirected"
             ) {
               ctx.decision.redirect("use otherTool instead");
             }
@@ -2021,7 +2058,10 @@ describe("getPluginTools channel resolution", () => {
           description: "Capture plugin context",
         },
         hooks: {
-          tools(ctx) {
+          tools() {
+            return {};
+          },
+          disabledTools(ctx) {
             captured = ctx;
             return {};
           },

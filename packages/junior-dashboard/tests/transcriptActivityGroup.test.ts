@@ -6,6 +6,7 @@ import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
 } from "../src/client/conversations/TranscriptActivityGroup";
+import { liveActivityStep } from "../src/client/conversations/TranscriptLiveStep";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
 
 function tool(
@@ -198,5 +199,27 @@ describe("transcript activity group", () => {
       "2 tool calls · context compacted",
     );
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
+  });
+
+  it("shows the latest reasoning and only a running tool call after it", () => {
+    const thought = (key: string, text: string): RenderedTranscriptEntry => ({
+      key,
+      kind: "reasoning",
+      part: { text, type: "reasoning" },
+      timestamp: 1,
+    });
+    const first = thought("r1", "Read the PR.");
+    const second = thought("r2", "Compare the spans.");
+    expect(liveActivityStep([first, tool("1"), second])).toEqual({
+      reasoning: { key: "r2", text: "Compare the spans." },
+      tool: undefined,
+    });
+    // A finished tool call means Junior is thinking about the next step.
+    expect(liveActivityStep([second, tool("2")]).tool).toBeUndefined();
+    expect(
+      liveActivityStep([first, tool("1"), second, tool("2", "running")]).tool
+        ?.id,
+    ).toBe("2");
+    expect(liveActivityStep([tool("1", "running")]).reasoning).toBeUndefined();
   });
 });

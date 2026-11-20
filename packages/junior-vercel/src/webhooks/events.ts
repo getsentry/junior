@@ -94,7 +94,7 @@ const DEPLOYMENT_OUTCOMES = {
 
 /** Address one deployment through project, target, and optional commit watches. */
 function deploymentTargets(input: {
-  commitSha?: string;
+  commitSha?: string | undefined;
   projectId: string;
   target: VercelDeploymentTarget;
 }) {

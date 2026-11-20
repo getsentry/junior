@@ -1,1 +1,1 @@
-export { linearPlugin } from "./plugin.js";
+export { linearPlugin, type LinearPluginOptions } from "./plugin.js";

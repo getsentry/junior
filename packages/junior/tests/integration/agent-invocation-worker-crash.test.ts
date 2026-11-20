@@ -53,7 +53,7 @@ import {
  * Turn saved for it, then stops the run.
  */
 function readingAgentRunner() {
-  const runs: Array<{ run: AgentRun; turn?: TurnRecord }> = [];
+  const runs: Array<{ run: AgentRun; turn?: TurnRecord | undefined }> = [];
   const agentRunner: AgentRunner = {
     run: async (run) => {
       runs.push({
@@ -222,6 +222,7 @@ describe("agent invocation worker crash", () => {
             reply: { text: "Helper fact.", toolCallId: "helper-reply" },
           },
           sender: helper,
+          turnId: getAgentInvocationTurnId(helper.invocationId),
           state,
         });
         vi.setSystemTime(Date.now() + 60_000);

@@ -1,5 +1,5 @@
 /** Render the compact monochrome Slack mark used for transcript source metadata. */
-export function SlackMark(props: { className?: string }) {
+export function SlackMark(props: { className?: string | undefined }) {
   return (
     <svg
       aria-label="Slack"

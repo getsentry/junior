@@ -94,6 +94,7 @@ describe("agent invocation left over from earlier work", () => {
             messageKey: reply.toolCallId,
             queue,
             sender: orphan,
+            turnId: getAgentInvocationTurnId(orphan.invocationId),
             state,
           });
         }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import * as z from "zod";
 
 const mocks = vi.hoisted(() => ({
@@ -14,10 +14,13 @@ const mocks = vi.hoisted(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
     rerankingModel: vi.fn((modelId: string) => ({ modelId })),
+    transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
-  getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
+  getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
+    { id: "openai/gpt-4o-mini" },
+  ]),
   logException: vi.fn(),
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
@@ -27,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
   streamSimpleAnthropic: vi.fn(),
+  transcribe: vi.fn(),
   withSpan: vi.fn(
     async (
       _name: string,
@@ -68,6 +72,7 @@ vi.mock("ai", () => ({
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
   },
   rerank: mocks.rerank,
+  transcribe: mocks.transcribe,
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -116,15 +121,24 @@ describe("completeText", () => {
       mode: "oidc",
       token: "oidc-token",
     });
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "hello world" }],
-      stopReason: "stop",
-      usage: {
-        input: 12,
-        output: 4,
-        totalTokens: 16,
+    mocks.completeSimple.mockImplementation(
+      async (_model, _context, options) => {
+        await options.onResponse?.({
+          status: 200,
+          headers: { "x-vercel-id": "iad1::iad1::abc-123" },
+        });
+        return {
+          content: [{ type: "text", text: "hello world" }],
+          stopReason: "stop",
+          responseId: "gen_123",
+          usage: {
+            input: 12,
+            output: 4,
+            totalTokens: 16,
+          },
+        };
       },
-    });
+    );
 
     const { completeText, GEN_AI_PROVIDER_NAME } =
       await import("@/chat/pi/client");
@@ -182,8 +196,12 @@ describe("completeText", () => {
       expect.objectContaining({
         "gen_ai.output.messages": expect.any(String),
         "gen_ai.response.finish_reasons": ["stop"],
+        "gen_ai.response.id": "gen_123",
       }),
     );
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.ai.gateway.vercel_id": "iad1::iad1::abc-123",
+    });
   });
 
   it("omits opt-in semantic content for non-public conversation traces", async () => {
@@ -385,7 +403,10 @@ describe("completeText", () => {
       { name: "AI_NoObjectGeneratedError", text: "model output" },
     );
     mocks.generateObject.mockRejectedValue(sdkError);
-    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
+    // The span records usage first, then the error is classified.
+    mocks.noObjectGeneratedErrorIsInstance
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true);
 
     const { completeObject } = await import("@/chat/pi/client");
 
@@ -412,6 +433,115 @@ describe("completeText", () => {
     });
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
+  });
+
+  it("adds reasoning room to the object budget and reports a spent budget", async () => {
+    const ai = await vi.importActual<typeof import("ai")>("ai");
+    const { MockLanguageModelV4 } = await import("ai/test");
+    // Reasoning used most of the budget, so the JSON stops partway through.
+    const model = new MockLanguageModelV4({
+      modelId: "openai/gpt-6-luna",
+      doGenerate: {
+        content: [{ type: "text", text: '{"ok": tr' }],
+        finishReason: { unified: "length", raw: "max_output_tokens" },
+        usage: {
+          inputTokens: {
+            total: 100,
+            noCache: 100,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+          outputTokens: { total: 8_500, text: 5, reasoning: 8_495 },
+        },
+        warnings: [],
+      },
+    });
+    mocks.createGatewayProvider.mockReturnValueOnce({
+      chat: vi.fn(() => model),
+      embeddingModel: vi.fn((modelId: string) => ({ modelId })),
+      rerankingModel: vi.fn((modelId: string) => ({ modelId })),
+      transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
+    });
+    mocks.generateObject.mockImplementationOnce(ai.generateObject);
+    mocks.noObjectGeneratedErrorIsInstance.mockImplementation(
+      ai.NoObjectGeneratedError.isInstance,
+    );
+    onTestFinished(() => {
+      mocks.noObjectGeneratedErrorIsInstance.mockReset();
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+
+    await expect(
+      completeObject({
+        modelId: "openai/gpt-6-luna",
+        schema: z.object({ ok: z.boolean() }),
+        prompt: "return json",
+        maxTokens: 2_500,
+      }),
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({ kind: "invalid_response" });
+      expect(error.cause).toMatchObject({
+        name: "StructuredOutputLengthError",
+        message: "Structured output hit the output token limit",
+      });
+      expect(
+        JSON.stringify(error.cause, Object.getOwnPropertyNames(error.cause)),
+      ).not.toContain('{"ok": tr');
+      return true;
+    });
+    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(8_500);
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.response.finish_reasons": ["length"],
+        "gen_ai.usage.output_tokens": 8_500,
+        "gen_ai.usage.reasoning.output_tokens": 8_495,
+      }),
+    );
+  });
+
+  it.each([
+    [
+      "clamps to the output limit of a catalog model",
+      "mistral/mistral-small",
+      4_000,
+    ],
+    [
+      "keeps the full limit for a model outside the catalog",
+      "plugin/custom",
+      8_500,
+    ],
+  ] as const)("%s", async (_name, modelId, maxOutputTokens) => {
+    mocks.getModels.mockReturnValueOnce([
+      { id: "mistral/mistral-small", maxTokens: 4_000 },
+    ]);
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+        totalTokens: 13,
+      },
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+    await completeObject({
+      modelId,
+      schema: z.object({ ok: z.boolean() }),
+      prompt: "return json",
+      maxTokens: 2_500,
+    });
+
+    expect(mocks.generateObject).toHaveBeenCalledWith(
+      expect.objectContaining({ maxOutputTokens }),
+    );
   });
 
   it("records embedding usage and dimensions on the embedding span", async () => {
@@ -528,5 +658,94 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.total_usd": 0.0000074,
     });
+  });
+});
+
+describe("transcribeFromUrl", () => {
+  const SIGNED_URL = "https://blob.example.test/a.m4a?signature=secret";
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Every span attribute and log that the call recorded. */
+  function recordedTelemetry(): string {
+    return JSON.stringify([
+      mocks.withSpan.mock.calls.map((call) => [call[0], call[2], call[4]]),
+      mocks.setSpanAttributes.mock.calls,
+      mocks.logException.mock.calls,
+    ]);
+  }
+
+  it("records model, audio length, cost, and generation id on the span", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "api_key",
+      token: "gateway-key",
+    });
+    mocks.transcribe.mockResolvedValue({
+      durationInSeconds: 30,
+      language: "eng",
+      providerMetadata: {
+        gateway: { cost: "0.00183336", generationId: "gen_1" },
+      },
+      segments: [{ endSecond: 0.7, startSecond: 0.1, text: "Hello" }],
+      text: "Hello",
+    });
+
+    const { transcribeFromUrl } = await import("@/chat/pi/transcription");
+    const result = await transcribeFromUrl({
+      modelId: "elevenlabs/scribe-v2",
+      sourceUrl: SIGNED_URL,
+    });
+
+    expect(result).toEqual({
+      costUsd: 0.00183336,
+      durationSeconds: 30,
+      entries: [{ kind: "speech", startSeconds: 0.1, text: "Hello" }],
+      language: "eng",
+    });
+    expect(mocks.transcribe.mock.calls[0]?.[0]).toMatchObject({
+      audio: new Uint8Array(),
+      providerOptions: { elevenlabs: { diarize: true, sourceUrl: SIGNED_URL } },
+    });
+    expect(mocks.withSpan.mock.calls[0]?.[1]).toBe("gen_ai.transcription");
+    expect(mocks.withSpan.mock.calls[0]?.[4]).toMatchObject({
+      "gen_ai.operation.name": "transcription",
+      "gen_ai.request.model": "elevenlabs/scribe-v2",
+    });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.total_usd": 0.00183336,
+      "app.transcription.audio_seconds": 30,
+      "app.transcription.entry_count": 1,
+      "gen_ai.response.id": "gen_1",
+    });
+    expect(recordedTelemetry()).not.toContain(SIGNED_URL);
+    expect(recordedTelemetry()).not.toContain("Hello");
+  });
+
+  it("marks a file with no audio on the span without capturing it", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "api_key",
+      token: "gateway-key",
+    });
+    mocks.transcribe.mockRejectedValue(
+      new Error(
+        "File is corrupted. Please ensure it is playable audio. (invalid_audio)",
+      ),
+    );
+
+    const { NoAudioError, transcribeFromUrl } =
+      await import("@/chat/pi/transcription");
+
+    await expect(
+      transcribeFromUrl({
+        modelId: "elevenlabs/scribe-v2",
+        sourceUrl: SIGNED_URL,
+      }),
+    ).rejects.toBeInstanceOf(NoAudioError);
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "error.type": "invalid_audio",
+    });
+    expect(mocks.logException).not.toHaveBeenCalled();
   });
 });

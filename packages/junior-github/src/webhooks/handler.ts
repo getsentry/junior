@@ -34,10 +34,12 @@ import {
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
+import { refreshGitHubPullRequestPreview } from "./pull-request-preview.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
   parseCheckSuitePublishTargets,
+  wantsCheckSuitePassed,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
@@ -46,11 +48,10 @@ import {
 } from "./merge-conflict.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
-  pullRequestReadyTargets,
-  syncGitHubPullRequestReadyNotices,
-} from "./pull-request-ready.js";
+  pullRequestActionTargets,
+  syncGitHubPullRequestActions,
+} from "./pull-request-action.js";
 import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
-import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -163,6 +164,10 @@ export function createGitHubWebhookRoute(args: {
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
+  /** Read one pull request's history for the merge conflict policy. */
+  loadPullRequestConflictHistory?(
+    pullRequest: GitHubPullRequestRef,
+  ): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -173,6 +178,8 @@ export function createGitHubWebhookRoute(args: {
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
+  /** Logins from the `trustedAuthors` plugin option. */
+  trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -239,6 +246,7 @@ export function createGitHubWebhookRoute(args: {
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
+          reviewItems: args.reviewItems,
         });
         if (
           recordedOutcome.applied &&
@@ -302,6 +310,14 @@ export function createGitHubWebhookRoute(args: {
           providerId: pullRequestConversations.pullRequestId,
         });
       }
+      if (eventName === "pull_request") {
+        await refreshGitHubPullRequestPreview({
+          annotations: args.annotations,
+          body,
+          db: args.db,
+          log: args.log,
+        });
+      }
       const pullRequestActivity = normalizeGitHubPullRequestActivity({
         body,
         eventName,
@@ -330,6 +346,12 @@ export function createGitHubWebhookRoute(args: {
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              loadCheckSuites: await wantsCheckSuitePassed({
+                body,
+                deliveryId,
+                hasMatch: args.events.hasMatch,
+                neededMatchKeys: args.events.neededMatchKeys,
+              }),
               ...(args.loadGitHubIncidents
                 ? { loadGitHubIncidents: args.loadGitHubIncidents }
                 : undefined),
@@ -357,6 +379,9 @@ export function createGitHubWebhookRoute(args: {
             ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
             deliveryId,
             eventName,
+            ...(args.trustedAuthors
+              ? { trustedAuthors: args.trustedAuthors }
+              : undefined),
           }),
           hasMatch,
           ...(commitPages
@@ -404,15 +429,19 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          db: args.db,
           deliveryId,
           events,
           hasMatch,
+          loadConflictHistory: args.loadPullRequestConflictHistory,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
+          reviewItems: args.reviewItems,
         })),
       );
       for (const event of events) {
+        // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
         await args.events.publish({
           ...event,
           objectType: event.eventType.startsWith("pull_request.")
@@ -424,7 +453,7 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
-      await syncGitHubPullRequestReadyNotices({
+      await syncGitHubPullRequestActions({
         db: args.db,
         deliveryId,
         env: {
@@ -432,9 +461,10 @@ export function createGitHubWebhookRoute(args: {
           installationIdEnv: args.installationIdEnv,
           privateKeyEnv: args.privateKeyEnv,
         },
+        loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         reviewItems: args.reviewItems,
-        targets: pullRequestReadyTargets(eventName, body),
+        targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
@@ -449,15 +479,6 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         state: args.state,
-      });
-      await syncGitHubPullRequestReviewRequest({
-        body,
-        db: args.db,
-        deliveryId,
-        eventName,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        reviewItems: args.reviewItems,
       });
       if (
         !pullRequestOutcome &&

@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import {
   createEventSource,
   createLocalSource,
@@ -30,11 +31,10 @@ import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
 } from "@/chat/events/notification";
+import { AGENT_PARENT_MESSAGE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
-
-const MAILBOX_TURN_READ_CONCURRENCY = 8;
 
 /** Mailbox Message with the Actor and Source facts needed to start a Turn. */
 export type MailboxTurnInput = {
@@ -43,6 +43,8 @@ export type MailboxTurnInput = {
   /** Grants of a system Actor that a child agent's input continues. */
   credentialContext?: CredentialContext;
   message: InboundMessage;
+  /** The words of a parent message, without its tag and generic instructions. */
+  requestText?: string;
   source: Source;
 };
 
@@ -62,10 +64,10 @@ export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
   args: {
     conversationId: string;
-    location?: Location;
-    savedActor?: Actor;
-    savedSource?: Source;
-    visibility?: ConversationPrivacy;
+    location?: Location | undefined;
+    savedActor?: Actor | undefined;
+    savedSource?: Source | undefined;
+    visibility?: ConversationPrivacy | undefined;
   },
 ): TurnInputFacts | undefined {
   if (isEventConversationMessage(message)) {
@@ -110,7 +112,7 @@ export function turnInputFactsFromConversationMessage(
 export function sourceFromTurnInput(args: {
   conversationId: string;
   source: Source;
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | undefined;
 }): Source {
   if (args.source.kind === "web") {
     return createWebSource(
@@ -131,7 +133,7 @@ function hasEventActor(actors: readonly Actor[] | undefined): boolean {
 }
 
 /** Return the active web Turn for one Conversation, if it has one. */
-export async function getActiveConversationTurnId(
+async function getActiveConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
   const summaries = await listTurnSummaries(conversationId);
@@ -165,12 +167,24 @@ export async function getActiveConversationTurnId(
 export async function listActiveMailboxTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
-  const summaries = await listTurnSummaries(conversationId);
+  const summaries = (await listTurnSummaries(conversationId)).filter(
+    isOpenTurnSummary,
+  );
+  // One cursor read rules out the Turns that are not mailbox Turns, so only
+  // the rest load their Turn history. A legacy cursor with no Source needs
+  // its Actors, which come from Turn history.
+  const stored = await getStoredTurnFields(summaries);
+  const candidates = summaries.filter((_summary, index) => {
+    const fields = stored[index];
+    return (
+      fields !== undefined &&
+      (isActiveMailboxTurn(fields) ||
+        (!fields.source && fields.surface !== "api"))
+    );
+  });
   return (
-    await Promise.all(
-      summaries
-        .filter(isOpenTurnSummary)
-        .map((summary) => getTurnRecord(conversationId, summary.turnId)),
+    await mapBounded(candidates, (summary) =>
+      getTurnRecord(conversationId, summary.turnId),
     )
   ).filter(
     (record): record is TurnRecord =>
@@ -186,7 +200,7 @@ export async function listActiveMailboxTurns(
 export async function listActiveMailboxTurnSources(
   conversationIds: readonly string[],
 ): Promise<Map<string, Array<Source | undefined>>> {
-  const limit = pLimit(MAILBOX_TURN_READ_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const summaries = (
     await Promise.all(
       conversationIds.map((conversationId) =>
@@ -268,7 +282,7 @@ export async function getAuthPausedConversationTurnId(
 }
 
 /** Read one web input batch as Turn input. A batch with no web input gives []. */
-export function parseWebMessages(
+function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {
@@ -332,7 +346,12 @@ export function getEventBatchDelayMs(
   nowMs = Date.now(),
 ): number {
   const first = messages[0];
-  if (!first || !isEventMailboxMetadata(first.input.metadata)) {
+  // A parent agent task starts at once, as an agent invocation does.
+  if (
+    !first ||
+    !isEventMailboxMetadata(first.input.metadata) ||
+    first.input.metadata.event.eventType === AGENT_PARENT_MESSAGE_EVENT_TYPE
+  ) {
     return 0;
   }
   const waitMs = Math.min(

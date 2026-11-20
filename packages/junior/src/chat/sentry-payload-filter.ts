@@ -16,9 +16,6 @@ type RequestContainer = {
   query_string?: unknown;
   url?: string;
 };
-type SentryErrorEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSend"]>
->[0];
 type SentrySpan = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSendSpan"]>
 >[0];
@@ -63,7 +60,7 @@ const SDK_REQUEST_HEADER_PREFIX = "http.request.header.";
 // Span names such as `GET https://slack.com/api/users.info?user=U1` repeat the
 // request URL. Query spans use `?` placeholders, so only method-and-URL names
 // are rewritten.
-const URL_SPAN_NAME = /^([A-Z]+ )((?:https?:\/\/|\/)\S*)$/;
+const SPAN_METHOD = /^[A-Z]+$/;
 
 /**
  * Drop the query and fragment, hide the sandbox egress credential token, and
@@ -79,8 +76,15 @@ function scrubUrl(value: string): string {
 }
 
 function scrubSpanName(name: string): string {
-  const match = URL_SPAN_NAME.exec(name);
-  return match ? `${match[1]}${scrubUrl(match[2] ?? "")}` : name;
+  const space = name.indexOf(" ");
+  if (space < 1) return name;
+  const method = name.slice(0, space);
+  const target = name.slice(space + 1);
+  const isUrl = ["https://", "http://", "/"].some((prefix) =>
+    target.startsWith(prefix),
+  );
+  if (!SPAN_METHOD.test(method) || !isUrl || /\s/.test(target)) return name;
+  return `${method} ${scrubUrl(target)}`;
 }
 
 function isSecretHeaderAttribute(key: string): boolean {
@@ -244,20 +248,21 @@ function scrubContainer(container: AttributeContainer | undefined): void {
   scrubSensitiveUrlAttributes(container.attributes);
 }
 
-/** Remove private conversation payloads and boundary secrets from error events. */
-export function scrubPrivateSentryEvent(
-  event: SentryErrorEvent,
-): SentryErrorEvent | null {
+/**
+ * Remove private conversation payloads and boundary secrets from error and
+ * user feedback events.
+ */
+export function scrubPrivateSentryEvent<T extends Sentry.Event>(event: T): T {
   const eventRecord = event as AttributeContainer;
   scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
+  scrubSensitiveRequest(event.request);
   if (event.transaction) {
     event.transaction = scrubSpanName(event.transaction);
   }
-  scrubContainer(event.contexts?.trace as AttributeContainer);
+  scrubContainer(event.contexts?.trace);
 
   for (const breadcrumb of event.breadcrumbs ?? []) {
-    scrubContainer(breadcrumb as AttributeContainer);
+    scrubContainer(breadcrumb);
   }
 
   return event;

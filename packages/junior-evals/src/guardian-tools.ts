@@ -88,9 +88,13 @@ const context: ToolRuntimeContext = {
     },
   },
   // Guardian evals never run a tool, so no tool touches the sandbox or
-  // storage. Storage is set so the agent's attachment tools exist.
+  // storage. Storage and `createPreview` are set so the agent's attachment
+  // and preview tools exist.
   attachmentStorage: {} as ToolRuntimeContext["attachmentStorage"],
-  workspace: {} as ToolRuntimeContext["workspace"],
+  workspace: {
+    ...({} as ToolRuntimeContext["workspace"]),
+    createPreview: unavailable,
+  },
   // A root Run can start and message child agents.
   messageAgent: unavailable,
   spawnAgent: unavailable,
@@ -104,9 +108,9 @@ let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;
 
 async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
   // The Google plugin registers its tools only when it is configured.
-  process.env.GOOGLE_CLIENT_ID ??= "guardian-eval";
-  process.env.GOOGLE_CLIENT_SECRET ??= "guardian-eval";
-  process.env.GOOGLE_WORKSPACE_ACCOUNT_EMAIL ??= "junior@example.com";
+  process.env["GOOGLE_CLIENT_ID"] ??= "guardian-eval";
+  process.env["GOOGLE_CLIENT_SECRET"] ??= "guardian-eval";
+  process.env["GOOGLE_WORKSPACE_ACCOUNT_EMAIL"] ??= "junior@example.com";
   // createApp registers the plugins as a host does. It only reads the env
   // that the Guardian eval config already set, so the reviewer model stays
   // the same, and the database client it makes does not connect.

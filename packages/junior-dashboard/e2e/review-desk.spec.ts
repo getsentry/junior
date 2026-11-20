@@ -1,4 +1,5 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
+import { expectRequestBudget } from "./request-budget";
 import type { Page } from "@playwright/test";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -11,6 +12,7 @@ const viewer = {
 
 const base = {
   addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
@@ -30,6 +32,7 @@ const conversationId = "slack:CQA123:1770003600.000200";
 const rollout = {
   ...base,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
   id: "item-rollout",
@@ -105,6 +108,7 @@ const answered = {
 const migration = {
   ...license,
   addedByConversationId: conversationId,
+  rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
   createdAt: "2026-08-07T10:20:00.000Z",
@@ -151,7 +155,7 @@ async function mockReviewItems(
     }
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
-      const id = decodeURIComponent(action[1]!);
+      const id = decodeURIComponent(action[1]);
       actions.push({ body: route.request().postDataJSON(), id });
       const acted = items.find((i) => i.id === id);
       return acted
@@ -250,18 +254,48 @@ test("each review item gets a fresh answer form", async ({
   });
 });
 
+test("an item keeps unsent answers after another item or a reload", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  const list = page.getByRole("navigation", { name: "Review items" });
+  await detail.getByRole("radio", { name: "Approve" }).click();
+  await detail.getByLabel("Reason").fill("MIT license, no");
+
+  await list.getByRole("link", { name: new RegExp(audit.title) }).click();
+  await expect(
+    detail.getByRole("heading", { name: audit.title }),
+  ).toBeVisible();
+  await list.getByRole("link", { name: new RegExp(license.title) }).click();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
+
+  await page.reload();
+  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(detail.getByLabel("Reason")).toHaveValue("MIT license, no");
+});
+
 test("the inbox shows an item in its conversation", async ({
   dashboard,
   page,
 }) => {
   await mockReviewItems(page);
-  await page.goto(`${dashboard.baseURL}/review`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   const list = page.getByRole("navigation", { name: "Review items" });
-  // The item that waited longest opens first.
-  await expect(
-    detail.getByRole("heading", { name: license.title }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/review`);
+      // The item that waited longest opens first.
+      await expect(
+        detail.getByRole("heading", { name: license.title }),
+      ).toBeVisible();
+    },
+    { requests: 9, serialRounds: 2 },
+  );
   await expect(
     list.getByRole("link", { name: new RegExp(license.title) }),
   ).toHaveAttribute("aria-current", "page");
@@ -583,7 +617,7 @@ test("Send sends docked picks and asks before a message drops others", async ({
   // Go back keeps the draft and the picks.
   await confirm.getByRole("button", { name: "Go back" }).click();
   await expect(confirm).toBeHidden();
-  await expect(composer).toHaveValue("Friday works.");
+  await expect(composer).toHaveText("Friday works.", { useInnerText: true });
   await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
   expect(messages).toEqual([]);
 

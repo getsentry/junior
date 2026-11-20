@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import { viewAsParticipant } from "./conversationMenu";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -78,6 +78,7 @@ async function mockWaitingConversation(
                   {
                     ...reviewItem,
                     addedByConversationId: waitingId,
+                    rootConversationId: waitingId,
                     conversationIds: [waitingId],
                   },
                 ]
@@ -117,6 +118,7 @@ async function sidebarSectionOf(
 async function mockChangingWaiting(page: Page) {
   let waiting = false;
   const versions = {
+    conversationDetails: {},
     conversations: "feed-1",
     reviewItems: "review-1",
     spend: "spend-1",
@@ -346,7 +348,9 @@ test.describe("conversation sections", () => {
       lightTheme: true,
       view: "desktop",
     });
-    // The tooltip lists every waiting item in full.
+    // The tooltip lists every waiting item in full. The screenshot uses this
+    // size. A resize would move the pointer off the chip and close it.
+    await page.setViewportSize(desktop);
     await chip.hover();
     const tooltip = page.getByRole("tooltip");
     await expect(tooltip.getByRole("listitem")).toHaveText([
@@ -407,6 +411,9 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
+    // The screenshot uses this size. A resize would move the pointer off the
+    // list and let go of the order.
+    await page.setViewportSize(desktop);
     const setWaiting = await mockChangingWaiting(page);
     await page.goto(dashboard.baseURL);
     const sidebar = page.getByRole("navigation", {

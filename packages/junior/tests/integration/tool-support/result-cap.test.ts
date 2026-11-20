@@ -72,20 +72,13 @@ function agentTools(
   writeFiles: (files: SavedFile[]) => Promise<void>,
   toolDefinitions: Record<string, AnyToolDefinition> = definitions,
 ) {
-  const tools = createPiAgentTools(
-    toolDefinitions,
-    new SkillSandbox([], []),
-    {},
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    "private",
-    undefined,
-    allowAll,
-    { countToolCall: () => 1, workspace: { writeFiles } },
-  );
+  const tools = createPiAgentTools(toolDefinitions, new SkillSandbox([], []), {
+    spanContext: {},
+    searchToolsCost: { owner: "none" },
+    conversationPrivacy: "private",
+    actionReview: allowAll,
+    codeMode: { countToolCall: () => 1, workspace: { writeFiles } },
+  });
   return (name: string) => {
     const found = tools.find((candidate) => candidate.name === name);
     if (!found) throw new Error(`Missing agent tool: ${name}`);
@@ -133,7 +126,7 @@ async function bigMcpTool(): Promise<{
   ]);
   expect(await manager.activateProvider("docs")).toBe(true);
   return {
-    callMcpTool: createCallMcpToolTool(manager) as AnyToolDefinition,
+    callMcpTool: createCallMcpToolTool(manager),
     close: () => manager.close(),
   };
 }
@@ -162,7 +155,7 @@ describe("tool result cap", () => {
     const fullText = JSON.stringify({ text: BIG_TEXT });
     expect(writeFiles).toHaveBeenCalledOnce();
     const file = writeFiles.mock.calls[0]![0][0]!;
-    expect(file.path).toMatch(/^\/tmp\/jr\/[0-9a-f]{8}$/);
+    expect(file.path).toMatch(/^\/tmp\/jr\/spills\/[0-9a-f]{8}$/);
     // Compare large strings as booleans, so a failure does not print them.
     // JSON is saved pretty-printed, so readFile and grep can page through it.
     expect(file.content === JSON.stringify({ text: BIG_TEXT }, null, 2)).toBe(

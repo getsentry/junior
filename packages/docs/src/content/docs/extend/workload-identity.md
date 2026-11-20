@@ -31,6 +31,7 @@ env-vars:
 
 domains:
   - redash.example.com
+tools-send-no-credential: true
 api-headers:
   Authorization: Key ${REDASH_API_KEY}
 
@@ -53,7 +54,9 @@ credentials:
 | `gcp`     | Google Cloud settings. Set `gcp` or `azure`, not both.                                                            |
 | `azure`   | Microsoft Entra ID settings.                                                                                      |
 
-Junior always replaces the `header` value that the sandbox sends. Top-level `api-headers` can add other headers for the same domains, but they must not set the `header` name.
+Junior adds the token only to a request that asks for it. `curl` and most tools send no credential, so set `tools-send-no-credential: true`. A tool can also send `Bearer host_managed_credential` in `header`, and Junior replaces it with the token. A request that sends its own value in `header` or `Authorization` keeps that value. See [Placeholders](/extend/build-a-plugin/#placeholders).
+
+Top-level `api-headers` can add other headers for the same domains, but they must not set the `header` name.
 
 Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to declared `env-vars`, with or without a default.
 
@@ -64,10 +67,21 @@ Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to decl
 | `workload-identity-provider` | `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>`                         |
 | `service-account`            | Email of the service account that Junior impersonates.                                                         |
 | `token`                      | `service-account-jwt`, `id-token`, or `access-token`.                                                          |
-| `audience`                   | For `service-account-jwt` and `id-token`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
+| `audience`                   | For `service-account-jwt` and `id-token`. An `https` URL on one of `domains`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
 | `scopes`                     | For `access-token`. A list of Google API scopes.                                                               |
 
 Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
+
+## Token targets
+
+All plugins federate as the same Vercel deployment. So a manifest can name any service account or app that the deployment can use, and plugin manifests are trusted operator config. Junior limits where each token can go:
+
+- Junior sends a token only to the plugin's own `domains`, and two plugins cannot list the same domain.
+- The `audience` of a `service-account-jwt` or `id-token` must be on one of the plugin's `domains`. Another plugin cannot get a token for your service.
+- An `access-token` works on every Google API that the service account can use. So all `domains` must be Google API hosts (`*.googleapis.com`).
+- Two plugins cannot use the same service account, or the same Azure tenant and client ID.
+
+Junior cannot bind an `access-token` or an Azure `scope` to one service. For these, IAM is the limit: give the service account or app access to the one upstream that the plugin needs, and no more.
 
 ### Azure fields
 
@@ -96,7 +110,7 @@ credentials:
 
    Team members can pull development OIDC tokens to their own computers. Without this condition, those tokens can mint the same credentials.
 
-4. Create one service account for each plugin. Give it access to that one upstream only. For IAP, grant it **IAP-secured Web App User** on the protected resource. For Cloud Run, grant it **Cloud Run Invoker** on the service.
+4. Create one service account for each plugin. Junior rejects two plugins that use the same one. Give it access to that one upstream only. For IAP, grant it **IAP-secured Web App User** on the protected resource. For Cloud Run, grant it **Cloud Run Invoker** on the service.
 5. On the service account, grant the workload identity principal the smallest role for the token kind:
 
    | `token`               | Role                                         |
@@ -129,7 +143,9 @@ Run `junior check` to validate the manifest. Then ask Junior to call the service
 
 If a token exchange fails, the command fails with a message such as `Could not mint the redash workload identity credential: Google IAM Credentials returned HTTP 403.` The message names the failing step: Vercel OIDC, Google STS, Google IAM Credentials, or Microsoft Entra ID. Junior does not ask anyone to connect an account. Fix the trust or role setup for that step.
 
-If the token is minted but the service returns HTTP 401 or 403, the message is `Upstream rejected the redash workload identity credential with HTTP 403.` Check the role that the service account or app has on that service. For a plugin that also sends static `api-headers`, also check those values.
+If the token is minted but the service returns HTTP 401, the message is `Upstream rejected the redash workload identity credential with HTTP 401.` Check the trust setup and the token `audience` or `scope`.
+
+An HTTP 403 goes back to the command with the service's own response body, such as a BigQuery `accessDenied` or `quotaExceeded` error. Junior keeps the token, because a new token acts as the same service account or app. Check the role that it has on that service. For a plugin that also sends static `api-headers`, also check those values.
 
 ## Next step
 

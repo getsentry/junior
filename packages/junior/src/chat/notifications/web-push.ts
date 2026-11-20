@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
@@ -30,14 +31,16 @@ const PUSH_TTL_SECONDS = 12 * 60 * 60;
 const PUSH_TIMEOUT_MS = 10_000;
 
 function subjectFromBaseUrl(): string | undefined {
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
+  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim();
   if (!baseUrl) return undefined;
-  return /^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
+    ? baseUrl
+    : `https://${baseUrl}`;
 }
 
 /** Web Push accepts only an `https:` or `mailto:` VAPID subject. */
 function isVapidSubject(subject: string): boolean {
-  return /^(https:\/\/|mailto:)/.test(subject);
+  return subject.startsWith("https://") || subject.startsWith("mailto:");
 }
 
 /**
@@ -46,11 +49,11 @@ function isVapidSubject(subject: string): boolean {
  * an `http://` base URL.
  */
 export function readWebPushConfig(): WebPushConfig | undefined {
-  const publicKey = process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY?.trim();
+  const publicKey = process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"]?.trim();
   const privateKey = readWebPushPrivateKey();
   if (!publicKey || !privateKey) return undefined;
   const subject =
-    process.env.JUNIOR_WEB_PUSH_SUBJECT?.trim() || subjectFromBaseUrl();
+    process.env["JUNIOR_WEB_PUSH_SUBJECT"]?.trim() || subjectFromBaseUrl();
   if (!subject || !isVapidSubject(subject)) return undefined;
   return { privateKey, publicKey, subject };
 }
@@ -137,10 +140,8 @@ export async function sendPushNotificationToUser(args: {
 }): Promise<PushNotificationResult> {
   const subscriptions = await listPushSubscriptions(args.db, args.userId);
   const body = JSON.stringify(args.payload);
-  const outcomes = await Promise.all(
-    subscriptions.map((subscription) =>
-      sendToDevice(subscription, body, args.config),
-    ),
+  const outcomes = await mapBounded(subscriptions, (subscription) =>
+    sendToDevice(subscription, body, args.config),
   );
   const gone = subscriptions
     .filter((_, index) => outcomes[index] === "gone")

@@ -23,6 +23,10 @@ import type {
   SelectionSetNode,
 } from "graphql";
 
+// graphql-js loads lazily, so this file compares `kind` with its stable string
+// values instead of importing the `Kind` enum at startup.
+/* oxlint-disable typescript/no-unsafe-enum-comparison */
+
 /** Largest GraphQL body that the host reads before it issues credentials. */
 const GRAPHQL_BODY_LIMIT_BYTES = 64 * 1024;
 
@@ -72,6 +76,7 @@ export async function readGraphqlRequest(
   }
   const operations: PluginGraphqlOperation[] = [];
   for (const entry of parsed) {
+    // oxlint-disable-next-line no-await-in-loop -- Stop at the first entry that cannot be read.
     const operation = await readOperation(entry);
     if (typeof operation === "string") {
       return unreadable(operation);

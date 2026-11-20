@@ -1,6 +1,7 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GoogleOperation } from "../credentials";
+import type { EditableFile } from "./editable-file";
 import {
   googleApiError,
   googleApiRequest,
@@ -11,14 +12,17 @@ import {
 const FILE_TYPES = {
   document: {
     label: "Google Doc",
+    linkRoot: "document",
     mimeType: "application/vnd.google-apps.document",
   },
   presentation: {
     label: "Google Slides presentation",
+    linkRoot: "presentation",
     mimeType: "application/vnd.google-apps.presentation",
   },
   spreadsheet: {
     label: "Google Sheet",
+    linkRoot: "spreadsheets",
     mimeType: "application/vnd.google-apps.spreadsheet",
   },
 } as const;
@@ -37,6 +41,20 @@ export function googleFileType(mimeType: string): GoogleFileType | undefined {
   return GOOGLE_FILE_TYPES.find(
     (type) => FILE_TYPES[type].mimeType === mimeType,
   );
+}
+
+/** Return the first path segment of a file type's links, such as `spreadsheets`. */
+export function googleFileLinkRoot(type: GoogleFileType): string {
+  return FILE_TYPES[type].linkRoot;
+}
+
+/**
+ * Return the file type that a Docs, Sheets, or Slides link names in its
+ * path, such as `/spreadsheets/d/<id>`. Other links name no type.
+ */
+export function googleLinkFileType(url: URL): GoogleFileType | undefined {
+  const root = url.pathname.split("/")[1];
+  return GOOGLE_FILE_TYPES.find((type) => FILE_TYPES[type].linkRoot === root);
 }
 
 /** File id or link input for the tools that use one file. */
@@ -72,7 +90,7 @@ export interface FileReference {
 export function parseFileReference(value: string): FileReference {
   let fileId = value;
   let resourceKey: string | undefined;
-  if (/^https?:\/\//.test(value)) {
+  if (value.startsWith("https://") || value.startsWith("http://")) {
     const url = URL.parse(value);
     fileId =
       url?.pathname.match(/\/d\/([^/]+)/)?.[1] ??
@@ -103,6 +121,7 @@ export async function googleFileRequest(
   file: FileReference,
   input: {
     body?: unknown;
+    editable?: EditableFile;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -127,33 +146,43 @@ export async function googleFileRequest(
 
 const driveFileSchema = z.object({
   capabilities: z.object({ canEdit: z.boolean().optional() }).optional(),
+  driveId: z.string().optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
   name: z.string(),
+  owners: z.array(z.object({ emailAddress: z.string().optional() })).optional(),
   webViewLink: z.string().optional(),
 });
 
 /**
- * Read the Drive metadata of one file, and require one of the given types.
- *
- * `drive.readonly` can read any Drive file, so each tool checks the type
- * before it reads content or comments.
+ * Read the Drive metadata of one file. Use `readRequesterFile` or
+ * `requireEditableFile`, which check the requester first.
  */
-export async function readGoogleFile(
+export async function readGoogleFileMetadata(
   ctx: GoogleToolContext,
   file: FileReference,
-  types: readonly GoogleFileType[],
 ) {
   const response = await googleFileRequest(ctx, file, {
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "capabilities(canEdit),id,mimeType,modifiedTime,name,webViewLink",
+      fields:
+        "capabilities(canEdit),driveId,id,mimeType,modifiedTime,name,owners(emailAddress),webViewLink",
       supportsAllDrives: "true",
     },
   });
-  const metadata = driveFileSchema.parse(response.body);
+  return driveFileSchema.parse(response.body);
+}
+
+/**
+ * Require one of the given file types. Call it only after the requester
+ * check: the error names the file.
+ */
+export function requireFileType<T extends { mimeType: string; name: string }>(
+  metadata: T,
+  types: readonly GoogleFileType[],
+): T & { type: GoogleFileType } {
   const type = googleFileType(metadata.mimeType);
   if (!type || !types.includes(type)) {
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");
@@ -166,8 +195,8 @@ export async function readGoogleFile(
 
 /** Optional output fields shared by the tools that read one file. */
 export function fileOutputFields(file: {
-  modifiedTime?: string;
-  webViewLink?: string;
+  modifiedTime?: string | undefined;
+  webViewLink?: string | undefined;
 }) {
   return {
     ...(file.modifiedTime ? { modified_at: file.modifiedTime } : undefined),

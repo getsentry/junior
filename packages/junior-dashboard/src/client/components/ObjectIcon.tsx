@@ -6,7 +6,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { cn } from "../styles";
 
-const tones = {
+/** Text color for each object tone, such as a pull request's state. */
+export const objectToneClass = {
   neutral: "text-dashboard-text-muted",
   success: "text-emerald-500",
   danger: "text-rose-500",
@@ -18,8 +19,8 @@ const tones = {
 /** Keep object identity visible at card, link, and compact badge sizes. */
 export function ObjectIcon(props: {
   objectType: ObjectType;
-  status?: string;
-  facts?: { type: string };
+  status?: string | undefined;
+  facts?: { type: string } | undefined;
   size?: number;
   decorative?: boolean;
   className?: string;
@@ -33,7 +34,7 @@ export function ObjectIcon(props: {
       role={props.decorative ? undefined : "img"}
       className={cn(
         "inline-block shrink-0 align-middle",
-        tones[presentation.tone],
+        objectToneClass[presentation.tone],
         props.className,
       )}
       width={props.size ?? 16}

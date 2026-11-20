@@ -1,5 +1,6 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   index,
   jsonb,
@@ -10,6 +11,26 @@ import {
 import type { IdentityKind } from "@/chat/identities/identity";
 import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
+
+type SearchColumns = {
+  displayName: AnyPgColumn;
+  handle: AnyPgColumn;
+  kind: AnyPgColumn;
+  provider: AnyPgColumn;
+};
+
+/** Words of a Slack person's name and handle, for prefix search. */
+export function slackPersonSearchDocument(table: SearchColumns): SQL {
+  return sql`to_tsvector('simple', coalesce(${table.displayName}, '') || ' ' || coalesce(${table.handle}, ''))`;
+}
+
+/**
+ * Slack people. Literal values, so a prepared query with this predicate
+ * can use the partial index.
+ */
+export function slackPersonPredicate(table: SearchColumns): SQL {
+  return sql`${table.provider} = 'slack' AND ${table.kind} = 'user'`;
+}
 
 export const juniorIdentities = pgTable(
   "junior_identities",
@@ -45,5 +66,10 @@ export const juniorIdentities = pgTable(
         sql`${table.emailVerified} = true AND ${table.emailNormalized} IS NOT NULL`,
       ),
     index("junior_identities_kind_provider_idx").on(table.kind, table.provider),
+    // The composer `@` menu matches word prefixes of Slack names and handles.
+    // `api/people/search.query.ts` filters with the same two helpers.
+    index("junior_identities_slack_person_search_idx")
+      .using("gin", slackPersonSearchDocument(table))
+      .where(slackPersonPredicate(table)),
   ],
 );

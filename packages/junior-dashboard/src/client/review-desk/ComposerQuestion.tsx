@@ -26,12 +26,17 @@ import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
+import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
+import { ReviewItemTitle } from "./ReviewItemPeople";
+import { reviewItemTitleText } from "./reviewItemFormat";
 
 /** Lets the message box send the picks of the docked questions. */
 export type ComposerQuestionAnswers = {
   /** Send every question that has picks. Resolves false when one fails. */
   send(): Promise<boolean>;
+  /** Show the open question with this id, as the reader's move. */
+  show(id: string): void;
 };
 
 /**
@@ -157,7 +162,18 @@ export function ComposerQuestion(props: {
   // A step, or an answer to the shown question, moves the reader to the
   // next question. A question that docks by itself is not their move.
   const readerMovedRef = useRef(false);
+  // A closed question leaves the list, so the oldest open one shows next.
+  const index = Math.max(
+    0,
+    props.questions.findIndex((item) => item.id === selectedId),
+  );
+  const item = props.questions[index];
   useImperativeHandle(props.answersRef, () => ({
+    show: (id) => {
+      if (id === item?.id || !props.questions.some((q) => q.id === id)) return;
+      readerMovedRef.current = true;
+      setSelectedId(id);
+    },
     send: async () => {
       sendingFromMessageBoxRef.current = true;
       const sends = props.questions.flatMap((question) => {
@@ -178,12 +194,6 @@ export function ComposerQuestion(props: {
       }
     },
   }));
-  // A closed question leaves the list, so the oldest open one shows next.
-  const index = Math.max(
-    0,
-    props.questions.findIndex((item) => item.id === selectedId),
-  );
-  const item = props.questions[index];
   const shownIdRef = useRef<string>(undefined);
   const { onShow } = props;
   useEffect(() => {
@@ -247,7 +257,9 @@ export function ComposerQuestion(props: {
 
   return (
     <MessageCard
-      aria-label={`Question: ${item.title}`}
+      aria-label={`Question: ${reviewItemTitleText(item)}`}
+      // Esc here dismisses the question, so it does not leave the page.
+      data-escape-scope=""
       className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
       onKeyDown={onKeyDown}
       ref={(node) => {
@@ -359,7 +371,7 @@ function DockedQuestion(props: {
             onClick={props.onShowRecord}
             variant="link"
           >
-            {item.title}
+            <ReviewItemTitle item={item} />
           </Button>
         </h2>
         {props.stepper}
@@ -383,8 +395,12 @@ function DockedQuestion(props: {
       {item.request ? (
         <div className="min-w-0">
           <div className="font-medium [&_p]:my-0">
-            <DisplayText text={item.request.question} />
+            <DisplayText
+              mentions={item.mentions}
+              text={item.request.question}
+            />
           </div>
+          <ReviewItemEvidence item={item} />
           <UserInputForm
             docked
             ref={props.formRef}

@@ -33,3 +33,17 @@ export const objectLinksReportSchema = z
   .strict();
 
 export type ObjectLinksReport = z.output<typeof objectLinksReportSchema>;
+
+/** A participant asks to attach one linked object to a Conversation. */
+export const attachObjectLinkBodySchema = z
+  .object({ url: objectLinkUrlSchema })
+  .strict();
+
+/** `unchanged` when the Conversation already has the object. */
+export const attachObjectLinkResponseSchema = z
+  .object({ status: z.enum(["attached", "unchanged"]) })
+  .strict();
+
+export type AttachObjectLinkResponse = z.output<
+  typeof attachObjectLinkResponseSchema
+>;

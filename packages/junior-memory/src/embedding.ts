@@ -5,84 +5,37 @@
  * the same model and size as the query vector.
  */
 import { createHash } from "node:crypto";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
+import {
+  cosineDistance,
+  guardedCosineDistance,
+  parseEmbeddingBatch as parseSharedEmbeddingBatch,
+  type EmbeddingBatch,
+  type EmbeddingVector,
+} from "@sentry/junior-plugin-api/embeddings";
 import { and, eq, sql, type Column, type SQL } from "drizzle-orm";
-import * as z from "zod";
 import { juniorMemoryEmbeddings } from "./db/schema";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
-  type MemoryEmbeddingDimensions,
   type MemoryEmbeddingMetric,
 } from "./types";
 
 export const EMBEDDING_METRIC: MemoryEmbeddingMetric = "cosine";
 
-export interface MemoryEmbeddingProvider {
-  /** Model id that embedTexts() uses and reports. */
-  model: string;
-  /** Provider name that embedTexts() reports. */
-  provider: string;
-  /** Embed normalized memory text for derived vector retrieval. */
-  embedTexts(input: {
-    inputType?: "document" | "query";
-    texts: string[];
-  }): Promise<{
-    costUsd?: number;
-    dimensions: number;
-    model: string;
-    provider: string;
-    vectors: number[][];
-  }>;
-}
+/** Host embedder that memory writes, reads, and the backfill use. */
+export type MemoryEmbeddingProvider = PluginEmbedder;
 
-interface MemoryEmbeddingBatch {
-  dimensions: MemoryEmbeddingDimensions;
-  model: string;
-  provider: string;
-  vectors: number[][];
-}
-
-export interface MemoryEmbedding {
-  model: string;
-  provider: string;
-  vector: number[];
-}
-
-const nonEmptyStringSchema = z.string().min(1);
-const embeddingResultSchema = z
-  .object({
-    costUsd: z.number().finite().nonnegative().optional(),
-    dimensions: z
-      .number()
-      .int()
-      .refine(
-        (value): value is MemoryEmbeddingDimensions =>
-          (MEMORY_EMBEDDING_DIMENSIONS as readonly number[]).includes(value),
-        { message: "Unsupported embedding vector size." },
-      ),
-    model: nonEmptyStringSchema,
-    provider: nonEmptyStringSchema,
-    vectors: z.array(z.array(z.number().finite())),
-  })
-  .strict();
+export type MemoryEmbedding = EmbeddingVector;
 
 /** Validate an embedder result against the stored vector sizes and text count. */
 export function parseEmbeddingBatch(
   raw: unknown,
   textCount: number,
-): MemoryEmbeddingBatch {
-  const result = embeddingResultSchema.parse(raw);
-  if (result.vectors.length !== textCount) {
-    throw new Error("Embedding provider returned an unexpected vector count.");
-  }
-  if (result.vectors.some((vector) => vector.length !== result.dimensions)) {
-    throw new Error("Embedding provider returned an unexpected vector size.");
-  }
-  return {
-    dimensions: result.dimensions as MemoryEmbeddingDimensions,
-    model: result.model,
-    provider: result.provider,
-    vectors: result.vectors,
-  };
+): EmbeddingBatch {
+  return parseSharedEmbeddingBatch(raw, {
+    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    textCount,
+  });
 }
 
 /** Hash stored memory content so reads can skip vectors of changed content. */
@@ -90,33 +43,46 @@ export function hashEmbeddedContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function vectorSize(embedding: MemoryEmbedding): SQL {
-  const dimensions = embedding.vector.length;
+/** Reject a query vector of a size that no stored vector can have. */
+function assertStoredSize(embedding: MemoryEmbedding): void {
   if (
-    !(MEMORY_EMBEDDING_DIMENSIONS as readonly number[]).includes(dimensions)
+    !(MEMORY_EMBEDDING_DIMENSIONS as readonly number[]).includes(
+      embedding.vector.length,
+    )
   ) {
     throw new Error("Unsupported embedding vector size.");
   }
+}
+
+function vectorSize(embedding: MemoryEmbedding): SQL {
+  assertStoredSize(embedding);
   // A literal, not a bind parameter, so Postgres can match the partial index.
-  return sql.raw(String(dimensions));
+  return sql.raw(String(embedding.vector.length));
 }
 
 /** Cosine distance to a query vector, cast to match its HNSW index. */
 export function embeddingDistance(embedding: MemoryEmbedding): SQL {
-  const size = vectorSize(embedding);
-  return sql`(${juniorMemoryEmbeddings.embedding}::vector(${size})) <=> ${JSON.stringify(embedding.vector)}::vector(${size})`;
+  assertStoredSize(embedding);
+  // Wrapped, so the result has the SQL type of this package's drizzle-orm.
+  return sql`${cosineDistance({
+    column: juniorMemoryEmbeddings.embedding,
+    query: embedding.vector,
+    type: "vector",
+  })}`;
 }
 
-/**
- * Cosine distance cutoff that never casts a stored vector of another size.
- * Postgres does not promise to check `dimensions` before other WHERE terms,
- * and the cast fails on a vector of another size. CASE fixes the order.
- */
+/** Cosine distance cutoff that never casts a stored vector of another size. */
 export function embeddingWithinDistance(
   embedding: MemoryEmbedding,
   maxDistance: number,
 ): SQL {
-  return sql`CASE WHEN ${juniorMemoryEmbeddings.dimensions} = ${vectorSize(embedding)} THEN ${embeddingDistance(embedding)} END <= ${maxDistance}`;
+  assertStoredSize(embedding);
+  return sql`${guardedCosineDistance({
+    column: juniorMemoryEmbeddings.embedding,
+    dimensions: juniorMemoryEmbeddings.dimensions,
+    query: embedding.vector,
+    type: "vector",
+  })} <= ${maxDistance}`;
 }
 
 type EmbeddingModelColumns = Record<

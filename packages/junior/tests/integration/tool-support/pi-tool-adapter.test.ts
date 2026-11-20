@@ -112,8 +112,8 @@ describe("Pi tool adapter integration", () => {
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
                   const input = args as Record<string, unknown>;
-                  return typeof input.customer_id === "string"
-                    ? { customerId: input.customer_id }
+                  return typeof input["customer_id"] === "string"
+                    ? { customerId: input["customer_id"] }
                     : (input as { customerId: string });
                 },
                 execute: async ({ customerId }) =>
@@ -130,22 +130,16 @@ describe("Pi tool adapter integration", () => {
 
     try {
       const registry = createTools([], {}, runtimeContext());
-      const tools = createPiAgentTools(
-        registry,
-        new SkillSandbox([], []),
-        {},
-        undefined,
-        undefined,
-        undefined,
+      const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
         onToolCall,
-        undefined,
-        "private",
-        undefined,
+        conversationPrivacy: "private",
         actionReview,
-      );
+      });
 
-      expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
-      expect(registry.agentDemo_lookupCustomer?.source).toEqual({
+      expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
+      expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
@@ -212,7 +206,7 @@ describe("Pi tool adapter integration", () => {
           {
             toolCallId: "tool-execute",
             toolName: "agentDemo_lookupCustomer",
-            tool: registry.agentDemo_lookupCustomer,
+            tool: registry["agentDemo_lookupCustomer"],
             input: { customerId: "C123" },
           },
         ],
@@ -255,7 +249,10 @@ describe("Pi tool adapter integration", () => {
         execute: async () => ({ tool: "codemodeDemo" }),
       }),
     };
-    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
+    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTool(tools, "executeTool");
 
     expect(tools.map((candidate) => candidate.name).sort()).toEqual([
@@ -334,7 +331,10 @@ describe("Pi tool adapter integration", () => {
         },
       },
     );
-    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});
+    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const modelOnlyTools = [
       "messageAgent",
       "noReply",
@@ -375,20 +375,11 @@ describe("Pi tool adapter integration", () => {
     };
     const sandbox = new SkillSandbox([], []);
     const withCodeMode = (registry: Record<string, AnyToolDefinition>) =>
-      createPiAgentTools(
-        registry,
-        sandbox,
-        {},
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { countToolCall: () => 1 },
-      );
+      createPiAgentTools(registry, sandbox, {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        codeMode: { countToolCall: () => 1 },
+      });
     const enabled = withCodeMode(definitions);
     const disabled = withCodeMode(
       disableTools(definitions, "It needs a person's message."),

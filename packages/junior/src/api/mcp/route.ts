@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
+import { isAllowedDomain, parseEmail } from "@/chat/identities/trust";
 import { handleMcpAuthorize } from "./oauth/authorization";
 import { authenticateMcpAccessToken } from "./oauth/grants";
 import {
@@ -40,7 +40,7 @@ type McpHttpHandlerOptions = {
   /** Attachment storage for messages that MCP clients send. */
   attachmentStorage: AttachmentStorage;
   /** Configured public origin. Unset allows only loopback request origins. */
-  baseURL?: string;
+  baseURL?: string | undefined;
   /** Conversation work queue. Stopping a Turn clears its queued work. */
   queue: ConversationWorkQueue;
   state: McpState;
@@ -103,8 +103,14 @@ export function createMcpHttpHandler(
           token,
         })
       : undefined;
+    const email = grant ? parseEmail(grant.email) : undefined;
     const user =
-      grant && isAllowedSignInEmail(grant.email, options.allowedDomains)
+      grant &&
+      email &&
+      isAllowedDomain(email.domain, {
+        allowedDomains: options.allowedDomains,
+        ifNoDomains: "deny",
+      })
         ? await resolveViewerUser(grant.email)
         : undefined;
     if (!grant || !user) return unauthorized(requestUrls, token !== undefined);

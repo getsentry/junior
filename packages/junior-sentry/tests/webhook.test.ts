@@ -153,11 +153,11 @@ describe("Sentry webhook events", () => {
         const body = metricAlertBody(action);
         body.data.metric_alert = {
           alert_rule: {
-            id: ruleId!,
+            id: ruleId,
             name: "Too many errors",
-            projects: [project!],
+            projects: [project],
           },
-          id: incidentId!,
+          id: incidentId,
         };
         return { body, hookResource: "metric_alert" };
       }),
@@ -171,11 +171,11 @@ describe("Sentry webhook events", () => {
       // Saved identifiers went through the plugin's `normalizeIdentifier`.
       const identifier = event.identifier.toLowerCase();
       const alert = /^metric-alert:[^/]+\/(\d+)$/.exec(identifier);
-      if (alert) return { alertRuleId: alert[1]! };
+      if (alert) return { alertRuleId: alert[1] };
       const scope = /^[^/]+\/([^/#]+)(?:#(\d+))?$/.exec(identifier);
       if (!scope) return undefined;
       const [, project, issueId] = scope;
-      return { projects: [project!], ...(issueId ? { issueId } : undefined) };
+      return { projects: [project], ...(issueId ? { issueId } : undefined) };
     };
 
     expect(

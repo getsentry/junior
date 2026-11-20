@@ -42,10 +42,14 @@ const payload = z.strictObject({
   custom_fields: z.array(customField).optional(),
   display_order: z.array(z.string()).optional(),
 });
-/** Limit IDs to Junior's safe subset; Slack silently rejects JSON punctuation. */
+/**
+ * Limit IDs to Junior's safe subset. Slack drops all message metadata when an
+ * ID has JSON punctuation or is longer than 128 characters.
+ */
 export const slackExternalRefIdSchema = z
   .string()
   .min(1)
+  .max(128)
   .regex(/^[A-Za-z0-9_-]+$/, "Unsupported Slack external reference ID");
 
 const entity = z.strictObject({
@@ -77,3 +81,21 @@ export const slackEntitySchema = z.discriminatedUnion("entity_type", [
 
 export type SlackEntity = z.output<typeof slackEntitySchema>;
 export type SlackTextField = z.output<typeof textField>;
+
+// Slack ignores all metadata of a message above 4,000 bytes and returns the
+// `metadata_too_large` warning (Sentry JUNIOR-A4). Slack does not document the
+// limit. A public test quotes the number from Slack's warning text, and found
+// that Slack counts each non-ASCII UTF-16 unit as a 6-byte `\uXXXX` escape:
+// https://slack.green/en/blog/slack-message-metadata
+const SLACK_METADATA_MAX_BYTES = 4_000;
+
+/** Return whether Slack keeps message metadata with these entities. */
+export function fitsSlackMetadataLimit(entities: SlackEntity[]): boolean {
+  const json = JSON.stringify({ entities });
+  // Also count "/" as the 2-byte "\/" escape. That test did not check it, so
+  // assume the larger size.
+  const escapes =
+    5 * (json.match(/[\u0080-\uffff]/g)?.length ?? 0) +
+    (json.match(/\//g)?.length ?? 0);
+  return json.length + escapes <= SLACK_METADATA_MAX_BYTES;
+}

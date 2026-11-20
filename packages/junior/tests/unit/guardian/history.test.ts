@@ -10,9 +10,11 @@ function transcript(
   marker: Record<string, unknown>,
   error: string,
 ): PiMessage[] {
-  const decision = marker.decision === "ask" ? "ask" : "deny";
+  const decision = marker["decision"] === "ask" ? "ask" : "deny";
   const reason =
-    typeof marker.reason === "string" ? marker.reason : "Rejected action.";
+    typeof marker["reason"] === "string"
+      ? marker["reason"]
+      : "Rejected action.";
   return [
     {
       role: "assistant",
@@ -24,6 +26,7 @@ function transcript(
           arguments: { workspaceId: "production" },
         },
       ],
+      timestamp: 0,
     },
     {
       role: "toolResult",
@@ -31,6 +34,7 @@ function transcript(
       toolName: "deleteWorkspace",
       isError: true,
       content: [{ type: "text", text: error }],
+      timestamp: 0,
       details: {
         guardianActionRejection: {
           ...marker,

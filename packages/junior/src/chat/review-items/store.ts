@@ -9,24 +9,30 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
+  not,
   notLike,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  hasUserPhoto,
+  userAvatarUrlsFromIdentities,
+} from "@/chat/identities/avatar";
+import {
   juniorConversations,
+  juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -37,6 +43,7 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
@@ -58,6 +65,8 @@ interface ReviewItemSubject {
 
 /** One assigned User of a Review item. */
 export interface ReviewItemAssignee {
+  /** Junior API path of the profile photo. */
+  avatarUrl?: string;
   displayName?: string;
   email: string;
   userId: string;
@@ -78,9 +87,14 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  /**
+   * The stored root of the Conversation that added the item. Only a search
+   * sets it; unset means unknown.
+   */
+  addedByRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -98,37 +112,59 @@ export interface ReviewItemContent {
   body: string;
   conversationIds: string[];
   kind: ReviewItemKind;
-  request?: UserInputRequest;
-  subject?: ReviewItemSubject;
+  request?: ReviewItemRequest;
+  subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
 }
 
 type ItemRow = typeof juniorReviewItems.$inferSelect;
 
+const userPhotos = alias(juniorIdentities, "review_item_user_photos");
+
 async function readUsers(
   db: JuniorDatabase,
   userIds: readonly string[],
 ): Promise<Map<string, ReviewItemAssignee>> {
   if (userIds.length === 0) return new Map();
+  // One read returns each User with their photo Identities.
   const rows = await db
     .select({
       displayName: juniorUsers.displayName,
       email: juniorUsers.primaryEmail,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       userId: juniorUsers.id,
     })
     .from(juniorUsers)
+    .leftJoin(
+      userPhotos,
+      and(eq(userPhotos.userId, juniorUsers.id), hasUserPhoto(userPhotos)),
+    )
     .where(inArray(juniorUsers.id, [...new Set(userIds)]));
-  return new Map(
-    rows.map((row) => [
-      row.userId,
-      {
-        email: row.email,
-        userId: row.userId,
-        ...(row.displayName ? { displayName: row.displayName } : undefined),
-      },
-    ]),
+  const avatars = userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [{ ...photo, identityId: photo.identityId, userId }]
+        : [],
+    ),
   );
+  const users = new Map<string, ReviewItemAssignee>();
+  for (const row of rows) {
+    if (users.has(row.userId)) continue;
+    const avatarUrl = avatars.get(row.userId);
+    users.set(row.userId, {
+      email: row.email,
+      userId: row.userId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    });
+  }
+  return users;
 }
 
 async function hydrate(
@@ -351,6 +387,7 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
+    await touchConversationDetail(tx, [input.addedByConversationId]);
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -388,9 +425,13 @@ export async function updateReviewItemContent(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+        id: juniorReviewItems.id,
+      });
     if (!updated[0]) return false;
-    await replaceLinks(tx, input.id, input);
+    await replaceLinks(tx, updated[0].id, input);
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }
@@ -428,7 +469,13 @@ export async function closeReviewItem(
         eq(juniorReviewItems.status, "open"),
       ),
     )
-    .returning({ id: juniorReviewItems.id });
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(
+    db,
+    updated.map((row) => row.addedByConversationId),
+  );
   return updated.length > 0;
 }
 
@@ -448,7 +495,7 @@ export async function dismissOpenReviewItems(
   ),
 ): Promise<void> {
   const now = new Date(input.nowMs);
-  await db
+  const dismissed = await db
     .update(juniorReviewItems)
     .set({
       closeReason: input.reason,
@@ -468,7 +515,13 @@ export async function dismissOpenReviewItems(
               isNull(juniorReviewItems.automationId),
             ),
       ),
-    );
+    )
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(db, [
+    ...new Set(dismissed.map((row) => row.addedByConversationId)),
+  ]);
 }
 
 /**
@@ -489,7 +542,9 @@ export async function takeReviewItem(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+      });
     if (!updated[0]) return false;
     await tx
       .delete(juniorReviewItemAssignees)
@@ -497,6 +552,7 @@ export async function takeReviewItem(
     await tx
       .insert(juniorReviewItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }
@@ -510,6 +566,23 @@ export interface ReviewItemPosition {
   id: string;
 }
 
+/**
+ * A position in the waiting-first order: the last item of a page, and
+ * whether it needs the User. Search returns the items after it.
+ */
+export interface ReviewItemWaitingPosition extends ReviewItemPosition {
+  needsUser: boolean;
+}
+
+/**
+ * A position in the newest-closed-first order: the last closed item of a
+ * page. Search returns the items closed before it.
+ */
+export interface ReviewItemClosedPosition {
+  closedAt: Date;
+  id: string;
+}
+
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /**
@@ -518,9 +591,19 @@ export interface ReviewItemFilters {
    * first.
    */
   after?: ReviewItemPosition;
+  /**
+   * Return only the items after this position. Use it with
+   * `order: { needsUserId }` and only open items.
+   */
+  afterWaiting?: ReviewItemWaitingPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
+  /**
+   * Return only the items closed before this position. Use it with
+   * `order: "closed"` and closed statuses.
+   */
+  closedBefore?: ReviewItemClosedPosition;
   conversationId?: string;
   /**
    * Drop the items that are assigned only to other people
@@ -531,10 +614,12 @@ export interface ReviewItemFilters {
   /** Words to find in the title or body. */
   query?: string;
   /**
-   * `oldest` sorts by creation, oldest first. By default the newest change
-   * comes first.
+   * `oldest` sorts by creation, oldest first. `closed` sorts closed items by
+   * when they closed, newest first. `{ needsUserId }` puts the items that
+   * need that User first (`reviewItemNeedsUser`), then the rest, each group
+   * newest created first. By default the newest change comes first.
    */
-  order?: "oldest";
+  order?: "closed" | "oldest" | { needsUserId: string };
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -554,6 +639,34 @@ function searchConditions(
         and(
           eq(juniorReviewItems.createdAt, filters.after.createdAt),
           gt(juniorReviewItems.id, filters.after.id),
+        ),
+      )!,
+    );
+  }
+  if (filters.afterWaiting) {
+    if (typeof filters.order !== "object") {
+      throw new Error("afterWaiting needs the waiting-first order");
+    }
+    const needs = reviewItemNeedsUser(filters.order.needsUserId);
+    const { createdAt, id, needsUser } = filters.afterWaiting;
+    const older = or(
+      lt(juniorReviewItems.createdAt, createdAt),
+      and(
+        eq(juniorReviewItems.createdAt, createdAt),
+        lt(juniorReviewItems.id, id),
+      ),
+    )!;
+    conditions.push(
+      needsUser ? or(not(needs), and(needs, older))! : and(not(needs), older)!,
+    );
+  }
+  if (filters.closedBefore) {
+    conditions.push(
+      or(
+        lt(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+        and(
+          eq(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+          lt(juniorReviewItems.id, filters.closedBefore.id),
         ),
       )!,
     );
@@ -589,15 +702,50 @@ function searchConditions(
   return conditions;
 }
 
-/** Count the open Review items that need a User (`reviewItemNeedsUser`). */
-export async function countReviewItemsNeedingUser(
+/**
+ * Count the open Review items that need a User (`reviewItemNeedsUser`), one
+ * row per subject URL, with the ones that ask with a form as `decisions`.
+ * The nav count and the Inbox bundle counts all read this one query.
+ */
+export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
   userId: string,
+): Promise<
+  Array<{ decisions: number; subjectUrl: string | null; total: number }>
+> {
+  return await db
+    .select({
+      decisions: count(juniorReviewItems.request),
+      subjectUrl: juniorReviewItems.subjectUrl,
+      total: count(),
+    })
+    .from(juniorReviewItems)
+    .where(reviewItemNeedsUser(userId))
+    .groupBy(juniorReviewItems.subjectUrl);
+}
+
+/**
+ * Count the items in `ids` that are still open and that the reader's Inbox
+ * lists (`reviewItemForUser`). Snoozes live in the browser, so the
+ * dashboard names the newest item of each snoozed row.
+ */
+export async function countOpenReviewItemsForUser(
+  db: JuniorDatabase,
+  reader: ReviewItemReader & { userId: string },
+  ids: readonly string[],
 ): Promise<number> {
+  if (ids.length === 0) return 0;
   const rows = await db
     .select({ count: count() })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
+    .where(
+      and(
+        inArray(juniorReviewItems.id, [...ids]),
+        eq(juniorReviewItems.status, "open"),
+        reviewItemVisibleTo(reader),
+        reviewItemForUser(reader.userId),
+      ),
+    );
   return rows[0]?.count ?? 0;
 }
 
@@ -623,7 +771,11 @@ export function reviewItemsNeedingUserVersionQuery(
  * the limit never drops an open item for a closed one. Then the newest
  * change comes first: `updated_at`, then `id`, both descending. With
  * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
- * both ascending. `after` pages through that order.
+ * both ascending. `after` pages through that order. With `order: "closed"`,
+ * the item closed last comes first: `closed_at`, then `id`, both
+ * descending. `closedBefore` pages through that order. With
+ * `order: { needsUserId }`, the items that need the User come first, then
+ * `created_at` and `id`, both descending. `afterWaiting` pages through it.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -631,17 +783,42 @@ export async function searchReviewItems(
   filters: ReviewItemFilters,
 ): Promise<ReviewItem[]> {
   const rows = await db
-    .select()
+    .select({
+      item: juniorReviewItems,
+      addedByRootConversationId: juniorConversations.rootConversationId,
+    })
     .from(juniorReviewItems)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItems.addedByConversationId,
+      ),
+    )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
-      ...(filters.order === "oldest"
-        ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
-        : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
+      ...(typeof filters.order === "object"
+        ? [
+            desc(reviewItemNeedsUser(filters.order.needsUserId)),
+            desc(juniorReviewItems.createdAt),
+            desc(juniorReviewItems.id),
+          ]
+        : filters.order === "oldest"
+          ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
+          : filters.order === "closed"
+            ? [desc(juniorReviewItems.closedAt), desc(juniorReviewItems.id)]
+            : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
-  return await hydrate(db, rows);
+  const items = await hydrate(
+    db,
+    rows.map((row) => row.item),
+  );
+  return items.map((item, index) => ({
+    ...item,
+    addedByRootConversationId: rows[index]!.addedByRootConversationId,
+  }));
 }
 
 /** One open Review item that a Conversation waits on a User for. */
@@ -660,11 +837,39 @@ export type WaitingConversation = {
   waitingSince: string;
 };
 
+// The root of a linked Conversation. An item that a child agent adds links
+// the child, and the feed lists only roots.
+const waitingRootId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`;
+
+/**
+ * Return a query for the ids of the root Conversations that wait on a User,
+ * as `listWaitingConversations` lists them, to filter another query by.
+ */
+export function waitingConversationIdsQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  return db
+    .select({ conversationId: waitingRootId })
+    .from(juniorReviewItemConversations)
+    .innerJoin(
+      juniorReviewItems,
+      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
+    )
+    .where(reviewItemNeedsUser(userId));
+}
+
 /**
  * List the root Conversations that wait on a User: each root or one of its
  * child conversations is linked to an open item that needs the User
- * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
- * and the feed lists only roots.
+ * (`reviewItemNeedsUser`).
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -672,7 +877,7 @@ export async function listWaitingConversations(
 ): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
+      conversationId: waitingRootId,
       itemId: juniorReviewItems.id,
       dedupeKey: juniorReviewItems.dedupeKey,
       title: juniorReviewItems.title,

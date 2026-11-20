@@ -15,7 +15,7 @@ export function DirectoryToolbar(props: {
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-2 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft p-3",
+        "grid min-w-0 gap-2 border-b border-dashboard-border-subtle p-3",
         props.columnsClassName,
       )}
     >
@@ -28,9 +28,9 @@ export function DirectoryToolbar(props: {
 export function DirectoryTable(props: {
   ariaLabel: string;
   children: ReactNode;
-  empty?: ReactNode;
+  empty?: ReactNode | undefined;
   headers: readonly string[];
-  loading?: boolean;
+  loading?: boolean | undefined;
 }) {
   if (props.loading) {
     return <DirectoryRowsSkeleton wideRuntime />;
@@ -43,7 +43,7 @@ export function DirectoryTable(props: {
       <div
         aria-hidden="true"
         className={cn(
-          "grid items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted max-md:hidden",
+          "grid items-center gap-4 border-b border-dashboard-border-subtle px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted max-md:hidden",
           directoryGridClass,
         )}
       >

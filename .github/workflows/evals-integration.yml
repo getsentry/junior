@@ -7,7 +7,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
@@ -47,6 +47,8 @@ jobs:
               - 'packages/junior/src/chat/prompt.ts'
               - 'packages/junior/src/chat/system-prompt-rules.ts'
               - 'packages/junior/src/chat/discovery.ts'
+              - 'packages/junior/src/chat/services/context-compaction.ts'
+              - 'packages/junior/src/chat/tools/**'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -128,6 +130,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Evals load the built output of some workspace packages.
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
       - name: Install cloudflared
         run: |
           set -euo pipefail

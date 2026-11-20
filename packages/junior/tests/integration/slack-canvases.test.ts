@@ -14,8 +14,8 @@ import {
 
 describe("createCanvas", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
   });
 
   it("grants DM access after canvases.create so the DM participant can see the canvas", async () => {
