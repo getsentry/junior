@@ -52,8 +52,7 @@ CREATE TABLE "junior_turns" (
 	CONSTRAINT "junior_turns_lease_check" CHECK (("junior_turns"."state" = 'running') = ("junior_turns"."lease_owner" is not null) and ("junior_turns"."state" = 'running') = ("junior_turns"."lease_expires_at" is not null)),
 	CONSTRAINT "junior_turns_ended_check" CHECK (("junior_turns"."state" in ('completed', 'failed', 'cancelled')) = ("junior_turns"."ended_at" is not null)),
 	CONSTRAINT "junior_turns_counters_check" CHECK ("junior_turns"."step_seq" >= 0 and "junior_turns"."lease_epoch" >= 0 and "junior_turns"."attempts" >= 0),
-	CONSTRAINT "junior_turns_priority_check" CHECK ("junior_turns"."priority" >= 0),
-	CONSTRAINT "junior_turns_source_check" CHECK ("junior_turns"."source" in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation'))
+	CONSTRAINT "junior_turns_priority_check" CHECK ("junior_turns"."priority" >= 0)
 );
 --> statement-breakpoint
 ALTER TABLE "junior_turn_inbox" ADD CONSTRAINT "junior_turn_inbox_actor_identity_id_junior_identities_id_fk" FOREIGN KEY ("actor_identity_id") REFERENCES "public"."junior_identities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

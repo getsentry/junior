@@ -1,5 +1,5 @@
 {
-  "id": "eeab576e-51ba-4abd-9862-f5ef4586087d",
+  "id": "5ae18e4f-bf29-43bc-94db-4889b3306e4f",
   "prevId": "92170853-e7fa-4c70-a2a9-bed27e498a9f",
   "version": "7",
   "dialect": "postgresql",
@@ -5934,10 +5934,6 @@
         "junior_turns_priority_check": {
           "name": "junior_turns_priority_check",
           "value": "\"junior_turns\".\"priority\" >= 0"
-        },
-        "junior_turns_source_check": {
-          "name": "junior_turns_source_check",
-          "value": "\"junior_turns\".\"source\" in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation')"
         }
       },
       "isRLSEnabled": false
