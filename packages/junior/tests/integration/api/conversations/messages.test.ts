@@ -72,8 +72,10 @@ describe("conversation messages API", () => {
         )
       ).json(),
     );
+    // A dashboard message steers the running Turn, like a Slack mention.
     expect(pending.messages).toContainEqual(
       expect.objectContaining({
+        delivery: "interrupt",
         messageId: accepted.messageId,
         text: "Can I help?",
       }),
