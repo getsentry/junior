@@ -16,4 +16,7 @@ ALTER TABLE "junior_review_items" DROP CONSTRAINT "junior_review_items_kind_chec
 -- agents and plugins use no `automation:` key. NOT VALID skips the scan
 -- under lock and still checks every new write.
 ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_owner_check" CHECK (("junior_review_items"."owner_kind" = 'conversation' and "junior_review_items"."dedupe_key" not like 'automation:%') or ("junior_review_items"."owner_kind" = 'automation' and "junior_review_items"."dedupe_key" like 'automation:%')) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_kind_check" CHECK (("junior_review_items"."kind" = 'notice' and "junior_review_items"."request" is null and "junior_review_items"."answer" is null) or ("junior_review_items"."kind" = 'action' and ("junior_review_items"."request" is not null or (("junior_review_items"."dedupe_key" like 'plugin:%' or "junior_review_items"."dedupe_key" like 'automation:%') and "junior_review_items"."answer" is null)))) NOT VALID;
+ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_kind_check" CHECK (("junior_review_items"."kind" = 'notice' and "junior_review_items"."request" is null and "junior_review_items"."answer" is null) or ("junior_review_items"."kind" = 'action' and ("junior_review_items"."request" is not null or (("junior_review_items"."dedupe_key" like 'plugin:%' or "junior_review_items"."dedupe_key" like 'automation:%') and "junior_review_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
+-- A person's dismiss hides an Automation's alerts until core sees it
+-- recover. Existing Automations have no dismissed alert, so null is right.
+ALTER TABLE "junior_automations" ADD COLUMN "alert_recovered_at_ms" bigint;

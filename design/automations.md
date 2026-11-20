@@ -35,8 +35,7 @@ Automation run posts its result to the Automation's Destination.
 - When an Automation needs its creator, core adds an Automation alert to
   their Inbox: for a block, a trigger that no enabled plugin serves, or a
   failed or blocked last run. It closes when the Automation recovers. A
-  dismissed alert stays closed until the Automation needs them again for a
-  new reason.
+  dismissed alert hides its alerts until the Automation recovers.
 - An event filter limits noise. It is not access control.
 
 ## Gaps

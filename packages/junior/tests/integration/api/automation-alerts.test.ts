@@ -222,31 +222,57 @@ describe("Automation alerts", () => {
     });
     expect(failed!.id).not.toBe(blocked!.id);
 
-    // A dismissed alert stays closed while that run is the last one.
+    // A dismissed alert hides the Automation's alerts until it recovers,
+    // even for a new failure or a new block.
     expect((await asCreator.dismiss(failed!.id)).status).toBe(200);
     await saveScheduledAutomation(getDb(), { ...task, status: "paused" });
     await saveScheduledAutomation(getDb(), { ...task, status: "active" });
-    expect(await asCreator.alerts(task.id)).toEqual([]);
-    expect(await asCreator.todoAlerts()).toEqual([]);
-
-    // A newer failure opens a fresh alert.
     await recordAutomationExecution(task.id, {
       executionId: "run-2",
       nowMs: NOW_MS + 1,
+      status: "failed",
+    });
+    await saveScheduledAutomation(getDb(), {
+      ...task,
+      status: "blocked",
+      statusReason: "Slack access expired.",
+    });
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+    expect(await asCreator.todoAlerts()).toEqual([]);
+
+    // A resume and a run that completes recover it. The next problem opens a
+    // fresh alert.
+    vi.setSystemTime(NOW_MS + HOUR_MS);
+    await saveScheduledAutomation(getDb(), { ...task, status: "active" });
+    await recordAutomationExecution(task.id, {
+      executionId: "run-3",
+      nowMs: NOW_MS + HOUR_MS,
+      status: "completed",
+    });
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+    await recordAutomationExecution(task.id, {
+      executionId: "run-4",
+      nowMs: NOW_MS + HOUR_MS + 1,
       status: "failed",
     });
     const [again] = await asCreator.alerts(task.id);
     expect(again).toMatchObject({ body: "Last run failed." });
     expect(again!.id).not.toBe(failed!.id);
 
-    // A run that completes closes it.
+    // A run that completes closes it, and core's close hides nothing.
     await recordAutomationExecution(task.id, {
-      executionId: "run-3",
-      nowMs: NOW_MS + 2,
+      executionId: "run-5",
+      nowMs: NOW_MS + HOUR_MS + 2,
       status: "completed",
     });
     expect(await asCreator.alerts(task.id)).toEqual([]);
     expect(await asCreator.todoAlerts()).toEqual([]);
+    await recordAutomationExecution(task.id, {
+      executionId: "run-6",
+      nowMs: NOW_MS + HOUR_MS + 3,
+      status: "failed",
+    });
+    expect(await asCreator.todoAlerts()).toEqual(["Daily digest"]);
   });
 
   it("keeps the alert of a private Destination from other people", async () => {
@@ -340,6 +366,17 @@ describe("Automation alerts", () => {
     await heartbeat();
     expect(await asCreator.alerts("event_digest")).toEqual([]);
     expect((await asCreator.inbox()).count).toBe(0);
+
+    // A dismissed alert hides the next ones until the trigger works again.
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
+    await heartbeat();
+    const [lost] = await asCreator.alerts("event_digest");
+    expect((await asCreator.dismiss(lost!.id)).status).toBe(200);
+    await heartbeat();
+    expect(await asCreator.alerts("event_digest")).toEqual([]);
+    vi.setSystemTime(NOW_MS + HOUR_MS);
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    await heartbeat();
 
     // A delete closes any alert.
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");

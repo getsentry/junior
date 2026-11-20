@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, notExists, notInArray, or } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { automationTaskDescription } from "@/chat/automations/task";
 import {
   automationEventCatalog,
@@ -30,9 +41,9 @@ import {
 // the enabled plugins cannot serve, or a last run that failed or blocked.
 // These are the rules of the `attention` scope in `collection.ts`. Core adds,
 // changes, and closes the alert at each write that can change them. A
-// different alert closes the old item and adds a new one, so an alert that
-// the creator closed stays closed until the Automation needs them again for
-// a new reason.
+// different alert closes the old item and adds a new one. When a person
+// dismisses an alert, no alert of that Automation shows again until it
+// recovers: it is active, and its last run did not fail or block.
 
 type AutomationRow = {
   kind: "scheduled" | "event";
@@ -123,6 +134,7 @@ export async function syncAutomationAlert(
   await db.transaction(async (tx) => {
     const [row] = await tx
       .select({
+        alertRecoveredAtMs: juniorAutomations.alertRecoveredAtMs,
         channelId: juniorAutomations.channelId,
         kind: juniorAutomations.kind,
         lastRunError: juniorAutomationRuns.errorMessage,
@@ -143,8 +155,9 @@ export async function syncAutomationAlert(
       .for("update", { of: juniorAutomations });
     if (!row) return;
     const creatorId = await automationCreatorUserId(tx, automationId);
+    const needed = automationAlert(row);
     // Nobody can see an alert without a User, so it needs none.
-    const alert = creatorId ? automationAlert(row) : undefined;
+    const alert = creatorId ? needed : undefined;
     const key = alert ? alertKey(automationId, alert.identity) : undefined;
     const owned = and(
       eq(juniorReviewItems.ownerKind, "automation"),
@@ -167,25 +180,45 @@ export async function syncAutomationAlert(
         ? "A newer alert replaced it."
         : "The Automation no longer needs attention.",
     });
-    if (!alert || !key || !creatorId) return;
-    const [current] = await tx
+    // A person dismissed an alert after the Automation last recovered, so
+    // its alerts stay hidden. An alert that core closed hides nothing.
+    const [dismissed] = await tx
+      .select({ id: juniorReviewItems.id })
+      .from(juniorReviewItems)
+      .where(
+        and(
+          owned,
+          isNotNull(juniorReviewItems.closedByUserId),
+          row.alertRecoveredAtMs === null
+            ? undefined
+            : gt(juniorReviewItems.closedAt, new Date(row.alertRecoveredAtMs)),
+        ),
+      )
+      .limit(1);
+    const hidden = dismissed !== undefined;
+    if (!needed && row.status === "active" && hidden) {
+      await tx
+        .update(juniorAutomations)
+        .set({ alertRecoveredAtMs: nowMs })
+        .where(eq(juniorAutomations.id, automationId));
+      return;
+    }
+    if (!alert || !key || !creatorId || hidden) return;
+    const [open] = await tx
       .select({
         body: juniorReviewItems.body,
-        closedByUserId: juniorReviewItems.closedByUserId,
         id: juniorReviewItems.id,
-        status: juniorReviewItems.status,
         title: juniorReviewItems.title,
         visibility: juniorReviewItems.visibility,
       })
       .from(juniorReviewItems)
-      .where(and(owned, eq(juniorReviewItems.dedupeKey, key)))
-      .orderBy(desc(juniorReviewItems.createdAt))
-      .limit(1);
-    // A person closed this alert, so it shows again only for a new one. An
-    // alert that core closed because it no longer applied shows again when
-    // it applies again.
-    if (current && current.status !== "open" && current.closedByUserId) return;
-    const open = current?.status === "open" ? current : undefined;
+      .where(
+        and(
+          owned,
+          eq(juniorReviewItems.dedupeKey, key),
+          eq(juniorReviewItems.status, "open"),
+        ),
+      );
     const [destination] = await tx
       .select({ visibility: juniorDestinations.visibility })
       .from(juniorDestinations)
@@ -278,8 +311,19 @@ export async function syncAutomationAlerts(
     .where(
       and(
         eq(juniorReviewItems.ownerKind, "automation"),
-        eq(juniorReviewItems.status, "open"),
         eq(juniorAutomations.kind, "event"),
+        // An open alert, or a dismiss that hides alerts until a recovery
+        // that a fixed trigger can bring without a run.
+        or(
+          eq(juniorReviewItems.status, "open"),
+          and(
+            isNotNull(juniorReviewItems.closedByUserId),
+            or(
+              isNull(juniorAutomations.alertRecoveredAtMs),
+              sql`${juniorReviewItems.closedAt} > to_timestamp(${juniorAutomations.alertRecoveredAtMs} / 1000.0)`,
+            ),
+          ),
+        ),
       ),
     );
   const neverAlerted = await db

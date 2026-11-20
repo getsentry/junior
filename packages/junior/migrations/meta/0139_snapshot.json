@@ -1265,6 +1265,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "alert_recovered_at_ms": {
+          "name": "alert_recovered_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "namespace": {
           "name": "namespace",
           "type": "text",

@@ -123,6 +123,8 @@ export const juniorReviewItems = pgTable(
       table.id,
     ),
     index("junior_review_items_subject_idx").on(table.subjectId, table.status),
+    // Reads find the items of one owner, such as an Automation's alerts.
+    index("junior_review_items_owner_idx").on(table.ownerKind, table.ownerId),
     // The Conversation status reads the open action items that each
     // Conversation owns.
     index("junior_review_items_open_action_owner_idx")
