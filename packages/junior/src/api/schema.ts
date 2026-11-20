@@ -316,8 +316,8 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
-export type { ApiError } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/response";
+export type { ApiError } from "./schema/response";
 export {
   connectionListSchema,
   connectionParamsSchema,

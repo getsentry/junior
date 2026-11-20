@@ -4,7 +4,7 @@ import * as z from "zod";
 import { jsonResponse, throwApiError } from "@/api/http";
 import { decodePageCursor, encodePageCursor } from "@/api/page-cursor";
 import type { JuniorApiEnv } from "@/api/route";
-import { apiErrorSchema } from "@/api/schema/common";
+import { apiErrorSchema } from "@/api/schema/response";
 import {
   reviewItemActionSchema,
   reviewItemCountQuerySchema,
