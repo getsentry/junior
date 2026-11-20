@@ -41,6 +41,10 @@ Each event also carries the values of its scope, and each value is a match key. 
 
 Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior ends the turn with no reply and an optional note. It posts nothing in Slack and adds no reply in the web view. The web view puts the event and its tool calls in one row that you can open, and the note is the input of the `noReply` call.
 
+## See and Cancel Watches
+
+The details panel of a conversation lists its active watches and timers. Each row shows what Junior will do and when the watch fires or expires. Hover over the time to see the exact time. A participant can cancel a watch there. Junior gets no message about the cancel. The watch does not wake it again.
+
 ## Limits
 
 - Watches default to 14 days and cannot exceed 30 days.
