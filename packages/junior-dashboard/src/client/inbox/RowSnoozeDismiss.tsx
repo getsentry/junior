@@ -16,17 +16,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
-import { eventLabel } from "../eventLabel";
 import { cn } from "../styles";
 import { formatTime } from "../time";
-import { useSnoozeResource } from "./inboxSnoozes";
+import { EventSnoozeDialog } from "./EventSnoozeDialog";
 import {
   atLocalHour,
   snoozeChoicesAt,
   type EventSnooze,
-  type SnoozeEvents,
 } from "./snoozeChoices";
 
 const MENU_ROW_CLASS =
@@ -51,14 +48,15 @@ function localInputValue(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** The panel that the snooze menu shows in place of its times. */
-type SnoozePanel = "custom" | "event";
+/** What a menu row after the times opens: a panel, or the Event dialog. */
+type SnoozeMore = "custom" | "event";
 
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
- * of the snooze times, Custom… for a picked date and time, and Event… for
- * an Event on the subject of the row's items or on a page that the viewer
- * names. Number keys pick the menu rows.
+ * of the snooze times, Custom… for a picked date and time, and Event…,
+ * which opens a dialog to pick an Event on the subject of the row's items
+ * or on a pull request or issue that the viewer names. Number keys pick
+ * the menu rows.
  */
 export function RowSnoozeButton(props: {
   /** Set when the row can snooze until an Event. */
@@ -76,111 +74,126 @@ export function RowSnoozeButton(props: {
   /** Another trigger, such as a row's quick action. */
   trigger?: ReactElement;
 }) {
-  const [panel, setPanel] = useState<SnoozePanel>();
-  // Back from a panel focuses its menu row again, so the keys still work.
-  const [back, setBack] = useState<SnoozePanel>();
+  const [custom, setCustom] = useState(false);
+  // Back from Custom focuses its menu row again, so the keys still work.
+  const [back, setBack] = useState(false);
+  // The Event dialog outlives the menu, which closes as it opens.
+  const [eventDialog, setEventDialog] = useState(false);
   // The menu reads the clock when it opens: each open renders it again.
   const nowMs = Date.now();
   const choices = snoozeChoicesAt(nowMs);
-  const panels: SnoozePanel[] = props.eventSnooze
+  const more: SnoozeMore[] = props.eventSnooze
     ? ["custom", "event"]
     : ["custom"];
+  const openMore = (next: SnoozeMore) => {
+    if (next === "custom") {
+      setCustom(true);
+      return;
+    }
+    props.onOpenChange(false);
+    setEventDialog(true);
+  };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (panel || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (custom || event.altKey || event.ctrlKey || event.metaKey) return;
     const index = Number(event.key) - 1;
     if (!Number.isInteger(index) || index < 0) return;
     const choice = choices[index];
-    const next = panels[index - choices.length];
+    const next = more[index - choices.length];
     if (choice) props.onSnooze(choice.untilMs(nowMs));
-    else if (next) setPanel(next);
+    else if (next) openMore(next);
     else return;
     event.preventDefault();
   };
-  const closePanel = () => {
-    setBack(panel);
-    setPanel(undefined);
-  };
   return (
-    <Popover
-      onOpenChange={(open) => {
-        if (open) {
-          setPanel(undefined);
-          setBack(undefined);
-        }
-        props.onOpenChange(open);
-      }}
-      open={props.open}
-    >
-      <PopoverTrigger
-        render={
-          props.trigger ?? (
-            <Button
-              aria-label={props.name}
-              className={props.look && LOOK_CLASSES[props.look]}
-              title={
-                props.look === "icon" ? (props.label ?? "Snooze") : undefined
-              }
-              variant="ghost"
-            >
-              <Clock3
-                aria-hidden="true"
-                className={ATTENTION_TONE_CLASS}
-                size={15}
-              />
-              <ButtonLabel look={props.look}>
-                {props.label ?? "Snooze"}
-              </ButtonLabel>
-            </Button>
-          )
-        }
-      />
-      <PopoverContent
-        align="start"
-        aria-label="Snooze until"
-        // The date and time field needs more room than the times.
-        className={cn("grid gap-0.5 p-1", panel ? "w-72" : "w-56")}
-        onKeyDown={onKeyDown}
+    <>
+      <Popover
+        onOpenChange={(open) => {
+          if (open) {
+            setCustom(false);
+            setBack(false);
+          }
+          props.onOpenChange(open);
+        }}
+        open={props.open}
       >
-        {panel === "custom" ? (
-          <CustomSnooze
-            nowMs={nowMs}
-            onBack={closePanel}
-            onSnooze={props.onSnooze}
-          />
-        ) : panel === "event" && props.eventSnooze ? (
-          <EventSnoozePanel onBack={closePanel} snooze={props.eventSnooze} />
-        ) : (
-          <>
-            {choices.map((choice, index) => (
-              <button
-                aria-keyshortcuts={String(index + 1)}
-                className={MENU_ROW_CLASS}
-                key={choice.label}
-                onClick={() => props.onSnooze(choice.untilMs(nowMs))}
-                type="button"
+        <PopoverTrigger
+          render={
+            props.trigger ?? (
+              <Button
+                aria-label={props.name}
+                className={props.look && LOOK_CLASSES[props.look]}
+                title={
+                  props.look === "icon" ? (props.label ?? "Snooze") : undefined
+                }
+                variant="ghost"
               >
-                {choice.label}
-                <span className="text-xs text-dashboard-text-faint tabular-nums">
-                  {targetTime(choice.untilMs(nowMs), nowMs)}
-                </span>
-              </button>
-            ))}
-            {panels.map((next, index) => (
-              <button
-                aria-keyshortcuts={String(choices.length + index + 1)}
-                autoFocus={back === next}
-                className={MENU_ROW_CLASS}
-                key={next}
-                onClick={() => setPanel(next)}
-                type="button"
-              >
-                {next === "custom" ? "Custom…" : "Event…"}
-              </button>
-            ))}
-          </>
-        )}
-      </PopoverContent>
-    </Popover>
+                <Clock3
+                  aria-hidden="true"
+                  className={ATTENTION_TONE_CLASS}
+                  size={15}
+                />
+                <ButtonLabel look={props.look}>
+                  {props.label ?? "Snooze"}
+                </ButtonLabel>
+              </Button>
+            )
+          }
+        />
+        <PopoverContent
+          align="start"
+          aria-label="Snooze until"
+          // The date and time field needs more room than the times.
+          className={cn("grid gap-0.5 p-1", custom ? "w-72" : "w-56")}
+          onKeyDown={onKeyDown}
+        >
+          {custom ? (
+            <CustomSnooze
+              nowMs={nowMs}
+              onBack={() => {
+                setBack(true);
+                setCustom(false);
+              }}
+              onSnooze={props.onSnooze}
+            />
+          ) : (
+            <>
+              {choices.map((choice, index) => (
+                <button
+                  aria-keyshortcuts={String(index + 1)}
+                  className={MENU_ROW_CLASS}
+                  key={choice.label}
+                  onClick={() => props.onSnooze(choice.untilMs(nowMs))}
+                  type="button"
+                >
+                  {choice.label}
+                  <span className="text-xs text-dashboard-text-faint tabular-nums">
+                    {targetTime(choice.untilMs(nowMs), nowMs)}
+                  </span>
+                </button>
+              ))}
+              {more.map((next, index) => (
+                <button
+                  aria-keyshortcuts={String(choices.length + index + 1)}
+                  autoFocus={back && next === "custom"}
+                  className={MENU_ROW_CLASS}
+                  key={next}
+                  onClick={() => openMore(next)}
+                  type="button"
+                >
+                  {next === "custom" ? "Custom…" : "Event…"}
+                </button>
+              ))}
+            </>
+          )}
+        </PopoverContent>
+      </Popover>
+      {eventDialog && props.eventSnooze ? (
+        <EventSnoozeDialog
+          onClose={() => setEventDialog(false)}
+          snooze={props.eventSnooze}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -235,118 +248,6 @@ function CustomSnooze(props: {
         </Button>
       </div>
     </form>
-  );
-}
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** The Events that the panel offers, and the page that they are on. */
-function snoozeTarget(
-  url: string,
-  subject: SnoozeEvents | undefined,
-  named: ReturnType<typeof useSnoozeResource>,
-): { error?: string; events?: SnoozeEvents; resourceUrl?: string } {
-  switch (named.state) {
-    case "empty":
-      return { events: subject };
-    case "found":
-      return { events: named.resource, resourceUrl: url };
-    case "invalid":
-      return { error: "Paste a link to a pull request or issue." };
-    case "loading":
-      return {};
-    case "unavailable":
-      return { error: "You cannot snooze on this link." };
-  }
-}
-
-/**
- * Pick an Event that ends the snooze, such as a merge of a pull request.
- * The Events are those of the row's subject, or of the pull request or
- * issue that the viewer pastes, so any row can wait on another page. Wake
- * shows the items again then; Dismiss dismisses them, for a viewer who can
- * dismiss each one.
- */
-function EventSnoozePanel(props: { onBack(): void; snooze: EventSnooze }) {
-  const id = useId();
-  const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
-  const [url, setUrl] = useState("");
-  const { subject } = props.snooze;
-  const named = useSnoozeResource(url.trim());
-  const target = snoozeTarget(url.trim(), subject, named);
-  const { events } = target;
-  return (
-    <div className="grid gap-1 p-0.5">
-      {props.snooze.resolve ? (
-        <ToggleGroup
-          aria-label="On the event"
-          className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
-          onValueChange={([next]) => {
-            if (next) setOutcome(next);
-          }}
-          value={[outcome]}
-        >
-          <ToggleGroupItem className="flex-1" value="wake">
-            Wake
-          </ToggleGroupItem>
-          <ToggleGroupItem className="flex-1" value="resolve">
-            Dismiss
-          </ToggleGroupItem>
-        </ToggleGroup>
-      ) : null}
-      <div className="grid gap-1 px-1.5 pt-1">
-        <Label className="text-xs text-muted-foreground" htmlFor={`${id}-url`}>
-          Pull request or issue
-        </Label>
-        <Input
-          aria-describedby={target.error ? `${id}-error` : undefined}
-          aria-invalid={target.error ? true : undefined}
-          autoFocus={!subject}
-          id={`${id}-url`}
-          onChange={(event) => setUrl(event.target.value)}
-          placeholder={
-            subject
-              ? `This ${subject.resourceType.replaceAll("_", " ")}`
-              : "Paste a link"
-          }
-          type="url"
-          value={url}
-        />
-        <FieldError id={`${id}-error`}>{target.error}</FieldError>
-      </div>
-      {events ? (
-        <div
-          aria-label={outcome === "wake" ? "Wake when" : "Dismiss when"}
-          className="grid max-h-120 gap-0.5 overflow-y-auto"
-          role="group"
-        >
-          {events.events.map((eventType, index) => (
-            <button
-              autoFocus={index === 0 && url === ""}
-              className={MENU_ROW_CLASS}
-              key={eventType}
-              onClick={() =>
-                props.snooze.onSnooze({
-                  eventType,
-                  outcome,
-                  resourceUrl: target.resourceUrl,
-                })
-              }
-              type="button"
-            >
-              {sentenceCase(eventLabel(eventType, events.resourceType))}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <div className="flex justify-end">
-        <Button onClick={props.onBack} type="button" variant="ghost">
-          Back
-        </Button>
-      </div>
-    </div>
   );
 }
 
