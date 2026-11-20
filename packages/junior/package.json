@@ -102,7 +102,7 @@
     "diff": "^8.0.4",
     "drizzle-orm": "catalog:",
     "graphql": "^16.14.0",
-    "hono": "^4.13.11",
+    "hono": "^4.13.16",
     "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
