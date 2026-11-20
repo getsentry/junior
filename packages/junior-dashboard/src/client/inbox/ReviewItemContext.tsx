@@ -67,7 +67,8 @@ export function ReviewItemContext(props: {
   fallback: ReactNode;
   item: ReviewItemPayload;
 }) {
-  const detail = useConversationData(itemConversationId(props.item));
+  const conversationId = itemConversationId(props.item);
+  const detail = useConversationData(conversationId);
   const data = detail.data;
   const events = data?.events;
   const excerpt = useMemo(
@@ -94,6 +95,9 @@ export function ReviewItemContext(props: {
     if (loadEarlier) loadPreviousPageRef.current();
   }, [loadEarlier, oldest]);
 
+  // An item that no Conversation owns, such as an Automation alert, has no
+  // messages, and its disabled query stays pending.
+  if (conversationId === undefined) return props.fallback;
   if (detail.isPending || (missingEarlier && !detail.historyError)) {
     return <TranscriptLoading />;
   }

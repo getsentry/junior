@@ -521,9 +521,14 @@ test("an Automation alert names its Automation as its source", async ({
   };
   await mockReviewItems(page, { open: [alert] });
   await page.goto(`${dashboard.baseURL}/inbox`);
+  const row = page.getByRole("link", { name: /Weekly project summary/ });
+  await expect(row).toContainText("Automation");
+  // It has no Conversation to excerpt, so it links to its Automation.
+  await row.click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
   await expect(
-    page.getByRole("link", { name: /Weekly project summary/ }),
-  ).toContainText("Automation");
+    detail.getByRole("link", { name: /Open automation/ }),
+  ).toBeVisible();
 });
 
 test("Send sends docked picks and asks before a message drops others", async ({
