@@ -41,16 +41,24 @@ export const inboxSnoozeResourceQuerySchema = z
   .strict();
 
 /**
+ * Most triggers in one snooze. It bounds the trigger rows that one request
+ * writes for each item, and fits every Event of one page: a GitHub pull
+ * request has 13.
+ */
+export const INBOX_SNOOZE_MAX_TRIGGERS = 30;
+
+/**
  * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
  * until `wakeAt` or one of `triggers` fires, whichever is first. A later
  * item in the row shows by itself.
  */
 export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
   .extend({
-    // Bound the trigger rows that one request writes for each item. The
-    // bound fits every Event of one page, which the dialog lets a person
-    // pick: a GitHub pull request has 13.
-    triggers: z.array(inboxSnoozeTriggerSchema).min(1).max(30).optional(),
+    triggers: z
+      .array(inboxSnoozeTriggerSchema)
+      .min(1)
+      .max(INBOX_SNOOZE_MAX_TRIGGERS)
+      .optional(),
     wakeAt: z.string().datetime().optional(),
   })
   .strict()

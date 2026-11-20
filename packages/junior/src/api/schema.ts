@@ -472,6 +472,7 @@ export type {
   ReviewItemPayload,
 } from "./schema/review-item";
 export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
   inboxSnoozeCreateSchema,
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,

@@ -1,6 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { codeChangeSearchReportSchema } from "@sentry/junior/api/schema";
-import { Link2 } from "lucide-react";
+import {
+  codeChangeSearchReportSchema,
+  INBOX_SNOOZE_MAX_TRIGGERS,
+} from "@sentry/junior/api/schema";
+import { ChevronsUpDown, Link2, Plus, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
@@ -12,7 +15,6 @@ import {
   CommandItem,
   CommandList,
 } from "../components/ui/command";
-import { Checkbox } from "../components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,18 @@ import {
 import { FieldError } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { useSheet } from "../components/ui/useSheet";
 import {
@@ -47,9 +61,6 @@ const SEARCH_STALE_MS = 60_000;
 // The longest query that the code change search takes.
 const SEARCH_MAX_LENGTH = 100;
 
-const EVENT_ROW_CLASS =
-  "flex cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
-
 /**
  * The page whose Events end the snooze: the subject of the row's items, or
  * a pull request or issue that the viewer picks or pastes.
@@ -58,13 +69,26 @@ type Watched =
   | { kind: "subject" }
   | { kind: "page"; reference?: ComposerReference; url: string };
 
+/** One condition: an Event on a page. Either part can still be unpicked. */
+interface Condition {
+  eventType?: string;
+  id: number;
+  watched?: Watched;
+}
+
+/** A condition that names a page and an Event, ready to post. */
+interface CompleteCondition {
+  eventType: string;
+  watched: Watched;
+}
+
 /**
- * A custom snooze, in a dialog: a date and time, Events of a page, or
- * both, and the first of them ends the snooze. The page is the subject of
- * the row's items, a pull request that the search finds, or a pasted link
- * to a pull request or issue. Wake shows the items again then; Dismiss
- * dismisses them, for a viewer who can dismiss each one. The time always
- * wakes them.
+ * A custom snooze, in a dialog: a date and time, conditions, or both, and
+ * the first of them ends the snooze. Each condition is one Event on a page:
+ * the subject of the row's items, a pull request that the search finds, or
+ * a pasted link to a pull request or issue. Wake shows the items again
+ * then; Dismiss dismisses them, for a viewer who can dismiss each one. The
+ * time always wakes them.
  */
 export function SnoozeDialog(props: {
   /** Set when the row can snooze until an Event. */
@@ -77,40 +101,52 @@ export function SnoozeDialog(props: {
   const timeRef = useRef<HTMLInputElement>(null);
   const sheet = useSheet(props.onClose, timeRef);
   const [time, setTime] = useState("");
-  const [watched, setWatched] = useState<Watched | undefined>(() =>
-    props.events?.subject ? { kind: "subject" } : undefined,
-  );
-  // Change shows the search again, which then takes the keys.
-  const [searchFocus, setSearchFocus] = useState(false);
   const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [conditions, setConditions] = useState<readonly Condition[]>([]);
+  const nextId = useRef(0);
   // The time field is wrong, or nothing ends the snooze.
   const [error, setError] = useState<{ message: string; time: boolean }>();
-  const url = watched?.kind === "page" ? watched.url : "";
-  const named = useSnoozeResource(url);
-  const watch = (next: Watched | undefined) => {
-    setWatched(next);
-    setPicked(new Set());
+  const subject = props.events?.subject;
+  const add = () => {
+    nextId.current += 1;
+    setConditions([
+      ...conditions,
+      {
+        id: nextId.current,
+        watched: subject ? { kind: "subject" } : undefined,
+      },
+    ]);
+    setError(undefined);
+  };
+  const change = (next: Condition) => {
+    setConditions(conditions.map((row) => (row.id === next.id ? next : row)));
+    setError(undefined);
+  };
+  const remove = (rowId: number) => {
+    setConditions(conditions.filter((row) => row.id !== rowId));
     setError(undefined);
   };
   const submit = () => {
     // A `datetime-local` value has no offset, so it parses as local time.
     const untilMs = time ? new Date(time).getTime() : undefined;
+    // A row offers only the Events of a page that the viewer can snooze
+    // on, so a picked Event is one of them.
+    const complete = conditions.flatMap(({ eventType, watched }) =>
+      eventType && watched ? [{ eventType, watched }] : [],
+    );
     if (untilMs !== undefined && Number.isNaN(untilMs)) {
       setError({ message: "Pick a date and time.", time: true });
     } else if (untilMs !== undefined && untilMs <= Date.now()) {
       setError({ message: "Pick a time in the future.", time: true });
-    } else if (untilMs === undefined && picked.size === 0) {
+    } else if (complete.length < conditions.length) {
+      setError({
+        message: "Finish each condition, or remove it.",
+        time: false,
+      });
+    } else if (untilMs === undefined && complete.length === 0) {
       setError({ message: "Pick a time or an event.", time: false });
     } else {
-      props.onSnooze({
-        triggers: [...picked].map((eventType) => ({
-          eventType,
-          outcome,
-          resourceUrl: watched?.kind === "page" ? watched.url : undefined,
-        })),
-        untilMs,
-      });
+      props.onSnooze({ triggers: snoozeTriggers(complete, outcome), untilMs });
       sheet.close();
     }
   };
@@ -118,7 +154,9 @@ export function SnoozeDialog(props: {
     <Dialog {...sheet.rootProps}>
       <DialogContent
         {...sheet.contentProps}
-        className="flex max-h-[min(40rem,90dvh)] max-w-lg flex-col gap-3 overflow-hidden p-4"
+        // Pinned to the top, the dialog grows down as conditions are added
+        // instead of moving to stay centered.
+        className="flex max-h-[min(40rem,90dvh)] max-w-lg flex-col gap-3 overflow-hidden p-4 sm:top-[15dvh] sm:translate-y-0"
       >
         <DialogTitle className="text-base">Custom snooze</DialogTitle>
         <div className="grid gap-1.5">
@@ -150,36 +188,51 @@ export function SnoozeDialog(props: {
             aria-labelledby={`${id}-events`}
             className="flex min-h-0 flex-col gap-1.5"
           >
-            <h3
-              className="m-0 text-xs font-normal text-muted-foreground"
-              id={`${id}-events`}
-            >
-              Or on an event
-            </h3>
-            {watched ? (
-              <EventPicker
-                named={named}
-                onChange={() => {
-                  watch(undefined);
-                  setSearchFocus(true);
-                }}
-                onOutcome={setOutcome}
-                onPicked={(next) => {
-                  setPicked(next);
-                  setError(undefined);
-                }}
-                outcome={outcome}
-                picked={picked}
-                snooze={props.events}
-                watched={watched}
-              />
-            ) : (
-              <WatchPicker
-                autoFocus={searchFocus}
-                onPick={watch}
-                subject={props.events.subject}
-              />
-            )}
+            <div className="flex min-h-8 items-center justify-between gap-2">
+              <h3
+                className="m-0 text-xs font-normal text-muted-foreground"
+                id={`${id}-events`}
+              >
+                Or when any of these happens
+              </h3>
+              {props.events.resolve && conditions.length > 0 ? (
+                <ToggleGroup
+                  aria-label="On the event"
+                  className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
+                  onValueChange={([next]) => {
+                    if (next) setOutcome(next);
+                  }}
+                  value={[outcome]}
+                >
+                  <ToggleGroupItem value="wake">Wake</ToggleGroupItem>
+                  <ToggleGroupItem value="resolve">Dismiss</ToggleGroupItem>
+                </ToggleGroup>
+              ) : null}
+            </div>
+            {conditions.length > 0 ? (
+              <div className="grid min-h-0 gap-1.5 overflow-y-auto">
+                {conditions.map((row) => (
+                  <ConditionRow
+                    condition={row}
+                    key={row.id}
+                    onChange={change}
+                    onRemove={() => remove(row.id)}
+                    subject={subject}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {conditions.length < INBOX_SNOOZE_MAX_TRIGGERS ? (
+              <Button
+                className="self-start"
+                onClick={add}
+                type="button"
+                variant="ghost"
+              >
+                <Plus aria-hidden="true" />
+                Add condition
+              </Button>
+            ) : null}
           </section>
         ) : null}
         <FieldError id={`${id}-error`}>{error?.message}</FieldError>
@@ -194,6 +247,21 @@ export function SnoozeDialog(props: {
       </DialogContent>
     </Dialog>
   );
+}
+
+/** One trigger for each distinct condition, with the outcome of them all. */
+function snoozeTriggers(
+  conditions: readonly CompleteCondition[],
+  outcome: "resolve" | "wake",
+): CustomSnoozeEnd["triggers"] {
+  const seen = new Set<string>();
+  return conditions.flatMap(({ eventType, watched }) => {
+    const resourceUrl = watched.kind === "page" ? watched.url : undefined;
+    const key = `${resourceUrl ?? ""} ${eventType}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ eventType, outcome, resourceUrl }];
+  });
 }
 
 /** The `datetime-local` value of a time, in the browser's timezone. */
@@ -236,7 +304,6 @@ function useCodeChangeSearch(query: string) {
  * search finds, or a pasted link to a pull request or issue.
  */
 function WatchPicker(props: {
-  autoFocus: boolean;
   onPick(watched: Watched): void;
   subject: SnoozeEvents | undefined;
 }) {
@@ -249,7 +316,7 @@ function WatchPicker(props: {
   return (
     <Command label="Pull request or issue" shouldFilter={false}>
       <CommandInput
-        autoFocus={props.autoFocus}
+        autoFocus
         onValueChange={setQuery}
         placeholder="Search pull requests or paste a link"
         value={query}
@@ -336,93 +403,127 @@ function watchedEvents(
   }
 }
 
-/** Pick the Events of the watched page that end the snooze. */
-function EventPicker(props: {
-  named: ReturnType<typeof useSnoozeResource>;
-  onChange(): void;
-  onOutcome(outcome: "resolve" | "wake"): void;
-  onPicked(picked: ReadonlySet<string>): void;
-  outcome: "resolve" | "wake";
-  picked: ReadonlySet<string>;
-  snooze: EventSnooze;
-  watched: Watched;
+/**
+ * One condition: a page and one of its Events. A new row with no page opens
+ * the search at once. The search floats over the dialog, and the Event
+ * select keeps its size while the page loads, so the dialog does not jump.
+ */
+function ConditionRow(props: {
+  condition: Condition;
+  onChange(next: Condition): void;
+  onRemove(): void;
+  subject: SnoozeEvents | undefined;
 }) {
-  const { subject } = props.snooze;
-  const { watched } = props;
-  const { error, events } = watchedEvents(watched, subject, props.named);
-  const toggle = (eventType: string, on: boolean) => {
-    const next = new Set(props.picked);
-    if (on) next.add(eventType);
-    else next.delete(eventType);
-    props.onPicked(next);
-  };
+  const { condition, subject } = props;
+  const { watched } = condition;
+  const [open, setOpen] = useState(!watched);
+  const named = useSnoozeResource(watched?.kind === "page" ? watched.url : "");
+  const { error, events } = watched
+    ? watchedEvents(watched, subject, named)
+    : {};
+  const name = watched && events && watchedName(watched, events.resourceType);
   return (
-    <>
-      <div className="flex min-w-0 items-center gap-2">
-        {watched.kind === "page" && watched.reference ? (
-          <ReferenceIcon reference={watched.reference} />
-        ) : null}
-        <span
-          className={cn(
-            fadeTextClass,
-            "flex-1 font-sans text-sm text-dashboard-text",
-          )}
+    <div className="grid gap-1">
+      <div
+        aria-label={
+          name && events && condition.eventType
+            ? eventSentence(condition.eventType, events, name)
+            : "New condition"
+        }
+        // A phone puts the Event under the page, so both names fit.
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 sm:flex"
+        role="group"
+      >
+        <Popover onOpenChange={setOpen} open={open}>
+          <PopoverTrigger className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel px-2.5 text-left font-sans text-xs font-medium text-dashboard-text hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus md:h-8">
+            {watched?.kind === "page" && watched.reference ? (
+              <ReferenceIcon reference={watched.reference} />
+            ) : null}
+            <span
+              className={cn(
+                fadeTextClass,
+                "flex-1",
+                !watched && "text-dashboard-text-muted",
+              )}
+            >
+              {watched
+                ? pageName(watched, subject)
+                : "Pick a pull request or issue"}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-dashboard-text-muted"
+            />
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-80 overflow-hidden p-0"
+          >
+            <WatchPicker
+              onPick={(next) => {
+                props.onChange({ id: condition.id, watched: next });
+                setOpen(false);
+              }}
+              subject={subject}
+            />
+          </PopoverContent>
+        </Popover>
+        <Select<string>
+          disabled={!events}
+          onValueChange={(next) => {
+            if (next) props.onChange({ ...condition, eventType: next });
+          }}
+          value={condition.eventType ?? null}
         >
-          {watched.kind === "subject"
-            ? subject && subjectName(subject)
-            : watched.reference
-              ? referenceName(watched.reference)
-              : watched.url}
-        </span>
-        <Button onClick={props.onChange} type="button" variant="ghost">
-          Change
+          <SelectTrigger
+            aria-label="Event"
+            className="row-start-2 min-w-0 sm:flex-1"
+          >
+            <SelectValue className={cn(fadeTextClass, "flex-1 text-left")}>
+              {(value: string | null) =>
+                value && events
+                  ? eventPhrase(value, events)
+                  : watched && !events && !error
+                    ? "Checking the link…"
+                    : "Pick an event"
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {events?.events.map((eventType) => (
+              <SelectItem key={eventType} value={eventType}>
+                {eventPhrase(eventType, events)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          aria-label="Remove condition"
+          className="col-start-2 row-start-1"
+          onClick={props.onRemove}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <X aria-hidden="true" />
         </Button>
       </div>
-      {props.snooze.resolve ? (
-        <ToggleGroup
-          aria-label="On the event"
-          className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
-          onValueChange={([next]) => {
-            if (next) props.onOutcome(next);
-          }}
-          value={[props.outcome]}
-        >
-          <ToggleGroupItem className="flex-1" value="wake">
-            Wake
-          </ToggleGroupItem>
-          <ToggleGroupItem className="flex-1" value="resolve">
-            Dismiss
-          </ToggleGroupItem>
-        </ToggleGroup>
-      ) : null}
       {error ? <FieldError>{error}</FieldError> : null}
-      {!error && !events ? (
-        <p className="m-0 font-sans text-sm text-muted-foreground">
-          Checking the link…
-        </p>
-      ) : null}
-      {events ? (
-        <div
-          aria-label={props.outcome === "wake" ? "Wake when" : "Dismiss when"}
-          className="grid min-h-0 gap-0.5 overflow-y-auto"
-          role="group"
-        >
-          {events.events.map((eventType) => (
-            <label className={EVENT_ROW_CLASS} key={eventType}>
-              <Checkbox
-                checked={props.picked.has(eventType)}
-                onCheckedChange={(on) => toggle(eventType, on)}
-              />
-              {eventSentence(
-                eventType,
-                events,
-                watchedName(watched, events.resourceType),
-              )}
-            </label>
-          ))}
-        </div>
-      ) : null}
-    </>
+    </div>
+  );
+}
+
+/** The name of a picked page on its row's button. */
+function pageName(watched: Watched, subject: SnoozeEvents | undefined) {
+  if (watched.kind === "subject") return subject && subjectName(subject);
+  return watched.reference ? referenceName(watched.reference) : watched.url;
+}
+
+/** How an Event reads after its page's name, such as "is merged". */
+function eventPhrase(eventType: string, events: SnoozeEvents): string {
+  return (
+    events.phrases[eventType] ??
+    sentenceCase(eventLabel(eventType, events.resourceType))
   );
 }
 
