@@ -456,12 +456,12 @@ export interface GitHubPullRequestMergeState {
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
   /**
-   * The commit of the requester's latest change request, when that is their
-   * latest review. Read only when the pull request is open and not a draft.
+   * The requester's latest change request, when that is their latest
+   * review: when they submitted it, and its commit. GitHub gives no commit
+   * when a force push removed it. Read only when the pull request is open
+   * and not a draft.
    */
-  changesRequestedCommit?: string;
-  /** When the requester submitted that change request. */
-  changesRequestedAt?: Date;
+  changesRequested?: { at?: Date; commit?: string };
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha: string;
@@ -622,14 +622,15 @@ export async function loadPullRequestMergeState(
   }
   const login = requesterLogin?.toLowerCase();
   const requesterReview = login ? latest.get(login) : undefined;
-  if (
-    requesterReview?.state === "CHANGES_REQUESTED" &&
-    requesterReview.commit
-  ) {
-    state.changesRequestedCommit = requesterReview.commit.oid;
-    if (requesterReview.submittedAt) {
-      state.changesRequestedAt = new Date(requesterReview.submittedAt);
-    }
+  if (requesterReview?.state === "CHANGES_REQUESTED") {
+    state.changesRequested = {
+      ...(requesterReview.submittedAt
+        ? { at: new Date(requesterReview.submittedAt) }
+        : undefined),
+      ...(requesterReview.commit
+        ? { commit: requesterReview.commit.oid }
+        : undefined),
+    };
   }
   return state;
 }

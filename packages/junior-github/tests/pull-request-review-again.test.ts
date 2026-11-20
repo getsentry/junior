@@ -267,6 +267,40 @@ describe("review again after a change request", () => {
     }
   });
 
+  it("asks the requester again after a force push removes the commit of their change request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    const requests: string[] = [];
+    // GitHub gives no commit for a review whose commit a force push removed.
+    const github: GitHubState = {
+      draft: false,
+      headSha: "head-2",
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: [],
+      reviews: [
+        { id: 301, state: "CHANGES_REQUESTED", user: { login: "requester" } },
+      ],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls).handler(pullRequestAction("synchronize"));
+      expect(requests).toContain("request Requester");
+      expect(calls).toMatchObject([
+        {
+          kind: "upsert",
+          notice: {
+            body: `#946 has new commits since you requested changes.\n\n${PULL_URL}`,
+          },
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("asks the requester again when a change request is addressed with no push", async () => {
     const fixture = await createGitHubFixture();
     const calls: ReviewItemCall[] = [];

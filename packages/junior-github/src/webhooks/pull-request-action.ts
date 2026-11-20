@@ -247,9 +247,11 @@ function reviewAgainReason(
   state: GitHubPullRequestMergeState,
   activity: LatestActivity,
 ): ReviewAgainReason | undefined {
-  if (!state.changesRequestedCommit) return undefined;
-  const newCommits = state.changesRequestedCommit !== state.headSha;
-  const changesRequestedAt = timeOf(state.changesRequestedAt);
+  const { changesRequested } = state;
+  if (!changesRequested) return undefined;
+  // A change request whose commit a force push removed is on an old commit.
+  const newCommits = changesRequested.commit !== state.headSha;
+  const changesRequestedAt = timeOf(changesRequested.at);
   const requesterAt = Math.max(
     timeOf(activity.requesterAt),
     changesRequestedAt,
@@ -295,7 +297,7 @@ function nextAction(
   if (reason) return { action: "review", reason };
   // A reply to the change request ends the review that Junior asked for,
   // though GitHub still asks for it, because Junior acts next.
-  if (requested && !state.changesRequestedCommit) return { action: "review" };
+  if (requested && !state.changesRequested) return { action: "review" };
   if (canMerge && !state.mergeableState) return undefined;
   return {};
 }
