@@ -228,8 +228,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
-    await rowHead(todo, alert.title).hover();
-    await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Snooze" })
+      .click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
     await expect(page).toHaveTitle("(1) Inbox - Junior");
 

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { automationTaskDescription } from "@/chat/automations/task";
-import { getDb } from "@/chat/db";
 import {
   automationEventCatalog,
   registeredEventTriggerProblems,
@@ -50,14 +49,16 @@ function oneLine(text: string): string {
 }
 
 /** The trigger problems of an event Automation with the enabled plugins. */
-function triggerProblems(row: AutomationRow): string[] {
-  if (row.kind !== "event" || !("trigger" in row.record)) return [];
-  const trigger = eventAutomationTriggerSchema.safeParse(row.record.trigger);
+function triggerProblems(
+  record: AutomationRow["record"],
+  catalog = automationEventCatalog(getEventCatalog()),
+): string[] {
+  if (!("trigger" in record)) return [];
+  const trigger = eventAutomationTriggerSchema.safeParse(record.trigger);
   if (!trigger.success) return ["The trigger is not valid."];
-  return registeredEventTriggerProblems(
-    automationEventCatalog(getEventCatalog()),
-    trigger.data,
-  ).map((problem) => problem.message);
+  return registeredEventTriggerProblems(catalog, trigger.data).map(
+    (problem) => problem.message,
+  );
 }
 
 /** The alert that an Automation needs now, if any, as the Inbox orders them. */
@@ -80,7 +81,7 @@ function automationAlert(
       identity: ["blocked", row.statusReason, row.lastRunId],
     };
   }
-  const problems = triggerProblems(row);
+  const problems = row.kind === "event" ? triggerProblems(row.record) : [];
   if (problems.length > 0) {
     return {
       body: `Trigger unavailable: ${problems.join(" ")} Update the trigger.`,
@@ -245,12 +246,12 @@ export async function syncAutomationAlert(
  * becomes unavailable or available again only when the plugins change, with
  * no write to the Automation, so the heartbeat calls this. It syncs each
  * event Automation whose trigger cannot work, and each one with an open
- * alert. Returns how many it synced.
+ * alert.
  */
 export async function syncEventTriggerAlerts(
-  db: JuniorDatabase = getDb(),
-  nowMs = Date.now(),
-): Promise<number> {
+  db: JuniorDatabase,
+  nowMs: number,
+): Promise<void> {
   const catalog = automationEventCatalog(getEventCatalog());
   const live = await db
     .select({ id: juniorAutomations.id, record: juniorAutomations.record })
@@ -261,16 +262,11 @@ export async function syncEventTriggerAlerts(
         inArray(juniorAutomations.status, ["active", "blocked"]),
       ),
     );
-  const unavailable = live.flatMap((automation) => {
-    const trigger =
-      "trigger" in automation.record
-        ? eventAutomationTriggerSchema.safeParse(automation.record.trigger)
-        : undefined;
-    return trigger?.success &&
-      registeredEventTriggerProblems(catalog, trigger.data).length === 0
-      ? []
-      : [automation.id];
-  });
+  const unavailable = live.flatMap((automation) =>
+    triggerProblems(automation.record, catalog).length > 0
+      ? [automation.id]
+      : [],
+  );
   const alerted = await db
     .selectDistinct({ id: juniorReviewItems.ownerId })
     .from(juniorReviewItems)
@@ -287,5 +283,4 @@ export async function syncEventTriggerAlerts(
     );
   const ids = [...new Set([...unavailable, ...alerted.map((row) => row.id)])];
   await mapBounded(ids, (id) => syncAutomationAlert(db, id, nowMs));
-  return ids.length;
 }

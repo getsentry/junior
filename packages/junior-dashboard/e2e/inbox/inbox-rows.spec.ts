@@ -580,8 +580,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockReviewItems(page, { open: [alert, license] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    await rowHead(todo, alert.title).hover();
-    await todo.getByRole("button", { exact: true, name: "Dismiss" }).click();
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Dismiss" })
+      .click();
     await expect(rowHead(todo, alert.title)).toHaveCount(0);
     expect(actions).toEqual([{ body: { action: "dismiss" }, id: alert.id }]);
     // The server closed it, so it stays closed in a new page.
