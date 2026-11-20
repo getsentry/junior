@@ -72,5 +72,7 @@ child chooses to report reaches the parent.
   come. This breaks "a parent never waits forever".
 - A parent does not archive its child agents when their work is done. This
   breaks "a parent manages the lifecycle of its child agents".
+- A parent cannot archive a Task. Only a Thread can be archived. This
+  breaks "a parent manages the lifecycle of its child agents".
 - For some child messages, Junior reads the sender from the message id.
   This breaks "a message id is an opaque key".
