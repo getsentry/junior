@@ -601,6 +601,22 @@ export function useFailedReviewItemAnswer(id: string) {
 }
 
 /**
+ * The error of the viewer's last action on an item, when that action failed.
+ * An optimistic action unmounts the item's view, so the view that comes back
+ * reads the error here.
+ */
+export function useFailedReviewItemAction(id: string): Error | undefined {
+  const errors = useMutationState({
+    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY },
+    select: (mutation) =>
+      actionOf(mutation)?.id === id ? mutation.state.error : undefined,
+  });
+  // The mutation cache keeps insertion order, so the last one is newest. Its
+  // error is null while it runs or after it succeeds.
+  return errors.filter((error) => error !== undefined).at(-1) ?? undefined;
+}
+
+/**
  * Open Review items, newest first, that one Conversation waits on the viewer
  * for, and when the wait began (the oldest item).
  */

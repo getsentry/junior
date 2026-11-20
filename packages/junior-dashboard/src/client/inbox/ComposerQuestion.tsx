@@ -25,7 +25,11 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useReviewItemAction, useReviewItemsData } from "./queries";
+import {
+  useFailedReviewItemAction,
+  useReviewItemAction,
+  useReviewItemsData,
+} from "./queries";
 import { ReviewItemEvidence } from "./ReviewItemEvidence";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
 import { ReviewItemTitle } from "./ReviewItemPeople";
@@ -334,24 +338,25 @@ function DockedQuestion(props: {
   stepper: ReactNode;
 }) {
   const { item, onPicksChange } = props;
-  const action = useReviewItemAction();
-  const [error, setError] = useState<string>();
+  // The question leaves as an action that closes it starts. A failed action
+  // puts it back, with its picks and the error.
+  const action = useReviewItemAction({ optimistic: true });
+  const failure = useFailedReviewItemAction(item.id);
+  const error = failure ? actionError(failure) : undefined;
   const [unsent, setUnsent] = useState(false);
   useEffect(() => {
     onPicksChange(item.id, unsent);
   }, [item.id, onPicksChange, unsent]);
 
   async function run(body: ReviewItemActionBody) {
-    setError(undefined);
     const closing = body.action !== "take";
     // The list can drop the item before the action resolves.
     if (closing) props.onCloseShown(true);
     try {
       await action.mutateAsync({ body, id: item.id });
-    } catch (failure) {
+    } catch (caught) {
       if (closing) props.onCloseShown(false);
-      setError(actionError(failure));
-      throw failure;
+      throw caught;
     }
     props.afterAction(body.action !== "take");
   }
