@@ -49,9 +49,9 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Gaps
 
-- When Junior stops fixing merge conflicts on its pull request, because
-  nobody worked on it for 2 days or after 3 fixes in a row, it asks the
-  requester to `Resume` with a Review item (`github#conflict-idle`). This
+- When Junior stops fixing merge conflicts on a pull request that nobody
+  works on, it asks the requester to `Resume` with a Review item
+  (`github#conflict-idle`). This
   breaks "when Junior stops upkeep that it owns, it tells nobody".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
