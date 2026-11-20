@@ -1,2 +1,0 @@
-ALTER TABLE "junior_github_pull_requests" ADD COLUMN "junior_activity_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "junior_github_pull_requests" ADD COLUMN "requester_activity_at" timestamp with time zone;

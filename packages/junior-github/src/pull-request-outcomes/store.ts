@@ -368,41 +368,6 @@ export function pullRequestRow(target: {
   );
 }
 
-/** Who acted on a Junior pull request, and when. */
-export interface GitHubPullRequestActorActivity {
-  at: Date;
-  by: "junior" | "requester";
-}
-
-function activityUpdate(activity: GitHubPullRequestActorActivity | undefined) {
-  if (!activity) return undefined;
-  const key =
-    activity.by === "junior" ? "juniorActivityAt" : "requesterActivityAt";
-  // GREATEST skips null, so the first activity is kept as it is.
-  return {
-    [key]: sql`greatest(${juniorGitHubPullRequests[key]}, ${activity.at.toISOString()}::timestamptz)`,
-  };
-}
-
-/** Read when Junior and the requester last acted on a Junior pull request. */
-export async function readGitHubPullRequestActivity(
-  db: GitHubDb,
-  target: { number: number; repositoryFullName: string },
-): Promise<{ juniorAt?: Date; requesterAt?: Date }> {
-  const t = juniorGitHubPullRequests;
-  const [row] = await db
-    .select({
-      juniorAt: t.juniorActivityAt,
-      requesterAt: t.requesterActivityAt,
-    })
-    .from(t)
-    .where(pullRequestRow(target));
-  return {
-    ...(row?.juniorAt ? { juniorAt: row.juniorAt } : undefined),
-    ...(row?.requesterAt ? { requesterAt: row.requesterAt } : undefined),
-  };
-}
-
 /**
  * Ask to check the next action of a Junior pull request, and claim the check
  * when no other webhook runs one. A claim older than `staleMs` is free.
@@ -413,12 +378,7 @@ export async function readGitHubPullRequestActivity(
 export async function claimGitHubPullRequestReadySync(
   db: GitHubDb,
   target: { number: number; repositoryFullName: string },
-  options: {
-    /** Activity that the webhook reports. Only a newer time is kept. */
-    activity?: GitHubPullRequestActorActivity | undefined;
-    now: Date;
-    staleMs: number;
-  },
+  options: { now: Date; staleMs: number },
 ): Promise<
   | {
       action: GitHubPullRequestAction | undefined;
@@ -437,7 +397,6 @@ export async function claimGitHubPullRequestReadySync(
       // Each request has its own number, so it is the id of the claim.
       readySyncId: sql`case when ${free} then ${t.readySyncRequests} + 1 else ${t.readySyncId} end`,
       readySyncAt: sql`case when ${free} then ${options.now.toISOString()}::timestamptz else ${t.readySyncAt} end`,
-      ...activityUpdate(options.activity),
     })
     .where(pullRequestRow(target))
     .returning({

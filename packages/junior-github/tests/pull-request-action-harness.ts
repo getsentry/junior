@@ -1,6 +1,6 @@
 /**
- * Shared wiring for the next-action item tests: signed GitHub webhooks, a
- * mocked GitHub REST API, and the plugin's webhook route.
+ * Shared wiring for the next-action item tests: signed GitHub webhooks,
+ * mocked GitHub REST and GraphQL APIs, and the plugin's webhook route.
  */
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
@@ -87,8 +87,12 @@ export function reviewSubmitted(
   );
 }
 
-/** A conversation comment, or a review comment reply, on the pull request. */
+/**
+ * A conversation comment, or a review comment reply, on the pull request.
+ * GitHub keeps it, as a comment or as a review that holds the reply.
+ */
 export function commented(
+  github: GitHubState,
   eventName: "issue_comment" | "pull_request_review_comment",
   by: { at: string; login: string },
 ) {
@@ -98,6 +102,15 @@ export function commented(
     id: delivery + 1,
     user: { login: by.login },
   };
+  if (eventName === "issue_comment") {
+    (github.comments ??= []).push(by);
+  } else {
+    github.reviews.push({
+      state: "COMMENTED",
+      submitted_at: by.at,
+      user: { login: by.login },
+    });
+  }
   return signedRequest(
     eventName === "issue_comment"
       ? {
@@ -116,16 +129,17 @@ export function commented(
   );
 }
 
-/** GitHub asks one person for their review. */
-export function reviewRequested(login: string, at: string) {
+/** GitHub asks one person for their review, and shows it on the timeline. */
+export function reviewRequested(
+  github: GitHubState,
+  login: string,
+  at: string,
+) {
+  (github.reviewRequests ??= []).push({ at, login });
   return signedRequest(
     {
       action: "review_requested",
-      pull_request: {
-        number: 946,
-        updated_at: at,
-        user: { login: "sentry-junior[bot]" },
-      },
+      pull_request: { number: 946, user: { login: "sentry-junior[bot]" } },
       repository,
       requested_reviewer: { login },
       sender: { login: "sentry-junior[bot]" },
@@ -156,9 +170,11 @@ export function pullRequestAction(action: string, merged = false) {
   );
 }
 
-/** GitHub state that the mocked REST API returns. */
+/** GitHub state that the mocked REST and GraphQL APIs return. */
 export interface GitHubState {
   autoMerge?: boolean | undefined;
+  /** Conversation comments on the pull request, oldest first. */
+  comments?: Array<{ at: string; login: string }>;
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha?: string;
@@ -168,6 +184,8 @@ export interface GitHubState {
   holdNextPullRead?: Promise<void> | undefined;
   merged: boolean;
   requestedReviewers?: string[];
+  /** The review requests on the pull request's timeline. */
+  reviewRequests?: Array<{ at: string; login: string }>;
   reviews: Array<{
     commit_id?: string;
     id?: number;
@@ -176,6 +194,39 @@ export interface GitHubState {
     user: { login: string };
   }>;
   state: "closed" | "open";
+}
+
+// Each pull request read takes the next merge state, after any hold.
+async function readPull(github: GitHubState): Promise<string | null> {
+  const mergeableState =
+    github.mergeableStates.length > 1
+      ? github.mergeableStates.shift()
+      : github.mergeableStates[0];
+  const hold = github.holdNextPullRead;
+  github.holdNextPullRead = undefined;
+  await hold;
+  return mergeableState ?? null;
+}
+
+// GraphQL names a bot without the `[bot]` that REST adds.
+function graphqlActor(login: string) {
+  return login.endsWith("[bot]")
+    ? { __typename: "Bot", login: login.slice(0, -"[bot]".length) }
+    : { __typename: "User", login };
+}
+
+// The 100 reviews before the cursor, oldest first. A cursor is an index.
+function reviewsPage(github: GitHubState, before: number) {
+  const start = Math.max(0, before - 100);
+  return {
+    nodes: github.reviews.slice(start, before).map((review) => ({
+      author: graphqlActor(review.user.login),
+      commit: review.commit_id ? { oid: review.commit_id } : null,
+      state: review.state,
+      submittedAt: review.submitted_at ?? null,
+    })),
+    pageInfo: { hasPreviousPage: start > 0, startCursor: String(start) },
+  };
 }
 
 export function mockGitHub(github: GitHubState, requests: string[]) {
@@ -192,13 +243,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       "https://api.github.com/repos/getsentry/junior/pulls/946",
       async () => {
         requests.push("pull");
-        const mergeableState =
-          github.mergeableStates.length > 1
-            ? github.mergeableStates.shift()
-            : github.mergeableStates[0];
-        const hold = github.holdNextPullRead;
-        github.holdNextPullRead = undefined;
-        await hold;
+        const mergeableState = await readPull(github);
         return HttpResponse.json({
           auto_merge: github.autoMerge
             ? { enabled_by: { login: "someone" }, merge_method: "squash" }
@@ -242,9 +287,70 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         return HttpResponse.json({ ...review, node_id: `PRR_${review?.id}` });
       },
     ),
-    http.post("https://api.github.com/graphql", () =>
-      HttpResponse.json({ data: { node: { reactionGroups: [] } } }),
-    ),
+    http.post("https://api.github.com/graphql", async ({ request }) => {
+      const { operationName, variables } = (await request.json()) as {
+        operationName: string;
+        variables: { before?: string };
+      };
+      if (operationName === "PullRequestNextAction") {
+        requests.push("pull");
+        const mergeableState = await readPull(github);
+        return HttpResponse.json({
+          data: {
+            repository: {
+              pullRequest: {
+                autoMergeRequest: github.autoMerge
+                  ? { enabledAt: "2026-07-02T00:00:00Z" }
+                  : null,
+                commits: { nodes: [] },
+                headRefOid: github.headSha ?? "head-1",
+                isDraft: github.draft,
+                mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
+                reviewRequests: {
+                  nodes: (github.requestedReviewers ?? []).map((login) => ({
+                    requestedReviewer: { __typename: "User", login },
+                  })),
+                },
+                reviews: reviewsPage(github, github.reviews.length),
+                state: github.merged ? "MERGED" : github.state.toUpperCase(),
+                timelineItems: {
+                  nodes: [
+                    ...(github.comments ?? []).map((comment) => ({
+                      __typename: "IssueComment",
+                      author: graphqlActor(comment.login),
+                      createdAt: comment.at,
+                    })),
+                    ...(github.reviewRequests ?? []).map((event) => ({
+                      __typename: "ReviewRequestedEvent",
+                      createdAt: event.at,
+                      requestedReviewer: {
+                        __typename: "User",
+                        login: event.login,
+                      },
+                    })),
+                  ],
+                },
+                title: "Add the Inbox notice",
+                url: PULL_URL,
+              },
+            },
+          },
+        });
+      }
+      if (operationName === "PullRequestReviewsBefore") {
+        requests.push("reviews");
+        return HttpResponse.json({
+          data: {
+            repository: {
+              pullRequest: {
+                reviews: reviewsPage(github, Number(variables.before)),
+              },
+            },
+          },
+        });
+      }
+      return HttpResponse.json({ data: { node: { reactionGroups: [] } } });
+    }),
     // GitHub asks the reviewers again, as it does for a real request.
     http.post(
       "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",

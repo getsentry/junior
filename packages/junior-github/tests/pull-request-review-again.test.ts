@@ -191,7 +191,7 @@ describe("review again after a change request", () => {
       // A comment by another person changes nothing, and reads nothing.
       requests.length = 0;
       await webhook.handler(
-        commented("issue_comment", {
+        commented(github, "issue_comment", {
           at: "2026-07-02T10:30:00Z",
           login: "someone-else",
         }),
@@ -201,12 +201,12 @@ describe("review again after a change request", () => {
       // Junior answers in a comment and pushes nothing. The requester's
       // review is wanted again, in the Inbox and on GitHub.
       await webhook.handler(
-        commented("issue_comment", {
+        commented(github, "issue_comment", {
           at: "2026-07-02T11:00:00Z",
           login: "sentry-junior[bot]",
         }),
       );
-      expect(requests).toEqual(["pull", "reviews", "request Requester"]);
+      expect(requests).toEqual(["pull", "request Requester"]);
       const asked = {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
@@ -225,14 +225,14 @@ describe("review again after a change request", () => {
       };
       expect(calls).toEqual([asked]);
       await webhook.handler(
-        reviewRequested("Requester", "2026-07-02T11:00:01Z"),
+        reviewRequested(github, "Requester", "2026-07-02T11:00:01Z"),
       );
       expect(calls).toEqual([asked]);
 
       // The requester replies. Junior acts next, so the item closes, though
       // GitHub still asks for the review.
       await webhook.handler(
-        commented("pull_request_review_comment", {
+        commented(github, "pull_request_review_comment", {
           at: "2026-07-02T12:00:00Z",
           login: "Requester",
         }),
@@ -251,7 +251,7 @@ describe("review again after a change request", () => {
       // GitHub already asks for it, so Junior does not ask twice.
       requests.length = 0;
       await webhook.handler(
-        commented("pull_request_review_comment", {
+        commented(github, "pull_request_review_comment", {
           at: "2026-07-02T13:00:00Z",
           login: "sentry-junior[bot]",
         }),

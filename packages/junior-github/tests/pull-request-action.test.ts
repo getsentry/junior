@@ -44,9 +44,9 @@ describe("next action item", () => {
       // GitHub can merge it, but no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
-      expect(requests).toEqual(["pull", "reviews"]);
+      expect(requests).toEqual(["pull"]);
 
-      // The approval is on the second page of reviews.
+      // The change request is on the older page of reviews.
       github.reviews = [
         { state: "CHANGES_REQUESTED", user: { login: "reviewer" } },
         ...Array.from({ length: 100 }, () => ({
@@ -81,12 +81,13 @@ describe("next action item", () => {
       expect(calls).toEqual([notice]);
 
       // GitHub has not computed the merge state after a push. Two reads
-      // stay unknown, so nothing changes, and a later event decides. Both
-      // pages of reviews still load, for a change request by the requester.
+      // stay unknown, so nothing changes, and a later event decides. The
+      // older page of reviews still loads, for a change request by the
+      // requester.
       requests.length = 0;
       github.mergeableStates = [null, "unknown"];
       await webhook.handler(pullRequestAction("synchronize"));
-      expect(requests).toEqual(["pull", "pull", "reviews", "reviews"]);
+      expect(requests).toEqual(["pull", "pull", "reviews"]);
       expect(calls).toEqual([notice]);
 
       // The second read has the merge state: the new checks still run.
