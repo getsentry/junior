@@ -292,22 +292,22 @@ describe("snoozes", () => {
         ])
       ).status,
     ).toBe(400);
-    // A row with an item that names no resource.
-    await addItem(ROOT, [ana], "Review globex entry");
-    expect(
-      (await asAna.snoozeOn({ conversationId: ROOT }, [merged])).status,
-    ).toBe(400);
     // Ana can see Bob's item, but only Bob can dismiss it.
     const bobs = await addPullRequestItem(ROOT, [bob], "Review initech entry");
+    const resolve = {
+      eventType: "pull_request.merged",
+      outcome: "resolve" as const,
+    };
     const subject = { conversationId: ROOT, reviewItemId: bobs };
-    expect(
-      (
-        await asAna.snoozeOn(subject, [
-          { eventType: "pull_request.merged", outcome: "resolve" },
-        ])
-      ).status,
-    ).toBe(400);
+    expect((await asAna.snoozeOn(subject, [resolve])).status).toBe(400);
     expect(await storedStates()).toEqual([]);
+    // A row snoozes only the items that take the Event: not an item that
+    // names no resource, nor one that Ana cannot dismiss.
+    await addItem(ROOT, [ana], "Review globex entry");
+    const snoozed = await asAna.snoozeOn({ conversationId: ROOT }, [resolve]);
+    expect(snoozed.status).toBe(201);
+    expect(await snoozed.json()).toEqual({ reviewItemIds: [own] });
+    expect((await asAna.inbox()).inbox).toContain("Review globex entry");
     expect((await asAna.snoozeOn(subject, [merged])).status).toBe(201);
   });
 

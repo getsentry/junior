@@ -130,38 +130,57 @@ interface ViewerSnoozeTrigger {
 }
 
 /**
- * Aim each trigger at the resource of each item's subject. The item names
+ * Aim each trigger at the resource of the item's subject. The item names
  * the resource, so a viewer cannot wait on a resource that no item they
  * see names. A `resolve` dismisses the item, so it needs a viewer who can
- * dismiss it.
+ * dismiss it. Returns undefined when a trigger does not apply to the item.
  */
 function subjectTriggers(
+  item: RowItem,
+  triggers: readonly ViewerSnoozeTrigger[],
+): InboxSnoozeTriggerInput[] | undefined {
+  const resource =
+    item.subjectUrl &&
+    snoozeSubjectResource(getEventCatalog(), item.subjectUrl);
+  if (!resource) return triggers.length > 0 ? undefined : [];
+  const aimed: InboxSnoozeTriggerInput[] = [];
+  for (const trigger of triggers) {
+    if (
+      !resource.events.includes(trigger.eventType) ||
+      (trigger.outcome === "resolve" && !item.canAct)
+    ) {
+      return undefined;
+    }
+    aimed.push({
+      eventType: trigger.eventType,
+      identifier: resource.identifier,
+      namespace: resource.namespace,
+      outcome: trigger.outcome,
+    });
+  }
+  return aimed;
+}
+
+/**
+ * The row's items that take every trigger, each with its triggers. A root
+ * row snoozes only those, as the Inbox can show fewer of its items than
+ * the viewer can read, such as an item that an earlier snooze hides; the
+ * rest stay as they are. Throws when no item takes them.
+ */
+function itemsWithTriggers(
   items: readonly RowItem[],
   triggers: readonly ViewerSnoozeTrigger[],
-): InboxSnoozeTriggerInput[][] {
-  const catalog = getEventCatalog();
-  return items.map((item) => {
-    const resource =
-      item.subjectUrl && snoozeSubjectResource(catalog, item.subjectUrl);
-    return triggers.map((trigger) => {
-      if (!resource || !resource.events.includes(trigger.eventType)) {
-        throw new InboxSnoozeInputError(
-          `An item in the row has no subject with ${trigger.eventType} Events.`,
-        );
-      }
-      if (trigger.outcome === "resolve" && !item.canAct) {
-        throw new InboxSnoozeInputError(
-          "Only a person who can dismiss an item can resolve it on an Event.",
-        );
-      }
-      return {
-        eventType: trigger.eventType,
-        identifier: resource.identifier,
-        namespace: resource.namespace,
-        outcome: trigger.outcome,
-      };
-    });
+): { item: RowItem; triggers: InboxSnoozeTriggerInput[] }[] {
+  const taken = items.flatMap((item) => {
+    const aimed = subjectTriggers(item, triggers);
+    return aimed ? [{ item, triggers: aimed }] : [];
   });
+  if (taken.length === 0) {
+    throw new InboxSnoozeInputError(
+      "No item in the row has a subject with these Events that the viewer can act on.",
+    );
+  }
+  return taken;
 }
 
 /**
@@ -194,7 +213,7 @@ export async function createViewerSnooze(
   if (!root || items.length === 0) {
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
-  const eventTriggers = subjectTriggers(items, input.triggers ?? []);
+  const snoozed = itemsWithTriggers(items, input.triggers ?? []);
   const timerId =
     wakeAtMs === undefined ? undefined : `inbox-snooze:${randomUUID()}`;
   // Add the timer before the snoozes replace the viewer's earlier ones, so
@@ -203,11 +222,11 @@ export async function createViewerSnooze(
     await scheduleInboxSnoozeTimer(timerId, wakeAtMs);
   }
   const snoozeIds = await snoozeInboxItems(getDb(), {
-    items: items.map((item, index) => ({
+    items: snoozed.map(({ item, triggers }) => ({
       reviewItemId: item.id,
       triggers: [
         ...(timerId ? [snoozeTimerTrigger(timerId)] : []),
-        ...eventTriggers[index]!,
+        ...triggers,
       ],
     })),
     nowMs,
@@ -219,7 +238,7 @@ export async function createViewerSnooze(
   if (wakeAtMs !== undefined && Date.now() >= wakeAtMs) {
     await settleInboxSnoozes(getDb(), { snoozeIds, state: "woken" });
   }
-  return items.map((item) => item.id);
+  return snoozed.map(({ item }) => item.id);
 }
 
 /**
