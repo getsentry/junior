@@ -145,7 +145,9 @@ describe("GitHub reply markdown", () => {
       linkifyGitHubReferences("getsentry/sentry#1, getsentry/relay#2, #3", {
         config: { repo: "getsentry/junior" },
       }),
-    ).toContain(", #3");
+    ).toContain(
+      ", [getsentry/relay#3](https://github.com/getsentry/relay/issues/3)",
+    );
   });
 
   it("reads a repository of the configured owner from prose", () => {
@@ -167,11 +169,6 @@ describe("GitHub reply markdown", () => {
     ).toBe(
       "see src/index.ts, getsentry/junior/src, and/or acme/web for [getsentry/junior#12](https://github.com/getsentry/junior/issues/12)",
     );
-    expect(
-      linkifyGitHubReferences("getsentry/sentry and getsentry/relay: #3", {
-        config,
-      }),
-    ).toBe("getsentry/sentry and getsentry/relay: #3");
   });
 
   it("links Enterprise Managed User logins", () => {
@@ -240,13 +237,26 @@ describe("GitHub reply markdown", () => {
     expect(linkifyGitHubReferences(text)).toBe(text);
   });
 
-  it("leaves bare references unchanged when several repositories are named", () => {
+  it("gives a bare reference the last repository named before it", () => {
     expect(
       linkifyGitHubReferences(
-        "getsentry/junior#1 and getsentry/sentry#2 both mention #3",
+        [
+          "#1 first.",
+          "",
+          "In getsentry/junior: #2.",
+          "",
+          "In getsentry/sentry: #3 and #4.",
+        ].join("\n"),
+        { config: { org: "getsentry", repo: "relay" } },
       ),
     ).toBe(
-      "[getsentry/junior#1](https://github.com/getsentry/junior/issues/1) and [getsentry/sentry#2](https://github.com/getsentry/sentry/issues/2) both mention #3",
+      [
+        "#1 first.",
+        "",
+        "In getsentry/junior: [getsentry/junior#2](https://github.com/getsentry/junior/issues/2).",
+        "",
+        "In getsentry/sentry: [getsentry/sentry#3](https://github.com/getsentry/sentry/issues/3) and [getsentry/sentry#4](https://github.com/getsentry/sentry/issues/4).",
+      ].join("\n"),
     );
   });
 

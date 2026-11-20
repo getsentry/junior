@@ -89,44 +89,81 @@ function readSpans(text: string): Span[] {
   return spans;
 }
 
+/** A repository that the text names, at its source offset. */
+interface NamedRepository {
+  offset: number;
+  repository: Repository;
+}
+
 /**
- * Return the distinct repositories that the text names in qualified
- * references, GitHub issue, pull request, and commit URLs, or prose that
+ * Return the repositories that the text names, in source order: qualified
+ * references, GitHub issue, pull request, and commit URLs, and prose that
  * names a repository of the configured owner.
  */
 function namedRepositories(
   text: string,
   spans: Span[],
   configuredOwner: string | undefined,
-): Repository[] {
-  const repositories = new Map<string, Repository>();
-  const add = (owner: string | undefined, name: string | undefined) => {
-    if (owner && name) {
-      repositories.set(`${owner}/${name}`.toLowerCase(), { owner, name });
-    }
+): NamedRepository[] {
+  const named: NamedRepository[] = [];
+  const add = (
+    offset: number,
+    owner: string | undefined,
+    name: string | undefined,
+  ) => {
+    if (owner && name) named.push({ offset, repository: { owner, name } });
   };
   for (const span of spans) {
     if (span.url) {
       for (const { groups } of span.url.matchAll(GITHUB_LINKED_URL_PATTERN)) {
-        add(groups?.["owner"], groups?.["repo"]);
+        add(span.start, groups?.["owner"], groups?.["repo"]);
       }
-    } else {
-      const source = text.slice(span.start, span.end);
-      for (const { groups } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
-        add(groups?.["issueOwner"], groups?.["issueRepo"]);
-        add(groups?.["commitOwner"], groups?.["commitRepo"]);
-      }
-      if (!configuredOwner) continue;
-      for (const { groups } of source.matchAll(PROSE_REPOSITORY_PATTERN)) {
-        if (
-          groups?.["owner"]?.toLowerCase() === configuredOwner.toLowerCase()
-        ) {
-          add(groups["owner"], groups["repo"]);
-        }
+      continue;
+    }
+    const source = text.slice(span.start, span.end);
+    for (const { groups, index } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
+      const offset = span.start + index;
+      add(offset, groups?.["issueOwner"], groups?.["issueRepo"]);
+      add(offset, groups?.["commitOwner"], groups?.["commitRepo"]);
+    }
+    if (!configuredOwner) continue;
+    for (const { groups, index } of source.matchAll(PROSE_REPOSITORY_PATTERN)) {
+      if (groups?.["owner"]?.toLowerCase() === configuredOwner.toLowerCase()) {
+        add(span.start + index, groups["owner"], groups["repo"]);
       }
     }
   }
-  return [...repositories.values()];
+  return named.sort((left, right) => left.offset - right.offset);
+}
+
+const repositoryKey = ({ owner, name }: Repository) =>
+  `${owner}/${name}`.toLowerCase();
+
+/**
+ * Pick the repository of a bare reference at `offset`: the one repository
+ * that the text names, else the last one named before the reference when
+ * the text names several, else the configured one when it names none.
+ */
+function repositoryAt(
+  named: NamedRepository[],
+  configured: Repository | undefined,
+  offset: number,
+): Repository | undefined {
+  if (named.length === 0) return configured;
+  const first = named[0]!.repository;
+  if (
+    named.every(
+      ({ repository }) => repositoryKey(repository) === repositoryKey(first),
+    )
+  ) {
+    return first;
+  }
+  let nearest: Repository | undefined;
+  for (const entry of named) {
+    if (entry.offset >= offset) break;
+    nearest = entry.repository;
+  }
+  return nearest;
 }
 
 const issueUrl = (owner: string, name: string, issue: string) =>
@@ -147,15 +184,17 @@ function linkifyUrl(url: string): string {
 
 function linkifyTextReferences(
   text: string,
+  start: number,
   context: {
     linkProfiles: boolean;
     mention: (login: string) => string | undefined;
-    repository: Repository | undefined;
+    repositoryAt: (offset: number) => Repository | undefined;
   },
 ): string {
-  const { repository } = context;
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
     const groups = args.at(-1) as Record<string, string | undefined>;
+    // `replace` passes the match offset before the input and the groups.
+    const index: unknown = args.at(-3);
     if (groups["issue"]) {
       return `[${reference}](${issueUrl(groups["issueOwner"]!, groups["issueRepo"]!, groups["issue"])})`;
     }
@@ -172,6 +211,10 @@ function linkifyTextReferences(
         ? `[${reference}](https://github.com/${login})`
         : reference;
     }
+    const repository =
+      typeof index === "number"
+        ? context.repositoryAt(start + index)
+        : undefined;
     if (!repository) {
       return reference;
     }
@@ -198,8 +241,9 @@ function linkifyTextReferences(
  * `owner/repo#123`, `owner/repo@sha`, and GitHub issue, pull request,
  * discussion, and commit URLs always become links. `#123`, `GH-123`,
  * `user@sha`, and full SHAs need a repository: the one that the text names,
- * also as a plain `owner/repo` of the configured owner, else the `repo`
- * config value when the text names none. Their link labels name the
+ * also as a plain `owner/repo` of the configured owner. When it names
+ * several, the last one named before the reference wins. When it names
+ * none, the `repo` config value is used. Their link labels name the
  * repository. `@login` becomes the
  * `mention` of the known person with that GitHub login. Other logins become
  * GitHub profile links when the text is GitHub text, or names a repository.
@@ -226,12 +270,7 @@ export function linkifyGitHubReferences(
   const context = {
     linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
-    repository:
-      named.length === 0
-        ? configured
-        : named.length === 1
-          ? named[0]
-          : undefined,
+    repositoryAt: (offset: number) => repositoryAt(named, configured, offset),
   };
   let result = "";
   let cursor = 0;
@@ -240,7 +279,7 @@ export function linkifyGitHubReferences(
     result += text.slice(cursor, span.start);
     result +=
       span.kind === "text"
-        ? linkifyTextReferences(source, context)
+        ? linkifyTextReferences(source, span.start, context)
         : span.kind === "url" && !options.bareUrls
           ? linkifyUrl(source)
           : source;
