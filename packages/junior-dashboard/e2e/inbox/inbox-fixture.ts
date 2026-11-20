@@ -424,6 +424,7 @@ export async function mockReviewItems(
     }
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
+      const owner = url.searchParams.get("owner");
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
@@ -442,6 +443,7 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
+          (!owner || i.owner.kind === owner) &&
           `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
           (snoozedOnly
             ? asleep(sleeping, i)

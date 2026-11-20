@@ -14,7 +14,6 @@ import {
 } from "@tanstack/react-query";
 import {
   answeredChoices,
-  automationListSchema,
   conversationDetailReportSchema,
   reviewItemActionSchema,
   reviewItemCountSchema,
@@ -42,7 +41,6 @@ import {
   withoutVersion,
   type ContentVersioned,
 } from "../revalidation";
-import { automationKeys } from "../api";
 import { itemConversationId, itemNeedsViewer } from "./reviewItemFormat";
 
 type ReviewItemCount = z.output<typeof reviewItemCountSchema>;
@@ -52,6 +50,8 @@ type ReviewItemList = z.output<typeof reviewItemListSchema>;
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
 type ReviewItemListFilters = {
+  /** Only Automation alerts. */
+  automationAlerts?: boolean;
   /** Lists the done and dismissed items instead, newest closed first. */
   closed?: boolean;
   conversationId?: string;
@@ -73,6 +73,7 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
     params.set("conversationId", filters.conversationId);
   }
   if (filters.forViewer) params.set("for", "viewer");
+  if (filters.automationAlerts) params.set("owner", "automation");
   if (filters.q) params.set("q", filters.q);
   if (filters.snoozed) params.set("snoozed", "true");
   if (filters.sort) params.set("sort", filters.sort);
@@ -318,24 +319,6 @@ export function useReviewItemCountData(enabled: boolean) {
       reviewItemCountSchema,
       "/api/review-items/count",
     ),
-    retry: false,
-  });
-}
-
-/**
- * List the viewer's blocked Automations. They show in the Inbox, but
- * their state stays derived from Automation status.
- */
-export function useBlockedAutomationsData(enabled: boolean) {
-  return useQuery({
-    enabled,
-    queryKey: [...automationKeys.lists(), "scope=mine&state=blocked"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        automationListSchema,
-        "/api/automations?scope=mine&state=blocked&pageSize=100",
-        signal,
-      ),
     retry: false,
   });
 }

@@ -71,7 +71,7 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   ReviewItemFilters,
-  "conversationId" | "forUserId" | "query" | "snoozedForUserId"
+  "conversationId" | "forUserId" | "ownerKind" | "query" | "snoozedForUserId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -82,6 +82,7 @@ const cursorSchema = z
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
+    ownerKind: z.enum(["automation", "conversation"]).optional(),
     query: z.string().min(1).optional(),
     snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
@@ -124,6 +125,7 @@ function decodeCursor(
   if (
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
+    parsed.ownerKind !== filters.ownerKind ||
     parsed.query !== filters.query ||
     parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
@@ -266,6 +268,7 @@ export function createReviewItemRoutes(services: {
           ? { conversationId: query.conversationId }
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
+        ...(query.owner ? { ownerKind: query.owner } : undefined),
         ...(query.q ? { query: query.q } : undefined),
         ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
         ...(query.status[0] === "open"

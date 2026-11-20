@@ -13,7 +13,6 @@ import { InboxSidebar, type InboxGroupKey } from "./InboxSidebar";
 import { ReviewItemDetails } from "./ReviewItemDetails";
 import { ReviewItemView } from "./ReviewItemView";
 import {
-  useBlockedAutomationsData,
   useLinkedConversationTitles,
   useReviewItemData,
   useReviewItemsData,
@@ -79,11 +78,6 @@ export function InboxPage() {
     moreArchived,
     query: items,
   } = useReviewItemsData({ forViewer: true, q });
-  const showBlocked = !q;
-  const blocked = useBlockedAutomationsData(showBlocked);
-  const blockedAutomations = showBlocked
-    ? (blocked.data?.automations ?? [])
-    : [];
   const groups = useMemo(() => inboxGroups(list), [list]);
   // A search lists every match in one list. Later pages add open items, so
   // keep open matches before archived ones.
@@ -147,8 +141,7 @@ export function InboxPage() {
   const listParams = new URLSearchParams(searchParams);
   listParams.delete("item");
   const loaded = Boolean(items.data);
-  const empty =
-    loaded && !q && open.length === 0 && blockedAutomations.length === 0;
+  const empty = loaded && !q && open.length === 0;
 
   return (
     <div className={shellClass}>
@@ -159,7 +152,6 @@ export function InboxPage() {
         )}
       >
         <InboxSidebar
-          blocked={blockedAutomations}
           collapsed={collapsed}
           error={Boolean(items.error && !items.data)}
           footer={

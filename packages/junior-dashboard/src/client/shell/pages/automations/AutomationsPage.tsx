@@ -37,8 +37,10 @@ import {
   useAutomationAttentionData,
 } from "../../../inbox/inboxQueries";
 import { PageEnd } from "../../../inbox/PageEnd";
-import { useReviewItemAction } from "../../../inbox/queries";
-import type { InboxBundle } from "../../../inbox/reviewItemFormat";
+import {
+  useReviewItemAction,
+  useReviewItemsData,
+} from "../../../inbox/queries";
 import {
   RowDismissButton,
   RowSnoozeButton,
@@ -54,26 +56,22 @@ const EMPTY: AutomationListItem[] = [];
 const NO_ALERTS: TodoAlert[] = [];
 
 /**
- * The Automations whose alert is in the Inbox's To do, in its order. An
- * alert waits for its Automation to load, and shows in the other groups
- * until then.
+ * The Automations whose open alert waits on the viewer, in the Inbox's
+ * order. An alert waits for its Automation to load, and shows in the other
+ * groups until then.
  */
 function todoAlerts(
-  rows: readonly InboxBundle[],
+  alerts: readonly ReviewItemPayload[],
   automations: readonly AutomationListItem[],
 ): TodoAlert[] {
   const byId = new Map(
     automations.map((automation) => [automation.id, automation]),
   );
-  return rows
-    .flatMap((row) => row.items)
-    .flatMap((alert) => {
-      const automation =
-        alert.owner.kind === "automation"
-          ? byId.get(alert.owner.id)
-          : undefined;
-      return automation ? [{ alert, automation }] : [];
-    });
+  return alerts.flatMap((alert) => {
+    const automation =
+      alert.owner.kind === "automation" ? byId.get(alert.owner.id) : undefined;
+    return automation ? [{ alert, automation }] : [];
+  });
 }
 
 // One page of rows. More load as the list scrolls.
@@ -136,13 +134,24 @@ export function AutomationsPage(props: { enabled: boolean }) {
   const list = pages.first;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtered = LANDING_FILTERS.some((key) => searchParams.has(key));
-  // To do holds the alerts in the Inbox's own To do, so the two match.
-  // Filters narrow the whole list instead.
+  // To do holds the viewer's open alerts that are not snoozed, as the
+  // Inbox's To do does. Filters narrow the whole list instead.
   const inbox = useInboxData();
+  const alerts = useReviewItemsData({
+    automationAlerts: true,
+    enabled: props.enabled && !filtered,
+    forViewer: true,
+    sort: "waiting",
+  });
   const attention = useAutomationAttentionData(props.enabled);
   const todo = filtered
     ? NO_ALERTS
-    : todoAlerts(inbox.todoRows, attention.data?.automations ?? EMPTY);
+    : todoAlerts(
+        alerts.items.filter(
+          (alert) => alert.status === "open" && !inbox.snoozes.hides(alert),
+        ),
+        attention.data?.automations ?? EMPTY,
+      );
   const dismiss = useReviewItemAction({ optimistic: true });
   const automations = pages.automations;
   const loading = !list && !query.error;

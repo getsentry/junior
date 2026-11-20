@@ -39,6 +39,7 @@ export function addMockReviewItemRoutes(
     const {
       conversationId,
       for: forViewer,
+      owner,
       q,
       snoozed,
       status,
@@ -51,7 +52,7 @@ export function addMockReviewItemRoutes(
         forViewer: forViewer === "viewer" && !q && !conversationId,
         q: q || undefined,
         snoozed: snoozed === "true",
-      }),
+      }).filter((item) => !owner || item.owner.kind === owner),
     });
   });
   app.get("/review-items/count", (c) =>

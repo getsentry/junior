@@ -21,6 +21,7 @@ import {
   type ConversationFixture,
 } from "../../fixtures/conversation";
 import {
+  addItem,
   api,
   conversation,
   NOTHING_SNOOZED,
@@ -92,18 +93,23 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
   app.route("/", createJuniorApi({ conversationWorkQueue: fixture.queue }));
   return {
     ...api(fixture, viewer),
-    /** The open alerts of an Automation, as a search for its title finds. */
+    /** The open alerts of an Automation. */
     alerts: async (automationId: string) => {
       const response = await app.request(
-        "http://localhost/api/review-items?q=digest",
+        "http://localhost/api/review-items?owner=automation",
       );
       const { items } = (await response.json()) as { items: Alert[] };
       return items.filter(
-        (item) =>
-          item.owner.kind === "automation" &&
-          item.owner.id === automationId &&
-          item.status === "open",
+        (item) => item.owner.id === automationId && item.status === "open",
       );
+    },
+    /** The alerts in the viewer's To do, as the Automations page lists them. */
+    todoAlerts: async () => {
+      const response = await app.request(
+        "http://localhost/api/review-items?for=viewer&owner=automation&sort=waiting",
+      );
+      const { items } = (await response.json()) as { items: Alert[] };
+      return items.map((item) => item.title);
     },
     item: async (id: string) => {
       const response = await app.request(
@@ -157,6 +163,8 @@ describe("Automation alerts", () => {
       statusReason: "GitHub access expired.",
     });
     await saveScheduledAutomation(getDb(), task);
+    // An item that a Conversation owns is not an Automation alert.
+    await addItem(ROOT, [creator], "Approve the digest rollout");
 
     const [blocked] = await asCreator.alerts(task.id);
     expect(blocked).toMatchObject({
@@ -166,11 +174,8 @@ describe("Automation alerts", () => {
       // A public channel Destination makes the alert public.
       visibility: "public",
     });
-    expect(await asCreator.inbox()).toEqual({
-      count: 1,
-      inbox: ["Daily digest"],
-      waiting: [],
-    });
+    expect((await asCreator.inbox()).count).toBe(2);
+    expect(await asCreator.todoAlerts()).toEqual(["Daily digest"]);
     // A reader of the channel can see the alert. It waits on the creator only.
     const asReader = alertApi(fixture, reader);
     expect((await asReader.item(blocked!.id)).status).toBe(200);
@@ -182,11 +187,8 @@ describe("Automation alerts", () => {
       NOW_MS + HOUR_MS,
     );
     expect(snooze.status).toBe(201);
-    expect(await asCreator.inbox()).toEqual({
-      count: 0,
-      inbox: [],
-      waiting: [],
-    });
+    expect((await asCreator.inbox()).count).toBe(1);
+    expect(await asCreator.todoAlerts()).toEqual([]);
     expect(await asCreator.snoozed()).toEqual({
       count: 1,
       items: ["Daily digest"],
@@ -222,7 +224,7 @@ describe("Automation alerts", () => {
     await saveScheduledAutomation(getDb(), { ...task, status: "paused" });
     await saveScheduledAutomation(getDb(), { ...task, status: "active" });
     expect(await asCreator.alerts(task.id)).toEqual([]);
-    expect((await asCreator.inbox()).count).toBe(0);
+    expect(await asCreator.todoAlerts()).toEqual([]);
 
     // A newer failure opens a fresh alert.
     await recordAutomationExecution(task.id, {
@@ -241,7 +243,7 @@ describe("Automation alerts", () => {
       status: "completed",
     });
     expect(await asCreator.alerts(task.id)).toEqual([]);
-    expect((await asCreator.inbox()).count).toBe(0);
+    expect(await asCreator.todoAlerts()).toEqual([]);
   });
 
   it("keeps the alert of a private Destination from other people", async () => {

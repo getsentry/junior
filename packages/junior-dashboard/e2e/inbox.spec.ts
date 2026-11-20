@@ -170,23 +170,6 @@ async function mockReviewItems(
   return actions;
 }
 
-/** Show no blocked Automations, so an empty inbox is empty. */
-async function mockNoBlockedAutomations(page: Page) {
-  await page.route(
-    (url) =>
-      url.pathname.endsWith("/api/automations") &&
-      url.searchParams.get("state") === "blocked",
-    async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      await route.fulfill({
-        response,
-        json: { ...body, automations: [], total: 0 },
-      });
-    },
-  );
-}
-
 test("an old /review link opens the item in the Inbox", async ({
   dashboard,
   page,
@@ -512,8 +495,9 @@ test("a search lists open and archived items together", async ({
 });
 
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
+  // The mock reporting has blocked Automations. Their alerts are Review
+  // items, so they do not list again on their own.
   await mockReviewItems(page, { open: [] });
-  await mockNoBlockedAutomations(page);
   await page.goto(`${dashboard.baseURL}/inbox`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   await expect(detail.getByText("Nothing needs you")).toBeVisible();

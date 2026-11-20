@@ -648,6 +648,8 @@ export interface ReviewItemFilters {
    * (`reviewItemForUser`).
    */
   forUserId?: string;
+  /** Keep only the items that this kind of owner owns. */
+  ownerKind?: ReviewItemOwnerKind;
   /** Drop the items in Inbox rows that this User snoozed. */
   awakeForUserId?: string;
   /** Keep only the items in Inbox rows that this User snoozed. */
@@ -728,6 +730,9 @@ function searchConditions(
         ? eq(juniorReviewItems.assignedToEveryone, true)
         : reviewItemAssignedTo(filters.assignee.userId),
     );
+  }
+  if (filters.ownerKind) {
+    conditions.push(eq(juniorReviewItems.ownerKind, filters.ownerKind));
   }
   if (filters.forUserId) {
     conditions.push(reviewItemForUser(filters.forUserId));

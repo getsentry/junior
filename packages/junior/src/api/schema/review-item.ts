@@ -128,6 +128,8 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /** `automation` lists only Automation alerts. */
+    owner: z.enum(["automation"]).optional(),
     /**
      * `true` lists only the open items in Inbox rows that the viewer
      * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
