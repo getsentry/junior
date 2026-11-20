@@ -1,8 +1,9 @@
-import type { KnownBlock, PlainTextElement } from "@slack/types";
+import type { AnyBlock, PlainTextElement } from "@slack/types";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { buildReplyBodyBlocks } from "@/chat/slack/details";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 
 interface SlackReplyFooterItem {
@@ -60,12 +61,15 @@ export function buildSlackReplyFooter(args: {
     : undefined;
 }
 
-/** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
+/**
+ * Build Slack blocks for a reply chunk. The body uses the Slack-flavored
+ * markdown block, with each `<details>` section as a collapsed container.
+ */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
-): KnownBlock[] | undefined {
-  const blocks: KnownBlock[] = text.trim() ? [{ type: "markdown", text }] : [];
+): AnyBlock[] | undefined {
+  const blocks: AnyBlock[] = text.trim() ? buildReplyBodyBlocks(text) : [];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
     const attributionElements: PlainTextElement[] = footer.attribution
