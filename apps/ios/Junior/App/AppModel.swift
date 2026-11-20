@@ -55,6 +55,8 @@ final class AppModel {
   var path: [Route] = []
   var drawerOpen = false
   var webPage: URL?
+  /// A demo link to a dashboard page was opened.
+  var demoWebNotice = false
   /// Focus the home search field ("Go to conversation").
   var focusSearch = false
   /// Open the Conversation's details on arrival (`?details=1`).
@@ -90,7 +92,7 @@ final class AppModel {
       }
     #endif
     self.server = server
-    self.client = MCPClient(server: server, store: store)
+    self.client = Self.client(for: server, store: store)
     self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
@@ -118,13 +120,35 @@ final class AppModel {
     let server = JuniorServer(baseURL: baseURL)
     let oauth = OAuthClient(server: server, clientID: Self.oauthClientID)
     let credentials = try await BrowserSignIn().run(oauth)
-    UserDefaults.standard.set(baseURL.absoluteString, forKey: "serverURL")
+    await connect(server, credentials)
+  }
+
+  /// Sign in to the built-in demo: mock data on this device, for people with
+  /// no Junior to sign in to, such as App Review.
+  func startDemo() async {
+    let server = JuniorServer.demo
+    await connect(
+      server,
+      OAuthCredentials(
+        server: server, clientID: Self.oauthClientID, tokenEndpoint: server.page("/api/mcp/oauth/token")!,
+        accessToken: "demo", refreshToken: nil, expiresAt: .distantFuture, scope: nil))
+  }
+
+  private func connect(_ server: JuniorServer, _ credentials: OAuthCredentials) async {
+    UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
     self.server = server
-    client = MCPClient(server: server, store: store)
+    client = Self.client(for: server, store: store)
     await client.signIn(credentials)
     signedIn = true
     didWrite()
     await refreshShell()
+  }
+
+  /// The demo answers in process and starts from fresh mock data.
+  private static func client(for server: JuniorServer, store: CredentialStore) -> MCPClient {
+    server.isDemo
+      ? MCPClient(server: server, store: store, transport: DemoServer().transport)
+      : MCPClient(server: server, store: store)
   }
 
   func signOut() {
@@ -137,7 +161,7 @@ final class AppModel {
     drawerOpen = false
   }
 
-  /// Open a dashboard path (`/`, `/review?item=…`, `/conversations/…`,
+  /// Open a dashboard path (`/`, `/inbox?item=…`, `/conversations/…`,
   /// `/automations/…`, `/settings`) the way the web router does.
   func open(dashboardPath: String) {
     guard let components = URLComponents(string: dashboardPath) else { return }
@@ -148,7 +172,7 @@ final class AppModel {
     case "conversations" where parts.count > 1:
       place = .conversations
       path = [.conversation(parts[1])]
-    case "review":
+    case "inbox":
       place = .inbox
       path = item.map { [.reviewItem($0)] } ?? []
     case "automations" where parts.count > 1 && parts[1] != "runs":
@@ -177,15 +201,23 @@ final class AppModel {
   /// Open a dashboard page in the in-app browser, for what the public API
   /// cannot do (answer a Review item, change an Automation).
   func openOnWeb(_ dashboardPath: String) {
-    drawerOpen = false
-    webPage = server.page(dashboardPath)
+    show(server.page(dashboardPath))
   }
 
   /// Open a link from a tool result, such as a dashboard or Slack URL.
   func openLink(_ link: String?) {
     guard let link, let url = URL(string: link) else { return }
+    show(url)
+  }
+
+  /// The demo has no dashboard, so its pages show a notice instead.
+  private func show(_ url: URL?) {
     drawerOpen = false
-    webPage = url
+    if server.isDemo, url?.host() == server.baseURL.host() {
+      demoWebNotice = true
+    } else {
+      webPage = url
+    }
   }
 
   func refreshShell() async {

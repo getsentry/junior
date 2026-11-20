@@ -1,5 +1,6 @@
 import { eventMatchSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { conversationParamsSchema } from "./conversation";
 
 /**
  * One active Watch that a Conversation owns: its own, or one that a child agent
@@ -55,6 +56,11 @@ export const conversationWatchesReportSchema = z
     conversationId: z.string().min(1),
     watches: z.array(conversationWatchSchema),
   })
+  .strict();
+
+/** Route params that name one Watch of one Conversation. */
+export const watchParamsSchema = conversationParamsSchema
+  .extend({ watchId: z.string().min(1) })
   .strict();
 
 export type ConversationWatch = z.infer<typeof conversationWatchSchema>;

@@ -18,7 +18,7 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
@@ -37,7 +37,6 @@ import {
   type RelatedReviewWork,
 } from "@/chat/review-items/related";
 import {
-  countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
@@ -47,8 +46,13 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
+import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import type { ActorIdentity } from "@/api/schema/conversation";
 import { readItemRoots } from "./item-roots";
+import { readReviewItemMentions } from "./mentions";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -68,7 +72,7 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   ReviewItemFilters,
-  "conversationId" | "forUserId" | "query"
+  "conversationId" | "forUserId" | "query" | "snoozedForUserId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -80,6 +84,7 @@ const cursorSchema = z
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
     query: z.string().min(1).optional(),
+    snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
@@ -121,6 +126,7 @@ function decodeCursor(
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
     parsed.query !== filters.query ||
+    parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
     parsed.status !== filters.status ||
     (filters.status !== undefined && parsed.closedAtMs === undefined) ||
@@ -153,7 +159,21 @@ function subjectPayload(
   subject: NonNullable<ReviewItem["subject"]>,
 ): NonNullable<ReviewItemPayload["subject"]> {
   const objectType = subject.url && readLinkObjectType(subject.url);
-  return { ...subject, ...(objectType ? { objectType } : undefined) };
+  const resource =
+    subject.url && snoozeSubjectResource(getEventCatalog(), subject.url);
+  return {
+    ...subject,
+    ...(objectType ? { objectType } : undefined),
+    ...(resource
+      ? {
+          resource: {
+            events: [...resource.events],
+            namespace: resource.namespace,
+            resourceType: resource.resourceType,
+          },
+        }
+      : undefined),
+  };
 }
 
 /** Build the API payload of one Review item for its viewer. */
@@ -161,6 +181,7 @@ function reviewItemPayload(
   item: ReviewItem,
   viewer: User,
   roots: Awaited<ReturnType<typeof readItemRoots>>,
+  mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
   const root = roots.get(item.addedByConversationId);
@@ -188,6 +209,7 @@ function reviewItemPayload(
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(mentions.length > 0 ? { mentions: [...mentions] } : undefined),
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
@@ -198,8 +220,9 @@ function reviewItemPayload(
 }
 
 /**
- * Build the payloads of a page of items, with the root of each one and the
- * related work of the open ones. Each read covers the page.
+ * Build the payloads of a page of items, with the root of each one, the
+ * people they mention, and the related work of the open ones. Each read
+ * covers the page, and the reads run at once.
  */
 async function reviewItemPayloads(
   items: readonly ReviewItem[],
@@ -207,12 +230,19 @@ async function reviewItemPayloads(
   reader: ReviewItemReader,
 ): Promise<ReviewItemPayload[]> {
   const db = getDb();
-  const [roots, related] = await Promise.all([
+  const [roots, mentions, related] = await Promise.all([
     readItemRoots(db, items, viewer),
+    readReviewItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
   ]);
-  return items.map((item) =>
-    reviewItemPayload(item, viewer, roots, related.get(item.id)),
+  return items.map((item, index) =>
+    reviewItemPayload(
+      item,
+      viewer,
+      roots,
+      mentions[index]!,
+      related.get(item.id),
+    ),
   );
 }
 
@@ -227,7 +257,7 @@ function actionErrorResponse(error: unknown): Response {
   throw error;
 }
 
-/** Create the authenticated review desk routes. */
+/** Create the authenticated Inbox routes. */
 export function createReviewItemRoutes(services: {
   delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {
@@ -249,6 +279,7 @@ export function createReviewItemRoutes(services: {
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
         ...(query.status[0] === "open"
           ? query.sort
             ? { sort: query.sort }
@@ -291,6 +322,14 @@ export function createReviewItemRoutes(services: {
       const [open, archived] = await Promise.all([
         searchReviewItems(db, reader, {
           ...filters,
+          // The viewer's Inbox hides the rows they snoozed until they wake. A
+          // Conversation's own list and a search still show them.
+          ...(query.for === "viewer" &&
+          !filters.conversationId &&
+          !filters.query &&
+          !filters.snoozedForUserId
+            ? { awakeForUserId: viewer.id }
+            : undefined),
           limit: query.limit + 1,
           statuses: ["open"],
           ...(filters.sort
@@ -347,15 +386,11 @@ export function createReviewItemRoutes(services: {
       const db = getDb();
       // One query counts the badge and both bundles. The snoozed and
       // Automation counts run only when the request asks for them, so the
-      // current dashboard pays for one query.
+      // classic dashboard pays for one query.
       const [subjects, snoozed, automations] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countOpenReviewItemsForUser(
-          db,
-          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          query.snoozed,
-        ),
-        query.include === "automations"
+        query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
+        query.include.includes("automations")
           ? countOwnedAutomationsNeedingAttention(viewer)
           : undefined,
       ]);

@@ -1,7 +1,9 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { jsonResponse, throwApiError } from "../http";
+import { contentVersion, contentVersionHeaders } from "../content-version";
+import { emptyResponse, jsonResponse, throwApiError } from "../http";
+import { CONTENT_VERSION_HEADER } from "../schema/common";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -45,6 +47,8 @@ import {
   conversationDeliveryResponseSchema,
 } from "../schema/conversation-delivery";
 import {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -81,7 +85,10 @@ import {
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
-import { conversationWatchesReportSchema } from "../schema/watch";
+import {
+  conversationWatchesReportSchema,
+  watchParamsSchema,
+} from "../schema/watch";
 import {
   conversationPlanItemSchema,
   conversationPlanReportSchema,
@@ -95,7 +102,10 @@ import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
-import { setConversationSubscription } from "./subscription";
+import {
+  inviteToConversation,
+  setConversationSubscription,
+} from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
@@ -118,6 +128,7 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
+import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -125,7 +136,10 @@ import { steerConversationPendingMessagesForViewer } from "./steer-pending-messa
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
-import { requireConversationWatches } from "./watches";
+import {
+  cancelConversationWatchForViewer,
+  requireConversationWatches,
+} from "./watches";
 import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
 
 /** Create the HTTP routes owned by the conversations API. */
@@ -148,17 +162,30 @@ export function createConversationRoutes(
       const { actorEmail, codeRepositoryId, cursor, include, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
-      return jsonResponse(
-        conversationFeedSchema,
-        await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : undefined),
-          ...(codeRepositoryId ? { codeRepositoryId } : undefined),
-          ...(cursor ? { cursor } : undefined),
-          include,
-          ...(q ? { q } : undefined),
-          status,
-          ...(viewer ? { viewer } : undefined),
-        }),
+      // The feed does not mark waiting rows, so the read reports their count.
+      let waitingRows = 0;
+      const feed = await readConversationFeed({
+        ...(actorEmail ? { actorEmail } : undefined),
+        ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+        ...(cursor ? { cursor } : undefined),
+        include,
+        onWaitingRows: (count) => {
+          waitingRows = count;
+        },
+        ...(q ? { q } : undefined),
+        status,
+        ...(viewer ? { viewer } : undefined),
+      });
+      // The token hashes the page itself, so it holds everything that the
+      // query and the viewer change on it. Comparing it here, not in
+      // `revalidateContent`, skips the response parse and serialization.
+      const version = contentVersion(feed);
+      const headers = contentVersionHeaders(version);
+      if (context.req.header(CONTENT_VERSION_HEADER) === version) {
+        return new Response(null, { status: 304, headers });
+      }
+      return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
+        serializeConversationFeed(parsed, waitingRows),
       );
     },
   );
@@ -445,6 +472,30 @@ export function createConversationRoutes(
       ),
   );
 
+  app.post(
+    "/:conversationId/invites",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationInviteBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationInviteResponseSchema,
+        await inviteToConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
   app.patch(
     "/:conversationId/title",
     requireViewer,
@@ -665,6 +716,21 @@ export function createConversationRoutes(
         conversationWatchesReportSchema,
         await requireConversationWatches(conversationId, { viewer }),
       );
+    },
+  );
+
+  app.delete(
+    "/:conversationId/watches/:watchId",
+    requireViewer,
+    validateRequest("param", watchParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { conversationId, watchId } = context.req.valid("param");
+      await cancelConversationWatchForViewer(
+        context.get("viewer"),
+        conversationId,
+        watchId,
+      );
+      return emptyResponse();
     },
   );
 

@@ -6,6 +6,7 @@ import {
   gt,
   gte,
   inArray,
+  isNotNull,
   lt,
   ne,
   or,
@@ -13,19 +14,23 @@ import {
   type SQL,
 } from "drizzle-orm";
 import * as z from "zod";
-import type { CodeChangeState } from "@sentry/junior-plugin-api";
+import type {
+  CodeChangeSize,
+  CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import {
   juniorCodeChanges,
   juniorCodeRepositories,
   juniorConversations,
+  juniorUsers,
 } from "@/db/schema";
 import { conversationUsageCostExpr } from "../conversations/aggregate";
 import { decodePageCursor, encodePageCursor } from "../page-cursor";
 import {
-  codeOverviewReportSchema,
-  codePersonReportSchema,
   IDLE_CHANGE_DAYS,
+  type CodeOverviewReport,
+  type CodePersonReport,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -151,7 +156,7 @@ async function readTreeCosts(conversationIds: readonly string[]) {
  * subquery starts from the user's Conversations, so Postgres hash-joins them
  * with the linked ids instead of one lookup per code change.
  */
-function ownedByUserSql(userId: string): SQL {
+function ownedByUserSql(userId: string | SQL): SQL {
   return sql`${juniorCodeChanges.id} IN (
     SELECT linked.id
     FROM junior_identities AS identities
@@ -284,7 +289,10 @@ export async function readCodeWindows(args: {
 
 /** Columns read for one code change report row. */
 export const codeChangeReportColumns = {
+  additions: juniorCodeChanges.additions,
+  changedFiles: juniorCodeChanges.changedFiles,
   closedAt: juniorCodeChanges.closedAt,
+  deletions: juniorCodeChanges.deletions,
   draft: juniorCodeChanges.draft,
   id: juniorCodeChanges.id,
   lastActivityAt: juniorCodeChanges.lastActivityAt,
@@ -299,8 +307,16 @@ export const codeChangeReportColumns = {
 };
 
 /** Convert one code change row to its report shape. */
-export function codeChangeReport(change: {
+export function codeChangeReport({
+  additions,
+  changedFiles,
+  deletions,
+  ...change
+}: {
+  additions: number | null;
+  changedFiles: number | null;
   closedAt: Date | null;
+  deletions: number | null;
   draft: boolean;
   id: string;
   lastActivityAt: Date | null;
@@ -313,8 +329,14 @@ export function codeChangeReport(change: {
   title: string | null;
   url: string | null;
 }) {
+  // Each part is set only when known, so an unknown count never reads as 0.
+  const size: CodeChangeSize = {};
+  if (additions !== null) size.additions = additions;
+  if (deletions !== null) size.deletions = deletions;
+  if (changedFiles !== null) size.changedFiles = changedFiles;
   return {
     ...change,
+    ...(Object.keys(size).length > 0 ? { size } : undefined),
     closedAt: change.closedAt?.toISOString(),
     lastActivityAt: change.lastActivityAt?.toISOString(),
     mergedAt: change.mergedAt?.toISOString(),
@@ -325,7 +347,9 @@ export function codeChangeReport(change: {
 }
 
 /** Read code activity created by Junior across installed code plugins. */
-export async function readCodeOverview(nowMs = Date.now()) {
+export async function readCodeOverview(
+  nowMs = Date.now(),
+): Promise<CodeOverviewReport> {
   const db = getDb();
   const changes = juniorCodeChanges;
   const repositories = juniorCodeRepositories;
@@ -404,7 +428,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
     costs.push(cost);
     repositoryCosts.set(change.repositoryId, costs);
   }
-  return codeOverviewReportSchema.parse({
+  return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
@@ -419,7 +443,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
-  });
+  };
 }
 
 /**
@@ -469,7 +493,7 @@ export async function readPersonCodeOverview(args: {
   cursor?: string | undefined;
   nowMs?: number;
   userId: string;
-}) {
+}): Promise<CodePersonReport> {
   const nowMs = args.nowMs ?? Date.now();
   const after = args.cursor
     ? decodePageCursor(
@@ -510,7 +534,7 @@ export async function readPersonCodeOverview(args: {
       .limit(PERSON_CHANGE_LIMIT),
   ]);
   const last = changes.at(-1);
-  return codePersonReportSchema.parse({
+  return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
@@ -533,5 +557,36 @@ export async function readPersonCodeOverview(args: {
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
-  });
+  };
+}
+
+/**
+ * Read the code changes that one person merged most recently, by their
+ * normalized email, in one statement.
+ */
+export async function readPersonMergedChanges(args: {
+  email: string;
+  limit: number;
+}) {
+  const userId = getDb()
+    .select({ id: juniorUsers.id })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.primaryEmailNormalized, args.email));
+  const rows = await getDb()
+    .select({ change: codeChangeReportColumns })
+    .from(juniorCodeChanges)
+    .innerJoin(
+      juniorCodeRepositories,
+      eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
+    )
+    .where(
+      and(
+        ownedByUserSql(sql`(${userId})`),
+        eq(juniorCodeChanges.state, "merged"),
+        isNotNull(juniorCodeChanges.mergedAt),
+      ),
+    )
+    .orderBy(desc(juniorCodeChanges.mergedAt), asc(juniorCodeChanges.id))
+    .limit(args.limit);
+  return rows.map((row) => codeChangeReport(row.change));
 }

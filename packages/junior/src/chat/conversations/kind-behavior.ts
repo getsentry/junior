@@ -69,12 +69,12 @@ export type TurnBehavior = {
   sessionTasks: boolean;
   tools: {
     agents: AgentTools;
-    reviewDesk: boolean;
+    inbox: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
     /**
      * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
-     * agent's inbox. `automation`: the run's Destination, then its Slack
+     * agent's mailbox. `automation`: the run's Destination, then its Slack
      * thread.
      */
     reply: "none" | "parent" | "automation";
@@ -97,7 +97,7 @@ const ROOT: TurnBehavior = {
   sessionTasks: true,
   tools: {
     agents: "children",
-    reviewDesk: true,
+    inbox: true,
     subscriptions: true,
     userCustomization: true,
     reply: "none",
@@ -130,7 +130,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   sessionTasks: false,
   tools: {
     agents: "children_and_parent",
-    reviewDesk: false,
+    inbox: false,
     subscriptions: false,
     userCustomization: false,
     reply: "parent",
@@ -150,7 +150,7 @@ const AGENT_IN_THREAD: TurnBehavior = {
 // one tool list. The Turn's own tools say which of them it can use.
 const THREAD_TOOLS: TurnBehavior["tools"] = {
   ...AGENT_IN_THREAD.tools,
-  reviewDesk: PERSON_IN_THREAD.tools.reviewDesk,
+  inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
 };
@@ -248,4 +248,15 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
  */
 export function postsRunNotices(dispatch: RunDispatch): boolean {
   return deliversFinalText(dispatch);
+}
+
+/**
+ * Return whether the task instructions of a dispatch run can invoke skills.
+ * Only an Automation creator writes them. Another dispatch, such as a plugin
+ * dispatch, has no person's text.
+ */
+export function dispatchInstructionsInvokeSkills(
+  dispatch: RunDispatch,
+): boolean {
+  return dispatch?.declaresResult === true;
 }

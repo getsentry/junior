@@ -7,6 +7,8 @@ export type LogAttributes = Record<string, LogAttributeValue>;
 /** Provider-neutral correlation data inherited by logs and spans in an operation. */
 export interface LogContext {
   conversationId?: string | undefined;
+  /** The root of the Conversation tree. Equals `conversationId` on a root. */
+  rootConversationId?: string | undefined;
   platform?: string | undefined;
   requestId?: string | undefined;
   messageConversationId?: string | undefined;
@@ -58,6 +60,7 @@ function definedAttributes(
 export function logContextToAttributes(context: LogContext): LogAttributes {
   return definedAttributes({
     "gen_ai.conversation.id": context.conversationId,
+    "app.conversation.root_id": context.rootConversationId,
     "app.platform": context.platform,
     "app.request.id": context.requestId,
     "messaging.system":

@@ -12,6 +12,7 @@ table documents its attributes and how to read them. Paths are under
 | `event_id`                          | captured Sentry error        | failure notice in Slack     |
 | `trace_id` / `span_id`              | one trace / one span         | errors, logs, spans         |
 | `gen_ai.conversation.id`            | Conversation                 | Slack footer, logs, spans   |
+| `app.conversation.root_id`          | root Conversation            | Turn logs and spans         |
 | `messaging.message.conversation_id` | Slack thread                 | logs, spans                 |
 | `messaging.message.id`              | Slack message ts or queue id | logs, spans                 |
 | `messaging.destination.name`        | Slack channel or queue topic | logs, spans                 |
@@ -24,8 +25,14 @@ table documents its attributes and how to read them. Paths are under
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
-| `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `app.review_item.id`                | Review item                  | Inbox, delivery logs  |
+| `vcs.change.id`                     | Code change number           | code change record spans    |
 
+- `gen_ai.conversation.id` also names child agents. Count root Conversations
+  by `app.conversation.root_id`.
+- Each provider event records a Code change again. Count Code changes by
+  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
+  `open`, `closed`, or `merged`.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only warnings and audit info events (`app.log.audit:true`),
@@ -66,7 +73,9 @@ attributes. Nested logs and spans inherit them.
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
+| History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
@@ -75,18 +84,23 @@ attributes. Nested logs and spans inherit them.
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
 | Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
+| Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
+| Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
+| Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
+| Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
 
 ## Trace Shape
@@ -108,6 +122,37 @@ attributes. Nested logs and spans inherit them.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
+
+## Response Size
+
+| Attribute                      | Span                                | Measures                                       | Set in                                           |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| `app.api.response.chars`       | `serialize` (`Write API response`)  | JSON body length in UTF-16 chars, uncompressed | `api/http.ts`                                    |
+| `app.dashboard.response.chars` | `deserialize` (`Read API response`) | the same, as the browser read it               | `packages/junior-dashboard/src/client/sentry.ts` |
+| `http.response.body.size`      | browser `http.client`               | body bytes on the wire, compressed             | `packages/junior-dashboard/src/client/sentry.ts` |
+
+- Vercel compresses responses at the edge, so only the browser sees the
+  compressed size.
+- `deserialize` spans exist only while a pageload or navigation is open.
+  Fetch spans get `http.response.body.size` at all times, polls included.
+  A fetch span without it got no resource timing entry before it ended.
+
+Largest dashboard API responses, by server route.
+
+```text
+dataset=spans query='span.op:serialize has:tags[app.api.response.chars,number]'
+fields=transaction,max(tags[app.api.response.chars,number]),p95(tags[app.api.response.chars,number]),count()
+sort=-max(tags[app.api.response.chars,number])
+```
+
+Compressed size in the browser. Use `tags[app.dashboard.response.chars,number]`
+on `span.op:deserialize` for the browser chars.
+
+```text
+dataset=spans query='span.op:http.client has:tags[http.response.body.size,number]'
+fields=url.full,max(tags[http.response.body.size,number]),p95(tags[http.response.body.size,number]),count()
+sort=-max(tags[http.response.body.size,number])
+```
 
 ## Query Recipes
 
@@ -171,12 +216,12 @@ sort=-timestamp
 
 ## Configuration
 
-| Setting                     | Controls                 | Default                                    |
-| --------------------------- | ------------------------ | ------------------------------------------ |
-| `SENTRY_DSN`                | Sentry ingestion         | disabled                                   |
-| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`                 |
-| `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>` |
-| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` is set              |
-| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                        |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                      |
-| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                |
+| Setting                     | Controls                 | Default                                             |
+| --------------------------- | ------------------------ | --------------------------------------------------- |
+| `SENTRY_DSN`                | Sentry ingestion         | disabled                                            |
+| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`                          |
+| `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>`          |
+| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` or `SENTRY_SPOTLIGHT` is set |
+| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                                 |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                               |
+| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                         |

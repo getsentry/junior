@@ -7,9 +7,12 @@ import XCTest
 final class NavigationUITests: XCTestCase {
   enum Auth { case token, signedOut, kept }
 
+  /// `scripts/sim.sh` sets it from `JUNIOR_IOS_SERVER`.
+  private let server = ProcessInfo.processInfo.environment["JUNIOR_IOS_SERVER"] ?? "http://127.0.0.1:4317"
+
   override func setUp() async throws {
     // Undo writes from earlier journeys (`scripts/mock-server.mjs`).
-    var request = URLRequest(url: URL(string: "http://127.0.0.1:4317/__reset")!)
+    var request = URLRequest(url: URL(string: "\(server)/__reset")!)
     request.httpMethod = "POST"
     _ = try await URLSession.shared.data(for: request)
   }
@@ -17,7 +20,7 @@ final class NavigationUITests: XCTestCase {
   private func launch(open path: String = "/", auth: Auth = .token) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
-      "-JuniorServer", "http://127.0.0.1:4317", "-JuniorFixedNow", "2026-08-07T12:00:00Z",
+      "-JuniorServer", server, "-JuniorFixedNow", "2026-08-07T12:00:00Z",
       "-JuniorOpen", path, "-JuniorTheme", "dark",
     ]
     switch auth {
@@ -49,6 +52,30 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(signOut.waitForExistence(timeout: 10))
     signOut.tap()
     XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
+  }
+
+  /// The built-in demo answers without the mock server: a reply to a sent
+  /// message, and a notice instead of the dashboard it does not have.
+  func testTryDemo() {
+    let app = launch(auth: .signedOut)
+    let tryDemo = app.buttons["try-demo"]
+    XCTAssertTrue(tryDemo.waitForExistence(timeout: 10))
+    tryDemo.tap()
+    let field = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "label == 'Message Junior…' AND (elementType == %d OR elementType == %d)",
+        XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)
+    ).firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    field.tap()
+    field.typeText("Summarize this week's deploys")
+    app.buttons["Send"].tap()
+    let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'This is the demo'")).firstMatch
+    XCTAssertTrue(reply.waitForExistence(timeout: 20))
+
+    app.buttons["Conversation menu"].tap()
+    app.buttons["Open on the web"].tap()
+    XCTAssertTrue(app.alerts["The demo has no web dashboard"].waitForExistence(timeout: 10))
   }
 
   func testHomeOpensConversation() {

@@ -66,6 +66,20 @@ const extractSessionRequestSchema = z
       )
       .max(10)
       .default([]),
+    // Memories that recall put into this Turn's prompt. Extraction reports
+    // the ones that this Turn's evidence shows are no longer true.
+    recalledMemories: z
+      .array(
+        z
+          .object({
+            content: z.string().min(1),
+            id: z.string().min(1),
+            kind: memoryKindSchema,
+          })
+          .strict(),
+      )
+      .max(20)
+      .default([]),
     actors: z.array(actorSchema),
     runtimeContext: memoryRuntimeContextSchema,
     transcript: z
@@ -167,6 +181,11 @@ const extractedMemorySchema = z
       ),
     expiresAtMs: expiresAtMsSchema,
     evidenceMessageIndices: evidenceMessageIndicesSchema,
+    statesChange: z
+      .boolean()
+      .describe(
+        "True only when the cited evidence says this fact changed from an earlier value, such as 'switched to', 'no longer', 'renamed X to Y', or 'replaced X with Y'.",
+      ),
   })
   .strict();
 const extractedMemoryResultSchema = z
@@ -175,6 +194,34 @@ const extractedMemoryResultSchema = z
     expiresAtMs: expiresAtMsSchema,
     kind: memoryKindSchema,
     evidenceMessageIndices: evidenceMessageIndicesSchema,
+    // Extraction output cached before change signals has no value.
+    statesChange: z.boolean().default(false),
+  })
+  .strict();
+const contradictedMemorySchema = z
+  .object({
+    memoryRef: z
+      .string()
+      .min(1)
+      .describe("ref of the memory in <recalled-memories>."),
+    evidenceMessageIndices: evidenceMessageIndicesSchema.describe(
+      "Indices from <run-transcript> that show the memory is no longer true.",
+    ),
+    replacementIndex: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "Index in memories of the new memory that states the current fact, otherwise null.",
+      ),
+  })
+  .strict();
+const contradictedMemoryResultSchema = z
+  .object({
+    evidenceMessageIndices: evidenceMessageIndicesSchema,
+    id: z.string().min(1),
+    replacementIndex: z.number().int().nonnegative().nullable(),
   })
   .strict();
 const extractMemoriesResponseSchema = z
@@ -184,6 +231,12 @@ const extractMemoriesResponseSchema = z
       .max(5)
       .describe(
         "Accepted durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
+      ),
+    contradictedMemories: z
+      .array(contradictedMemorySchema)
+      .max(5)
+      .describe(
+        "Recalled memories that cited evidence in this run shows are no longer true. Usually empty.",
       ),
   })
   .strict();
@@ -200,9 +253,14 @@ export type ExtractSessionRequest = z.output<
   typeof extractSessionRequestSchema
 >;
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
+export type ContradictedMemory = z.output<
+  typeof contradictedMemoryResultSchema
+>;
 
 /** Memories proposed by passive extraction. */
 export type MemoryExtractionResult = {
+  /** Recalled memories that the run's evidence shows are no longer true. */
+  contradicted: ContradictedMemory[];
   memories: ExtractedMemory[];
 };
 
@@ -237,7 +295,7 @@ const MEMORY_ADJUDICATION_SYSTEM = [
   "You are the memory duplicate review agent for an assistant.",
   "Classify how one new memory relates to existing active memories of the same kind.",
   "Return duplicate when the same durable fact, procedure, or preference is merely phrased differently.",
-  "Return supersedes_old only for a preference with an obvious changed value in the same mutable preference slot.",
+  "Return supersedes_old for a preference with an obvious changed value in the same mutable preference slot, or for a fact the candidate says changed.",
   "Return distinct for additive memories or different topics, and uncertain when the relationship is unclear.",
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
@@ -319,6 +377,28 @@ function existingMemoriesContext(request: ExtractSessionRequest): string {
     "Use these only to skip memories that are already covered or semantically redundant. They are not source evidence for new memories.",
     escapeTagText(JSON.stringify(request.existingMemories)),
   ]);
+}
+
+function recalledMemoriesContext(request: ExtractSessionRequest): string {
+  if (request.recalledMemories.length === 0) {
+    return renderInlineTag("recalled-memories", "[]");
+  }
+  return renderTag("recalled-memories", {}, [
+    "Memories recalled into this run, each with a ref. They are not source evidence for new memories.",
+    escapeTagText(
+      JSON.stringify(
+        request.recalledMemories.map((memory, index) => ({
+          content: memory.content,
+          kind: memory.kind,
+          ref: recalledMemoryRef(index),
+        })),
+      ),
+    ),
+  ]);
+}
+
+function recalledMemoryRef(index: number): string {
+  return `m${index + 1}`;
 }
 
 /**
@@ -422,6 +502,8 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "",
     existingMemoriesContext(request),
     "",
+    recalledMemoriesContext(request),
+    "",
     memoryKindsContext(allowedKinds),
     "",
     runTranscriptContext(request),
@@ -467,6 +549,20 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
       "- Skip a candidate when existing-memories already cover the same durable fact.",
       "- Reject third-party personal profile facts, even if they mention a name.",
       "- If unsure, return no memory for that candidate.",
+      "- Set statesChange=true only when the cited evidence explicitly says the fact changed: 'switched to', 'no longer', 'now uses', 'renamed X to Y', 'replaced X with Y', 'X was removed'. A plain statement of the current fact is statesChange=false.",
+    ]),
+    "",
+    renderTag("contradiction-rules", {}, [
+      "- Return a recalled memory in contradictedMemories only when a cited user message or successful tool result in this run directly shows that the memory is no longer true.",
+      "- Strong signals: the evidence says the old fact changed ('switched to', 'no longer', 'renamed X to Y', 'replaced X with Y'), or a tool result shows current code, configuration, or behavior that conflicts with the memory.",
+      "- A contradiction means the evidence and the memory cannot both be true now: the same subject at the same scope, with a different value.",
+      "- These are not contradictions: a different subject or scope ('tabs in Go files' and 'spaces in Python files'), a compatible or additional fact, a general rule and a specific exception that coexist, and the same fact in other words.",
+      "- Mentioning, asking about, quoting, or repeating a recalled memory is not a contradiction. Sharing a topic or words is not a contradiction.",
+      "- Precision matters far more than recall. A wrong archive hides a true memory; a missed contradiction can be caught later.",
+      "- A preference memory can be contradicted only by the run actor's own first-person statement.",
+      "- Assistant messages are never evidence for a contradiction.",
+      "- When a returned memory in memories states the current fact, set replacementIndex to its index in memories.",
+      "- If unsure, do not return the memory.",
     ]),
   ]);
 }
@@ -489,9 +585,10 @@ function adjudicationPrompt(request: MemorySupersessionInput): string {
     "",
     renderTag("rules", {}, [
       "- Return duplicate when the candidate and one existing memory state the same durable fact, procedure, preference, or value with different wording.",
-      "- Return supersedes_old only for preference candidates, and only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
+      "- For a preference candidate, return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
       "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
-      "- For knowledge and procedure candidates, never return supersedes_old. Return distinct or uncertain when the candidate changes or contradicts an existing memory.",
+      "- For knowledge and procedure candidates, return supersedes_old only when the candidate has statesChange=true and the old memory states the earlier value of the same fact, such as an old name, option, tool, owner, or behavior. Otherwise return distinct or uncertain when the candidate changes or contradicts an existing memory.",
+      "- Supersede only a memory about the same subject at the same scope. A different scope ('tabs in Go files' and 'spaces in Python files'), a general rule and a coexisting exception, or a shared topic is not a replacement.",
       "- Return distinct when the candidate adds information or belongs to a different task or topic.",
       "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
       "- Do not supersede memories from different topics even if they are both preferences.",
@@ -525,10 +622,10 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         prompt: sessionExtractionPrompt(request),
         maxTokens: 1_000,
       });
+      const response = extractMemoriesResponseSchema.parse(result.object);
       return {
-        memories: extractedMemoriesFromResponse(
-          extractMemoriesResponseSchema.parse(result.object),
-        ),
+        contradicted: contradictedMemoriesFromResponse(request, response),
+        memories: extractedMemoriesFromResponse(response),
       };
     },
     async reviewCreateRequest(rawRequest) {
@@ -594,8 +691,43 @@ function extractedMemoriesFromResponse(
       expiresAtMs: memory.expiresAtMs,
       kind: memory.kind,
       evidenceMessageIndices: memory.evidenceMessageIndices,
+      statesChange: memory.statesChange,
     });
   return response.memories.map(toMemory);
+}
+
+/** Resolve model refs to recalled memory ids, and drop unknown refs. */
+function contradictedMemoriesFromResponse(
+  request: ExtractSessionRequest,
+  response: ExtractMemoriesResponse,
+): ContradictedMemory[] {
+  const idsByRef = new Map(
+    request.recalledMemories.map((memory, index) => [
+      recalledMemoryRef(index),
+      memory.id,
+    ]),
+  );
+  return response.contradictedMemories.flatMap((contradicted) => {
+    const id = idsByRef.get(contradicted.memoryRef);
+    if (!id) return [];
+    const { replacementIndex } = contradicted;
+    return [
+      contradictedMemoryResultSchema.parse({
+        evidenceMessageIndices: contradicted.evidenceMessageIndices,
+        id,
+        replacementIndex:
+          replacementIndex !== null &&
+          replacementIndex < response.memories.length
+            ? replacementIndex
+            : null,
+      }),
+    ];
+  });
+}
+
+/** Parse one contradiction stored across task retries. */
+export function parseContradictedMemory(memory: unknown): ContradictedMemory {
+  return contradictedMemoryResultSchema.parse(memory);
 }
 
 /** Parse the canonical extracted-memory shape stored across task retries. */

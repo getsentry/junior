@@ -15,6 +15,9 @@ export function isOpenPlanItemStatus(status: PlanItemStatus): boolean {
   return status !== "done" && status !== "cancelled";
 }
 
+/** Model-facing tool that changes the plan. */
+export const UPDATE_PLAN_TOOL_NAME = "updatePlan";
+
 /** Assignee text for the plan's own agent, in tool results and blocks. */
 export const SELF_PLAN_ASSIGNEE = "self";
 

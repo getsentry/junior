@@ -198,7 +198,13 @@ export type Conversation = {
   participants?: ConversationSummaryReport["participants"] | undefined;
   sentryTraceUrl?: string | undefined;
   startedAt: string;
-  status: ConversationSummaryReport["status"];
+  status: ConversationStatus;
+  /** What the Conversation and its child Conversations wait on. */
+  treeState?: ConversationSummaryReport["treeState"] | undefined;
+  /** A Conversation in the tree watches for an Event or a Timer. */
+  watching?: boolean | undefined;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;
@@ -209,6 +215,8 @@ export type Conversation = {
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The viewer's newest answer here. The viewer's own feed rows only. */
+  viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };
 
 export type Identity = DashboardIdentity;
@@ -227,7 +235,8 @@ export type SystemPluginsData = {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle" | "stopped";
+/** The status of one Conversation's own work, as the API derives it. */
+export type ConversationStatus = ConversationSummaryReport["status"];
 
 export type CodeBlock = {
   code: string;

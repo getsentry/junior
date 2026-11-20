@@ -4,7 +4,6 @@ import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   acceptedConversationMessageSchema,
-  apiErrorSchema,
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
   createConversationBodySchema,
@@ -12,8 +11,6 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   webMessageId,
-  actorDirectoryReportSchema,
-  actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   pinConversationBodySchema,
@@ -44,26 +41,19 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
   conversationPlanItemSchema,
   conversationPlanReportSchema,
   planItemStatusBodySchema,
   codeOverviewReportSchema,
-  codePersonReportSchema,
   codeRepositoryParamsSchema,
   codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
-  personalSpendReportSchema,
-  personParamsSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
   attachObjectLinkBodySchema,
@@ -84,6 +74,9 @@ import {
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import { errorResponse } from "./errors";
+import { mountMockPeopleRoutes } from "./people-routes";
+import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -93,12 +86,8 @@ import {
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
-  actOnMockReviewItem,
   answerMockReviewItemByReply,
-  readMockReviewItem,
-  readMockReviewItemCounts,
-  readMockReviewItems,
-  readMockWaitingConversations,
+  withMockViewerAnswers,
 } from "./review-items";
 import {
   markMockConversationRead,
@@ -121,12 +110,7 @@ import {
   readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
-  readMockPeopleCode,
-  readMockPeopleDirectory,
-  readMockPeoplePluginReports,
-  readMockPeopleProfile,
   readMockPluginReports,
-  readMockPersonalSpend,
   readMockAutomationExecutions,
   readMockAutomationList,
   setMockConversationArchived,
@@ -146,7 +130,11 @@ import {
   recordMockSend,
 } from "./sends";
 import { readMockCacheWarmingSavings } from "./cache-warming";
-import { readMockConversationWatches } from "./watches";
+import {
+  cancelMockConversationWatch,
+  readMockConversationWatches,
+} from "./watches";
+import { addMockReviewItemRoutes } from "./review-item-routes";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
@@ -163,10 +151,6 @@ function withMockFeedIncludes(
     return kept;
   };
   return { ...feed, conversations: feed.conversations.map(strip) };
-}
-
-function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
-  return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
 function viewerIdentity(viewer: User) {
@@ -225,6 +209,7 @@ export function createMockReportingApi(): Hono<{
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
+  registerMockCodeChangeSearchRoutes(app);
   app.get("/code/repositories/:repositoryId", (c) => {
     const params = codeRepositoryParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -277,26 +262,7 @@ export function createMockReportingApi(): Hono<{
         },
       }),
   );
-  app.get("/people", () =>
-    jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
-  );
-  app.get("/people/me/spend", (context) => {
-    const email = context.get("viewer")?.email;
-    const report = email ? readMockPersonalSpend(email) : undefined;
-    return report
-      ? jsonResponse(personalSpendReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email/plugin-reports", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    return jsonResponse(
-      pluginOperationalReportFeedSchema,
-      readMockPeoplePluginReports(params.data.email),
-    );
-  });
+  mountMockPeopleRoutes(app);
   app.get("/cache-warming/savings", (c) => {
     const days = Number(c.req.query("days") ?? 30);
     if (![1, 7, 30, 90].includes(days)) {
@@ -306,27 +272,6 @@ export function createMockReportingApi(): Hono<{
       cacheWarmingSavingsReportSchema,
       readMockCacheWarmingSavings(days),
     );
-  });
-  app.get("/people/:email/code", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const report = readMockPeopleCode(params.data.email);
-    return report
-      ? jsonResponse(codePersonReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const { email } = params.data;
-    const report = readMockPeopleProfile(email);
-    return report
-      ? jsonResponse(actorProfileReportSchema, report)
-      : errorResponse("Person not found.", 404);
   });
   app.get("/locations", () =>
     jsonResponse(locationDirectoryReportSchema, readMockLocationDirectory()),
@@ -350,9 +295,10 @@ export function createMockReportingApi(): Hono<{
     const repositoryId = query.data.codeRepositoryId;
     const readFeed = (status: "active" | "archived") => {
       const feed = readMockConversationFeed(query.data.actorEmail, status);
-      return repositoryId
-        ? filterMockConversationsByRepository(feed, repositoryId)
-        : feed;
+      // Like the API, only the viewer's own feed says what they answered.
+      if (repositoryId)
+        return filterMockConversationsByRepository(feed, repositoryId);
+      return query.data.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
     };
     const report = readFeed(query.data.status);
     const respond = (feed: ConversationFeed) => {
@@ -554,6 +500,18 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.delete("/conversations/:conversationId/watches/:watchId", (c) => {
+    const params = watchParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return cancelMockConversationWatch(
+      params.data.conversationId,
+      params.data.watchId,
+    )
+      ? new Response(null, { status: 204 })
+      : errorResponse("Watch not found.", 404);
   });
   app.get("/conversations/:conversationId/plan", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -896,58 +854,13 @@ export function createMockReportingApi(): Hono<{
   // the poll does not refresh them.
   app.get("/versions", () =>
     jsonResponse(versionsSchema, {
+      conversationDetails: {},
       conversations: "mock",
       reviewItems: "mock",
       spend: "mock",
     }),
   );
-  // Answer Review item reads and actions from the mock items, so the
-  // dashboard does not query a database that has no review item tables.
-  app.get("/review-items", (c) => {
-    const { conversationId, q, status } = c.req.query();
-    return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, {
-        closed: Boolean(status && status !== "open"),
-        conversationId,
-        q: q || undefined,
-      }),
-    });
-  });
-  app.get("/review-items/count", (c) =>
-    jsonResponse(reviewItemCountSchema, {
-      ...(c.req.query("include") === "automations"
-        ? {
-            automations: mockAutomationCollection(
-              readMockAutomationList(),
-              new URLSearchParams({ owner: "me", scope: "attention" }),
-            ).total,
-          }
-        : undefined),
-      ...readMockReviewItemCounts(
-        NOW_MS,
-        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
-      ),
-    }),
-  );
-  app.get("/review-items/waiting-conversations", () =>
-    jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversations: readMockWaitingConversations(NOW_MS).conversations,
-    }),
-  );
-  app.get("/review-items/:id", (c) => {
-    const item = readMockReviewItem(NOW_MS, c.req.param("id"));
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
-  app.post("/review-items/:id/actions", async (c) => {
-    const body = reviewItemActionSchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid action.", 400);
-    const item = actOnMockReviewItem(NOW_MS, c.req.param("id"), body.data);
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
+  addMockReviewItemRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

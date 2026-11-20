@@ -34,6 +34,19 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     #expect(!automation.automation.task.text.isEmpty)
   }
 
+  @Test func readsConversationsFromAnOlderJunior() throws {
+    // Junior 0.310 and older send their old statuses and no `turnActive`.
+    func row(_ status: String) throws -> MCPConversation {
+      let json = """
+        {"conversationId":"c1","title":"T","status":"\(status)","surface":"api",\
+        "startedAt":"2026-08-07T12:00:00Z","lastSeenAt":"2026-08-07T12:00:00Z"}
+        """
+      return try JSONDecoder.junior.decode(MCPConversation.self, from: Data(json.utf8))
+    }
+    #expect(try row("active").turnActive)
+    #expect(try !row("completed").turnActive)
+  }
+
   @Test func archiveKeepsTheExactLastSeenAt() throws {
     // Archive compares `lastSeenAt` to the millisecond, so it must round-trip.
     let list = try fixture("searchConversations", as: ConversationList.self)

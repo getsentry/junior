@@ -31,7 +31,7 @@ import {
   REVIEW_ITEMS_QUERY_KEY,
   reviewItemListQueryKey,
   useConversationReviewItemData,
-} from "../src/client/review-desk/queries";
+} from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 
@@ -157,8 +157,9 @@ describe("dashboard client API", () => {
       lastSeenAt: generatedAt,
       mailbox: { conversationId, generatedAt, messages: [] },
       startedAt: generatedAt,
-      status: "active" as const,
+      status: "working" as const,
       surface: "slack" as const,
+      turnActive: true,
     };
     const fetchMock = vi.fn(async () =>
       Response.json({
@@ -263,24 +264,38 @@ describe("dashboard client API", () => {
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
     // The details panel reads these beside the detail report, and the
-    // transcript reads its open items from the list. The versions poll
-    // refreshes the other Review item reads.
+    // transcript reads its open items from the list. An Inbox list that
+    // shows an item of this Conversation shows its subject from this
+    // detail, so it refreshes with it. The versions poll refreshes the other
+    // Review item reads.
+    const inbox = reviewItemListQueryKey({ forViewer: true, sort: "waiting" });
+    const otherInbox = reviewItemListQueryKey({ forViewer: true });
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
       reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
+      inbox,
       [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
       reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
+      otherInbox,
       [...REVIEW_ITEMS_QUERY_KEY, "count"],
       [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
+    const listOf = (addedByConversationId: string) => ({
+      pageParams: [undefined],
+      pages: [{ items: [{ addedByConversationId }] }],
+    });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
     try {
       const first = await client.fetchQuery(options);
       for (const key of sideReads) client.setQueryData(key, {});
+      client.setQueryData(inbox, listOf(ARCHIVED_CONVERSATION_ID));
+      client.setQueryData(otherInbox, listOf("slack:C1:other"));
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([
+        false,
+        false,
         false,
         false,
         false,
@@ -306,6 +321,8 @@ describe("dashboard client API", () => {
       expect(sideReadsInvalidated()).toEqual([
         true,
         true,
+        true,
+        false,
         false,
         false,
         false,
@@ -328,7 +345,7 @@ describe("dashboard client API", () => {
     }
   });
 
-  it("keeps polling active detail after a failed refresh", () => {
+  it("keeps polling a running Turn after a failed refresh, even when it needs input", () => {
     const options = conversationDetailQueryOptions("slack:C1:123");
     const interval = options.refetchInterval;
     if (typeof interval !== "function") {
@@ -349,8 +366,10 @@ describe("dashboard client API", () => {
           lastProgressAt: generatedAt,
           lastSeenAt: generatedAt,
           startedAt: generatedAt,
-          status: "active",
+          // An open action item outranks the running Turn in `status`.
+          status: "needs_input",
           surface: "slack",
+          turnActive: true,
         },
         error: new Error("temporary failure"),
       },

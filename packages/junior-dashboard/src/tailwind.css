@@ -424,6 +424,19 @@
   }
 }
 
+/* The watching eye closes for a moment once in each cycle. */
+@keyframes junior-watch-blink {
+  0%,
+  97%,
+  100% {
+    transform: scaleY(1);
+  }
+
+  98.5% {
+    transform: scaleY(0.1);
+  }
+}
+
 /* Keep long mobile feeds cheap while preserving their full scroll range. */
 .mobile-conversation-row {
   @variant max-md {

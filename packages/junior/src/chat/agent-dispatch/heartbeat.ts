@@ -1,12 +1,18 @@
-import { isBriefsEnabled } from "@/chat/briefs/registration";
+import {
+  isBriefsEnabled,
+  isEventEmbeddingsEnabled,
+} from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
+import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import {
   createPluginEventPublisher,
-  getPlugins,
+  getRegistrations,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
@@ -77,7 +83,7 @@ async function runPluginHeartbeats(args: {
 }): Promise<void> {
   let count = 0;
   /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
       break;
@@ -291,6 +297,16 @@ export async function runHeartbeat(args: {
     logException(error, "scheduled_automations.heartbeat.failed");
   }
   try {
+    const woke = await runInboxSnoozeTimers(getDb(), args.nowMs);
+    if (woke > 0) {
+      logInfo("inbox_snoozes.heartbeat.woken", {
+        "app.inbox_snooze.count": woke,
+      });
+    }
+  } catch (error) {
+    logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
   } catch (error) {
     // Timer claims expire for retry; a failure must not block plugin heartbeats.
@@ -329,5 +345,22 @@ export async function runHeartbeat(args: {
       // The claim expires, and a later heartbeat tries again.
       logException(error, "conversation_embeddings.backfill.failed");
     }
+  }
+  try {
+    await runEventSearchBackfill({
+      ...(isEventEmbeddingsEnabled()
+        ? {
+            embedder: createConversationEmbedder({
+              // The cost stays on the span, like the Brief backfill above.
+              cost: { owner: "none" },
+              operation: "conversation_embedding",
+            }),
+          }
+        : undefined),
+      nowMs: args.nowMs,
+    });
+  } catch (error) {
+    // The claim expires, and a later heartbeat tries again.
+    logException(error, "event_search.backfill.failed");
   }
 }

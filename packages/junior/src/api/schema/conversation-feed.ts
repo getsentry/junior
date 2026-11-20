@@ -73,12 +73,28 @@ export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 /** The most links a feed row lists. */
 export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
+/**
+ * The viewer's newest answer to a Review item that the Conversation added:
+ * when it closed and the options they picked. A text answer has no choices.
+ */
+export const conversationFeedViewerAnswerSchema = z
+  .object({
+    choices: z.array(z.string()),
+    closedAt: z.string().datetime(),
+  })
+  .strict();
+
+export type ConversationFeedViewerAnswer = z.infer<
+  typeof conversationFeedViewerAnswerSchema
+>;
+
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   brief?: ConversationFeedBrief | undefined;
   links?: string[] | undefined;
   media?: ConversationFeedMedia[] | undefined;
   threads?: ConversationFeedItem[] | undefined;
+  viewerAnswer?: ConversationFeedViewerAnswer | undefined;
 };
 
 /**
@@ -100,6 +116,8 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
       .max(CONVERSATION_FEED_MEDIA_LIMIT)
       .optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
+    /** Only on the viewer's own feed. */
+    viewerAnswer: conversationFeedViewerAnswerSchema.optional(),
   });
 
 export const conversationFeedSchema = z

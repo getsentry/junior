@@ -198,7 +198,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
-      ...conversationRecordColumns,
+      ...conversationRecordColumns(),
       // A root Conversation has no agent tree.
       agentTreeRootLabel: sql<
         string | null

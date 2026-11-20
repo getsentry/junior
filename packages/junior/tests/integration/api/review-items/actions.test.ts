@@ -6,6 +6,8 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -22,7 +24,10 @@ import {
 import {
   juniorAgentInvocations,
   juniorConversationParticipants,
+  juniorIdentities,
 } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -222,6 +227,63 @@ describe("review item actions API", () => {
     });
   });
 
+  it("names the people that an item mentions, with their photos", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "bea@example.com",
+        fullName: "Bea Owner",
+        platform: "slack",
+        slackUserId: "UBEA1",
+        teamId: "T123",
+      },
+      conversationId: "slack:CPUB:1.000001",
+      destination: { platform: "slack", teamId: "T123", channelId: "CPUB" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    const [bea] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/bea_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UBEA1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
+    await addItem({
+      kind: "action",
+      title: "Ask <@UBEA1> about acme",
+      body: "<@UBEA1> owns the acme entry.",
+      assignees: ["ana@example.com"],
+      request: { ...REQUEST, question: "Did <@UBEA1> approve it?" },
+    });
+
+    // The names and photos come with the items, in one more statement.
+    const { items } = await (
+      await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+        statements: 5,
+        serialRounds: 4,
+      })
+    ).json();
+    expect(items).toMatchObject([
+      {
+        mentions: [
+          {
+            avatarUrl: avatarPath(bea!.id),
+            email: "bea@example.com",
+            fullName: "Bea Owner",
+            slackUserId: "UBEA1",
+          },
+        ],
+        title: "Ask <@UBEA1> about acme",
+      },
+    ]);
+  });
+
   it("shows a Conversation's items to the people in it", async () => {
     const fixture = await createConversationFixture();
     const ana = await user("ana@example.com");
@@ -269,7 +331,7 @@ describe("review item actions API", () => {
         (listed: any) => listed.id,
       );
 
-    // Ana is not assigned, so the item is not on her review desk. She is
+    // Ana is not assigned, so the item is not in her Inbox. She is
     // still a Participant, so the Conversation view shows it.
     expect(await ids(ana, "")).toEqual([]);
     expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
@@ -716,8 +778,8 @@ describe("review item actions API", () => {
     await item(27, { kind: "pr" });
     await item(28, { kind: "pr" });
     // A notice and Ben's pull request do not wait on Ana.
-    const notice = await item(29, { kind: "notice" });
-    const bens = await item(30, { assignee: ben, kind: "pr" });
+    await item(29, { kind: "notice" });
+    await item(30, { assignee: ben, kind: "pr" });
     const closed = await item(31, { kind: "decision" });
     await closeReviewItem(getDb(), {
       id: closed,
@@ -740,16 +802,12 @@ describe("review item actions API", () => {
       undefined,
     ]);
 
-    // The counts cover every page. Of the snoozed rows, only open items
-    // that Ana's Inbox lists count.
-    const snoozed = [notice, bens, closed, "missing"].join(",");
-    expect(
-      await (await api(fixture, ana).get(`/count?snoozed=${snoozed}`)).json(),
-    ).toEqual({
+    // The counts cover every page.
+    expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
       decisions: 27,
       needsViewer: 29,
       codeChanges: 2,
-      snoozed: 1,
+      snoozed: 0,
     });
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
       decisions: 0,
@@ -907,6 +965,27 @@ describe("review item actions API", () => {
           reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],
         }),
       }),
+    ]);
+    // The next Turn gets the dismiss as a note, so the agent does not keep
+    // treating the item as open.
+    await getTurnLifecycle().start({
+      conversationId: "slack:CPUB:1.000001",
+      createdAtMs: Date.now(),
+      inputMessageIds: ["after-dismiss-message"],
+      surface: "internal",
+      turnId: "after-dismiss",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: "slack:CPUB:1.000001",
+        turnId: "after-dismiss",
+      }),
+    ).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^cal@example\\.com dismissed review item .*\\(${id}\\)\\. It is closed with no answer\\.`,
+        ),
+      ),
     ]);
   });
 });

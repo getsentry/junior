@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { reviewItemRequestSchema } from "@/chat/review-items/evidence";
+import { actorIdentitySchema } from "./conversation";
 
 const answerSchema = z
   .object({
@@ -12,6 +13,8 @@ const answerSchema = z
 
 const personSchema = z
   .object({
+    /** Junior API path of the profile photo. */
+    avatarUrl: z.string().min(1).optional(),
     displayName: z.string().min(1).optional(),
     email: z.string().min(1),
     userId: z.string().min(1),
@@ -46,6 +49,8 @@ export const reviewItemSchema = z
     createdAt: z.string().datetime(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
+    /** People that the title, body, and question mention. */
+    mentions: z.array(actorIdentitySchema).optional(),
     /**
      * Other open work that the viewer can see on the same subject or linked
      * work. Only an open item has it.
@@ -82,6 +87,19 @@ export const reviewItemSchema = z
          * `code_change` for a pull request. Unset when none claims it.
          */
         objectType: objectTypeSchema.optional(),
+        /**
+         * The Event resource that `url` names, such as a pull request, with
+         * the Event types that can wake or resolve a snooze of the item.
+         * Unset when no Event source claims it.
+         */
+        resource: z
+          .object({
+            events: z.array(z.string().min(1)).min(1),
+            namespace: z.string().min(1),
+            resourceType: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         title: z.string().min(1).optional(),
         url: z.string().min(1).optional(),
       })
@@ -97,7 +115,7 @@ export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 /**
- * Review desk list filters. The list has the open items that the viewer can
+ * Inbox list filters. The list has the open items that the viewer can
  * see, one page at a time. A search or `include=archived` also finds done and
  * dismissed items, after the open ones. `status` lists closed items instead,
  * with the same visibility.
@@ -112,6 +130,11 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /**
+     * `true` lists only the open items in Inbox rows that the viewer
+     * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
+     */
+    snoozed: z.enum(["true"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /** Also list the newest done and dismissed items, with the first page. */
@@ -143,7 +166,7 @@ export const reviewItemListQuerySchema = z
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, oldest first.
+ * One page of the Inbox list. Open items come first, oldest first.
  * The first page of a search, or of a list that includes archived items,
  * also has the newest archived matches.
  */
@@ -160,17 +183,15 @@ export const reviewItemListSchema = z
 /** `GET /api/review-items/count` query. */
 export const reviewItemCountQuerySchema = z
   .object({
-    /** `automations` also counts the viewer's Automations that need attention. */
-    include: z.enum(["automations"]).optional(),
     /**
-     * The newest item of each snoozed Inbox row, comma separated. Snoozes
-     * live in the browser, so the server counts only the ids it is given.
+     * Extra counts, comma separated. `automations` counts the viewer's
+     * Automations that need attention, and `snoozed` their snoozed rows.
      */
-    snoozed: z
+    include: z
       .string()
       .default("")
       .transform((value) => [...new Set(value.split(",").filter(Boolean))])
-      .pipe(z.array(z.string().min(1).max(200)).max(100)),
+      .pipe(z.array(z.enum(["automations", "snoozed"]))),
   })
   .strict();
 
@@ -194,7 +215,10 @@ export const reviewItemCountSchema = z
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
      */
     needsViewer: z.number().int().nonnegative(),
-    /** The `snoozed` ids that are open and listed for the viewer. */
+    /**
+     * The Inbox rows that the viewer snoozed and that still have an open
+     * item for them, as Snoozed lists them. 0 without `include=snoozed`.
+     */
     snoozed: z.number().int().nonnegative(),
   })
   .strict();

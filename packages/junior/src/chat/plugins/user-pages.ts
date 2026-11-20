@@ -16,7 +16,7 @@ import {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
 
 /** Admin pages are hidden from everyone except Junior admins. */
 function viewerCanSeePage(
@@ -31,7 +31,7 @@ export function readPluginUserPageLinks(
   viewer: User | undefined,
 ): PluginUserPageLink[] {
   return pluginUserPageLinksSchema.parse(
-    getPlugins().flatMap((plugin) =>
+    getRegistrations().flatMap((plugin) =>
       (plugin.userPages ?? [])
         .filter((page) => viewerCanSeePage(page, viewer))
         .map((page) => ({
@@ -64,7 +64,7 @@ export async function readPluginUserPage(input: {
   pluginName: string;
   query: PluginUserPageInput;
 }): Promise<PluginUserPageContent | undefined> {
-  const plugin = getPlugins().find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === input.pluginName,
   );
   const page = plugin?.userPages?.find(

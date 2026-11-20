@@ -43,12 +43,19 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     const location = conversation?.parentConversationId
       ? undefined
       : conversation?.location;
-    if (!location || location.provider !== "slack") {
+    // A thread that its Conversation detached from gets no notice.
+    if (
+      !location ||
+      location.provider !== "slack" ||
+      conversation?.deliveryPausedAtMs !== undefined
+    ) {
       logWarn("automated_turn_limit.notice.skipped", {
         conversationId: args.conversationId,
-        "app.automated_turn_limit.reason": location
-          ? "unsupported_location"
-          : "missing_location",
+        "app.automated_turn_limit.reason": !location
+          ? "missing_location"
+          : location.provider !== "slack"
+            ? "unsupported_location"
+            : "delivery_paused",
       });
       await releaseFailedNoticeClaim({
         conversationId: args.conversationId,

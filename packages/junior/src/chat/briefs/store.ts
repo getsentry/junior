@@ -99,6 +99,7 @@ export async function appendConversationBrief(
       .from(juniorConversationBriefs)
       .where(eq(juniorConversationBriefs.conversationId, input.conversationId));
     const version = (versions[0]?.version ?? 0) + 1;
+    const content = conversationBriefSchema.parse(input.content);
     const inserted = await tx
       .with(conversationDetailTouch(tx, [input.conversationId]))
       .insert(juniorConversationBriefs)
@@ -107,7 +108,8 @@ export async function appendConversationBrief(
         version,
         turnId: input.turnId,
         throughSeq: input.throughSeq,
-        content: conversationBriefSchema.parse(input.content),
+        content,
+        outcomeStatus: content.outcome.status,
         searchText: input.searchText,
         modelId: input.modelId,
         costMicroUsd:

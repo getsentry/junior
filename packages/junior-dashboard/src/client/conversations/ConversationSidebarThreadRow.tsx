@@ -8,18 +8,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import {
-  conversationDisplayTitle,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle } from "../format";
+import { Spinner } from "../components/ui/spinner";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { useInboxUi } from "../uiShell";
 import type { Conversation } from "../types";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
-import {
-  ChildConversationStatusIcon,
-  childConversationStatus,
-} from "./ChildConversationStatus";
+import { ChildConversationStatusIcon } from "./ChildConversationStatus";
 import { useArchiveConversation } from "./conversationArchive";
 import {
   prefetchConversationDetail,
@@ -36,6 +31,7 @@ import {
   ROW_ACTIONS_REVEAL_CLASS,
 } from "./sidebarRowActions";
 import { formatCompactAge } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.
@@ -66,8 +62,6 @@ export const ConversationSidebarThreadRow = memo(
     /** Runs before the archive, so its result shows. */
     onRowAction?(): void;
     selected: boolean;
-    /** True when an open review item in this Thread waits on the viewer. */
-    waiting: boolean;
   }) {
     const prefetch = usePrefetchConversation(props.conversation.id);
     const inbox = useInboxUi();
@@ -117,9 +111,7 @@ export const ConversationSidebarThreadRow = memo(
           )}
           to={conversationPath(props.conversation.id)}
         >
-          <ChildConversationStatusIcon
-            status={childConversationStatus(props.conversation, props.waiting)}
-          />
+          <ChildConversationStatusIcon status={props.conversation.status} />
           <span
             className={cn(
               "min-w-0 truncate font-sans text-sm leading-snug",
@@ -130,8 +122,16 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {visualStatusForConversation(props.conversation) ===
-          "active" ? null : (
+          {conversationTurnIsActive(props.conversation) ? (
+            // The icon follows `status`. A running Thread that needs input
+            // shows the alert there, so it shows that it runs here.
+            props.conversation.status === "working" ? null : (
+              <Spinner
+                aria-label="Running"
+                className="size-3.5 justify-self-end text-dashboard-text-muted"
+              />
+            )
+          ) : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",

@@ -1,6 +1,6 @@
 /**
  * The next action of a Junior pull request for its requester, and its one
- * item on the review desk.
+ * item in the Inbox.
  *
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, approved, auto-merge is off, and GitHub's merge state
@@ -35,7 +35,7 @@ import {
 } from "../pull-request-outcomes/store.js";
 import {
   GITHUB_CONFLICT_GONE_REASON,
-  gitHubConflictNoticeKey,
+  gitHubConflictItemKey,
 } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
@@ -81,6 +81,14 @@ const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-ready:",
   "pull-request-review-requested:",
 ] as const;
+
+function itemName(target: GitHubPullRequestTarget): string {
+  return `${target.repositoryFullName}#${target.number}`.toLowerCase();
+}
+
+function actionDedupeKey(target: GitHubPullRequestTarget): string {
+  return `pull-request-action:${itemName(target)}`;
+}
 
 async function closeLegacyItems(
   items: PluginReviewItems,
@@ -161,27 +169,28 @@ function nextAction(
 
 type CloseReason = { reason: string; status: "done" | "dismissed" };
 
+type EndedState = Exclude<GitHubPullRequestMergeState["state"], "open">;
+
 /** Why an item closes when its pull request is no longer open. */
+const ENDED_REASONS: Record<EndedState, CloseReason> = {
+  closed: {
+    reason: "The pull request closed without merging.",
+    status: "dismissed",
+  },
+  merged: { reason: "The pull request merged.", status: "done" },
+};
+
 function endedReason(
-  state: GitHubPullRequestMergeState,
+  state: GitHubPullRequestMergeState["state"],
 ): CloseReason | undefined {
-  if (state.state === "merged") {
-    return { reason: "The pull request merged.", status: "done" };
-  }
-  if (state.state === "closed") {
-    return {
-      reason: "The pull request closed without merging.",
-      status: "dismissed",
-    };
-  }
-  return undefined;
+  return state === "open" ? undefined : ENDED_REASONS[state];
 }
 
 function closeReason(
   state: GitHubPullRequestMergeState,
   previous: GitHubPullRequestAction,
 ): CloseReason {
-  const ended = endedReason(state);
+  const ended = endedReason(state.state);
   if (ended) return ended;
   if (previous === "review") {
     return { reason: "The review request ended.", status: "done" };
@@ -213,6 +222,8 @@ async function showAction(
       assigneeIdentityIds: [args.identityId],
       // The URL stands alone, so the dashboard shows the pull request as
       // one card that carries its title. The text names it by number only.
+      // The Inbox hides the review and merge text under a row head that
+      // says it, so keep it in step with `textRepeatsHead` there.
       body:
         action === "merge"
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
@@ -240,6 +251,45 @@ async function showAction(
   }
 }
 
+/**
+ * Close the next-action item and the merge conflict notice of a pull request
+ * that merged or closed. The outcome write calls this before it marks the
+ * chips, so no reader sees an ended pull request next to its open item. The
+ * items are optional, so a failure is logged. In a webhook, the next-action
+ * sync after it closes the item again.
+ */
+export async function closeEndedGitHubPullRequestItems(args: {
+  db: GitHubDb;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
+  reviewItems: PluginConversationReviewItems;
+  state: EndedState;
+  target: GitHubPullRequestTarget;
+}): Promise<void> {
+  const { target } = args;
+  try {
+    const opener = (
+      await listGitHubPullRequestOpeners(args.db, {
+        numbers: [target.number],
+        repositoryFullName: target.repositoryFullName,
+      })
+    ).get(target.number);
+    if (!opener?.conversationId) return;
+    const items = args.reviewItems.forConversation(opener.conversationId);
+    const reason = ENDED_REASONS[args.state];
+    await Promise.all([
+      items.close({ dedupeKey: actionDedupeKey(target), ...reason }),
+      items.close({ dedupeKey: gitHubConflictItemKey(target), ...reason }),
+    ]);
+  } catch (error) {
+    logFailOpenFailure(
+      args.log,
+      "GitHub ended pull request item close failed",
+      error,
+      { number: target.number, repository: target.repositoryFullName },
+    );
+  }
+}
+
 async function syncOne(
   args: {
     db: GitHubDb;
@@ -261,8 +311,8 @@ async function syncOne(
   // and a Conversation for the item.
   if (!opener?.conversationId) return;
   const items = args.reviewItems.forConversation(opener.conversationId);
-  const name = `${target.repositoryFullName}#${target.number}`.toLowerCase();
-  const dedupeKey = `pull-request-action:${name}`;
+  const name = itemName(target);
+  const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
   // One webhook at a time checks a pull request. A webhook that arrives
   // during a check asks again, and the running webhook checks once more with
@@ -304,16 +354,16 @@ async function syncOne(
       });
     }
     // Close the old items only after the new one shows, so a failed show
-    // does not leave the desk with no next-action item.
+    // does not leave the Inbox with no next-action item.
     await Promise.all([
       closeLegacyItems(items, name),
-      // The same read closes the merge conflict notice from
+      // The same read closes the merge conflict item from
       // `merge-conflict-checks/policy.ts` when the conflict is gone.
       state.state !== "open" ||
       (state.mergeableState && state.mergeableState !== "dirty")
         ? items.close({
-            dedupeKey: gitHubConflictNoticeKey(target),
-            ...(endedReason(state) ?? {
+            dedupeKey: gitHubConflictItemKey(target),
+            ...(endedReason(state.state) ?? {
               reason: GITHUB_CONFLICT_GONE_REASON,
               status: "done",
             }),

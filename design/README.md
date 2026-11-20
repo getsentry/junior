@@ -34,14 +34,18 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
+- [Attention](./attention.md): when Junior asks for a person's attention.
+  Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
+- [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
+  through Junior's own Google account.
 - [Guardian](./guardian.md): review of each tool action before it runs.
-- [Inbox](./inbox.md): the dashboard view of the Review desk, one stack of
-  cards for each root Conversation.
-- [Review desk](./review-desk.md): work that waits for a person, labeled
-  "Inbox" in the dashboard.
+- [Inbox](./inbox.md): work that waits for a person.
+- [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
+  stack for each root Conversation.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
+- [Slack](./slack.md): requests in Slack, and who can start work there.

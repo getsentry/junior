@@ -13,6 +13,7 @@ import { logException } from "@/chat/logging";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
 import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
+import { conversationTreeStateSchema } from "@/api/schema/conversation-tree-state";
 
 /** MCP view of one Conversation. It omits dashboard-only fields. */
 export const mcpConversationSchema = z
@@ -20,8 +21,24 @@ export const mcpConversationSchema = z
     conversationId: z.string(),
     title: z.string(),
     status: conversationReportStatusSchema.describe(
-      "`active` while work runs, waits to start, or waits on you. `completed` when no work is left. `failed` when the last turn failed. `stopped` after a person or a parent agent stopped it, until a person sends it input or its parent gives it new work.",
+      "`needs_input` while it waits on a person: a Review item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
     ),
+    turnActive: z
+      .boolean()
+      .describe(
+        "True while a Turn runs or waits to start, whatever `status` is. To follow a Conversation, wait until it is false.",
+      ),
+    treeState: conversationTreeStateSchema
+      .optional()
+      .describe(
+        "Your viewer state, over this Conversation and all its child agents. `needs_you` when one of them waits on you or on everyone. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
+      ),
+    watching: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when one of them has an active Watch or a pending Timer. It is not work.",
+      ),
     surface: conversationSurfaceSchema.describe(
       "Where it started: `slack`, `api` (the dashboard or MCP), `scheduler` (an automation), or `internal`.",
     ),
@@ -52,6 +69,9 @@ export function mcpConversation(
     conversationId: summary.conversationId,
     title: summary.displayTitle,
     status: summary.status,
+    turnActive: summary.turnActive,
+    treeState: summary.treeState,
+    watching: summary.watching,
     surface: summary.surface,
     channelName: summary.channelNameRedacted ? undefined : summary.channelName,
     locationUrl: summary.locationUrl,

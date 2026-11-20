@@ -15,11 +15,6 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
-  sandboxSkillDir,
-  sandboxSkillFile,
-  sandboxSkillPathResolution,
-} from "@/chat/sandbox/paths";
-import {
   buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
@@ -29,7 +24,11 @@ import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { latestSeenPlanVersion, renderPlanDelta } from "@/chat/plan/prompt";
+import {
+  latestSeenPlanVersion,
+  renderPlanDelta,
+  renderPlanReview,
+} from "@/chat/plan/prompt";
 import { listPlanItems } from "@/chat/plan/store";
 import type { PlanItem } from "@/chat/plan/types";
 import { readUserCustomization } from "@/chat/identities/customization";
@@ -49,17 +48,14 @@ import {
   toCanonicalInputMessage,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import {
-  escapeClosingTag,
   escapeTagText,
-  escapeTagTextAndQuotes,
-  renderInlineTag,
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
@@ -67,6 +63,8 @@ import { renderThreadContext, THREAD_CONTEXT_TAGS } from "@/chat/input-tags";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
+import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
+import { readTaskInstructions } from "@/chat/task-input";
 import type {
   AgentAttachment,
   AgentInstruction,
@@ -192,6 +190,34 @@ export function instructionForInputs(
   };
 }
 
+/**
+ * Return the request of a Run, for context that must follow what was asked,
+ * such as memory recall: person input, the `requestText` of runtime inputs,
+ * or the instructions of an Automation run. Runtime tags, generic
+ * instructions, and Event text are not in it.
+ */
+export function turnRequestText(
+  run: Pick<AgentRun, "dispatch" | "instruction">,
+): string {
+  const { instruction } = run;
+  // An Automation run's task instructions are its creator's request. Another
+  // dispatch, such as a plugin dispatch, has no request.
+  if (run.dispatch) {
+    return dispatchInstructionsInvokeSkills(run.dispatch)
+      ? (readTaskInstructions(instruction.text) ?? "")
+      : "";
+  }
+  const inputs = instruction.inputs ?? [
+    { kind: "person" as const, text: instruction.text },
+  ];
+  return inputs
+    .map((input) =>
+      (input.kind === "person" ? input.text : (input.requestText ?? "")).trim(),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 // Render one prompt text part per input, in order. Inputs are never joined.
 // A batch has one Actor, so every person part has the same attributes.
 function renderInputParts(instruction: AgentInstruction): string[] {
@@ -203,26 +229,6 @@ function renderInputParts(instruction: AgentInstruction): string[] {
       ? buildUserTurnText(input.text, instruction.actor)
       : input.text.trim(),
   );
-}
-
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
-  return renderTag("skill", {}, [
-    renderInlineTag("name", escapeTagTextAndQuotes(skill.name)),
-    renderInlineTag(
-      "path",
-      escapeTagTextAndQuotes(sandboxSkillFile(skill.name)),
-    ),
-    renderInlineTag(
-      "working_directory",
-      escapeTagTextAndQuotes(sandboxSkillDir(skill.name)),
-    ),
-    renderInlineTag(
-      "path_resolution",
-      escapeTagTextAndQuotes(sandboxSkillPathResolution(skill.name)),
-    ),
-    escapeClosingTag(skill.body, "skill"),
-  ]);
 }
 
 /** Redact image data from prompt content parts for observability. */
@@ -639,7 +645,6 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
-  explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -728,13 +733,14 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Only changes that others made after the plan version that history
-        // shows. The model's own changes are in its tool results.
-        planDelta: planItems
-          ? renderPlanDelta(
+        // Changes that others made after the plan version that history
+        // shows, else every open item when history has not shown the plan
+        // for a while. The model's own changes are in its tool results.
+        plan: planItems
+          ? (renderPlanDelta(
               planItems,
               latestSeenPlanVersion(promptHistoryMessages),
-            )
+            ) ?? renderPlanReview(planItems, promptHistoryMessages))
           : null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),
@@ -765,14 +771,6 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.explicitSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
-          },
-        ]
-      : []),
     ...(agentsInstructions
       ? [{ type: "text" as const, text: agentsInstructions }]
       : []),

@@ -99,6 +99,20 @@ export function reviewItemNeedsSomeone(): SQL {
 }
 
 /**
+ * SQL: the Review item waits for a person's input: an open `action` item,
+ * whoever it is assigned to. An item with no assignees still waits for
+ * anyone who can answer it. The Conversation that added it shows
+ * `needs_input`. `junior_review_items_open_action_added_by_idx` has this
+ * predicate.
+ */
+export function reviewItemNeedsInput(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+  )!;
+}
+
+/**
  * SQL: the Review item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnReviewItem`; keep the two the same.
@@ -228,7 +242,7 @@ export interface ReviewItemAgentScope {
 /**
  * Read the scope of an agent. The agent reads as its Conversation and
  * Automation, not as its Actor: an assignment lets a person see the item on
- * the review desk, not let an agent read it into another Conversation.
+ * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readReviewItemAgentScope(
   context: Pick<
@@ -274,6 +288,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
     .slice(PLUGIN_REVIEW_ITEM_KEY_PREFIX.length)
     .split(":", 1)[0];
   return plugin || undefined;
+}
+
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
 }
 
 /**

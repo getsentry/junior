@@ -166,7 +166,10 @@ export function createMockMcpTools({ app, origin }) {
     return {
       conversationId: id,
       title: summary.displayTitle,
-      status: stopped.has(id) ? "stopped" : summary.status,
+      status: stopped.has(id) ? "done" : summary.status,
+      turnActive: summary.turnActive && !stopped.has(id),
+      treeState: summary.treeState,
+      watching: summary.watching,
       surface: summary.surface,
       channelName: summary.channelNameRedacted
         ? undefined
@@ -286,7 +289,7 @@ export function createMockMcpTools({ app, origin }) {
         : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-      url: `${origin}/review?item=${enc(item.id)}`,
+      url: `${origin}/inbox?item=${enc(item.id)}`,
     };
   }
 
@@ -358,7 +361,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `status` is not `active` and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -627,8 +630,8 @@ export function createMockMcpTools({ app, origin }) {
       input: { conversationId },
       async run({ conversationId: id }) {
         const detail = await requireDetail(id);
-        // The mock has no turns to stop. An active one stands for a running turn.
-        const running = detail.status === "active" && !stopped.has(id);
+        // The mock has no turns to stop. `turnActive` stands for a running turn.
+        const running = detail.turnActive && !stopped.has(id);
         const { pendingMessages } = await readPendingWork(id);
         stopped.add(id);
         if (running) droppedPending.add(id);
@@ -895,12 +898,18 @@ export function createMockMcpTools({ app, origin }) {
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/automations/${enc(id)}/executions`);
-        if (result.status === 404) throw new ToolError("Automation not found.");
-        if (!result.ok) throw apiFailure(result);
+        const [automation, list] = await Promise.all([
+          api("GET", `/automations/${enc(id)}`),
+          api("GET", `/automations/${enc(id)}/executions`),
+        ]);
+        for (const result of [automation, list]) {
+          if (result.status === 404)
+            throw new ToolError("Automation not found.");
+          if (!result.ok) throw apiFailure(result);
+        }
         return {
-          automation: mcpAutomation(result.json.automation),
-          runs: result.json.executions
+          automation: mcpAutomation(automation.json),
+          runs: list.json.executions
             .slice(0, RECENT_RUN_LIMIT)
             .map(({ conversationId: runId, error, executedAt, status }) => ({
               executedAt,

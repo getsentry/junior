@@ -52,10 +52,10 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /** Deferred tool catalog source for the Review item tools after add. */
-export const REVIEW_DESK_TOOL_SOURCE = {
-  id: "review-desk",
+export const INBOX_TOOL_SOURCE = {
+  id: "inbox",
   description:
-    "Update and search Review items: work on the review desk that needs a person.",
+    "Update and search Review items: work in the Inbox that needs a person.",
 } as const;
 
 const DEFAULT_LIMIT = 10;
@@ -237,6 +237,12 @@ function itemResult(item: ReviewItem) {
   };
 }
 
+// A close of an item that was already closed changes nothing. The flag
+// tells the model that this call did not close it.
+function alreadyClosedResult(item: ReviewItem) {
+  return { already_closed: true, item: itemResult(item) };
+}
+
 function subjectInput(
   subject: z.output<typeof subjectSchema> | null | undefined,
 ) {
@@ -249,7 +255,7 @@ function subjectInput(
 }
 
 export const addReviewItemToolDefinition = zodToolDefinition({
-  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
+  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes in the Inbox and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -435,7 +441,7 @@ export function createAddReviewItemTool(
               userIds: existing.assignees.map((assignee) => assignee.userId),
             }
           : await defaultAssignees(scope, context.conversationId);
-      // Only an assignee gets the item in their review desk count. A Turn
+      // Only an assignee gets the item in their Inbox count. A Turn
       // without a person has nobody to show it to, so it needs an assignee.
       if (
         !assignees.everyone &&
@@ -528,9 +534,9 @@ export function createAddReviewItemTool(
 
 export const updateReviewItemToolDefinition = zodToolDefinition({
   description:
-    "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
+    "Change an open Review item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. A close of a closed item changes nothing and returns how it closed. You cannot submit the answer to an action item: only an assignee can.",
   exposure: "deferred",
-  source: REVIEW_DESK_TOOL_SOURCE,
+  source: INBOX_TOOL_SOURCE,
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -594,7 +600,8 @@ export function createUpdateReviewItemTool(
         !item.closedBy &&
         input.status === item.status &&
         input.reason === item.closeReason;
-      if (item.status !== "open" && !retriesClose) {
+      const closesOnly = !changesContent && input.status && input.reason;
+      if (item.status !== "open" && !retriesClose && !closesOnly) {
         throw new ToolInputError(`Review item ${item.id} is already closed.`);
       }
       if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
@@ -606,6 +613,11 @@ export function createUpdateReviewItemTool(
         throw new ToolInputError(
           "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
         );
+      }
+      // The first close wins, even with another status: a person's answer
+      // or dismiss stays on record.
+      if (item.status !== "open" && !retriesClose) {
+        return alreadyClosedResult(item);
       }
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
@@ -682,7 +694,12 @@ export function createUpdateReviewItemTool(
             status: input.status,
           }));
         if (!closed) {
-          throw new ToolInputError(`Review item ${item.id} is already closed.`);
+          if (changesContent) {
+            throw new ToolInputError(
+              `Review item ${item.id} is already closed.`,
+            );
+          }
+          return alreadyClosedResult(await readableItem(item.id, scope));
         }
         const closedItem = await readableItem(item.id, scope);
         await deliverReviewItemChange({
@@ -707,9 +724,9 @@ export function createUpdateReviewItemTool(
 
 export const searchReviewItemsToolDefinition = zodToolDefinition({
   description:
-    "Search review desk items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
+    "Search Review items that you can see, newest change first. For example, find the open items for one pull request before you add or close one.",
   exposure: "deferred",
-  source: REVIEW_DESK_TOOL_SOURCE,
+  source: INBOX_TOOL_SOURCE,
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

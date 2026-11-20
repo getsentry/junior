@@ -11,9 +11,8 @@ import {
   AlertDialogAction,
 } from "../../components/ui/alert-dialog";
 import { FormNotice } from "../../components/FormNotice";
-import { useToastManager } from "../../components/ui/toast";
 import { deleteDashboardResource } from "../../http";
-import { refreshDeletedAutomation } from "../../review-desk/inboxQueries";
+import { refreshDeletedAutomation } from "../../inbox/inboxQueries";
 
 /** Confirm deletion by name and keep a failed request available for retry. */
 export function AutomationDeleteDialog(props: {
@@ -24,7 +23,6 @@ export function AutomationDeleteDialog(props: {
 }) {
   const [open, setOpen] = useState(true);
   const queryClient = useQueryClient();
-  const toast = useToastManager();
   const deletion = useMutation({
     mutationFn: () =>
       deleteDashboardResource(
@@ -33,11 +31,6 @@ export function AutomationDeleteDialog(props: {
     onSuccess: async () => {
       await refreshDeletedAutomation(queryClient, props.automation.id);
       props.onDeleted();
-      toast.add({
-        title: "Automation deleted",
-        description: props.automation.title,
-        type: "success",
-      });
       setOpen(false);
     },
   });

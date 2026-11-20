@@ -82,6 +82,7 @@ export function usePushNotificationsTip(): () => void {
     }
     const settingsLink = <ToastLink onClick={openSettings}>Settings</ToastLink>;
     function showOn(result?: string) {
+      // oxlint-disable-next-line toast/no-actionless-success -- Send a test and Settings in the description are its actions.
       update(TIP_TOAST_ID, {
         actionProps: undefined,
         description: (

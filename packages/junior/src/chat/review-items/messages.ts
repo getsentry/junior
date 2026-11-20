@@ -7,6 +7,7 @@ import {
   appendAndEnqueueWebMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { addConversationNote } from "@/chat/conversations/notes";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -24,6 +25,7 @@ import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorConversations } from "@/db/schema";
 import type { ReviewItemChangeRecord } from "./change-record";
+import { isPluginReviewItem } from "./access";
 import type { ReviewItem } from "./store";
 
 /** One change to a Review item that linked Conversations learn about. */
@@ -118,14 +120,23 @@ async function openConversationIds(
 // A change that only records a Message. It starts no Turn.
 type RecordedChange = Extract<
   ReviewItemChange,
-  { kind: "taken" } | { kind: "dismissed" }
+  { kind: "taken" } | { kind: "dismissed" } | { kind: "submitted" }
 >;
 
-function isRecordedChange(change: ReviewItemChange): change is RecordedChange {
-  return change.kind === "taken" || change.kind === "dismissed";
+// Return the change when it only records a Message. The plugin that added
+// an item does the work of its answer, so the answer starts no Turn.
+function recordedChange(
+  item: ReviewItem,
+  change: ReviewItemChange,
+): RecordedChange | undefined {
+  if (change.kind === "taken" || change.kind === "dismissed") return change;
+  return change.kind === "submitted" && isPluginReviewItem(item)
+    ? change
+    : undefined;
 }
 
-// Each take has its own key. A dismiss is a close, so it uses the close key.
+// Each take has its own key. A dismiss or an answer is a close, so it uses
+// the close key.
 function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
   return change.kind === "taken"
     ? `review-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
@@ -133,10 +144,14 @@ function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
 }
 
 /**
- * Save a take or a dismiss as a handled Message in one Conversation. Neither
- * starts a Turn or reaches the model: neither is a decision. The dashboard
- * shows the Message from its record. A retry is safe, because the Message id
- * is the change key.
+ * Save a take, a dismiss, or the answer to a plugin item as a handled
+ * Message in one Conversation. None starts a Turn or reaches the model as a
+ * Message: a take or a dismiss is not a decision, and the plugin does the
+ * work of its answer. The dashboard shows the Message from its record. A
+ * dismiss also adds a Conversation note, so the next Turn knows the item
+ * closed. Without it, the agent only has its own `addReviewItem` result and
+ * still treats the item as open. A retry is safe, because the Message id and
+ * the note key are the change key.
  */
 async function recordReviewItemChange(args: {
   change: RecordedChange;
@@ -146,6 +161,14 @@ async function recordReviewItemChange(args: {
 }): Promise<void> {
   const { change } = args;
   const messageId = recordedMessageId(args.item, change);
+  if (change.kind === "dismissed") {
+    await addConversationNote({
+      conversationId: args.conversationId,
+      createdAtMs: args.nowMs,
+      key: messageId,
+      text: `${personName(change.user)} dismissed review item "${args.item.title}" (${args.item.id}). It is closed with no answer. Do not treat it as open.`,
+    });
+  }
   await getConversationEventStore().append(args.conversationId, [
     {
       idempotencyKey: `message:${messageId}`,
@@ -183,9 +206,10 @@ async function sendOne(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  if (isRecordedChange(args.change)) {
+  const recorded = recordedChange(args.item, args.change);
+  if (recorded) {
     await recordReviewItemChange({
-      change: args.change,
+      change: recorded,
       conversationId: args.conversationId,
       item: args.item,
       nowMs: args.nowMs,

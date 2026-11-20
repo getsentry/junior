@@ -1,5 +1,3 @@
-import type { Page } from "@playwright/test";
-
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -8,7 +6,6 @@ import {
   answered,
   audit,
   digest,
-  expandRow,
   license,
   migration,
   mockReviewItems,
@@ -21,10 +18,6 @@ import {
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
-
-// The open row. Every row has its own quick Snooze, so scope to this one.
-const openRowOf = (page: Page) =>
-  page.locator("li[data-inbox-row][data-expanded]");
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -192,29 +185,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect
       .poll(() => actions.map((action) => action.id))
       .toEqual([audit.id, license.id]);
-  });
-
-  test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expandRow(rowHead(page, checkout));
-    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Snooze until" }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-snooze", { view: "desktop" });
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    const todo = page.getByRole("region", { name: "To do" });
-    await expect(
-      todo.getByRole("link", { name: new RegExp(checkout) }),
-    ).toHaveCount(0);
-
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await nav.getByRole("link", { name: /^Snoozed/ }).click();
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
-    await expandRow(rowHead(page, checkout));
-    await page.getByRole("button", { name: "Wake" }).click();
-    await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
   test("a sweep dismisses only FYI items, with an Undo", async ({
@@ -410,8 +380,19 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const actions = await mockReviewItems(page, { open: [prReview] });
     await mockViewerCodeChanges(page, [
-      { idleDays: 0, number: 7, title: "Tune the retry backoff" },
-      { idleDays: 10, number: 8, title: "Drop the legacy webhook" },
+      {
+        idleDays: 0,
+        number: 7,
+        size: { additions: 1204, changedFiles: 12, deletions: 340 },
+        title: "Tune the retry backoff",
+      },
+      // GitHub counted no deletions here.
+      {
+        idleDays: 10,
+        number: 8,
+        size: { additions: 64, changedFiles: 2 },
+        title: "Drop the legacy webhook",
+      },
       // prReview asks the viewer to review this one.
       { idleDays: 1, number: 91, title: "Pin the release train" },
       { draft: true, idleDays: 0, number: 15, title: "Sketch the replay" },
@@ -443,6 +424,16 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("region", { name: "Waiting on others" })
         .getByRole("listitem"),
     ).toHaveText([/Tune the retry backoff/, /Drop the legacy webhook/]);
+    // Each row gives its size, and leaves out a count it does not know.
+    const others = page.getByRole("region", { name: "Waiting on others" });
+    await expect(
+      others.getByRole("listitem", { name: "Tune the retry backoff" }),
+    ).toContainText("1,204 lines added, 340 removed, 12 files changed");
+    const legacy = others.getByRole("listitem", {
+      name: "Drop the legacy webhook",
+    });
+    await expect(legacy).toContainText("64 lines added, 2 files changed");
+    await expect(legacy).not.toContainText("removed");
     await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
     // A draft waits on its author, so it leaves the other piles. Drafts starts
     // collapsed.
@@ -508,6 +499,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
     await expect(page).toHaveURL(/\/\?view=prs$/);
     await page.goto(`${dashboard.baseURL}/review`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 
     // A closed item opens in Done.
@@ -601,8 +594,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
-    await expect(card).toContainText("FYI");
-    // The card's Dismiss closes it, and the item row's head names it.
+    // The card's Dismiss closes it. The item row's head names it and its
+    // kind, so the card says neither again.
+    await expect(card).not.toContainText("FYI");
     await expect(
       card.getByRole("button", { exact: true, name: "Dismiss" }),
     ).toBeVisible();
@@ -633,22 +627,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       row.getByRole("button", { name: "Dismiss", exact: true }),
     ).toHaveCount(3);
-  });
-
-  test("a snoozed row wakes at its time without a reload", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.clock.install({ time: NOW_MS });
-    await mockReviewItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
-    await expandRow(rowHead(todo, checkout));
-    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "3 hours" }).click();
-    await expect(rowHead(todo, checkout)).toHaveCount(0);
-    await page.clock.fastForward("03:00:01");
-    await expect(rowHead(todo, checkout)).toBeVisible();
   });
 
   test("an item row's second line names its subject, not its own title", async ({
@@ -861,12 +839,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(message.getByText("Roll out when ready.")).toBeInViewport();
     expect(reads).toBe(1);
     // A pin updates every cached feed. The Turn's message is not one of them,
-    // so the page keeps working.
-    await page.getByRole("button", { name: "Pin", exact: true }).click();
+    // so the page keeps working. An item row has no Pin: the Conversations
+    // view pins its Conversation.
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Conversations/ })
+      .click();
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${rollout.rootConversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     await expect(
-      page.getByRole("button", { name: "Unpin", exact: true }),
+      conversationRow.getByRole("button", { name: /^Unpin / }),
     ).toBeVisible();
-    await expect(message).toBeVisible();
+    // Back, the row is still open, and its message reads from the cache.
+    await page.goBack();
+    await expect(message).toContainText("The canary error rate is flat");
+    expect(reads).toBe(1);
   });
 
   test("cards grow near the pointer in both densities, except for reduced motion", async ({
