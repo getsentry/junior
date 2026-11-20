@@ -436,8 +436,8 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
       '@sentry/api':
-        specifier: 2.3.0
-        version: 2.3.0(typescript@7.0.2)(zod@4.6.7)
+        specifier: 2.16.0
+        version: 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -1018,8 +1018,8 @@ importers:
   packages/junior-sentry:
     dependencies:
       '@sentry/api':
-        specifier: 2.3.0
-        version: 2.3.0(typescript@7.0.2)(zod@4.6.7)
+        specifier: 2.16.0
+        version: 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -5191,8 +5191,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@2.3.0':
-    resolution: {integrity: sha512-DaFq7/eAVyo11cT7fzDc0NVhAsUjhP9S8hRJIi4K1UKLe7rrViyvXCmtonnoBJKTY9I1r8G5LgeGUsB7CawDsw==}
+  '@sentry/api@2.16.0':
+    resolution: {integrity: sha512-GfpMIHqtyc4O9s9H+jOPDRuMGOgBYtlAFY5NZHxcYs8uxq9Rkj6uzUVXzc19aqPvZOpbBaMtcO409qVW6mfYRA==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -14849,7 +14849,7 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@2.3.0(typescript@7.0.2)(zod@4.6.7)':
+  '@sentry/api@2.16.0(typescript@7.0.2)(zod@4.6.7)':
     dependencies:
       http-cache-semantics: 4.2.0
       p-limit: 7.3.3
@@ -15160,7 +15160,7 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/api': 2.3.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.14.0
@@ -15272,7 +15272,7 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/api': 2.3.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.14.0
@@ -15384,7 +15384,7 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/api': 2.3.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0
       '@sentry/node': 11.14.0
