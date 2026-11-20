@@ -34,6 +34,8 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
+- [Attention](./attention.md): when Junior asks for a person's attention.
+  Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
