@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   canUserReadReviewItem,
+  reviewItemForUser,
+  reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
   reviewItemVisibleTo,
 } from "@/chat/review-items/access";
@@ -12,6 +14,7 @@ import { juniorConversations } from "@/db/schema/conversations";
 import { juniorReviewItems } from "@/db/schema/review-items";
 import {
   reviewItemInRow,
+  reviewItemSnoozedBy,
   settleInboxSnoozes,
   snoozeInboxItems,
   unsnoozeInboxRow,
@@ -151,4 +154,23 @@ export async function unsnoozeViewerRow(
       : undefined),
     userId: user.id,
   });
+}
+
+/**
+ * Count the open items that the viewer snoozed. Snoozed shows a card for
+ * each, as a root Conversation's stack does.
+ */
+export async function countViewerSnoozes(user: User): Promise<number> {
+  const [row] = await getDb()
+    .select({ count: count() })
+    .from(juniorReviewItems)
+    .where(
+      and(
+        eq(juniorReviewItems.status, "open"),
+        reviewItemVisibleTo(reviewItemReaderForUser(user)),
+        reviewItemForUser(user.id),
+        reviewItemSnoozedBy(user.id),
+      ),
+    );
+  return row?.count ?? 0;
 }

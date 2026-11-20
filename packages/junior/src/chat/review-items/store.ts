@@ -752,31 +752,6 @@ export async function countReviewItemsNeedingUserBySubject(
 }
 
 /**
- * Count the items in `ids` that are still open and that the reader's Inbox
- * lists (`reviewItemForUser`). Snoozes live in the browser, so the
- * dashboard names the newest item of each snoozed row.
- */
-export async function countOpenReviewItemsForUser(
-  db: JuniorDatabase,
-  reader: ReviewItemReader & { userId: string },
-  ids: readonly string[],
-): Promise<number> {
-  if (ids.length === 0) return 0;
-  const rows = await db
-    .select({ count: count() })
-    .from(juniorReviewItems)
-    .where(
-      and(
-        inArray(juniorReviewItems.id, [...ids]),
-        eq(juniorReviewItems.status, "open"),
-        reviewItemVisibleTo(reader),
-        reviewItemForUser(reader.userId),
-      ),
-    );
-  return rows[0]?.count ?? 0;
-}
-
-/**
  * Return a query for a token that changes when the open Review items that
  * need a User change. An item that is added or changed moves the newest
  * `updated_at`, and an item that closes, leaves the User, or is snoozed

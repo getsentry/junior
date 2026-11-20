@@ -1,5 +1,3 @@
-import type { Page } from "@playwright/test";
-
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "../automation-editor-fixture";
@@ -8,7 +6,6 @@ import {
   answered,
   audit,
   digest,
-  expandRow,
   license,
   migration,
   mockReviewItems,
@@ -21,10 +18,6 @@ import {
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
-
-// The open row. Every row has its own quick Snooze, so scope to this one.
-const openRowOf = (page: Page) =>
-  page.locator("li[data-inbox-row][data-expanded]");
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -192,29 +185,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect
       .poll(() => actions.map((action) => action.id))
       .toEqual([audit.id, license.id]);
-  });
-
-  test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expandRow(rowHead(page, checkout));
-    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Snooze until" }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-snooze", { view: "desktop" });
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    const todo = page.getByRole("region", { name: "To do" });
-    await expect(
-      todo.getByRole("link", { name: new RegExp(checkout) }),
-    ).toHaveCount(0);
-
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await nav.getByRole("link", { name: /^Snoozed/ }).click();
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
-    await expandRow(rowHead(page, checkout));
-    await page.getByRole("button", { name: "Wake" }).click();
-    await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
   test("a sweep dismisses only FYI items, with an Undo", async ({
@@ -655,22 +625,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       row.getByRole("button", { name: "Dismiss", exact: true }),
     ).toHaveCount(3);
-  });
-
-  test("a snoozed row wakes at its time without a reload", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.clock.install({ time: NOW_MS });
-    await mockReviewItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
-    await expandRow(rowHead(todo, checkout));
-    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "3 hours" }).click();
-    await expect(rowHead(todo, checkout)).toHaveCount(0);
-    await page.clock.fastForward("03:00:01");
-    await expect(rowHead(todo, checkout)).toBeVisible();
   });
 
   test("an item row's second line names its subject, not its own title", async ({

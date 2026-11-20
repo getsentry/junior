@@ -38,16 +38,21 @@ export async function conversation(
   });
 }
 
-/** Add an open action item for these assignees, linked to more Conversations. */
+/**
+ * Add an open action item for these assignees, linked to `conversationId`
+ * and to `linkedConversationIds`. Another Conversation can add it, so it
+ * gets a row of its own.
+ */
 export async function addItem(
   conversationId: string,
   assignees: User[],
   title: string,
   visibility: "private" | "public" = "public",
+  addedByConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    addedByConversationId,
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
@@ -118,13 +123,19 @@ export function api(fixture: ConversationFixture, viewer: User) {
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
     unsnooze: (subject: { conversationId: string; reviewItemId?: string }) =>
       snoozes("DELETE", subject),
-    /** The titles in the viewer's Snoozed view. */
-    snoozed: async () =>
-      (
+    /** What Snoozed shows: its count and its item titles. */
+    snoozed: async () => ({
+      count: (
+        (await json("/review-items/count?include=snoozed")) as {
+          snoozed: number;
+        }
+      ).snoozed,
+      items: (
         (await json("/review-items?for=viewer&snoozed=true")) as {
           items: { title: string }[];
         }
       ).items.map((item) => item.title),
+    }),
     /** Every Inbox number: the badge, the waiting list and the Inbox list. */
     inbox: async () => ({
       count: ((await json("/review-items/count")) as { needsViewer: number })
@@ -144,3 +155,6 @@ export function api(fixture: ConversationFixture, viewer: User) {
       ((await json("/versions")) as { reviewItems: string }).reviewItems,
   };
 }
+
+/** What Snoozed shows when nothing is snoozed. */
+export const NOTHING_SNOOZED = { count: 0, items: [] };

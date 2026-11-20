@@ -37,7 +37,6 @@ import {
   type RelatedReviewWork,
 } from "@/chat/review-items/related";
 import {
-  countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
@@ -47,6 +46,7 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
 import { readItemRoots } from "./item-roots";
@@ -370,15 +370,11 @@ export function createReviewItemRoutes(services: {
       const db = getDb();
       // One query counts the badge and both bundles. The snoozed and
       // Automation counts run only when the request asks for them, so the
-      // current dashboard pays for one query.
+      // classic dashboard pays for one query.
       const [subjects, snoozed, automations] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countOpenReviewItemsForUser(
-          db,
-          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          query.snoozed,
-        ),
-        query.include === "automations"
+        query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
+        query.include.includes("automations")
           ? countOwnedAutomationsNeedingAttention(viewer)
           : undefined,
       ]);

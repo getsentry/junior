@@ -10,7 +10,11 @@ import {
   getReviewItem,
   waitingConversationIdsQuery,
 } from "@/chat/review-items/store";
-import { juniorInboxSnoozes, juniorInboxSnoozeTriggers } from "@/db/schema";
+import {
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+  juniorReviewItemAssignees,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -21,6 +25,7 @@ import {
   addNotice,
   api,
   conversation,
+  NOTHING_SNOOZED,
   NOW_MS,
   PRIVATE_ROOT,
   ROOT,
@@ -120,6 +125,7 @@ describe("snoozes", () => {
       waiting: [ROOT],
     };
     expect(await asAna.inbox()).toEqual(awake);
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
     expect(await feedWaitingIds(ana.id)).toEqual([ROOT]);
     const versionBefore = await asAna.versions();
 
@@ -132,10 +138,13 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
     expect(await feedWaitingIds(ana.id)).toEqual([]);
-    expect((await asAna.snoozed()).sort()).toEqual(awake.inbox);
+    const snoozed = await asAna.snoozed();
+    expect(snoozed.count).toBe(2);
+    expect([...snoozed.items].sort()).toEqual(awake.inbox);
     expect(await asAna.versions()).not.toBe(versionBefore);
     // Bob's Inbox does not change, and his Wake does not touch Ana's snooze.
     expect(await asBob.inbox()).toEqual(awake);
+    expect(await asBob.snoozed()).toEqual(NOTHING_SNOOZED);
     expect((await asBob.unsnooze({ conversationId: ROOT })).status).toBe(204);
     expect((await asAna.inbox()).count).toBe(0);
 
@@ -155,6 +164,24 @@ describe("snoozes", () => {
       inbox: ["Review globex entry"],
       waiting: [ROOT],
     });
+  });
+
+  it("counts each item that one snooze on their root hides", async () => {
+    const ana = await user("ana@example.com");
+    const other = "slack:CSNOOZE:1.000002";
+    await conversation(other, "public");
+    await addItem(ROOT, [ana], "Review acme entry");
+    // Another Conversation adds an item linked to the root: its own row.
+    await addItem(ROOT, [ana], "Review beta entry", "public", other);
+    const asAna = api(fixture, ana);
+    await asAna.snooze({ conversationId: ROOT }, NOW_MS + 3 * HOUR_MS);
+
+    const snoozed = await asAna.snoozed();
+    expect(snoozed.count).toBe(2);
+    expect([...snoozed.items].sort()).toEqual([
+      "Review acme entry",
+      "Review beta entry",
+    ]);
   });
 
   it("wakes when its timer fires", async () => {
@@ -276,7 +303,7 @@ describe("snoozes", () => {
     // at once still replace in turn.
     const other = "slack:CSNOOZE:1.000002";
     await conversation(other, "public");
-    await addItem(other, [ana], "Review shared entry", "public", [ROOT]);
+    await addItem(other, [ana], "Review shared entry", "public", other, [ROOT]);
     const snoozeIn = (conversationId: string, wakeAtMs: number) =>
       asAna.snooze({ conversationId }, wakeAtMs);
     const fromBothRows = await Promise.all([
@@ -288,6 +315,30 @@ describe("snoozes", () => {
     expect(fromBothRows.map((response) => response.status)).toEqual([
       201, 201, 201, 201,
     ]);
+  });
+
+  it("shows nothing in Snoozed once the viewer loses access to the row", async () => {
+    const ana = await user("ana@example.com");
+    await conversation(PRIVATE_ROOT, "private");
+    const itemId = await addItem(
+      PRIVATE_ROOT,
+      [ana],
+      "Review private entry",
+      "private",
+    );
+    const asAna = api(fixture, ana);
+    const subject = { conversationId: PRIVATE_ROOT, reviewItemId: itemId };
+    expect((await asAna.snooze(subject, NOW_MS + HOUR_MS)).status).toBe(201);
+    expect(await asAna.snoozed()).toEqual({
+      count: 1,
+      items: ["Review private entry"],
+    });
+
+    // A private item is for its assignees only.
+    await getDb()
+      .delete(juniorReviewItemAssignees)
+      .where(eq(juniorReviewItemAssignees.itemId, itemId));
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
   });
 
   it("keeps the earlier snooze when the new timer cannot be added", async () => {

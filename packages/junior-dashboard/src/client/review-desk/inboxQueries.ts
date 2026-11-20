@@ -12,7 +12,6 @@ import pLimit from "p-limit";
 
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
-import { useSnoozedItemIds } from "./inboxSnooze";
 import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
@@ -29,19 +28,14 @@ const ATTENTION_PAGE_READS = 8;
  * changes.
  */
 export function useInboxCountData(enabled: boolean) {
-  // The snoozed rows live in this browser; the server counts the open ones.
-  const snoozed = useSnoozedItemIds().join(",");
   return useQuery({
     enabled,
     placeholderData: keepPreviousData,
-    queryKey: [...REVIEW_ITEM_COUNT_QUERY_KEY, snoozed],
+    queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
-        `/api/review-items/count?${new URLSearchParams({
-          include: "automations",
-          ...(snoozed ? { snoozed } : undefined),
-        })}`,
+        "/api/review-items/count?include=automations,snoozed",
         signal,
       ),
     retry: false,
