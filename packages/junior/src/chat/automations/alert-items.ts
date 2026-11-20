@@ -43,7 +43,7 @@ import {
 // changes, and closes the alert at each write that can change them. A
 // different alert closes the old item and adds a new one. When a person
 // dismisses an alert, no alert of that Automation shows again until it
-// recovers: it is active, and its last run did not fail or block.
+// recovers: it is not blocked, and its last run succeeded.
 
 type AutomationRow = {
   kind: "scheduled" | "event";
@@ -196,7 +196,10 @@ export async function syncAutomationAlert(
       )
       .limit(1);
     const hidden = dismissed !== undefined;
-    if (!needed && row.status === "active" && hidden) {
+    // Recovered: not blocked, its last run succeeded, and it needs no alert.
+    const recovered =
+      !needed && row.status !== "blocked" && row.lastRunStatus === "completed";
+    if (recovered && hidden) {
       await tx
         .update(juniorAutomations)
         .set({ alertRecoveredAtMs: nowMs })

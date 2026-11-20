@@ -378,6 +378,12 @@ describe("Automation alerts", () => {
     expect((await asCreator.inbox()).count).toBe(0);
 
     // A dismissed alert hides the next ones until the trigger works again.
+    // Its last run succeeded, so a working trigger is a recovery.
+    await recordAutomationExecution("event_digest", {
+      executionId: "event-run-1",
+      nowMs: NOW_MS,
+      status: "completed",
+    });
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
     await heartbeat();
     const [lost] = await asCreator.alerts("event_digest");
