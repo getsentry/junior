@@ -34,14 +34,12 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import { reembedMemories } from "../src/reembed";
-import {
-  memoryArchiveTool,
-  memoryRestoreTool,
-  memoryCreateTool,
-  memoryListTool,
-  memorySearchTool,
-  type MemoryReviewer,
-} from "../src/tools";
+import { memoryArchiveTool } from "../src/tools/archive";
+import { memoryCreateTool } from "../src/tools/create";
+import { memoryListTool } from "../src/tools/list";
+import { memoryRestoreTool } from "../src/tools/restore";
+import { memorySearchTool } from "../src/tools/search";
+import type { MemoryReviewer } from "../src/tool-support";
 import { hashEmbeddedContent } from "../src/embedding";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {

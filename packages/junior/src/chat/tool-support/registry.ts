@@ -81,10 +81,8 @@ import { watchTimerToolDefinition } from "@/chat/tools/watch-timer";
 import { webFetchToolDefinition } from "@/chat/tools/web/fetch-tool";
 import { webSearchToolDefinition } from "@/chat/tools/web/search";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
-import {
-  workspaceProviderNames,
-  workspaceToolDefinitions,
-} from "@/chat/workspaces/tools";
+import { workspaceProviderNames } from "@/chat/workspaces/tool-support";
+import { workspaceToolDefinitions } from "@/chat/workspaces/tool-set";
 
 /** The platform and Prompt mode that a definitions snapshot is for. */
 export interface ToolDefinitionsKey {

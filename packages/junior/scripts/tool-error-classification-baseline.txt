@@ -65,6 +65,7 @@ packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to lo
 packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
 # Tool-call identity comes from the runtime, not model arguments.
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");
+packages/junior/src/chat/codemode/tools/codemode.ts	throw new Error("codemode requires a tool call id.");
 packages/junior/src/chat/tool-support/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`, { cause: error }, );
 packages/junior/src/chat/tool-support/web/network.ts	throw new Error("read timed out");

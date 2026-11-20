@@ -58,9 +58,10 @@ contradictory or unsafe requests.
 
 ### Layout
 
-- A feature module keeps its tools in a `tools` directory, such as
-  `chat/tools`, `chat/slack/tools`, `chat/review-items/tools`, or a plugin's
-  `src/tools`.
+- Core and every plugin package use the same layout. A feature module keeps
+  its tools in a `tools` directory, such as `chat/tools`, `chat/slack/tools`,
+  `chat/workspaces/tools`, or a plugin's `src/tools`. Do not define a tool
+  outside a `tools` directory.
 - A `tools` directory holds only tools, one tool per file, at
   `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Do not nest deeper. A
   tool file exports only its tool, or its definition and the function that
@@ -71,7 +72,8 @@ contradictory or unsafe requests.
   execution, and tool errors are in `packages/junior/src/chat/tool-support`.
 - Put code that other features also use in the feature module that owns it,
   such as `chat/sandbox` or `chat/review-items`.
-- The `tools-dir-*` ast-grep rules enforce the layout.
+- The `tools-dir-*` and `tools-defined-in-tools-dir` ast-grep rules enforce
+  the layout.
   `tool-error-classification:check` scans `tools` and `tool-support`.
 
 ### Descriptions and params

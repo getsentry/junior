@@ -108,7 +108,7 @@ import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
-import { createWorkspaceTools } from "@/chat/workspaces/tools";
+import { createWorkspaceTools } from "@/chat/workspaces/tool-set";
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();

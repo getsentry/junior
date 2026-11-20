@@ -22,7 +22,7 @@ import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-import { createWorkspaceTools } from "@/chat/workspaces/tools";
+import { createWorkspaceTools } from "@/chat/workspaces/tool-set";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 

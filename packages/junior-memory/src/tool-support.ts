@@ -1,7 +1,7 @@
+/** Shared input, result, and store helpers of the memory tools. */
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
-  definePluginTool,
   getSourceKey,
   PluginToolInputError,
   type PluginToolOutput,
@@ -20,27 +20,18 @@ import {
   type MemoryRecord,
   type MemorySupersessionDecider,
 } from "./store";
-import {
-  parseCreateMemoryRequest,
-  parseMemoryReview,
-  type MemoryAgent,
-} from "./agent";
+import type { MemoryAgent } from "./agent";
 import {
   memoryRuntimeContextSchema,
   type MemoryKind,
   type MemoryRuntimeContext,
 } from "./types";
-import { MemoryRestoreConflictError, restoreMemory } from "./restore";
-import {
-  listMemories as listViewerMemories,
-  MemoryNotFoundError,
-} from "./viewer";
 
 export type MemoryReviewer = Pick<MemoryAgent, "reviewCreateRequest">;
 
 const MAX_TOOL_CONTENT_CHARS = 4_000;
-const DEFAULT_RESULT_LIMIT = 20;
-const DEFAULT_SEARCH_LIMIT = 10;
+export const DEFAULT_RESULT_LIMIT = 20;
+export const DEFAULT_SEARCH_LIMIT = 10;
 
 const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Conversation memory requires conversation context.",
@@ -76,7 +67,8 @@ function throwToolInputError(message: string): never {
   throw new PluginToolInputError(message);
 }
 
-function asToolInputError(error: unknown): never {
+/** Rethrow a known memory store failure as a tool input error. */
+export function asToolInputError(error: unknown): never {
   if (error instanceof PluginToolInputError) {
     throw error;
   }
@@ -89,7 +81,8 @@ function asToolInputError(error: unknown): never {
   throw error;
 }
 
-async function memoryRuntimeContext(
+/** Read the memory runtime context of a tool call. */
+export async function memoryRuntimeContext(
   context: MemoryToolContext,
 ): Promise<MemoryRuntimeContext> {
   const actorUser = (await context.users.resolveActor())?.user;
@@ -104,7 +97,8 @@ async function memoryRuntimeContext(
   });
 }
 
-function memoryStore(
+/** Create the memory store for a tool call. */
+export function memoryStore(
   context: MemoryToolContext,
   runtimeContext: MemoryRuntimeContext,
   options: { supersessionDecider?: MemorySupersessionDecider | undefined } = {},
@@ -117,7 +111,11 @@ function memoryStore(
   });
 }
 
-function boundedLimit(value: number | undefined, fallback: number): number {
+/** Clamp a requested result limit to the allowed range. */
+export function boundedLimit(
+  value: number | undefined,
+  fallback: number,
+): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
@@ -202,7 +200,8 @@ function parseIsoTimestampParts(value: string) {
   return { day, hour, minute, month, second, year };
 }
 
-function parseExpiresAt(value: string | undefined): number | undefined {
+/** Parse an optional ISO expiry time into epoch milliseconds. */
+export function parseExpiresAt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
@@ -230,21 +229,23 @@ function parseExpiresAt(value: string | undefined): number | undefined {
   return expiresAtMs;
 }
 
-function requireToolCallId(value: string | undefined): string {
+/** Return the tool call id, or fail when the runtime did not give one. */
+export function requireToolCallId(value: string | undefined): string {
   if (!value) {
     throwToolInputError("Memory creation requires a tool call id.");
   }
   return value;
 }
 
-function requireMemoryContent(value: string): string {
+/** Return memory content, or fail when it is blank. */
+export function requireMemoryContent(value: string): string {
   if (value.trim().length === 0) {
     throwToolInputError("Memory content is required.");
   }
   return value;
 }
 
-const createMemoryInputSchema = z
+export const createMemoryInputSchema = z
   .object({
     content: z
       .string()
@@ -263,7 +264,7 @@ const createMemoryInputSchema = z
   })
   .strict();
 
-const archiveMemoryInputSchema = z
+export const archiveMemoryInputSchema = z
   .object({
     id: z
       .string()
@@ -272,7 +273,7 @@ const archiveMemoryInputSchema = z
   })
   .strict();
 
-const restoreMemoryInputSchema = z
+export const restoreMemoryInputSchema = z
   .object({
     id: z
       .string()
@@ -283,7 +284,7 @@ const restoreMemoryInputSchema = z
   })
   .strict();
 
-const listMemoriesInputSchema = z
+export const listMemoriesInputSchema = z
   .object({
     archived: z
       .boolean()
@@ -300,7 +301,7 @@ const listMemoriesInputSchema = z
   })
   .strict();
 
-const searchMemoriesInputSchema = z
+export const searchMemoriesInputSchema = z
   .object({
     query: z
       .string()
@@ -341,23 +342,27 @@ const memoryProjectionOutputSchema = z.object({
   expires_at: z.string().optional(),
 });
 
-const memoryCreateOutputSchema = pluginToolOutputSchema.extend({
+export const memoryCreateOutputSchema = pluginToolOutputSchema.extend({
   target: z.string(),
   created: z.boolean(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memorySingleOutputSchema = pluginToolOutputSchema.extend({
+export const memorySingleOutputSchema = pluginToolOutputSchema.extend({
   target: z.string(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memoryManyOutputSchema = pluginToolOutputSchema.extend({
+export const memoryManyOutputSchema = pluginToolOutputSchema.extend({
   target: z.string(),
   memories: z.array(memoryProjectionOutputSchema),
 });
 
-function parseMemoryToolInput<T>(schema: z.ZodType<T>, input: unknown): T {
+/** Parse tool input with its schema and report problems as tool input errors. */
+export function parseMemoryToolInput<T>(
+  schema: z.ZodType<T>,
+  input: unknown,
+): T {
   const result = schema.safeParse(input);
   if (!result.success) {
     throw new PluginToolInputError("Invalid memory tool input.", {
@@ -375,7 +380,8 @@ function sourceIdempotencyKey(context: MemoryToolContext): string {
   return sourceKey;
 }
 
-function createInput(
+/** Build the store input for a memory create request. */
+export function createInput(
   context: MemoryToolContext,
   input: { content: string; expiresAtMs?: number; kind: MemoryKind },
   toolCallId: string,
@@ -390,7 +396,8 @@ function createInput(
   } satisfies CreateMemoryInput;
 }
 
-function targetForKind(kind: MemoryKind): "actor" | "conversation" {
+/** Return the scope target of a memory kind. */
+export function targetForKind(kind: MemoryKind): "actor" | "conversation" {
   if (kind === "preference") {
     return "actor";
   }
@@ -398,7 +405,7 @@ function targetForKind(kind: MemoryKind): "actor" | "conversation" {
 }
 
 /** Return the model-visible projection without hidden ownership/source fields. */
-function compactMemory(memory: MemoryRecord): MemoryToolProjection {
+export function compactMemory(memory: MemoryRecord): MemoryToolProjection {
   return Value.Parse(memoryToolProjectionSchema, {
     id: memory.id,
     content: memory.content,
@@ -410,7 +417,8 @@ function compactMemory(memory: MemoryRecord): MemoryToolProjection {
   });
 }
 
-function memoryToolResult<TData extends Record<string, unknown>>(
+/** Build a structured memory tool result. */
+export function memoryToolResult<TData extends Record<string, unknown>>(
   target: string,
   data: TData,
 ): MemoryStructuredToolResult<TData> {
@@ -419,211 +427,3 @@ function memoryToolResult<TData extends Record<string, unknown>>(
     ...data,
   };
 }
-
-/** Submit an explicit memory candidate for storage. */
-export const memoryCreateTool = definePluginTool({
-  approvalMode: "approve",
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  description:
-    "Explicit memory-write tool. Use only when the latest user message directly asks you to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. The runtime sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
-  executionMode: "sequential",
-  inputSchema: createMemoryInputSchema,
-  outputSchema: memoryCreateOutputSchema,
-  execute: async (input, options, context: MemoryCreateToolContext) => {
-    const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
-    const toolCallId = requireToolCallId(options.toolCallId);
-    const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
-    const runtimeContext = await memoryRuntimeContext(context);
-    const store = memoryStore(context, runtimeContext, {
-      supersessionDecider: context.supersessionDecider,
-    });
-    const review = await (async () => {
-      try {
-        return parseMemoryReview(
-          await context.agent.reviewCreateRequest(
-            parseCreateMemoryRequest({
-              content: requireMemoryContent(parsedInput.content),
-              ...(requestedExpiresAtMs !== undefined
-                ? { expiresAtMs: requestedExpiresAtMs }
-                : undefined),
-              runtimeContext,
-              ...(context.userText?.trim()
-                ? {
-                    sourceContext: {
-                      currentUserText: context.userText.trim(),
-                    },
-                  }
-                : undefined),
-            }),
-          ),
-        );
-      } catch (error) {
-        if (error instanceof PluginToolInputError) {
-          throw error;
-        }
-        const detail =
-          error instanceof Error && error.message.trim()
-            ? `: ${error.message}`
-            : "";
-        throw new PluginToolInputError(`Memory agent review failed${detail}`, {
-          cause: error,
-        });
-      }
-    })();
-    if (review.decision === "reject") {
-      throw new PluginToolInputError(`Memory was not stored: ${review.reason}`);
-    }
-    const memoryInput = createInput(
-      context,
-      {
-        content: review.content,
-        kind: review.kind,
-        ...(review.expiresAtMs !== undefined
-          ? { expiresAtMs: review.expiresAtMs }
-          : requestedExpiresAtMs !== undefined
-            ? { expiresAtMs: requestedExpiresAtMs }
-            : {}),
-      },
-      toolCallId,
-    );
-    const result = await (async () => {
-      try {
-        if (targetForKind(review.kind) === "conversation") {
-          return await store.createConversationMemory(memoryInput);
-        }
-        return await store.createMemory(memoryInput);
-      } catch (error) {
-        asToolInputError(error);
-      }
-    })();
-    return memoryToolResult("createMemory", {
-      created: result.created,
-      memory: compactMemory(result.memory),
-    });
-  },
-});
-
-/** Archive a visible memory in the active context. */
-export const memoryArchiveTool = definePluginTool({
-  annotations: {
-    destructiveHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  description:
-    "Forget one active memory visible in the current context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
-  executionMode: "sequential",
-  inputSchema: archiveMemoryInputSchema,
-  outputSchema: memorySingleOutputSchema,
-  execute: async (input, _options, context: MemoryToolContext) => {
-    const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
-    const runtimeContext = await memoryRuntimeContext(context);
-    const memory = await (async () => {
-      try {
-        return await memoryStore(context, runtimeContext).archiveMemory({
-          id: parsedInput.id,
-          reason: "tool_removed",
-        });
-      } catch (error) {
-        asToolInputError(error);
-      }
-    })();
-    return memoryToolResult("archiveMemory", {
-      memory: compactMemory(memory),
-    });
-  },
-});
-
-/** Restore a visible archived memory, so recall uses it again. */
-export const memoryRestoreTool = definePluginTool({
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: false,
-  },
-  description:
-    "Restore one archived memory, so recall uses it again. Use when the user says a forgotten or retired memory is still true. archiveMemory undoes it.",
-  executionMode: "sequential",
-  inputSchema: restoreMemoryInputSchema,
-  outputSchema: memorySingleOutputSchema,
-  execute: async (input, _options, context: MemoryToolContext) => {
-    const parsedInput = parseMemoryToolInput(restoreMemoryInputSchema, input);
-    const memory = await (async () => {
-      try {
-        return await restoreMemory(context.db, {
-          id: parsedInput.id,
-          nowMs: Date.now(),
-        });
-      } catch (error) {
-        if (
-          error instanceof MemoryNotFoundError ||
-          error instanceof MemoryRestoreConflictError
-        ) {
-          throw new PluginToolInputError(error.message, { cause: error });
-        }
-        asToolInputError(error);
-      }
-    })();
-    return memoryToolResult("restoreMemory", {
-      memory: compactMemory(memory),
-    });
-  },
-});
-
-/** List visible active or archived memories in the active context. */
-export const memoryListTool = definePluginTool({
-  description:
-    "List memories visible in the current context, newest first. Use when the user asks what you remember, or when memory ids are needed before removing or restoring a memory.",
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-  inputSchema: listMemoriesInputSchema,
-  outputSchema: memoryManyOutputSchema,
-  execute: async (input, _options, context: MemoryToolContext) => {
-    const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
-    const runtimeContext = await memoryRuntimeContext(context);
-    const limit = boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT);
-    const memories = parsedInput.archived
-      ? (await listViewerMemories(context.db, { archived: true, limit }))
-          .memories
-      : await memoryStore(context, runtimeContext).listMemories({ limit });
-    return memoryToolResult("listMemories", {
-      memories: memories.map(compactMemory),
-    });
-  },
-});
-
-/** Search visible active memories in the active context. */
-export const memorySearchTool = definePluginTool({
-  description:
-    "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-  inputSchema: searchMemoriesInputSchema,
-  outputSchema: memoryManyOutputSchema,
-  execute: async (input, _options, context: MemoryToolContext) => {
-    const parsedInput = parseMemoryToolInput(searchMemoriesInputSchema, input);
-    const runtimeContext = await memoryRuntimeContext(context);
-    const memories = await memoryStore(context, runtimeContext).searchMemories({
-      query: parsedInput.query,
-      limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
-    });
-    return memoryToolResult("searchMemories", {
-      memories: memories.map(compactMemory),
-    });
-  },
-});

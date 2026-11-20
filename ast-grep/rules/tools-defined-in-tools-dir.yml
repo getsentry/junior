@@ -1,0 +1,22 @@
+# Every model-facing tool is defined in a `tools` directory:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. This holds for core and
+# for every plugin package. Apps load tools from packages and define none.
+# Code that builds a tool from a definition that it receives,
+# such as the static tool registry, is not a tool definition and does not match.
+# `policies/tool-design.md` owns the layout.
+id: tools-defined-in-tools-dir
+language: TypeScript
+severity: error
+message: Define a tool in a tools directory, in `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`.
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/*/src/**/tools/**
+  # Eval fixtures build stand-in plugin tools. They are not runtime tools.
+  - packages/junior-evals/src/**
+rule:
+  any:
+    - pattern: definePluginTool({ $$$ })
+    - pattern: zodTool({ $$$ })
+    - pattern: zodToolDefinition({ $$$ })
+    - pattern: $_SERVER.registerTool($$$)

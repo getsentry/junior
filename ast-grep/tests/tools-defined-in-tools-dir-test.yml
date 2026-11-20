@@ -1,0 +1,9 @@
+id: tools-defined-in-tools-dir
+valid:
+  - "export function staticTool(definition) { return zodTool(definition); }"
+  - "export const tools = { read: readTool, write: writeTool };"
+invalid:
+  - "export const readFileTool = definePluginTool({ description: 'Read' });"
+  - "export function createBashTool(deps) { return zodTool({ ...bashToolDefinition, execute }); }"
+  - "export const bashToolDefinition = zodToolDefinition({ description: 'Run' });"
+  - "export function register(server) { server.registerTool('search', {}, run); }"

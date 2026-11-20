@@ -6,14 +6,12 @@ import {
 import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
-import {
-  memoryArchiveTool,
-  memoryRestoreTool,
-  memoryCreateTool,
-  memoryListTool,
-  memorySearchTool,
-  type MemoryCreateToolContext,
-} from "./tools";
+import { memoryArchiveTool } from "./tools/archive";
+import { memoryCreateTool } from "./tools/create";
+import { memoryListTool } from "./tools/list";
+import { memoryRestoreTool } from "./tools/restore";
+import { memorySearchTool } from "./tools/search";
+import type { MemoryCreateToolContext } from "./tool-support";
 import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
