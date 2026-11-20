@@ -50,13 +50,15 @@ export interface ConversationTurnLifecycle {
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
   private readonly events: ConversationEventStore;
   /** Delivers each Turn end to the Watches on the Conversation. */
-  private readonly watchQueue: (() => ConversationWorkQueue) | undefined;
+  private readonly watchQueue: () => ConversationWorkQueue;
 
   constructor(
     events: ConversationEventStore,
-    options: { watchQueue?: () => ConversationWorkQueue } = {},
+    options: { watchQueue: () => ConversationWorkQueue },
   ) {
     this.events = events;
+    // Required: a lifecycle without a queue drops Turn ends that Watches
+    // must hear.
     this.watchQueue = options.watchQueue;
   }
 
@@ -65,7 +67,6 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     status: Parameters<typeof publishConversationStatus>[1],
     skip?: () => Promise<boolean>,
   ): Promise<void> {
-    if (!this.watchQueue) return;
     await publishConversationStatus(input.conversationId, status, {
       nowMs: input.createdAtMs,
       queue: this.watchQueue(),
@@ -164,7 +165,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
 }
 
 /** Return the Turn lifecycle that records Conversation events. */
-export function getTurnLifecycle(): ConversationTurnLifecycle {
+export function getTurnLifecycle(): ConversationTurnLifecycleService {
   return new ConversationTurnLifecycleService(getConversationEventStore(), {
     watchQueue: getVercelConversationWorkQueue,
   });
