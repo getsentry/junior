@@ -189,15 +189,14 @@ export const pinReview = {
   title: "Review requested · #91",
 };
 
-// The GitHub plugin's merge conflict notice about the same pull request, with
-// the URL inside its sentence.
-export const pinConflict = {
+// A notice about the same pull request, with the URL inside its sentence.
+export const pinChecks = {
   ...pinReview,
-  body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+  body: "The required checks failed on **Pin the release train to payments 4.2**: https://github.com/getsentry/payments/pull/91",
   createdAt: "2026-08-07T09:40:00.000Z",
-  id: "item-pin-conflict",
+  id: "item-pin-checks",
   kind: "notice" as const,
-  title: "Merge conflict · #91",
+  title: "Checks failed · #91",
 };
 
 // A notice in the same Conversation about nothing that an ask names.

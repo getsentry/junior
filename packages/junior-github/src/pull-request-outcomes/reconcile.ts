@@ -21,7 +21,7 @@ import type {
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
-import { closeGitHubConflictNotice } from "../merge-conflict-checks/policy.js";
+import { closeGitHubConflictItem } from "../merge-conflict-checks/policy.js";
 import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
@@ -266,9 +266,9 @@ async function reconcilePullRequest(
     // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
     await args.events.publish({ ...event, objectType: "code_change" });
   }
-  // No webhook closed the merge conflict notice either. Like the
+  // No webhook closed the merge conflict item either. Like the
   // publish, a failed close keeps the row open for the next reconcile.
-  await closeGitHubConflictNotice({
+  await closeGitHubConflictItem({
     db: args.db,
     ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
     reviewItems: args.reviewItems,

@@ -119,20 +119,20 @@ export async function createViewerSnooze(
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
   const timerId = `inbox-snooze:${randomUUID()}`;
+  // Add the timer before the snoozes replace the viewer's earlier ones, so
+  // a failed add leaves those snoozes and their timers as they were.
+  await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
   const snoozeIds = await snoozeInboxItems(getDb(), {
     nowMs,
     reviewItemIds,
     timerId,
     userId: user.id,
   });
-  // Add the timer only after the snoozes commit: a heartbeat that claims a
-  // timer with no snooze yet removes it. If the add fails, cancel the
-  // snoozes, so no item stays hidden with no timer to wake it.
-  try {
-    await scheduleInboxSnoozeTimer(timerId, input.wakeAtMs);
-  } catch (error) {
-    await settleInboxSnoozes(getDb(), { snoozeIds, state: "cancelled" });
-    throw error;
+  // A heartbeat that claims the timer before the snoozes commit finds no
+  // snooze and removes it. That can only happen once the wake time has
+  // passed, so wake the snoozes here.
+  if (Date.now() >= input.wakeAtMs) {
+    await settleInboxSnoozes(getDb(), { snoozeIds, state: "woken" });
   }
   return reviewItemIds;
 }

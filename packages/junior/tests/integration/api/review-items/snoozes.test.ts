@@ -5,6 +5,7 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getDb } from "@/chat/db";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   getReviewItem,
   waitingConversationIdsQuery,
@@ -338,6 +339,29 @@ describe("snoozes", () => {
       .delete(juniorReviewItemAssignees)
       .where(eq(juniorReviewItemAssignees.itemId, itemId));
     expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
+  });
+
+  it("keeps the earlier snooze when the new timer cannot be added", async () => {
+    const ana = await user("ana@example.com");
+    await addItem(ROOT, [ana], "Review acme entry");
+    const asAna = api(fixture, ana);
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + 60_000)).status,
+    ).toBe(201);
+
+    vi.spyOn(getStateAdapter(), "acquireLock").mockRejectedValueOnce(
+      new Error("state store is down"),
+    );
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + 120_000)).status,
+    ).toBe(500);
+    expect(await storedStates()).toEqual(["snoozed"]);
+    expect((await asAna.inbox()).count).toBe(0);
+
+    // The earlier timer still wakes it.
+    vi.setSystemTime(NOW_MS + 60_000);
+    await heartbeat();
+    expect((await asAna.inbox()).count).toBe(1);
   });
 
   it("does not let a viewer snooze a row they cannot see", async () => {

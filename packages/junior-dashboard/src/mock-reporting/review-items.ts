@@ -242,6 +242,35 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Ready to merge · #2201",
     },
     {
+      // The GitHub plugin stopped fixing this pull request's conflicts.
+      // Resume starts a fix and the fix count again.
+      body: "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(40),
+      id: "qa-conflict-2188",
+      plugin: "github",
+      request: {
+        question:
+          "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+        fields: [
+          {
+            id: "choice",
+            kind: "choice",
+            label: "Merge conflict · #2188",
+            options: [{ label: "Resume" }],
+          },
+        ],
+      },
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/2188",
+        objectType: "code_change",
+        title: "Retry Slack uploads on rate limits",
+        url: "https://github.com/getsentry/junior/pull/2188",
+      },
+      title: "Merge conflict · #2188",
+    },
+    {
       body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(89),
@@ -255,24 +284,6 @@ function seeds(nowMs: number): MockItemSeed[] {
         url: "https://github.com/getsentry/payments/pull/91",
       },
       title: "Review requested · #91",
-    },
-    {
-      // The merge conflict notice about the same pull request folds into
-      // its review ask.
-      body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
-      conversationId: RELEASE_CONVERSATION_ID,
-      createdAt: at(60),
-      id: "qa-conflict-91",
-      kind: "notice",
-      plugin: "github",
-      status: "open",
-      subject: {
-        id: "https://github.com/getsentry/payments/pull/91",
-        objectType: "code_change",
-        title: "Pin the release train to payments 4.2",
-        url: "https://github.com/getsentry/payments/pull/91",
-      },
-      title: "Merge conflict · #91",
     },
     {
       assignedToEveryone: true,

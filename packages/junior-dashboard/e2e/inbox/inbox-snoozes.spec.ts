@@ -5,7 +5,7 @@ import {
   expandRow,
   license,
   mockReviewItems,
-  pinConflict,
+  pinChecks,
   pinReview,
   prReady,
   prReview,
@@ -208,7 +208,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockReviewItems(page, {
-      open: [pinReview, pinConflict],
+      open: [pinReview, pinChecks],
       snoozes: [
         {
           conversationId: pinReview.addedByConversationId,
@@ -216,7 +216,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     // The link opens the row, so its Wake shows.
     await expect(page.getByRole("button", { name: "Wake" })).toBeVisible();
