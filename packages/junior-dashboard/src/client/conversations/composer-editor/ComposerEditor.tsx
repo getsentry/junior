@@ -27,18 +27,21 @@ import {
   type Ref,
 } from "react";
 
-import type { MentionablePerson } from "@sentry/junior/api/schema";
 import { cn } from "../../styles";
-import { ComposerPeopleMenu } from "../ComposerPeopleMenu";
+import { ComposerHashMenu } from "../ComposerHashMenu";
+import type { ComposerInsertion } from "../ComposerMenu";
+import { ComposerMentionMenu } from "../ComposerMentionMenu";
 import { ComposerSkillMenu } from "../ComposerSkillMenu";
 import { mentionTokenAt } from "../composerMentionToken";
+import { hashTokenAt } from "../composerReferences";
 import { skillTokenAt } from "../composerSkillToken";
 import { ComposerMentionNode } from "./ComposerMentionNode";
+import { ComposerReferenceNode } from "./ComposerReferenceNode";
 import {
   $readComposerText,
-  $replaceMentionTokens,
+  $replaceComposerTokens,
   $writeComposerText,
-  type LookupPerson,
+  type ComposerLookup,
 } from "./composerEditorText";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
 
@@ -62,12 +65,13 @@ type ComposerEditorProps = {
   enterKeyHint: "enter" | "send";
   enterSends: boolean;
   label: string;
-  lookupPerson: LookupPerson;
+  lookup: ComposerLookup;
   maxLength: number;
   onChange(text: string): void;
   onEnter(): void;
   onFocus?: (() => void) | undefined;
-  onMention(person: MentionablePerson): void;
+  /** A person or reference that a menu put in. */
+  onChip(insertion: Exclude<ComposerInsertion, { text: string }>): void;
   /** Files from a paste. Without it, a paste of files adds nothing. */
   onPasteFiles?: ((files: File[]) => void) | undefined;
   placeholder: string;
@@ -87,22 +91,22 @@ type ComposerEditorProps = {
 };
 
 /**
- * The composer's draft editor: plain text with inline mentions, built on
- * Lexical. The `$` and `@` menus run inside it. The composer lazy-loads
+ * The composer's draft editor: plain text with inline mentions and
+ * reference chips, built on Lexical. The `$`, `@`, and `#` menus run inside
+ * it. The composer lazy-loads
  * this module, because Lexical is large.
  */
 export default function ComposerEditor(props: ComposerEditorProps) {
   const initialText = useRef(props.readText());
   const takeFocus = useRef(props.standInFocused());
-  const { lookupPerson } = props;
+  const { lookup } = props;
   return (
     <LexicalComposer
       initialConfig={{
         editable: props.editable,
-        editorState: () =>
-          $writeComposerText(initialText.current, lookupPerson),
+        editorState: () => $writeComposerText(initialText.current, lookup),
         namespace: "junior-composer",
-        nodes: [ComposerMentionNode],
+        nodes: [ComposerMentionNode, ComposerReferenceNode],
         onError: (error) => {
           throw error;
         },
@@ -163,9 +167,11 @@ function ComposerBehavior(
   const callbacks = useRef(props);
   callbacks.current = props;
   const skill = useLexicalTypeahead(editor, skillTokenAt);
-  const people = useLexicalTypeahead(editor, mentionTokenAt, (person) =>
-    callbacks.current.onMention(person),
-  );
+  const onChip = (insertion: ComposerInsertion) => {
+    if (!("text" in insertion)) callbacks.current.onChip(insertion);
+  };
+  const mention = useLexicalTypeahead(editor, mentionTokenAt, onChip);
+  const hash = useLexicalTypeahead(editor, hashTokenAt, onChip);
 
   // A selection in a content editable focuses it, so set one only to
   // focus. The composer scrolls itself, like a textarea with
@@ -173,7 +179,7 @@ function ComposerBehavior(
   const setText = (text: string, caretAtEnd: boolean) => {
     editor.update(
       () => {
-        $writeComposerText(text, callbacks.current.lookupPerson);
+        $writeComposerText(text, callbacks.current.lookup);
         if (caretAtEnd) $getRoot().selectEnd();
         else $setSelection(null);
       },
@@ -234,9 +240,9 @@ function ComposerBehavior(
             callbacks.current.onChange(text);
           },
         ),
-        // Pasted or restored `<@U…>` becomes a mention.
+        // Pasted or restored `<@U…>` and reference tokens become chips.
         editor.registerNodeTransform(TextNode, (node) =>
-          $replaceMentionTokens(node, callbacks.current.lookupPerson),
+          $replaceComposerTokens(node, callbacks.current.lookup),
         ),
         // Below the menus, which take Enter while they are open.
         editor.registerCommand(
@@ -285,7 +291,8 @@ function ComposerBehavior(
   return (
     <>
       <ComposerSkillMenu typeahead={skill} />
-      <ComposerPeopleMenu typeahead={people} />
+      <ComposerMentionMenu typeahead={mention} />
+      <ComposerHashMenu typeahead={hash} />
     </>
   );
 }
