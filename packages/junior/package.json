@@ -80,7 +80,7 @@
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.32.0",
     "@neondatabase/serverless": "^1.1.0",
-    "@sentry/api": "2.3.0",
+    "@sentry/api": "2.16.0",
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-search": "workspace:*",
     "@sentry/nitro": "catalog:",
