@@ -1,8 +1,11 @@
-import type { InfiniteData } from "@tanstack/react-query";
+import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import type {
   ConversationFeed,
   ConversationFeedItem,
 } from "@sentry/junior/api/schema";
+
+/** One loaded page of the viewer's feed, with the version of its body. */
+export type ConversationFeedPage = ConversationFeed & { pageVersion?: string };
 
 /**
  * One cached conversation feed. The viewer's feed keeps its loaded pages; a
@@ -10,11 +13,11 @@ import type {
  */
 export type ConversationFeedCache =
   | ConversationFeed
-  | InfiniteData<ConversationFeed, string | undefined>;
+  | InfiniteData<ConversationFeedPage, string | undefined>;
 
 function isPagedFeed(
   cache: ConversationFeedCache,
-): cache is InfiniteData<ConversationFeed, string | undefined> {
+): cache is InfiniteData<ConversationFeedPage, string | undefined> {
   return "pages" in cache;
 }
 
@@ -66,9 +69,25 @@ export function mapConversationFeedCache(
   }
   return {
     ...cache,
-    pages: cache.pages.map((page, index) => ({
+    // A changed page no longer matches the body that its version names, so
+    // the next read gets the whole page.
+    pages: cache.pages.map(({ pageVersion: _pageVersion, ...page }, index) => ({
       ...page,
       conversations: map(page.conversations, index === 0),
     })),
   };
+}
+
+/**
+ * Refresh every cached Conversation feed after a change that can add, move,
+ * or remove a feed row. The client cannot tell which feeds list the row, so
+ * the change refreshes the feed family. Only mounted feeds refetch. Prefer an
+ * optimistic `setQueriesData` patch and the versions poll when the change is
+ * known in full.
+ */
+export function invalidateConversationFeeds(queryClient: QueryClient) {
+  // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- Any feed can list the changed row.
+  return queryClient.invalidateQueries({
+    queryKey: ["dashboard", "conversations"],
+  });
 }

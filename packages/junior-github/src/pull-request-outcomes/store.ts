@@ -1,7 +1,9 @@
 import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
+import { codeChangeSizeSchema } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
+  type GitHubPullRequestAction,
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
@@ -22,6 +24,8 @@ const githubPullRequestOutcomeInputSchema = z
     pullRequestId: z.string().min(1),
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
+    /** Written to Junior's code index only, not to the GitHub row. */
+    size: codeChangeSizeSchema.optional(),
     state: githubPullRequestStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
@@ -272,6 +276,19 @@ export async function listGitHubAssignedWork(
   return conversationIdsForPullRequests(rows, conversationIds);
 }
 
+/** Return the conversations linked to one Junior-owned pull request. */
+export async function readGitHubPullRequestConversationIds(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<string[]> {
+  const [row] = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId))
+    .limit(1);
+  return row?.conversationIds ?? [];
+}
+
 /** Append native conversation ids to an existing Junior-owned PR projection. */
 export async function recordGitHubPullRequestConversations(
   db: GitHubDb,
@@ -307,38 +324,41 @@ export async function recordGitHubPullRequestLinkedIssues(
   input: GitHubPullRequestLinkedIssuesInput,
 ): Promise<boolean> {
   const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const inserted = await Promise.all(
-    association.linkedIssues.map((issue) =>
+  const list = (values: Array<string | number>) =>
+    sql.join(
+      values.map((value) => sql`${value}`),
+      sql`, `,
+    );
+  // One insert for every issue. It inserts nothing when the PR row is gone.
+  const issues = sql`unnest(
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.repositoryFullName))}]::text[],
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.number))}]::integer[]
+  ) AS issue(repository_full_name, number)`;
+  const inserted = await db
+    .insert(juniorGitHubPullRequestIssues)
+    .select(
       db
-        .insert(juniorGitHubPullRequestIssues)
-        .select(
-          db
-            .select({
-              pullRequestId: juniorGitHubPullRequests.pullRequestId,
-              issueRepositoryFullName:
-                sql<string>`lower(${issue.repositoryFullName})`.as(
-                  "issue_repository_full_name",
-                ),
-              issueNumber: sql<number>`${issue.number}`.as("issue_number"),
-            })
-            .from(juniorGitHubPullRequests)
-            .where(
-              eq(
-                juniorGitHubPullRequests.pullRequestId,
-                association.pullRequestId,
-              ),
+        .select({
+          pullRequestId: juniorGitHubPullRequests.pullRequestId,
+          issueRepositoryFullName:
+            sql<string>`lower(issue.repository_full_name)`.as(
+              "issue_repository_full_name",
             ),
-        )
-        .onConflictDoNothing()
-        .returning({
-          issueNumber: juniorGitHubPullRequestIssues.issueNumber,
-        }),
-    ),
-  );
-  return inserted.some((rows) => rows.length > 0);
+          issueNumber: sql<number>`issue.number`.as("issue_number"),
+        })
+        .from(juniorGitHubPullRequests)
+        .crossJoin(issues)
+        .where(
+          eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
+        ),
+    )
+    .onConflictDoNothing()
+    .returning({ issueNumber: juniorGitHubPullRequestIssues.issueNumber });
+  return inserted.length > 0;
 }
 
-function pullRequestRow(target: {
+/** Match one pull request row by repository name, in any case, and number. */
+export function pullRequestRow(target: {
   number: number;
   repositoryFullName: string;
 }) {
@@ -349,17 +369,24 @@ function pullRequestRow(target: {
 }
 
 /**
- * Ask to check whether a Junior pull request is ready to merge, and claim the
- * check when no other webhook runs one. A claim older than `staleMs` is free.
- * Return the claim, or undefined when another webhook runs the check or
- * Junior does not own the pull request. The webhook that runs the check sees
- * the new request in `releaseGitHubPullRequestReadySync`.
+ * Ask to check the next action of a Junior pull request, and claim the check
+ * when no other webhook runs one. A claim older than `staleMs` is free.
+ * Return the claim and the saved action, or undefined when another webhook
+ * runs the check or Junior does not own the pull request. The webhook that
+ * runs the check sees the new request in `releaseGitHubPullRequestReadySync`.
  */
 export async function claimGitHubPullRequestReadySync(
   db: GitHubDb,
   target: { number: number; repositoryFullName: string },
   options: { now: Date; staleMs: number },
-): Promise<{ id: number; ready: boolean; requests: number } | undefined> {
+): Promise<
+  | {
+      action: GitHubPullRequestAction | undefined;
+      id: number;
+      requests: number;
+    }
+  | undefined
+> {
   const t = juniorGitHubPullRequests;
   const staleBefore = new Date(options.now.getTime() - options.staleMs);
   const free = sql`(${t.readySyncId} is null or ${t.readySyncAt} < ${staleBefore.toISOString()}::timestamptz)`;
@@ -373,26 +400,30 @@ export async function claimGitHubPullRequestReadySync(
     })
     .where(pullRequestRow(target))
     .returning({
+      action: t.nextAction,
       id: t.readySyncId,
-      readyToMergeAt: t.readyToMergeAt,
       requests: t.readySyncRequests,
     });
   if (!row || row.id !== row.requests) return undefined;
   return {
+    action: row.action ?? undefined,
     id: row.id,
-    ready: row.readyToMergeAt !== null,
     requests: row.requests,
   };
 }
 
-/** Save whether a Junior pull request is ready to merge. */
-export async function setGitHubPullRequestReadyToMerge(
+/** Save the next action of a Junior pull request. */
+export async function setGitHubPullRequestNextAction(
   db: GitHubDb,
-  target: { number: number; ready: boolean; repositoryFullName: string },
+  target: {
+    action: GitHubPullRequestAction | undefined;
+    number: number;
+    repositoryFullName: string;
+  },
 ): Promise<void> {
   await db
     .update(juniorGitHubPullRequests)
-    .set({ readyToMergeAt: target.ready ? new Date() : null })
+    .set({ nextAction: target.action ?? null })
     .where(pullRequestRow(target));
 }
 

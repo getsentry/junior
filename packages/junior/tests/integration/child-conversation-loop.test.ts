@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import {
   createDeliverToParent,
   enqueueAgentInvocationResult,
@@ -24,7 +25,7 @@ import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   loadTurnEvents,
@@ -74,6 +75,7 @@ async function sendHelperReply(harness: Harness, sender: AgentInvocation) {
       reply: { text: "Helper fact.", toolCallId: "helper-reply" },
     },
     sender,
+    turnId: getAgentInvocationTurnId(sender.invocationId),
     state: harness.state,
   });
   // Event input waits for its burst window, as on a root.
@@ -186,7 +188,7 @@ describe("child Turns on the Conversation loop", () => {
         const seen: unknown[] = [];
         harness.onPersonRun(async (run) => {
           seen.push(
-            await createSearchAgentsTool({
+            await createListAgentsTool({
               conversationId: slackParentConversationId,
             }).execute!({}, {}),
             (
@@ -253,7 +255,7 @@ describe("child Turns on the Conversation loop", () => {
         state: harness.state,
       });
 
-      const { agents } = (await createSearchAgentsTool({
+      const { agents } = (await createListAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {})) as {
         agents: Array<{ conversation_id: string; status: string }>;
@@ -328,7 +330,7 @@ describe("child Turns on the Conversation loop", () => {
       ).resolves.toMatchObject({ stopped: true });
 
       await expect(
-        createSearchAgentsTool({
+        createListAgentsTool({
           conversationId: slackParentConversationId,
         }).execute!({}, {}),
       ).resolves.toEqual({
@@ -415,3 +417,6 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 });
+
+// A spawn can stop writing agent invocations only once every deployed reader
+// works without one, so a rollback stays safe. These children have none.

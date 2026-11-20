@@ -15,7 +15,7 @@ export type PageContentSkeletonVariant =
 export function PageContentSkeleton(props: {
   className?: string;
   label: string;
-  variant?: PageContentSkeletonVariant;
+  variant?: PageContentSkeletonVariant | undefined;
 }) {
   const variant = props.variant ?? "panel";
   return (

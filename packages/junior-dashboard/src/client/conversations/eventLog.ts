@@ -34,47 +34,53 @@ export function eventLogUsage(event: ConversationReportEvent): string {
   return fields.filter((field) => field !== undefined).join(" · ");
 }
 
+type EventData<T extends ConversationReportEventData["type"]> = Extract<
+  ConversationReportEventData,
+  { type: T }
+>;
+type EventSummaries = {
+  [T in ConversationReportEventData["type"]]: (data: EventData<T>) => string;
+};
+
+const EVENT_SUMMARIES = {
+  message: (data) =>
+    `${data.role} · ${data.redacted ? "Content hidden" : data.text || "Empty message"}`,
+  message_handled: (data) => data.messageId,
+  assistant_message: (data) =>
+    data.parts
+      .map((part) => (part.redacted ? "Content hidden" : part.text))
+      .join(" · ") || "Model call recorded",
+  tool_calls: (data) =>
+    data.calls
+      .map((call) => {
+        const preview = toolCallPreview(call.name, call.input);
+        return `${call.name} · ${call.status}${preview ? ` · ${preview}` : ""}`;
+      })
+      .join(" / "),
+  turn_lifecycle: (data) =>
+    data.state === "failed"
+      ? `${data.state} · ${data.failureCode}${data.failureReason ? ` · ${data.failureReason}` : ""}`
+      : `${data.state} · ${data.turnId}`,
+  turn_context: (data) =>
+    `${data.pluginName} · ${data.kind} · v${data.version}`,
+  guardian_action_reviewed: (data) =>
+    `${data.decision} · ${data.toolName} · ${data.riskLevel} risk`,
+  structured_event: (data) =>
+    `${data.namespace}.${data.name} · ${data.presentation.title}`,
+  attachments_delivered: (data) =>
+    data.attachments.map((attachment) => attachment.filename).join(", "),
+  reply_posted: (data) => `${data.plugin} · ${data.url ?? data.text}`,
+  compaction: (data) => data.summary ?? "Agent history compacted",
+  subagent: (data) =>
+    `${data.agentName ?? data.subagentKind} · ${data.status} · ${data.childConversationId}`,
+} satisfies EventSummaries;
+
 /** Summarize an event without merging it with earlier or later events. */
-export function eventLogSummary(data: ConversationReportEventData): string {
-  switch (data.type) {
-    case "message":
-      return `${data.role} · ${data.redacted ? "Content hidden" : data.text || "Empty message"}`;
-    case "message_handled":
-      return data.messageId;
-    case "assistant_message":
-      return (
-        data.parts
-          .map((part) => (part.redacted ? "Content hidden" : part.text))
-          .join(" · ") || "Model call recorded"
-      );
-    case "tool_calls":
-      return data.calls
-        .map((call) => {
-          const preview = toolCallPreview(call.name, call.input);
-          return `${call.name} · ${call.status}${preview ? ` · ${preview}` : ""}`;
-        })
-        .join(" / ");
-    case "turn_lifecycle":
-      return data.state === "failed"
-        ? `${data.state} · ${data.failureCode}${data.failureReason ? ` · ${data.failureReason}` : ""}`
-        : `${data.state} · ${data.turnId}`;
-    case "turn_context":
-      return `${data.pluginName} · ${data.kind} · v${data.version}`;
-    case "guardian_action_reviewed":
-      return `${data.decision} · ${data.toolName} · ${data.riskLevel} risk`;
-    case "structured_event":
-      return `${data.namespace}.${data.name} · ${data.presentation.title}`;
-    case "attachments_delivered":
-      return data.attachments
-        .map((attachment) => attachment.filename)
-        .join(", ");
-    case "reply_posted":
-      return `${data.plugin} · ${data.url ?? data.text}`;
-    case "compaction":
-      return data.summary ?? "Agent history compacted";
-    case "subagent":
-      return `${data.agentName ?? data.subagentKind} · ${data.status} · ${data.childConversationId}`;
-  }
+export function eventLogSummary<T extends ConversationReportEventData["type"]>(
+  data: EventData<T>,
+): string {
+  const summarize: EventSummaries[T] = EVENT_SUMMARIES[data.type];
+  return summarize(data);
 }
 
 /** Use status color only for failures and decisions that need attention. */
@@ -141,7 +147,7 @@ export function filterEventLogRows(
 export function adjacentEventLogSeqs(
   rows: readonly EventLogRow[],
   seq: number | undefined,
-): { previous?: number; next?: number } {
+): { previous?: number | undefined; next?: number | undefined } {
   const index = rows.findIndex((row) => row.event.seq === seq);
   if (index === -1) return {};
   return {

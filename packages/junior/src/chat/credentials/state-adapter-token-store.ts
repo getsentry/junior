@@ -102,17 +102,21 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const lockKey = refreshLockKey(userId, provider);
     const deadline = Date.now() + REFRESH_LOCK_WAIT_MS;
     while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- Try the lock again until the deadline.
       const lock = await acquireActiveLock(this.state, lockKey);
       if (lock) {
         try {
+          // oxlint-disable-next-line no-await-in-loop -- This runs once, while this try holds the lock.
           return await callback();
         } finally {
+          // oxlint-disable-next-line no-await-in-loop -- Release the lock before the loop returns.
           await this.state.releaseLock(lock);
         }
       }
       if (Date.now() >= deadline) {
         throw new Error(`Could not acquire OAuth token refresh lock`);
       }
+      // oxlint-disable-next-line no-await-in-loop -- Wait before the next lock try.
       await sleep(REFRESH_LOCK_RETRY_MS);
     }
   }

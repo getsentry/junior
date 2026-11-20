@@ -1,10 +1,10 @@
 import {
   formatConversationCostTotal,
-  formatRuntime,
   formatUsageTotal,
   slackLocationLabel,
 } from "../format";
 import type { Conversation } from "../types";
+import { formatRuntime } from "../time";
 
 /** Render compact conversation details aligned to row context. */
 export function ConversationRowStats(props: {

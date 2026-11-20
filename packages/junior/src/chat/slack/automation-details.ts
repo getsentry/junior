@@ -1,3 +1,4 @@
+import { automationCardStatus } from "@/chat/automations/result";
 import { automationTaskText } from "@/chat/automations/task";
 import type { SlackEvent } from "@slack/types";
 import * as z from "zod";
@@ -10,6 +11,7 @@ import {
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import {
   slackEntitySchema,
+  slackExternalRefIdSchema,
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
@@ -46,12 +48,12 @@ function renderAutomationDetails(
   const url = getDashboardTaskLink(automation.id);
   if (!url) return undefined;
 
-  const status =
-    automation.kind === "scheduled"
-      ? automation.status
-      : automation.trigger.problems.length === 0
-        ? "ready"
-        : "unavailable";
+  const { status, warning } = automationCardStatus({
+    status: automation.status,
+    statusReason: automation.statusReason,
+    triggerProblems:
+      automation.kind === "event" ? automation.trigger.problems : undefined,
+  });
   // Item entities use custom_fields only. Do not add task-specific fields.
   const fields: DetailField[] = [textField("status", "Status", status)];
   const { task } = automation;
@@ -95,16 +97,12 @@ function renderAutomationDetails(
         long: true,
       },
     );
-    if (trigger.problems.length > 0) {
-      fields.push({
-        ...textField(
-          "warning",
-          "Needs attention",
-          ["Trigger unavailable.", ...trigger.problems].join(" "),
-        ),
-        long: true,
-      });
-    }
+  }
+  if (warning) {
+    fields.push({
+      ...textField("warning", "Needs attention", warning),
+      long: true,
+    });
   }
   const lastRun = dateField(
     "last_run",
@@ -156,7 +154,7 @@ const detailsEventSchema = z.object({
   trigger_id: z.string().min(1),
   user: z.string().min(1),
   external_ref: z.object({
-    id: z.string().min(1),
+    id: slackExternalRefIdSchema,
     type: z.literal("automation"),
   }),
 }) satisfies z.ZodType<
@@ -173,7 +171,7 @@ export async function presentSlackAutomationDetails(
 ): Promise<void> {
   const parsed = detailsEventSchema.safeParse(event);
   const client = getSlackClient();
-  const triggerId = event.trigger_id;
+  const triggerId = event["trigger_id"];
   if (typeof triggerId !== "string" || !triggerId) return;
 
   if (!parsed.success || !teamId) {

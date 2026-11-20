@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_SANDBOX_PROVIDER = "docker";
+  process.env["JUNIOR_SANDBOX_PROVIDER"] = "docker";
 });
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({

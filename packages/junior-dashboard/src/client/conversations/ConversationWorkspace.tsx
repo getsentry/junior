@@ -1,6 +1,5 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
@@ -19,13 +18,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import {
   ConversationFeedLoadMore,
   type ConversationFeedMorePages,
 } from "./ConversationFeedLoadMore";
+import { ConversationVisibilitySelect } from "./ConversationVisibilitySelect";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -56,7 +55,7 @@ import {
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
 import { pinnedAndWaitingFirst } from "./conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../format";
+import { buildConversations } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
@@ -74,6 +73,7 @@ import {
   useConversationSidebarOpen,
   useSidebarFits,
 } from "./conversationSidebarLayout";
+import { getDashboardTimeZone } from "../time";
 
 const SIDEBAR_PANEL_ID = "conversation-list";
 
@@ -103,7 +103,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params.conversationId;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
@@ -131,7 +131,7 @@ export function ConversationWorkspace(props: {
     if (selectedId) {
       // The reader asked to type, so home takes focus even on a touch screen.
       createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
+      void navigate(NEW_CONVERSATION_PATH);
     } else createComposer.current?.focus();
   };
 
@@ -153,8 +153,9 @@ export function ConversationWorkspace(props: {
   useEffect(() => {
     homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  // A failed next page keeps the loaded rows; the load-more row shows it.
-  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  // A failed refresh or next page keeps the loaded rows. The load-more row
+  // shows a failed next page.
+  const feedError = feed.data ? undefined : feed.error?.message;
   const morePages: ConversationFeedMorePages = {
     failed: feed.isFetchNextPageError,
     hasMore: feed.hasNextPage,
@@ -199,7 +200,7 @@ export function ConversationWorkspace(props: {
           ? "Message failed to send. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility, images) => {
+      onSubmit={async (message, idempotencyKey, visibility, files) => {
         const visit = homeVisit.current;
         const pendingDraftId = newConversationDraftId(idempotencyKey);
         // Show the Conversation at once. The create view stays mounted but
@@ -207,7 +208,7 @@ export function ConversationWorkspace(props: {
         setPendingCreate({
           createdAt: new Date().toISOString(),
           idempotencyKey,
-          images,
+          files,
           message,
           visibility,
         });
@@ -216,7 +217,7 @@ export function ConversationWorkspace(props: {
           accepted = await createConversation.mutateAsync({
             idempotencyKey,
             message,
-            images,
+            files,
             visibility,
           });
         } catch (error) {
@@ -269,7 +270,7 @@ export function ConversationWorkspace(props: {
     </HeaderIconButton>
   );
 
-  // One tree for every width, so the create draft and its images survive a
+  // One tree for every width, so the create draft and its files survive a
   // resize across the breakpoint: the create view is always the child of the
   // second div.
   const homePane = (
@@ -444,12 +445,12 @@ function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
   /** Docked at the bottom of the narrow home, where the list is above it. */
   docked: boolean;
-  error?: string;
+  error?: string | undefined;
   onSubmit(
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
-    images?: InputImage[],
+    files?: File[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -471,30 +472,17 @@ function NewConversationView(props: {
         draftId="new"
         error={props.error}
         footerStart={
-          <ToggleGroup
-            aria-label="Conversation visibility"
-            className="inline-flex shrink-0 gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
-            onValueChange={([next]) => {
-              if (next) setVisibility(next);
-            }}
-            value={[visibility]}
-          >
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="public">
-              <Globe2 aria-hidden="true" className="size-3" />
-              Public
-            </ToggleGroupItem>
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="private">
-              <LockKeyhole aria-hidden="true" className="size-3" />
-              Private
-            </ToggleGroupItem>
-          </ToggleGroup>
+          <ConversationVisibilitySelect
+            onChange={setVisibility}
+            value={visibility}
+          />
         }
         label="Start a conversation"
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey, images) =>
-          props.onSubmit(message, idempotencyKey, visibility, images)
+        onSubmit={(message, idempotencyKey, files) =>
+          props.onSubmit(message, idempotencyKey, visibility, files)
         }
       />
       {props.docked ? null : (

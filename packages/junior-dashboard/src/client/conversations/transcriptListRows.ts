@@ -3,6 +3,7 @@ import {
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
@@ -16,21 +17,23 @@ export type TranscriptListRow =
       kind: "entry";
       entry: RenderedTranscriptEntry;
       key: string;
-      seq?: number;
+      seq?: number | undefined;
+      /** The Tasks of the Turn that this reply ends. */
+      tasks?: SubagentEntry[];
     }
   | {
       kind: "activity";
       entries: RenderedTranscriptEntry[];
       key: string;
       /** Last event sequence in the group. */
-      seq?: number;
+      seq?: number | undefined;
     }
   | {
       kind: "tasks";
       entries: SubagentEntry[];
       key: string;
       /** Last event sequence in the group. */
-      seq?: number;
+      seq?: number | undefined;
     };
 
 /** The key of the "New" marker row. */
@@ -38,10 +41,12 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, each run of Tasks becomes one Tasks row, a Thread
- * keeps its own row, search drops rows that do not match, and the "New"
- * marker becomes its own row before the first unread row. A question that
- * Junior asked moves to the end of its Turn, after the final message.
+ * become one group row, a Thread keeps its own row, search drops rows that
+ * do not match, and the "New" marker becomes its own row before the first
+ * unread row. The Tasks of a Turn move to its end, so they do not split its
+ * activity: under its reply, or in a Tasks row when it has no reply yet. A
+ * question that Junior asked moves after them. Memory capture events do not
+ * show: the turn context and the details panel hold a Turn's memories.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -51,8 +56,8 @@ export function transcriptListRows(input: {
   keyPrefix: string;
   knownActivityKeys: Map<string, string>;
   /** The normalized search query, when search is active. */
-  search?: string;
-  unread?: TranscriptUnreadRange;
+  search?: string | undefined;
+  unread?: TranscriptUnreadRange | undefined;
 }): TranscriptListRow[] {
   const { entries, search } = input;
   const quietKeys = quietTurnEntryKeys(entries);
@@ -97,11 +102,48 @@ export function transcriptListRows(input: {
     }
     asks = [];
   };
+  let tasks: SubagentEntry[] = [];
+  const pushTurnEnd = () => {
+    const visible = tasks.filter(matches);
+    if (visible.length > 0) {
+      const rowSeq = lastRowSeq(rows);
+      const taskSeq = lastEntrySeq(tasks);
+      // The row moves after later rows, so it takes the larger seq.
+      const seq =
+        rowSeq === undefined || taskSeq === undefined
+          ? (rowSeq ?? taskSeq)
+          : Math.max(rowSeq, taskSeq);
+      const last = rows.at(-1);
+      if (last?.kind === "entry" && isReplyEntry(last.entry)) {
+        // The Tasks sit under the reply text, before its actions. The reply
+        // goes back through pushRow, so unread Tasks still get the marker.
+        rows.pop();
+        pushRow({ ...last, seq, tasks: visible });
+      } else {
+        pushRow({
+          kind: "tasks",
+          entries: visible,
+          // New Tasks join at the end, so the first one keeps the key.
+          key: `${input.keyPrefix}:tasks:${tasks[0]!.key}`,
+          seq,
+        });
+      }
+    }
+    tasks = [];
+    pushAsks();
+  };
+  // Asks and Tasks move out of their place in the Turn. Memory captures
+  // drop out.
+  const moveOut = (entry: RenderedTranscriptEntry): boolean => {
+    if (isAskEntry(entry)) asks.push(entry);
+    else if (isTaskEntry(entry)) tasks.push(entry);
+    else if (!isCaptureEntry(entry)) return false;
+    return true;
+  };
 
-  for (let index = 0; index < entries.length; ) {
+  for (let index = 0; index < entries.length;) {
     const entry = entries[index]!;
-    if (isAskEntry(entry)) {
-      asks.push(entry);
+    if (moveOut(entry)) {
       index += 1;
       continue;
     }
@@ -111,17 +153,18 @@ export function transcriptListRows(input: {
       entry.message.role === "user" &&
       !collapsible(entry)
     ) {
-      pushAsks();
+      pushTurnEnd();
     }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
-      // An ask in the activity moves out, so the activity on both sides of
-      // it stays one row.
+      // An entry that moves out leaves the activity on both sides of it as
+      // one row.
       while (index < entries.length) {
         const next = entries[index]!;
-        if (isAskEntry(next)) asks.push(next);
-        else if (collapsible(next)) group.push(next);
-        else break;
+        if (!moveOut(next)) {
+          if (!collapsible(next)) break;
+          group.push(next);
+        }
         index += 1;
       }
       const visible = group.filter(matches);
@@ -141,24 +184,6 @@ export function transcriptListRows(input: {
       }
       continue;
     }
-    if (isTaskEntry(entry)) {
-      const group: SubagentEntry[] = [];
-      while (index < entries.length && isTaskEntry(entries[index]!)) {
-        group.push(entries[index] as SubagentEntry);
-        index += 1;
-      }
-      const visible = group.filter(matches);
-      if (visible.length > 0) {
-        pushRow({
-          kind: "tasks",
-          entries: visible,
-          // New Tasks join at the end, so the first one keeps the key.
-          key: `${input.keyPrefix}:tasks:${group[0]!.key}`,
-          seq: lastEntrySeq(group),
-        });
-      }
-      continue;
-    }
     if (matches(entry)) {
       pushRow({
         kind: "entry",
@@ -169,8 +194,23 @@ export function transcriptListRows(input: {
     }
     index += 1;
   }
-  pushAsks();
+  pushTurnEnd();
   return rows;
+}
+
+/**
+ * Find the activity row of the running Turn: its last activity row after the
+ * last message. Tasks, Thread cards, asks, and the "New" marker can follow it.
+ */
+export function liveActivityIndex(
+  rows: readonly TranscriptListRow[],
+): number | undefined {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.kind === "activity") return index;
+    if (row.kind === "entry" && row.entry.kind === "message") return undefined;
+  }
+  return undefined;
 }
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
@@ -202,8 +242,21 @@ function lastRowSeq(rows: readonly TranscriptListRow[]): number | undefined {
   return undefined;
 }
 
-function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
+function isReplyEntry(entry: RenderedTranscriptEntry): boolean {
+  return (
+    entry.kind === "message" &&
+    entry.message.role === "assistant" &&
+    !entry.message.eventType &&
+    !entry.message.context
+  );
+}
+
+function isTaskEntry(entry: RenderedTranscriptEntry): entry is SubagentEntry {
   return entry.kind === "subagent" && entry.part.childKind === "task";
+}
+
+function isCaptureEntry(entry: RenderedTranscriptEntry): boolean {
+  return entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part);
 }
 
 /**
@@ -230,6 +283,27 @@ export function rowIndexForSeq(
   return low;
 }
 
+/**
+ * Find the row that shows the Turn of an event without a row, such as a
+ * memory event: the last row before `seq`. A question moved after its reply
+ * keeps the reply seq, so this returns the first row with that seq.
+ */
+export function rowIndexBeforeSeq(
+  rows: readonly TranscriptListRow[],
+  seq: number,
+): number | undefined {
+  let index: number | undefined;
+  let runSeq: number | undefined;
+  for (let i = rowIndexForSeq(rows, seq) - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.kind === "unread_marker") continue;
+    if (index !== undefined && row.seq !== runSeq) break;
+    index = i;
+    runSeq = row.seq;
+  }
+  return index;
+}
+
 function rowSeqBefore(
   rows: readonly TranscriptListRow[],
   index: number,
@@ -252,8 +326,24 @@ export function transcriptRowSizeClass(row: TranscriptListRow): string {
     : entry.kind;
 }
 
-/** Guess the height of a row of a size class before any of them measure. */
-export function defaultTranscriptRowSize(sizeClass: string): number {
+/** Comfortable rows pad 10px above and below, not 6px, like `TranscriptRow`. */
+const COMFORTABLE_ROW_EXTRA_PX = 8;
+
+/**
+ * Guess the height of a row of a size class before any of them measure.
+ * Comfortable density pads each row more, so the guess grows with it.
+ */
+export function defaultTranscriptRowSize(
+  sizeClass: string,
+  comfortable = false,
+): number {
+  return (
+    baseTranscriptRowSize(sizeClass) +
+    (comfortable ? COMFORTABLE_ROW_EXTRA_PX : 0)
+  );
+}
+
+function baseTranscriptRowSize(sizeClass: string): number {
   if (sizeClass === "unread_marker") return 32;
   if (sizeClass === "activity") return 36;
   if (sizeClass === "tasks") return 36;
@@ -313,6 +403,8 @@ function stableActivityGroupKey(args: {
     knownKey ?? `${args.keyPrefix}:activity:${args.entries[0]!.key}`;
 
   args.claimedKeys.add(groupKey);
-  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, groupKey));
+  for (const entryKey of entryKeys) {
+    args.knownKeys.set(entryKey, groupKey);
+  }
   return groupKey;
 }

@@ -102,32 +102,40 @@ interface SandboxRuntime {
 
 interface ActiveSandbox {
   session: SandboxSession;
-  networkPolicyKey?: string;
+  networkPolicyKey?: string | undefined;
 }
 interface SandboxCandidate extends ActiveSandbox {
-  profileHash?: string;
+  profileHash?: string | undefined;
   ref: SandboxRef;
-  workspace?: Workspace;
+  workspace?: Workspace | undefined;
 }
 interface SandboxRuntimeOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (
-    egressId: string,
-    traceHeaders?: TracePropagationHeaders,
-  ) => SandboxNetworkPolicy | undefined;
-  onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
-  onWorkspacePrepare?: (
-    sandbox: SandboxSession,
-    workspace: Workspace,
-    signal?: AbortSignal,
-  ) => Promise<WorkspaceFinalize | void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  timeoutMs?: number | undefined;
+  traceContext?: LogContext | undefined;
+  commandEnv?: (() => Promise<Record<string, string>>) | undefined;
+  createNetworkPolicy?:
+    | ((
+        egressId: string,
+        traceHeaders?: TracePropagationHeaders,
+      ) => SandboxNetworkPolicy | undefined)
+    | undefined;
+  onSandboxPrepare?:
+    | ((sandbox: SandboxSession) => void | Promise<void>)
+    | undefined;
+  onWorkspacePrepare?:
+    | ((
+        sandbox: SandboxSession,
+        workspace: Workspace,
+        signal?: AbortSignal,
+      ) => Promise<WorkspaceFinalize | void>)
+    | undefined;
+  onSandboxRefChanged?:
+    | ((sandboxRef: SandboxRef) => void | Promise<void>)
+    | undefined;
 }
 
 function captureOutput(output: string): { value: string; truncated: boolean } {
@@ -142,7 +150,7 @@ function captureOutput(output: string): { value: string; truncated: boolean } {
 
 function parseKeepAliveMs(): number {
   const parsed = Number.parseInt(
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
+    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] ?? "0",
     10,
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
@@ -179,8 +187,7 @@ export function createSandboxRuntime(
   let dependencyProfileHash =
     options.sandboxRef?.profileHash ??
     profileHash(SANDBOX_RUNTIME, activeWorkspace);
-  const resolveCommandEnv =
-    options.commandEnv ?? (async () => ({}) as Record<string, string>);
+  const resolveCommandEnv = options.commandEnv ?? (async () => ({}));
 
   const withSandboxSpan = <T>(
     name: string,
@@ -348,6 +355,7 @@ export function createSandboxRuntime(
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Boot again only after the try before fails.
         return await createSession({
           timeoutMs,
           ...(networkPolicy
@@ -364,6 +372,7 @@ export function createSandboxRuntime(
         ) {
           throw error;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Wait before the next boot try.
         await sleep(SNAPSHOT_BOOT_RETRY_DELAY_MS, signal);
       }
     }
@@ -389,9 +398,9 @@ export function createSandboxRuntime(
     runtime: string;
     snapshot: Snapshot;
     sandboxName: string;
-    signal?: AbortSignal;
-    workspace?: Workspace;
-    prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
+    signal?: AbortSignal | undefined;
+    workspace?: Workspace | undefined;
+    prepareWorkspace?: ((sandbox: SandboxSession) => Promise<void>) | undefined;
   }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
     const { runtime, snapshot, sandboxName, signal } = params;
     signal?.throwIfAborted();
@@ -652,7 +661,7 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async (setSpanAttributes) => {
-        const cachedSandbox = await tryReuseCachedSandbox();
+        const cachedSandbox = tryReuseCachedSandbox();
         if (cachedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return { session: cachedSandbox, fresh: false };
@@ -702,6 +711,7 @@ export function createSandboxRuntime(
       let removeAbortListener: (() => void) | undefined;
       try {
         if (!signal) {
+          // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
           return await acquisition.promise;
         }
         const aborted = new Promise<never>((_resolve, reject) => {
@@ -710,6 +720,7 @@ export function createSandboxRuntime(
           removeAbortListener = () =>
             signal.removeEventListener("abort", onAbort);
         });
+        // oxlint-disable-next-line no-await-in-loop -- Start a new acquisition only after the shared one aborts.
         return await Promise.race([acquisition.promise, aborted]);
       } catch (error) {
         signal?.throwIfAborted();
@@ -775,7 +786,7 @@ export function createSandboxRuntime(
       Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
     );
     const schedule = (): void => {
-      keepAliveTimer = setTimeout(async () => {
+      const tick = async (): Promise<void> => {
         keepAliveTimer = undefined;
         if (closed || activeSandbox?.session !== session) return;
         try {
@@ -786,7 +797,8 @@ export function createSandboxRuntime(
         }
         if (closed || activeSandbox?.session !== session) return;
         schedule();
-      }, intervalMs);
+      };
+      keepAliveTimer = setTimeout(() => void tick(), intervalMs);
       keepAliveTimer.unref?.();
     };
     schedule();
@@ -869,7 +881,7 @@ export function createSandboxRuntime(
           }
         }
       },
-      fs: sandboxInstance.fs as SandboxFileSystem,
+      fs: sandboxInstance.fs,
       runCommand: async (input) => await sandboxInstance.runCommand(input),
     };
   };

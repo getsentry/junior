@@ -808,7 +808,7 @@ CREATE TABLE junior_conversations (
 `);
 
         await expect(migrateSchema(fixture.sql)).rejects.toThrow(
-          "Stop old Junior workers, install @sentry/junior@0.107.1, run `junior upgrade`, then restore this Junior version",
+          "Stop old workers, install @sentry/junior@0.107.1, run `junior upgrade`, then restore this version",
         );
         await expectNoDrizzleMigrationState(fixture.sql);
       } finally {

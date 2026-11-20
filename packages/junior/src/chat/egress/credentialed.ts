@@ -16,10 +16,11 @@ import {
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { responseTextWithinLimit } from "@/chat/egress/response-text";
+import type { SandboxCredentialRequest } from "@/chat/sandbox/egress/credential-request";
 import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
   clearSandboxEgressCredentialLease,
-  setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
@@ -40,8 +41,9 @@ import {
 // `proxy.ts` first proves that the request came from the expected Vercel
 // Sandbox VM and reconstructs the upstream URL from Vercel forwarding headers.
 // This module starts after that point: it chooses the provider grant, obtains
-// credential header transforms, forwards the upstream request, and records the
-// auth/permission signal that the sandbox command runner consumes afterward.
+// credential header transforms, and forwards the upstream request. It records
+// the permission signal that the sandbox command runner consumes afterward, and
+// returns a needed credential for the caller to ask for.
 //
 // Keep this file about the provider request itself. Source authentication and
 // forwarded-header parsing belong to callers such as the sandbox proxy; lease
@@ -78,7 +80,6 @@ const DECODED_RESPONSE_HEADERS = new Set([
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
-const RESPONSE_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
 
 /**
  * Intercepts the already-authenticated provider request before live forwarding.
@@ -97,32 +98,45 @@ export type CredentialedEgressHttpInterceptor = (input: {
 export interface CredentialedEgressDeps {
   fetch?: typeof fetch;
   interceptHttp?: CredentialedEgressHttpInterceptor;
-  recordAuthRequired?: (input: {
-    authorization?: SandboxEgressCredentialLease["authorization"];
-    credentialContext: SandboxEgressCredentialContext;
-    grant: SandboxEgressCredentialLease["grant"];
-    kind?: "auth_required" | "unavailable";
-    message: string;
-    provider: string;
-  }) => Promise<void>;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
-function authRequiredResponse(input: {
-  grant: Pick<SandboxEgressCredentialLease["grant"], "access" | "name">;
+/** A credential that the request needs and the host could not issue. */
+export interface CredentialedEgressAuthRequired {
+  authorization?: SandboxEgressCredentialLease["authorization"];
+  grant: SandboxEgressCredentialLease["grant"];
+  kind: "auth_required" | "unavailable";
   message: string;
   provider: string;
-}): Response {
-  return new Response(
-    `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
-    {
-      status: 401,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-        "cache-control": "no-store",
+}
+
+/**
+ * The response for the caller. `authRequired` is set when the response is a
+ * 401 because the request needs a credential. Each caller decides how to ask
+ * for it.
+ */
+export interface CredentialedEgressResult {
+  authRequired?: CredentialedEgressAuthRequired;
+  response: Response;
+}
+
+function authRequiredResult(
+  authRequired: CredentialedEgressAuthRequired,
+  responseMessage = authRequired.message,
+): CredentialedEgressResult {
+  return {
+    authRequired,
+    response: new Response(
+      `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${authRequired.provider} grant=${authRequired.grant.name} access=${authRequired.grant.access} 401 unauthorized\n${responseMessage}`,
+      {
+        status: 401,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
       },
-    },
-  );
+    ),
+  };
 }
 
 function policyDeniedResponse(error: EgressPolicyDenied): Response {
@@ -157,7 +171,7 @@ function egressAttributes(input: {
   egressId?: string;
   grantAccess?: "read" | "write";
   grantName?: string;
-  grantReason?: string;
+  grantReason?: string | undefined;
   host?: string;
   method?: string;
   path?: string;
@@ -340,74 +354,6 @@ function grantSelectionBodyText(
   return new TextDecoder().decode(body);
 }
 
-function responseContentLength(upstream: Response): number | undefined {
-  const raw = upstream.headers.get("content-length");
-  if (!raw) {
-    return undefined;
-  }
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-async function responseTextWithinLimit(
-  upstream: Response,
-  maxBytes: number,
-): Promise<string | undefined> {
-  const limit = Math.min(
-    Math.max(0, Math.floor(maxBytes)),
-    RESPONSE_BODY_TEXT_LIMIT_BYTES,
-  );
-  if (limit <= 0) {
-    return undefined;
-  }
-  const contentLength = responseContentLength(upstream);
-  if (contentLength !== undefined && contentLength > limit) {
-    return undefined;
-  }
-  let clone: Response;
-  try {
-    clone = upstream.clone();
-  } catch {
-    return undefined;
-  }
-  const body = clone.body;
-  if (!body) {
-    return "";
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (!value) {
-        continue;
-      }
-      bytes += value.byteLength;
-      if (bytes > limit) {
-        await reader.cancel().catch(() => undefined);
-        return undefined;
-      }
-      chunks.push(value);
-    }
-  } catch {
-    await reader.cancel().catch(() => undefined);
-    return undefined;
-  } finally {
-    reader.releaseLock();
-  }
-  const combined = new Uint8Array(bytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    combined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(combined);
-}
-
 /**
  * Build the upstream request headers.
  *
@@ -418,7 +364,7 @@ async function responseTextWithinLimit(
  */
 function requestHeaders(
   request: Request,
-  lease: SandboxEgressCredentialLease,
+  headerTransforms: SandboxEgressCredentialLease["headerTransforms"],
   upstreamHost: string,
   tracePropagation: SandboxEgressTracePropagationConfig,
 ): Headers {
@@ -427,21 +373,21 @@ function requestHeaders(
     upstreamHost,
     tracePropagation,
   );
-  request.headers.forEach((value, key) => {
+  for (const [key, value] of request.headers) {
     const normalized = key.toLowerCase();
     if (
       HOP_BY_HOP_HEADERS.has(normalized) ||
       PROXY_ONLY_HEADERS.has(normalized)
     ) {
-      return;
+      continue;
     }
     if (TRACE_PROPAGATION_HEADERS.has(normalized) && !mayPropagateTrace) {
-      return;
+      continue;
     }
     headers.append(key, value);
-  });
+  }
 
-  for (const transform of lease.headerTransforms) {
+  for (const transform of headerTransforms) {
     if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
       continue;
     }
@@ -460,7 +406,7 @@ function requestHeaders(
 
 function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
-  upstream.headers.forEach((value, key) => {
+  for (const [key, value] of upstream.headers) {
     const normalized = key.toLowerCase();
     if (
       !HOP_BY_HOP_HEADERS.has(normalized) &&
@@ -468,7 +414,7 @@ function responseHeaders(upstream: Response): Headers {
     ) {
       headers.append(key, value);
     }
-  });
+  }
   return headers;
 }
 
@@ -494,25 +440,6 @@ function leaseLogAttributes(input: {
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
   };
-}
-
-async function recordSandboxAuthRequired(input: {
-  authorization?: SandboxEgressCredentialLease["authorization"];
-  credentialContext: SandboxEgressCredentialContext;
-  grant: SandboxEgressCredentialLease["grant"];
-  kind?: "auth_required" | "unavailable";
-  message: string;
-  provider: string;
-}): Promise<void> {
-  await setSandboxEgressAuthRequiredSignal(input.credentialContext, {
-    provider: input.provider,
-    grant: input.grant,
-    kind: input.kind ?? "auth_required",
-    ...(input.authorization
-      ? { authorization: input.authorization }
-      : undefined),
-    message: input.message,
-  });
 }
 
 async function recordSandboxPermissionDenied(input: {
@@ -553,13 +480,76 @@ async function recordSandboxPolicyDenied(input: {
 }
 
 /**
+ * Forward a request that gets no credential, with its own headers.
+ *
+ * Proxy-only and hop-by-hop headers are still stripped, and trace headers
+ * follow the same propagation rules as credentialed requests.
+ */
+async function forwardWithoutCredential(input: {
+  activeEgressId: string;
+  body: ArrayBuffer | undefined;
+  credentialContext: SandboxEgressCredentialContext;
+  credentialRequest: Exclude<SandboxCredentialRequest, "placeholder">;
+  deps: CredentialedEgressDeps;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<Response> {
+  const { body, deps, provider, request, upstreamUrl } = input;
+  const headers = requestHeaders(
+    request,
+    [],
+    upstreamUrl.hostname,
+    deps.tracePropagation ?? {},
+  );
+  const intercepted = await deps.interceptHttp?.({
+    provider,
+    request: new Request(upstreamUrl, {
+      method: request.method,
+      headers,
+      ...(body !== undefined ? { body } : undefined),
+    }),
+    upstreamUrl,
+  });
+  if (intercepted) {
+    return intercepted;
+  }
+  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+    method: request.method,
+    headers,
+    ...(body !== undefined ? { body } : undefined),
+    redirect: "manual",
+  });
+  logAudit("sandbox.egress.upstream.requested", {
+    ...egressAttributes({
+      egressId: input.activeEgressId,
+      host: upstreamUrl.hostname,
+      method: request.method,
+      path: upstreamUrl.pathname,
+      provider,
+      status: upstream.status,
+    }),
+    ...routingAttributes(request, upstreamUrl),
+    ...credentialAuditAttributes(input.credentialContext.source),
+    ...egressDecisionAttributes("allowed"),
+    "app.sandbox.egress.credential_request": input.credentialRequest,
+    "app.sandbox.egress.upstream_ok": upstream.ok,
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders(upstream),
+  });
+}
+
+/**
  * Forward one verified sandbox egress request with host-managed credentials.
  *
  * The caller must already have authenticated the sandbox VM, checked the signed
  * credential context, and resolved the provider for `upstreamUrl`. This function
  * then selects the read/write grant, issues or reuses a short-lived credential
- * lease, applies its header transforms, and maps provider auth failures into
- * command-level signals instead of throwing raw upstream details at the agent.
+ * lease, and applies its header transforms. A provider auth failure becomes a
+ * 401 response and `authRequired`, not raw upstream details for the agent.
  */
 export async function executeCredentialedEgressRequest(input: {
   activeEgressId: string;
@@ -569,7 +559,14 @@ export async function executeCredentialedEgressRequest(input: {
   provider: string;
   request: Request;
   upstreamUrl: URL;
-}): Promise<Response> {
+  /** Use only the credential subject's own stored OAuth token. */
+  userOAuthOnly?: boolean;
+  /**
+   * Forward the request without a credential, because it carries its own
+   * or asks for none. The plugin's egress policy still applies.
+   */
+  withoutCredential?: Exclude<SandboxCredentialRequest, "placeholder">;
+}): Promise<CredentialedEgressResult> {
   const {
     activeEgressId,
     credentialContext,
@@ -586,21 +583,23 @@ export async function executeCredentialedEgressRequest(input: {
     if (!(error instanceof TypeError)) {
       throw error;
     }
-    return unreadableBodyResponse(
-      logException(error, "sandbox.egress.request_body.unreadable", {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          provider,
-          status: 500,
+    return {
+      response: unreadableBodyResponse(
+        logException(error, "sandbox.egress.request_body.unreadable", {
+          ...egressAttributes({
+            egressId: activeEgressId,
+            host: upstreamUrl.hostname,
+            method: request.method,
+            path: upstreamUrl.pathname,
+            provider,
+            status: 500,
+          }),
+          ...routingAttributes(request, upstreamUrl),
+          ...credentialAuditAttributes(credentialContext.source),
+          ...egressDecisionAttributes("denied", "request body is unreadable"),
         }),
-        ...routingAttributes(request, upstreamUrl),
-        ...credentialAuditAttributes(credentialContext.source),
-        ...egressDecisionAttributes("denied", "request body is unreadable"),
-      }),
-    );
+      ),
+    };
   }
   let grantSelection: SandboxEgressGrantSelection;
   try {
@@ -619,6 +618,8 @@ export async function executeCredentialedEgressRequest(input: {
         ? { graphql: await readGraphqlRequest(body) }
         : undefined),
       ...(operation ? { operation } : undefined),
+      ...(input.userOAuthOnly ? { userOAuthOnly: true } : undefined),
+      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
       provider,
       method: request.method,
       upstreamUrl,
@@ -647,15 +648,26 @@ export async function executeCredentialedEgressRequest(input: {
         request,
         upstreamUrl,
       });
-      return policyDeniedResponse(error);
+      return { response: policyDeniedResponse(error) };
     }
     throw error;
   }
-  const recordAuthRequired =
-    deps.recordAuthRequired ?? recordSandboxAuthRequired;
-
+  if (input.withoutCredential) {
+    return {
+      response: await forwardWithoutCredential({
+        activeEgressId,
+        body,
+        credentialContext,
+        credentialRequest: input.withoutCredential,
+        deps,
+        provider,
+        request,
+        upstreamUrl,
+      }),
+    };
+  }
   async function resolveLease(): Promise<
-    SandboxEgressCredentialLease | Response
+    SandboxEgressCredentialLease | CredentialedEgressResult
   > {
     try {
       return await sandboxEgressCredentialLease(
@@ -667,14 +679,6 @@ export async function executeCredentialedEgressRequest(input: {
       if (!(error instanceof SandboxEgressCredentialError)) {
         throw error;
       }
-      await recordAuthRequired({
-        credentialContext,
-        provider: error.provider,
-        grant: error.grant,
-        kind: error.kind,
-        authorization: error.authorization,
-        message: error.message,
-      });
       const isAuthRequired = error.kind === "auth_required";
       logWarn(
         isAuthRequired
@@ -697,19 +701,23 @@ export async function executeCredentialedEgressRequest(input: {
           ...egressDecisionAttributes("denied", error.message),
         },
       );
-      return authRequiredResponse({
-        provider: error.provider,
+      return authRequiredResult({
+        ...(error.authorization
+          ? { authorization: error.authorization }
+          : undefined),
         grant: error.grant,
+        kind: error.kind,
         message: error.message,
+        provider: error.provider,
       });
     }
   }
 
-  let leaseOrResponse = await resolveLease();
-  if (leaseOrResponse instanceof Response) {
-    return leaseOrResponse;
+  let leased = await resolveLease();
+  if ("response" in leased) {
+    return leased;
   }
-  let lease = leaseOrResponse;
+  let lease = leased;
 
   const attributes = (
     activeLease: SandboxEgressCredentialLease,
@@ -736,20 +744,23 @@ export async function executeCredentialedEgressRequest(input: {
         (transform) => transform.domain,
       ),
     });
-    return Response.json(
-      { error: "Credential lease does not cover forwarded host" },
-      { status: 403 },
-    );
+    return {
+      response: Response.json(
+        { error: "Credential lease does not cover forwarded host" },
+        { status: 403 },
+      ),
+    };
   }
 
   const fetchImpl = deps.fetch ?? fetch;
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 
+  /* oxlint-disable no-await-in-loop -- The loop sends the request again only after a 403, and each step waits on the step before. */
   while (true) {
     const headers = requestHeaders(
       request,
-      lease,
+      lease.headerTransforms,
       upstreamUrl.hostname,
       deps.tracePropagation ?? {},
     );
@@ -763,7 +774,7 @@ export async function executeCredentialedEgressRequest(input: {
       upstreamUrl,
     });
     if (intercepted) {
-      return intercepted;
+      return { response: intercepted };
     }
 
     const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
@@ -798,21 +809,17 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await recordAuthRequired({
-        credentialContext,
-        provider,
-        grant: lease.grant,
-        authorization: error.authorization ?? lease.authorization,
-        message: error.message,
-      });
       logWarn("sandbox.egress.upstream_auth_requirement.classified", {
         ...attributes(lease, upstream.status),
       });
       await upstream.body?.cancel().catch(() => undefined);
-      return authRequiredResponse({
-        provider,
+      const authorization = error.authorization ?? lease.authorization;
+      return authRequiredResult({
+        ...(authorization ? { authorization } : undefined),
         grant: lease.grant,
+        kind: "auth_required",
         message: error.message,
+        provider,
       });
     }
     logSandboxEgressUpstreamRequest({
@@ -831,9 +838,9 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
     // A workload identity token always acts as the same service account or
-    // app, so a new token cannot fix an HTTP 403. Google APIs also use 403 for
-    // resource access and quota errors, so egress forwards the 403 body and
-    // keeps the shared lease.
+    // app, so a new token cannot fix an HTTP 403. Apps and Google APIs also
+    // use 403 for resource access and quota errors, so egress forwards the
+    // 403 body and keeps the shared lease.
     const workloadIdentity = isWorkloadIdentityProvider(provider);
     if (
       upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS &&
@@ -850,19 +857,16 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await recordAuthRequired({
-        credentialContext,
-        provider,
-        grant: lease.grant,
-        kind: "unavailable",
-        message,
-      });
       await upstream.body?.cancel().catch(() => undefined);
-      return authRequiredResponse({
-        provider,
-        grant: lease.grant,
-        message: `${message}\n`,
-      });
+      return authRequiredResult(
+        {
+          grant: lease.grant,
+          kind: "unavailable",
+          message,
+          provider,
+        },
+        `${message}\n`,
+      );
     }
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
@@ -875,19 +879,20 @@ export async function executeCredentialedEgressRequest(input: {
         lease.grant,
         credentialContext,
       );
-      await recordAuthRequired({
-        credentialContext,
-        provider,
-        grant: lease.grant,
-        authorization: lease.authorization,
-        message: `Provider rejected the injected ${provider} credential.`,
-      });
       await upstream.body?.cancel().catch(() => undefined);
-      return authRequiredResponse({
-        provider,
-        grant: lease.grant,
-        message: `Provider rejected the injected ${provider} credential.\n`,
-      });
+      const message = `Provider rejected the injected ${provider} credential.`;
+      return authRequiredResult(
+        {
+          ...(lease.authorization
+            ? { authorization: lease.authorization }
+            : undefined),
+          grant: lease.grant,
+          kind: "auth_required",
+          message,
+          provider,
+        },
+        `${message}\n`,
+      );
     }
     if (
       upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
@@ -906,11 +911,11 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.retrying", {
         ...attributes(lease, upstream.status),
       });
-      leaseOrResponse = await resolveLease();
-      if (leaseOrResponse instanceof Response) {
-        return leaseOrResponse;
+      leased = await resolveLease();
+      if ("response" in leased) {
+        return leased;
       }
-      lease = leaseOrResponse;
+      lease = leased;
       retriedAfter403 = true;
       continue;
     }
@@ -940,11 +945,13 @@ export async function executeCredentialedEgressRequest(input: {
           ...attributes(lease, upstream.status),
         });
       }
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
-      });
+      return {
+        response: new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: responseHeaders(upstream),
+        }),
+      };
     }
 
     if (pluginPermissionDenied) {
@@ -961,10 +968,13 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
 
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders(upstream),
-    });
+    return {
+      response: new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders(upstream),
+      }),
+    };
   }
+  /* oxlint-enable no-await-in-loop */
 }

@@ -17,7 +17,11 @@ export function StatCard(props: {
         <div className="font-sans text-xs font-medium text-dashboard-text-muted">
           {props.label}
         </div>
-        <Icon aria-hidden="true" className="text-amber-400/55" size={15} />
+        <Icon
+          aria-hidden="true"
+          className="text-dashboard-text-faint"
+          size={15}
+        />
       </div>
       <div className="mt-4 font-display text-3xl font-light leading-none tracking-[-0.04em] text-dashboard-text sm:text-4xl">
         {props.value}

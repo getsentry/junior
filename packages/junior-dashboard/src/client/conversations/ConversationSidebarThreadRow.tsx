@@ -8,18 +8,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import {
-  conversationDisplayTitle,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle } from "../format";
+import { Spinner } from "../components/ui/spinner";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { useInboxUi } from "../uiShell";
 import type { Conversation } from "../types";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
-import {
-  ChildConversationStatusIcon,
-  childConversationStatus,
-} from "./ChildConversationStatus";
-import { formatCompactAge } from "./conversationAge";
+import { ChildConversationStatusIcon } from "./ChildConversationStatus";
 import { useArchiveConversation } from "./conversationArchive";
 import {
   prefetchConversationDetail,
@@ -35,10 +30,19 @@ import {
   ROW_ACTIONS_FADE_CLASS,
   ROW_ACTIONS_REVEAL_CLASS,
 } from "./sidebarRowActions";
+import { formatCompactAge } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.
 const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
+// The new UI's rows have a wider glyph column and gap (`sidebarGrid`).
+// Inbox Threads start on the row title's left edge, 2rem in.
+const INBOX_DEPTH_INDENT = ["pl-7", "pl-11", "pl-15"];
+const ROW_GRID = "grid-cols-[0.875rem_minmax(0,1fr)_auto] gap-x-2 pr-3";
+const INBOX_ROW_GRID = "grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 pr-2";
+const TOGGLE_GRID = "grid-cols-[0.875rem_minmax(0,1fr)] gap-x-2 pr-3";
+const INBOX_TOGGLE_GRID = "grid-cols-[1rem_minmax(0,1fr)] gap-x-3 pr-2";
 
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
@@ -56,12 +60,11 @@ export const ConversationSidebarThreadRow = memo(
     onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
     onArchived(conversation: Conversation): void;
     /** Runs before the archive, so its result shows. */
-    onRowAction(): void;
+    onRowAction?(): void;
     selected: boolean;
-    /** True when an open review item in this Thread waits on the viewer. */
-    waiting: boolean;
   }) {
     const prefetch = usePrefetchConversation(props.conversation.id);
+    const inbox = useInboxUi();
     const archive = useArchiveConversation(props.conversation.id, {
       onError: () => props.onArchiveError(props.conversation, true),
       onSuccess: (archivedAt) => {
@@ -89,6 +92,7 @@ export const ConversationSidebarThreadRow = memo(
     const title = conversationDisplayTitle(props.conversation);
     // The API takes an archive only from participants.
     const participant = props.conversation.isParticipant;
+    const indent = inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT;
     return (
       <div
         className={cn(
@@ -100,15 +104,14 @@ export const ConversationSidebarThreadRow = memo(
           {...prefetch}
           aria-current={props.selected ? "page" : undefined}
           className={cn(
-            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg py-1 pr-3 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-            DEPTH_INDENT[Math.min(props.depth, DEPTH_INDENT.length - 1)],
+            "grid min-w-0 items-center rounded-lg py-1 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+            inbox ? INBOX_ROW_GRID : ROW_GRID,
+            indent[Math.min(props.depth, indent.length - 1)],
             participant && `max-sm:pr-10 ${ROW_ACTIONS_FADE_CLASS}`,
           )}
           to={conversationPath(props.conversation.id)}
         >
-          <ChildConversationStatusIcon
-            status={childConversationStatus(props.conversation, props.waiting)}
-          />
+          <ChildConversationStatusIcon status={props.conversation.status} />
           <span
             className={cn(
               "min-w-0 truncate font-sans text-sm leading-snug",
@@ -119,8 +122,16 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {visualStatusForConversation(props.conversation) ===
-          "active" ? null : (
+          {conversationTurnIsActive(props.conversation) ? (
+            // The icon follows `status`. A running Thread that needs input
+            // shows the alert there, so it shows that it runs here.
+            props.conversation.status === "working" ? null : (
+              <Spinner
+                aria-label="Running"
+                className="size-3.5 justify-self-end text-dashboard-text-muted"
+              />
+            )
+          ) : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",
@@ -165,7 +176,7 @@ export const ConversationSidebarThreadRow = memo(
             onClose={() => setConfirmArchive(undefined)}
             onConfirm={() => {
               setConfirmArchive(undefined);
-              props.onRowAction();
+              props.onRowAction?.();
               archive.mutate({
                 archived: true,
                 lastSeenAt: props.conversation.lastSeenAt,
@@ -184,12 +195,14 @@ export function ConversationSidebarThreadToggle(props: {
   hiddenCount: number;
   onToggle(): void;
 }) {
+  const inbox = useInboxUi();
   return (
     <button
       aria-expanded={props.expanded}
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg py-1 pr-3 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-        DEPTH_INDENT[0],
+        "group grid min-w-0 cursor-pointer items-center rounded-lg py-1 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+        inbox ? INBOX_TOGGLE_GRID : TOGGLE_GRID,
+        (inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT)[0],
       )}
       onClick={props.onToggle}
       type="button"

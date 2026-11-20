@@ -68,6 +68,64 @@ describe("workload identity manifest", () => {
       lines: credentials(GCP.slice(0, -1)),
       error: "Plugin example credentials.gcp.audience",
     },
+    {
+      name: "a JWT audience on a host that is not in domains",
+      lines: credentials([
+        ...GCP.slice(0, -1),
+        "    audience: https://other.example.com/*",
+      ]),
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
+    },
+    {
+      name: "a JWT for a domain that is not the audience host",
+      lines: [
+        "credentials:",
+        "  type: workload-identity",
+        "  domains:",
+        "    - app.example.com",
+        "    - other.example.com",
+        ...GCP,
+      ],
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
+    },
+    {
+      name: "an ID token audience that is not an https URL",
+      lines: credentials([
+        ...GCP.slice(0, -2),
+        "    token: id-token",
+        "    audience: app.example.com",
+      ]),
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
+    },
+    {
+      name: "an access token with a scope that can write",
+      lines: [
+        "credentials:",
+        "  type: workload-identity",
+        "  domains:",
+        "    - bigquery.googleapis.com",
+        ...GCP.slice(0, -2),
+        "    token: access-token",
+        "    scopes:",
+        "      - https://www.googleapis.com/auth/bigquery",
+      ],
+      error:
+        "Plugin example credentials.gcp.scopes.0 must be read-only scopes, such as https://www.googleapis.com/auth/bigquery.readonly",
+    },
+    {
+      name: "an access token for a host that is not a Google API",
+      lines: credentials([
+        ...GCP.slice(0, -2),
+        "    token: access-token",
+        "    scopes:",
+        "      - https://www.googleapis.com/auth/bigquery.readonly",
+      ]),
+      error:
+        'Plugin example credentials.domains entry "app.example.com" is not a Google API host (*.googleapis.com), so it cannot get a gcp access-token',
+    },
   ])("rejects $name", ({ lines, error }) => {
     expect(() => parsePluginManifest(manifest(lines), "/tmp/example")).toThrow(
       error,

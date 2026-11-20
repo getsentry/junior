@@ -1,7 +1,5 @@
 import {
-  inputImageSchema,
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
@@ -9,6 +7,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationTitleSchema } from "./conversation-title";
+import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -23,17 +22,22 @@ import {
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+import { objectPreviewImageSchema } from "./object-preview-image";
+import { ACTIVITY_PREVIEW_MAX_LENGTH } from "./activity-preview-text";
 
 export {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 };
 
+/**
+ * The status of one Conversation's own work. See `TERMINOLOGY.md` and
+ * `conversationStatusSql`, the only place that derives it.
+ */
 export const conversationReportStatusSchema = z.enum([
-  "active",
-  "completed",
-  "failed",
-  "stopped",
+  "needs_input",
+  "working",
+  "done",
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
@@ -58,6 +62,16 @@ export const conversationAttachmentParamsSchema = z
   .object({
     attachmentId: z.string().min(1),
     conversationId: z.string().min(1),
+  })
+  .strict();
+
+export const conversationAttachmentQuerySchema = z
+  .object({
+    /**
+     * Send `Content-Disposition: attachment` even for a type that previews
+     * inline, so a same-window download link saves the file.
+     */
+    download: z.stringbool().optional(),
   })
   .strict();
 
@@ -98,7 +112,8 @@ const conversationEventsLimitSchema = z.coerce
 /**
  * Page toward the start with `before`, toward the latest with `after`, or
  * both ways from one event with `around`. A link target asks for the page
- * around one event by its `event` seq, or around the start of a `turn`.
+ * around one event by its `event` seq, around one `message` by its id, or
+ * around the start of a `turn`.
  */
 export const conversationEventsQuerySchema = z.union([
   z
@@ -119,40 +134,31 @@ export const conversationEventsQuerySchema = z.union([
   z
     .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
     .strict(),
+  z
+    .object({
+      message: z.string().min(1),
+      limit: conversationEventsLimitSchema,
+    })
+    .strict(),
 ]);
 
-export const conversationFeedQuerySchema = z
-  .object({
-    actorEmail: z
-      .string()
-      .trim()
-      .email()
-      .transform((value) => value.toLowerCase())
-      .optional(),
-    codeRepositoryId: z.string().uuid().optional(),
-    /** `nextCursor` from the previous page of the same feed. */
-    cursor: z.string().min(1).max(500).optional(),
-    q: z.string().trim().max(200).optional(),
-    status: z.enum(["active", "archived"]).default("active"),
-  })
-  .strict();
+/** Client key that makes a retried send the same Message. */
+export const idempotencyKeySchema = z.string().trim().min(1).max(200);
 
 export const createConversationMessageBodySchema = z
   .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
+    idempotencyKey: idempotencyKeySchema,
     message: z.string().trim().max(32_000),
-    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
+    /** Uploads from `POST /api/conversations/attachment-uploads`. */
+    uploadIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_INPUT_ATTACHMENTS)
+      .optional(),
   })
   .strict()
   .refine(
-    (body) => Boolean(body.message || body.images?.length),
-    "Add a message or an image.",
-  )
-  .refine(
-    (body) =>
-      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
-      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
-    "Images must total 3 MB or less.",
+    (body) => Boolean(body.message || body.uploadIds?.length),
+    "Add a message or a file.",
   );
 
 export const createConversationBodySchema =
@@ -235,6 +241,7 @@ const conversationAnnotationReportSchema =
       plugin: z.string().min(1),
       createdAt: z.string().datetime(),
       updatedAt: z.string().datetime(),
+      previewImages: z.array(objectPreviewImageSchema).optional(),
     }),
   );
 
@@ -243,7 +250,7 @@ export const conversationActivityPreviewSchema = z
     createdAt: z.string().datetime(),
     mentions: z.array(actorIdentitySchema).optional(),
     role: z.enum(["assistant", "user"]),
-    text: z.string().min(1),
+    text: z.string().min(1).max(ACTIVITY_PREVIEW_MAX_LENGTH),
   })
   .strict();
 
@@ -262,6 +269,18 @@ export const conversationSummaryReportSchema = z
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
+    /** Feed rows and the detail only. */
+    treeState: conversationTreeStateSchema.optional(),
+    /**
+     * A Conversation in the tree has an active Watch or a pending Timer.
+     * Feed rows and the detail only.
+     */
+    watching: z.boolean().optional(),
+    /**
+     * A Turn is queued or running. Live views poll and show thinking on it,
+     * since `status` can read `needs_input` while a Turn runs.
+     */
+    turnActive: z.boolean(),
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),

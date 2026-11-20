@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
 import { objectPresentation } from "@sentry/junior-plugin-api";
@@ -22,8 +23,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
-  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -44,6 +43,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -55,6 +55,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -107,6 +108,7 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   const isMobile = useIsMobileViewport();
+  const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
   const details = annotations.map((annotation) =>
@@ -123,12 +125,18 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip>
+    <Tooltip
+      onOpenChange={(open, details) => {
+        if (open && details.trigger) setSide(sideWithMoreRoom(details.trigger));
+      }}
+    >
       <TooltipTrigger
         render={
           <span
             aria-label={`Linked work, newest first: ${details.join(", ")}`}
-            className="inline-flex min-w-0 max-w-full items-center"
+            // Rows that are one stretched link turn off pointer events.
+            // The trigger takes them back, so hover opens the tooltip.
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center"
           >
             {useMobileFacepile ? (
               <SidebarAnnotationIconFacepile
@@ -154,7 +162,7 @@ export function ConversationSidebarAnnotations(props: {
           </span>
         }
       />
-      <TooltipContent align="start">
+      <TooltipContent align="start" side={side}>
         <TooltipTitle>Linked work</TooltipTitle>
         {/* A row can link many items. Scroll the list so the tooltip stays on
             screen; Base UI keeps the popup open while the pointer is on it. */}
@@ -236,7 +244,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;
@@ -309,6 +317,8 @@ function SidebarAnnotationGroupChip(props: {
               {...annotation}
               objectType={annotation.objectType}
               key={annotation.key}
+              // Match the h-3.5 row in rem. A px icon is cut at a small root font size.
+              className="size-3.5"
               decorative
               size={14}
             />
@@ -383,6 +393,12 @@ function SidebarAnnotationStatusChip(props: {
   );
 }
 
+/** Open toward the taller free space, so a long list covers fewer rows. */
+function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
+  const rect = trigger.getBoundingClientRect();
+  return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
+}
+
 function useIsMobileViewport(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -401,8 +417,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -425,9 +441,16 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The closed and removed red, as GitHub shows a closed pull request. */
+export const CLOSED_TONE_CLASS = "text-[#f85149] light:text-[#cf222e]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -437,7 +460,7 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Draft",
   },
   "circle-x": {
-    className: "text-[#f85149] light:text-[#cf222e]",
+    className: CLOSED_TONE_CLASS,
     Icon: CircleX,
     label: "Closed",
   },
@@ -447,12 +470,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -507,7 +530,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]
@@ -527,7 +550,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -577,7 +603,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 
@@ -651,7 +677,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "active";
+  const live = conversationTurnIsActive(detail, conversation);
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -680,7 +706,7 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

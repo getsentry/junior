@@ -65,7 +65,7 @@ describe("Conversation Attachments", () => {
   }) => {
     const conversation = await run(
       webMessage("What is the ticket number in this screenshot?", {
-        images: [SCREENSHOT],
+        files: [SCREENSHOT],
       }),
     );
 

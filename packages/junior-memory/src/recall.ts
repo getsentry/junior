@@ -6,6 +6,7 @@ import {
   type PluginConversationEvents,
   type PluginLogger,
   type PluginReranker,
+  type PromptHistory,
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -31,12 +32,15 @@ const MAX_MEMORY_LINE_CHARS = 600;
 // - 0.50 kept 13, admitted 4, and gave 1 of 11 small-talk queries a memory.
 // - Clear matches scored 0.63-0.93. Indirect matches scored 0.37-0.60.
 const RECALL_MIN_RERANK_SCORE = 0.55;
+const RECALL_CONTEXT_KIND = "recall";
+const RECALL_CONTEXT_VERSION = 1;
 
 export interface MemoryRecallContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
-  events?: PluginConversationEvents;
+  events?: PluginConversationEvents | undefined;
+  loadHistory?: (() => Promise<PromptHistory>) | undefined;
   log: PluginLogger;
   locationId?: string;
   actor?: Actor;
@@ -82,6 +86,38 @@ export const memoryRecallContextSchema = z
 
 type RecalledMemory = z.output<typeof recalledMemorySchema>;
 
+/**
+ * Return a check for memories that the replayed model history already
+ * holds: each memory that an earlier recall in this history injected, until
+ * its content changes, and each memory captured from this Conversation since
+ * this history started, because the history holds the facts that it came
+ * from.
+ */
+function inHistoryCheck(
+  history: PromptHistory,
+  conversationId: string | undefined,
+): (memory: MemoryRecord) => boolean {
+  const injected = new Map<string, string>();
+  for (const context of history.contexts) {
+    if (
+      context.kind !== RECALL_CONTEXT_KIND ||
+      context.version !== RECALL_CONTEXT_VERSION
+    ) {
+      continue;
+    }
+    const parsed = memoryRecallContextSchema.safeParse(context.content);
+    for (const memory of parsed.success ? parsed.data.memories : []) {
+      injected.set(memory.id, memory.content);
+    }
+  }
+  return (memory) =>
+    injected.get(memory.id) ===
+      trimContent(memory.content, MAX_MEMORY_LINE_CHARS) ||
+    (conversationId !== undefined &&
+      memory.conversationId === conversationId &&
+      memory.createdAtMs > (history.startedAtMs ?? -Infinity));
+}
+
 function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
   const header = "Relevant memories for this request:";
   const footer =
@@ -120,15 +156,15 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
 }
 
 async function emitRecallOutcome(args: {
-  events?: PluginConversationEvents;
+  events?: PluginConversationEvents | undefined;
   memories: string[];
 }): Promise<void> {
   await args.events?.emit(memoriesRecalledEvent({ memories: args.memories }));
 }
 
 const memoryRecallContext = definePromptContext({
-  kind: "recall",
-  version: 1,
+  kind: RECALL_CONTEXT_KIND,
+  version: RECALL_CONTEXT_VERSION,
   schema: memoryRecallContextSchema,
   renderPrompt: (content) => renderMemoryPrompt(content.memories),
 });
@@ -137,6 +173,8 @@ const memoryRecallContext = definePromptContext({
 export async function createMemoryPromptContributions(
   context: MemoryRecallContext,
 ): Promise<UserPromptContribution[] | undefined> {
+  // The text holds only the request of the Turn. A Turn with none, such as
+  // an Event or a child agent result, gets no recall.
   if (!context.text.trim()) {
     return undefined;
   }
@@ -150,21 +188,29 @@ export async function createMemoryPromptContributions(
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
   });
-  const candidates = await createMemoryStore(context.db, runtimeContext, {
-    embedder: context.embedder,
-  }).recallMemories({
-    query: context.text,
-    limit: RECALL_CANDIDATE_LIMIT,
+  const [retrieved, history] = await Promise.all([
+    createMemoryStore(context.db, runtimeContext, {
+      embedder: context.embedder,
+    }).recallMemories({
+      query: context.text,
+      limit: RECALL_CANDIDATE_LIMIT,
+    }),
+    context.loadHistory?.(),
+  ]);
+  const inHistory = history
+    ? inHistoryCheck(history, context.conversationId)
+    : () => false;
+  const candidates = retrieved.filter((memory) => !inHistory(memory));
+  // Counts and scores only: recall diagnostics never carry query or memory
+  // text. They sit on the `plugin.hook userPrompt` span next to its latency.
+  context.setSpanAttributes({
+    "app.memory.recall.candidate.count": candidates.length,
+    "app.memory.recall.in_history.count": retrieved.length - candidates.length,
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({ events: context.events, memories: [] });
     return undefined;
   }
-  // Counts and scores only: recall diagnostics never carry query or memory
-  // text. They sit on the `plugin.hook userPrompt` span next to its latency.
-  context.setSpanAttributes({
-    "app.memory.recall.candidate.count": candidates.length,
-  });
   let scores: number[];
   try {
     ({ scores } = await context.reranker.rerank({

@@ -71,7 +71,7 @@ function htmlPage(
 /** Public URL of this plugin's OAuth callback. */
 export function googleCallbackUrl(request: Request): string {
   const base =
-    process.env.JUNIOR_BASE_URL?.trim() || new URL(request.url).origin;
+    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
   return new URL(
     `${GOOGLE_PLUGIN_ROUTE_PREFIX}/oauth/callback`,
     base.endsWith("/") ? base : `${base}/`,
@@ -84,7 +84,7 @@ function adminEmail(
 ): string | undefined {
   const user = context?.auth.user;
   const email = user?.email?.trim().toLowerCase();
-  if (!email || user?.emailVerified !== true || user.isAdmin !== true) {
+  if (!email || user?.emailVerified !== true || !user.isAdmin) {
     return undefined;
   }
   return email;
@@ -93,7 +93,7 @@ function adminEmail(
 function forbidden(): Response {
   return htmlPage(
     "Google setup",
-    "<p>Only Junior admins can connect Junior's Google account. " +
+    "<p>Only admins can connect the bot's Google account. " +
       "An operator can grant the role with <code>junior admin grant &lt;email&gt;</code>.</p>",
     { status: 403 },
   );
@@ -175,7 +175,7 @@ async function finishSignIn(input: {
     });
     return htmlPage(
       "Google connected",
-      `<p>Junior now acts as <code>${escapeHtml(connected.accountEmail)}</code>.</p><p><a href="${SETUP_PAGE_PATH}">Back to setup</a></p>`,
+      `<p>The bot now acts as <code>${escapeHtml(connected.accountEmail)}</code>.</p><p><a href="${SETUP_PAGE_PATH}">Back to setup</a></p>`,
       { headers: clearCookie },
     );
   } catch (error) {
@@ -221,7 +221,7 @@ export function createGoogleSetupPage(): PluginUserPageDefinition {
   return {
     id: "account",
     label: "Google account",
-    description: "Connect the Google Workspace account that Junior acts as.",
+    description: "Connect the Google Workspace account that the bot acts as.",
     navigation: "admin",
     async read(ctx) {
       const config = readGoogleConfig();
@@ -249,7 +249,7 @@ export function createGoogleSetupPage(): PluginUserPageDefinition {
             id: config.accountEmail,
             title: config.accountEmail,
             description: status
-              ? "Connected. Reconnect after Google revokes access or Junior needs new permissions."
+              ? "Connected. Reconnect after Google revokes access or the plugin needs new permissions."
               : `Not connected. Sign in as ${config.accountEmail}, not as yourself.`,
             ...(status
               ? {

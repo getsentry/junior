@@ -5,30 +5,34 @@ import {
 } from "@/chat/slack/tool-support/canvas/context";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
+export const slackCanvasWriteToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description: "Replace the full markdown body of a Slack canvas.",
+  executionMode: "sequential",
+  inputSchema: z.object({
+    canvas: slackCanvasRefParam,
+    content: z.string().describe("UTF-8 markdown content to write."),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(state: ToolState) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description: "Replace the full markdown body of a Slack canvas.",
-    executionMode: "sequential",
-    inputSchema: z.object({
-      canvas: slackCanvasRefParam,
-      content: z.string().describe("UTF-8 markdown content to write."),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackCanvasWriteToolDefinition,
     execute: async ({ canvas, content }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

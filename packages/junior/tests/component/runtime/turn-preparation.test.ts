@@ -20,7 +20,7 @@ const prepareTurnState = createPrepareTurnState({
 
 async function prepare(thread: TestThread, message: Message) {
   return await prepareTurnState({
-    context: { threadId: thread.id },
+    context: { conversationId: thread.id, threadId: thread.id },
     destination: createTestDestination(thread),
     explicitMention: true,
     message,

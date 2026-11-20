@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { apiErrorSchema, createdPersonalTokenSchema } from "@/api/schema";
@@ -8,6 +8,7 @@ import { closeDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { createTools } from "@/chat/tools/index";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 
 const CONVERSATION_ID = "local:preview-handoff:current";
 const PREVIEW_URL = "https://sb-handoff.vercel.run";
@@ -35,25 +36,29 @@ async function createPreviewAs(
     user: await viewer(email),
   }),
 ) {
-  const tools = createTools([], {}, {
-    conversationId: CONVERSATION_ID,
-    destination: { platform: "local", conversationId: CONVERSATION_ID },
-    egress: {
-      async fetch() {
-        return new Response("ok");
+  const tools = createTools(
+    [],
+    {},
+    {
+      conversationId: CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CONVERSATION_ID },
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      resolveActorIdentity,
+      source: createLocalSource(CONVERSATION_ID),
+      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      workspace: {
+        createPreview: async () => url,
+        readFileToBuffer: unused,
+        runCommand: unused,
+        writeFiles: unused,
       },
     },
-    resolveActorIdentity,
-    source: createLocalSource(CONVERSATION_ID),
-    turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
-    workspace: {
-      createPreview: async () => url,
-      readFileToBuffer: unused,
-      runCommand: unused,
-      writeFiles: unused,
-    },
-  } as ToolRuntimeContext);
-  const tool = tools.createPreview;
+  );
+  const tool = tools["createPreview"];
   if (!tool?.execute || !tool.prepareArguments) {
     throw new Error("createPreview is missing");
   }
@@ -76,6 +81,7 @@ function createToken(email: string, previewOrigin: string) {
 
 describe("personal token handoff to a Preview", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
@@ -91,8 +97,35 @@ describe("personal token handoff to a Preview", () => {
     );
     expect(other.status).toBe(403);
     expect(apiErrorSchema.parse(await other.json())).toEqual({
-      error: "Junior did not make this Preview for you.",
+      error: "This Preview was not made for you.",
     });
+  });
+
+  it("lets each person who asked for the Preview send it a token", async () => {
+    await createPreviewAs("owner@example.com");
+    await createPreviewAs("other@example.com");
+
+    const owner = await createToken("owner@example.com", PREVIEW_URL);
+    const other = await createToken("other@example.com", PREVIEW_URL);
+
+    expect(owner.status).toBe(200);
+    expect(other.status).toBe(200);
+  });
+
+  it("renews the Preview when its Sandbox resumes with the same URL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await createPreviewAs("owner@example.com");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1_000);
+    const expired = await createToken("owner@example.com", PREVIEW_URL);
+
+    await renewPreviewOrigins(
+      { previewUrls: () => [PREVIEW_URL] },
+      async () => await viewer("owner@example.com"),
+    );
+    const renewed = await createToken("owner@example.com", PREVIEW_URL);
+
+    expect(expired.status).toBe(403);
+    expect(renewed.status).toBe(200);
   });
 
   it("returns the Preview when Junior cannot record it", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-notion",
-  "version": "0.298.0",
+  "version": "0.310.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -11,8 +11,28 @@
     "url": "git+https://github.com/getsentry/junior.git",
     "directory": "packages/junior-notion"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
-    "plugin.yaml",
+    "dist",
     "skills"
-  ]
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
 }

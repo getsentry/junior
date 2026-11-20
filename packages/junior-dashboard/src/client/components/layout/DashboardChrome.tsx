@@ -19,7 +19,11 @@ import { cn } from "../../styles";
  * a Conversation that has no route yet. `title` names it when the route
  * cannot. Without `onClick`, back shows but waits.
  */
-type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
+type MobileHeaderBack = {
+  label: string;
+  onClick?(): void;
+  title?: string | undefined;
+};
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -154,6 +158,50 @@ export function DashboardChrome(props: {
           data-secondary-slot=""
           ref={chrome.secondarySlotRef}
         />
+      </div>
+      {props.banner}
+    </div>
+  );
+}
+
+/**
+ * The new UI's sticky shell chrome: mobile header, secondary navigation
+ * slot, and banner. One bottom border closes the header and page links, so page link
+ * underlines sit on it. Banners render below that border. Desktop has no
+ * app header, so there the border shows only under page links.
+ */
+export function InboxDashboardChrome(props: {
+  banner?: ReactNode;
+  /** Desktop controls before the page links, such as the hidden pane's. */
+  desktopControls?: ReactNode;
+  header: ReactNode;
+}) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("DashboardChrome requires DashboardChromeProvider");
+  }
+
+  return (
+    <div
+      className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]"
+      data-dashboard-chrome=""
+    >
+      <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b">
+        {props.header}
+        {/* One header row on desktop: the hidden pane's controls, then the
+            page links, so hiding the pane does not add a row. */}
+        <div className="md:flex md:items-center">
+          {props.desktopControls ? (
+            <div className="hidden h-header shrink-0 items-center pl-6 md:flex md:empty:hidden">
+              {props.desktopControls}
+            </div>
+          ) : null}
+          <div
+            className="hidden min-w-0 md:block md:flex-1"
+            data-secondary-slot=""
+            ref={chrome.secondarySlotRef}
+          />
+        </div>
       </div>
       {props.banner}
     </div>

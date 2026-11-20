@@ -1,6 +1,7 @@
 import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "./db";
 import { logWarn } from "@/chat/logging";
+import { isPostgresErrorCode } from "./postgres-error";
 
 // A statement such as ADD COLUMN is instant once it has its table lock. While
 // it waits for that lock behind an open app transaction, every later query on
@@ -49,17 +50,6 @@ function concurrentIndexes(
   });
 }
 
-function isLockTimeout(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current instanceof Error && depth < 5; depth += 1) {
-    if ("code" in current && current.code === LOCK_NOT_AVAILABLE) {
-      return true;
-    }
-    current = current.cause;
-  }
-  return false;
-}
-
 /**
  * Wait for the migration lock by polling `pg_try_advisory_lock`. A session
  * blocked in `pg_advisory_lock` holds a snapshot, and `CREATE INDEX
@@ -69,21 +59,27 @@ function isLockTimeout(error: unknown): boolean {
 export async function waitForMigrationLock(
   tryLock: () => Promise<boolean>,
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Poll until the lock is free. */
   while (!(await tryLock())) {
     await new Promise((resolve) => setTimeout(resolve, MIGRATION_LOCK_POLL_MS));
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 async function retryOnLockTimeout(
   tag: string,
   apply: () => Promise<void>,
 ): Promise<void> {
+  /* oxlint-disable no-await-in-loop -- Retry only after the attempt before fails. */
   for (let attempt = 1; ; attempt += 1) {
     try {
       await apply();
       return;
     } catch (error) {
-      if (attempt >= LOCK_ATTEMPTS || !isLockTimeout(error)) {
+      if (
+        attempt >= LOCK_ATTEMPTS ||
+        !isPostgresErrorCode(error, LOCK_NOT_AVAILABLE)
+      ) {
         throw error;
       }
       logWarn("db.migration.lock_timeout", {
@@ -93,6 +89,7 @@ async function retryOnLockTimeout(
       await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
     }
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -120,6 +117,7 @@ export async function applyMigrations(
   );
   const appliedAt = Number(last?.createdAt ?? 0);
 
+  /* oxlint-disable no-await-in-loop -- Migrations, and the statements of each, apply in order. */
   for (const migration of readMigrationFiles(config)) {
     if (migration.folderMillis <= appliedAt) {
       continue;
@@ -158,4 +156,5 @@ export async function applyMigrations(
       });
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }

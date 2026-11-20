@@ -38,7 +38,7 @@ const BASE_URL = "https://junior.example.com";
 const EGRESS_ID = "sbx_workload_identity";
 const IAP_HOST = "iap-app.example.test";
 const CLOUD_RUN_HOST = "cloud-run.example.test";
-const GOOGLE_API_HOST = "google-api.example.test";
+const GOOGLE_API_HOST = "bigquery.googleapis.com";
 const AZURE_HOST = "azure-app.example.test";
 const WORKLOAD_IDENTITY_PROVIDER =
   "projects/123456/locations/global/workloadIdentityPools/vercel/providers/junior";
@@ -48,10 +48,7 @@ const WORKLOAD_IDENTITY_PROVIDER =
  * manifests. The IAP plugin comes from the `plugin.yaml` fixture.
  */
 async function startApp() {
-  const gcp = {
-    workloadIdentityProvider: WORKLOAD_IDENTITY_PROVIDER,
-    serviceAccount: "runner@example-project.iam.gserviceaccount.com",
-  };
+  const provider = { workloadIdentityProvider: WORKLOAD_IDENTITY_PROVIDER };
   await createApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
@@ -59,12 +56,15 @@ async function startApp() {
           name: "cloud-run",
           displayName: "Cloud Run",
           description: "Cloud Run fixture",
+          toolsSendNoCredential: true,
           credentials: {
             type: "workload-identity",
             domains: [CLOUD_RUN_HOST],
             header: "X-Serverless-Authorization",
             gcp: {
-              ...gcp,
+              ...provider,
+              serviceAccount:
+                "cloud-run@example-project.iam.gserviceaccount.com",
               token: "id-token",
               audience: `https://${CLOUD_RUN_HOST}`,
             },
@@ -76,11 +76,14 @@ async function startApp() {
           name: "google-api",
           displayName: "Google API",
           description: "Google API fixture",
+          toolsSendNoCredential: true,
           credentials: {
             type: "workload-identity",
             domains: [GOOGLE_API_HOST],
             gcp: {
-              ...gcp,
+              ...provider,
+              serviceAccount:
+                "bigquery@example-project.iam.gserviceaccount.com",
               vercelOidcAudience: "https://vercel.com/acme",
               token: "access-token",
               scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
@@ -93,6 +96,7 @@ async function startApp() {
           name: "azure-app",
           displayName: "Azure App",
           description: "Azure fixture",
+          toolsSendNoCredential: true,
           credentials: {
             type: "workload-identity",
             domains: [AZURE_HOST],
@@ -185,8 +189,7 @@ describe("sandbox egress workload identity credentials", () => {
   it("sends an IAP service account JWT in Proxy-Authorization next to static API headers, keeps only the token in the shared lease, and mints again when it expires", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const response = await sendFromSandbox(IAP_HOST, {
-      authorization: "Key sandbox-value",
-      "proxy-authorization": "Bearer sandbox-value",
+      "proxy-authorization": "Bearer host_managed_credential",
     });
 
     expect(response.status).toBe(200);
@@ -201,14 +204,14 @@ describe("sandbox egress workload identity credentials", () => {
       scope: "https://www.googleapis.com/auth/cloud-platform",
       subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
     });
-    expect(jwtClaims(String(sts?.body.subject_token)).aud).toBe(
+    expect(jwtClaims(String(sts?.body["subject_token"]))["aud"]).toBe(
       `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
     );
     expect(signJwt?.url).toBe(
       "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/iap-app%40example-project.iam.gserviceaccount.com:signJwt",
     );
     expect(signJwt?.authorization).toBe(`Bearer ${GCP_STS_ACCESS_TOKEN}`);
-    const claims = JSON.parse(String(signJwt?.body.payload)) as Record<
+    const claims = JSON.parse(String(signJwt?.body["payload"])) as Record<
       string,
       number | string
     >;
@@ -217,7 +220,7 @@ describe("sandbox egress workload identity credentials", () => {
       sub: "iap-app@example-project.iam.gserviceaccount.com",
       aud: `https://${IAP_HOST}/*`,
     });
-    expect(Number(claims.exp) - Number(claims.iat)).toBe(3600);
+    expect(Number(claims["exp"]) - Number(claims["iat"])).toBe(3600);
 
     // Host state keeps only the minted token, never the static API key.
     const stored = await getSandboxEgressCredentialLease(
@@ -241,7 +244,7 @@ describe("sandbox egress workload identity credentials", () => {
 
     // The lease is shared until 5 minutes before the token expires. Static
     // API headers resolve from env on each request.
-    process.env.IAP_APP_API_KEY = "rotated-api-key";
+    process.env["IAP_APP_API_KEY"] = "rotated-api-key";
     vi.setSystemTime(Date.now() + 54 * 60 * 1000);
     expect((await sendFromSandbox(IAP_HOST)).status).toBe(200);
     expect(workloadIdentityRequests()).toHaveLength(2);
@@ -264,7 +267,7 @@ describe("sandbox egress workload identity credentials", () => {
 
     const [cloudRun, googleApi, azure] = upstreamHeaders;
     const idToken = cloudRun?.get("x-serverless-authorization") ?? "";
-    expect(jwtClaims(idToken.replace(/^Bearer /, "")).aud).toBe(
+    expect(jwtClaims(idToken.replace(/^Bearer /, ""))["aud"]).toBe(
       `https://${CLOUD_RUN_HOST}`,
     );
     expect(cloudRun?.get("authorization")).toBeNull();
@@ -275,7 +278,9 @@ describe("sandbox egress workload identity credentials", () => {
     expect(
       requests
         .filter((request) => request.step === "gcp-sts")
-        .map((request) => jwtClaims(String(request.body.subject_token)).aud),
+        .map(
+          (request) => jwtClaims(String(request.body["subject_token"]))["aud"],
+        ),
     ).toEqual([
       `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
       "https://vercel.com/acme",
@@ -305,8 +310,37 @@ describe("sandbox egress workload identity credentials", () => {
         "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       scope: "api://azure-app/.default",
     });
-    expect(jwtClaims(String(entra?.body.client_assertion)).aud).toBe(
+    expect(jwtClaims(String(entra?.body["client_assertion"]))["aud"]).toBe(
       "api://AzureADTokenExchange",
+    );
+  });
+
+  it("rejects two plugins that mint tokens for one service account", async () => {
+    const plugin = (name: string) =>
+      defineJuniorPlugin({
+        manifest: {
+          name,
+          displayName: name,
+          description: `${name} fixture`,
+          credentials: {
+            type: "workload-identity",
+            domains: [`${name}.example.test`],
+            gcp: {
+              workloadIdentityProvider: WORKLOAD_IDENTITY_PROVIDER,
+              serviceAccount: "shared@example-project.iam.gserviceaccount.com",
+              token: "id-token",
+              audience: `https://${name}.example.test`,
+            },
+          },
+        },
+      });
+
+    const started = createApp({
+      plugins: defineJuniorPlugins([plugin("alpha"), plugin("beta")]),
+    }).then(() => sendFromSandbox("alpha.example.test"));
+
+    await expect(started).rejects.toThrow(
+      'Duplicate workload identity gcp service account shared@example-project.iam.gserviceaccount.com in plugin "beta" already declared by plugin "alpha"',
     );
   });
 

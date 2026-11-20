@@ -192,6 +192,13 @@ export interface PluginManifest {
   mcp?: PluginMcpConfig;
   name: string;
   oauth?: PluginOAuthConfig;
+  /**
+   * Facts for action review about where this plugin's writes go, such as
+   * which of them people outside the organization can read. Guardian reads
+   * it in its system prompt. The agent never sees it, and it never grants
+   * authority.
+   */
+  reviewContext?: string;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   target?: {
@@ -199,4 +206,10 @@ export interface PluginManifest {
     configKey: string;
     type: string;
   };
+  /**
+   * Set when the plugin's own Sandbox tools, such as git, send no credential.
+   * A Sandbox request to its domains with no credential then gets one.
+   * Otherwise only a request that sends the plugin's placeholder gets one.
+   */
+  toolsSendNoCredential?: boolean;
 }

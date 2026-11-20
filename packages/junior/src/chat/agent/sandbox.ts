@@ -3,11 +3,12 @@
  *
  * The sandbox module owns provider lifecycle and recovery. This module adds
  * agent-specific preparation, durable reference propagation, custom command
- * routing, and generated-artifact materialization.
+ * routing, and generated-file materialization.
  */
 import type { FileUpload } from "chat";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { withArtifactNote, type ArtifactSync } from "@/chat/artifacts/sync";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
@@ -25,22 +26,24 @@ import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { writeSandboxGeneratedArtifacts } from "@/chat/tools/sandbox/generated-artifacts";
-import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
+import { writeSandboxGeneratedFiles } from "@/chat/tools/sandbox/generated-files";
+import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   traceContext: LogContext;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
-  egressSignals?: SandboxEgressSignalTransport;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
+  egressSignals?: SandboxEgressSignalTransport | undefined;
   conversationId?: string;
-  credentialEgress?: CredentialContext;
+  credentialEgress?: CredentialContext | undefined;
   credentialAuditSource?: CredentialAuditSource;
-  actor?: Actor;
-  locationConfiguration?: LocationConfigurationService;
+  actor?: Actor | undefined;
+  /** Saves and restores the Conversation's artifacts. Unset without attachment storage. */
+  artifacts?: ArtifactSync | undefined;
+  locationConfiguration?: LocationConfigurationService | undefined;
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
@@ -61,9 +64,7 @@ export interface AgentSandbox {
   sandboxRef(): SandboxRef | undefined;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
-  writeGeneratedArtifacts(
-    files: FileUpload[],
-  ): Promise<GeneratedArtifactFileRef[]>;
+  writeGeneratedFiles(files: FileUpload[]): Promise<GeneratedFileRef[]>;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -77,8 +78,8 @@ function textContent(value: unknown): string {
     ? value
         .flatMap((part) => {
           const item = record(part);
-          return item.type === "text" && typeof item.text === "string"
-            ? [item.text]
+          return item["type"] === "text" && typeof item["text"] === "string"
+            ? [item["text"]]
             : [];
         })
         .join("\n")
@@ -113,10 +114,10 @@ export function createPluginToolSandbox(
       await options.handleAuthSignal(normalized.details);
       input.signal?.throwIfAborted();
       const details = record(normalized.details);
-      if (details.status === "building") {
+      if (details["status"] === "building") {
         const message =
-          typeof details.message === "string" && details.message.trim()
-            ? details.message.trim()
+          typeof details["message"] === "string" && details["message"].trim()
+            ? details["message"].trim()
             : textContent(normalized.content).trim();
         return {
           exitCode: 1,
@@ -127,13 +128,14 @@ export function createPluginToolSandbox(
         };
       }
       return {
-        exitCode: typeof details.exit_code === "number" ? details.exit_code : 1,
-        stdout: typeof details.stdout === "string" ? details.stdout : "",
+        exitCode:
+          typeof details["exit_code"] === "number" ? details["exit_code"] : 1,
+        stdout: typeof details["stdout"] === "string" ? details["stdout"] : "",
         stderr:
-          details.permission_denied !== undefined
+          details["permission_denied"] !== undefined
             ? textContent(normalized.content)
-            : typeof details.stderr === "string"
-              ? details.stderr
+            : typeof details["stderr"] === "string"
+              ? details["stderr"]
               : "",
       };
     },
@@ -172,7 +174,10 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     conversationId: options.conversationId,
     credentialEgress: options.credentialEgress,
     credentialAuditSource: options.credentialAuditSource,
-    prepare: options.prepareSandbox,
+    prepare: async (workspace) => {
+      await options.prepareSandbox(workspace);
+      await options.artifacts?.restore(workspace);
+    },
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
       options.onSandboxRefChanged(sandboxRef);
@@ -210,11 +215,19 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
             return formatSandboxCommandResult(result.result);
           }
         }
-        return await sandbox.tools.execute(params);
+        const result = await sandbox.tools.execute(params);
+        // Save even after an abort: the tool finished, and a later restore
+        // would put the old saved copy back over its changes.
+        if (!options.artifacts) return result;
+        const note = await options.artifacts.afterToolCall(
+          params.toolName,
+          sandbox.workspace,
+        );
+        return note ? withArtifactNote(result, note) : result;
       },
     },
-    async writeGeneratedArtifacts(files) {
-      return await writeSandboxGeneratedArtifacts(sandbox.workspace, files);
+    async writeGeneratedFiles(files) {
+      return await writeSandboxGeneratedFiles(sandbox.workspace, files);
     },
   };
 }

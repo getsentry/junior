@@ -10,7 +10,6 @@ import {
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
-  InputImage,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -22,7 +21,7 @@ import {
   type ComposerQuestionAnswers,
 } from "../review-desk/ComposerQuestion";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
-import { readStoredComposerImages } from "./ComposerImages";
+import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
@@ -31,9 +30,11 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
+import type { ComposerConversation } from "./ComposerMention";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
+import { queuedTextInDraft, setQueuedTextInDraft } from "./queuedEditText";
 import {
   useAppendConversationMessage,
   useCancelConversationPendingMessages,
@@ -41,12 +42,15 @@ import {
   useStopConversationTurn,
 } from "./queries";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
   /** Draft id of the composer the reader typed in before. Its text moves here. */
   draftFrom?: string;
   key: string;
+  /** The docked question to show and focus. */
+  questionId?: string;
 };
 
 /**
@@ -59,11 +63,13 @@ export type ReplyFocusRequest = {
 export const ConversationReplyFooter = memo(ReplyFooter);
 
 function ReplyFooter(props: {
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   committedMessageIds: readonly string[];
   conversationId: string;
   /** A request to focus the message box. */
-  focusRequest?: ReplyFocusRequest;
+  focusRequest?: ReplyFocusRequest | undefined;
+  /** The Conversation that the composer writes to. */
+  conversation?: ComposerConversation | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   /**
@@ -71,7 +77,9 @@ function ReplyFooter(props: {
    * by itself, not by a step or an answer of the reader.
    */
   onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
-  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingAuthorization?:
+    | ConversationPendingMessagesReport["authorization"]
+    | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
   /** Lets the page add a quote of selected text to the draft. */
@@ -141,14 +149,28 @@ function ReplyFooter(props: {
   const hasQuestionAnswersRef = useRef(hasQuestionAnswers);
   hasQuestionAnswersRef.current = hasQuestionAnswers;
   const { confirmSubmit } = unsentAnswers;
+  // Resolves to true when the queued message of the edit in flight left the
+  // queue. Its text is in the draft before the cancel lands.
+  const editCancelledRef = useRef<Promise<boolean>>(undefined);
   // A failed answer keeps the draft, so the reader can send both again.
   // Only a message drops the details-panel picks, so only a message asks.
   const beforeSubmit = useCallback(
     ({ sendsMessage }: { sendsMessage: boolean }) => {
-      const confirmation = sendsMessage ? confirmSubmit() : undefined;
-      if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
+      const editCancelled = editCancelledRef.current;
+      // A send during an edit waits for its cancel, and stops when the
+      // queued message is still queued or Junior read it. Then the text does
+      // not go out twice, and the reader sees the edit error. The unsent
+      // answers dialog opens only after the wait, so a stopped send leaves
+      // none open.
+      const confirm = () => (sendsMessage ? confirmSubmit() : undefined);
+      const confirmation = editCancelled ? undefined : confirm();
+      if (!editCancelled && !confirmation && !hasQuestionAnswersRef.current) {
+        return undefined;
+      }
       return (async () => {
-        if (confirmation && !(await confirmation)) return false;
+        if (editCancelled && !(await editCancelled)) return false;
+        const confirmed = editCancelled ? confirm() : confirmation;
+        if (confirmed && !(await confirmed)) return false;
         return (await questionAnswersRef.current?.send()) ?? true;
       })();
     },
@@ -190,23 +212,23 @@ function ReplyFooter(props: {
       (message) => !committedIds.has(message.messageId),
     );
   const onSubmit = useCallback(
-    async (message: string, idempotencyKey: string, images?: InputImage[]) => {
+    async (message: string, idempotencyKey: string, files?: File[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
         inline: sendInlineRef.current,
         message,
-        images,
+        files,
       });
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
-    if (!message.idempotencyKey || (!message.text && !message.images?.length))
+    if (!message.idempotencyKey || (!message.text && !message.files?.length))
       return;
     void appendMessageRef.current.mutateAsync({
       idempotencyKey: message.idempotencyKey,
       message: message.text ?? "",
-      images: message.images,
+      files: message.files,
     });
   }, []);
   const onSubmitStart = useCallback(() => {
@@ -256,10 +278,15 @@ function ReplyFooter(props: {
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
+  const focusQuestionId = props.focusRequest?.questionId;
   const questionShown = questions.length > 0;
+  // A request for one question waits until a later page brings it in.
+  const questionReady = focusQuestionId
+    ? questions.some((question) => question.id === focusQuestionId)
+    : questionShown;
   useEffect(() => {
     // A docked question takes the focus at once, before the reader types.
-    if (!focusKey || (questionsPending && !questionShown)) return;
+    if (!focusKey || (questionsPending && !questionReady)) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
@@ -268,13 +295,16 @@ function ReplyFooter(props: {
     if (text) composerRef.current?.restoreMessage({ text });
     else if (draftFrom) composerRef.current?.focus();
     else if (!touchKeyboardMatches()) {
+      if (focusQuestionId) questionAnswersRef.current?.show(focusQuestionId);
       if (questionShown) questionRef.current?.focus();
       else composerRef.current?.focus();
     }
   }, [
     draftFrom,
     focusKey,
+    focusQuestionId,
     onFocusRequestDone,
+    questionReady,
     questionShown,
     questionsPending,
   ]);
@@ -282,47 +312,72 @@ function ReplyFooter(props: {
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
-      // The image read runs before the cancel starts, so isPending alone does
+      // The file read runs before the cancel starts, so isPending alone does
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
+      const conversationId = props.conversationId;
       const inboundMessageId = message.inboundMessageId;
+      const text = message.text ?? "";
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
+      // Text alone moves at once, before the cancel, and into the saved
+      // draft. When the edit fails, it stays with the error and the reader
+      // decides. Text with files moves with its files after the cancel, so
+      // the reader cannot send the text without them.
+      const textFirst = !message.attachments?.length;
+      let settleEdit = (_cancelled: boolean) => {};
+      if (textFirst) {
+        editCancelledRef.current = new Promise((resolve) => {
+          settleEdit = resolve;
+        });
+      }
+      if (textFirst && !queuedTextInDraft(conversationId, inboundMessageId)) {
+        setQueuedTextInDraft(conversationId, inboundMessageId, true);
+        composerRef.current?.restoreMessage({ text });
+      }
       try {
-        // Read images first. A failed read must leave the message queued.
-        const images = await readStoredComposerImages(
-          props.conversationId,
+        // Read files first. A failed read must leave the message queued.
+        const files = await readStoredComposerFiles(
+          conversationId,
           message.attachments,
         );
         // The reader left during the read. Keep the message in the queue.
         if (!composerRef.current) return;
-        // Check before the cancel. After it, images that do not fit are lost.
-        if (!composerRef.current.canRestoreImages(images)) {
-          setQueueActionError("Remove some draft images to edit that message.");
+        // Check before the cancel. After it, files that do not fit are lost.
+        if (!composerRef.current.canRestoreFiles(files)) {
+          setQueueActionError("Remove some draft files to edit that message.");
           return;
         }
         const result = await editCancelRef.current.mutateAsync({
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
+        const cancelled =
+          result.cancelledInboundMessageIds.includes(inboundMessageId);
+        settleEdit(cancelled);
+        if (textFirst) {
+          setQueuedTextInDraft(conversationId, inboundMessageId, false);
+        }
         // Junior can read the message before the cancel lands, or someone
         // else can remove it. Then there is nothing to edit.
-        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+        if (!cancelled) {
           setQueueActionError("That message was already read or removed.");
           return;
         }
-        const restored = { images, text: message.text ?? "" };
+        if (textFirst) return;
         if (composerRef.current) {
-          composerRef.current.restoreMessage(restored);
+          composerRef.current.restoreMessage({ files, text });
         } else {
           // The reader left during the cancel. Keep the text in the saved
           // draft so it is there when they come back.
-          restoreStoredDraftText(props.conversationId, restored.text);
+          restoreStoredDraftText(conversationId, text);
         }
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
+        settleEdit(false);
+        editCancelledRef.current = undefined;
         editingRef.current = false;
         setEditTargetInboundMessageId(undefined);
       }
@@ -427,8 +482,11 @@ function ReplyFooter(props: {
         draftId={props.conversationId}
         error={
           queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          (stopTurn.error
+            ? `Could not stop ${getDashboardAgentName()}. Try again.`
+            : undefined)
         }
+        conversation={props.conversation}
         ref={composerRef}
         label="Continue this conversation"
         placeholder={questionShown ? "Or type your answer…" : undefined}

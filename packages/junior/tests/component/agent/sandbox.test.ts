@@ -6,13 +6,13 @@ const {
   createSandboxMock,
   executeSandboxToolMock,
   executeCustomCommandMock,
-  writeGeneratedArtifactsMock,
+  writeGeneratedFilesMock,
 } = vi.hoisted(() => ({
   captureRepositoryInstructionsMock: vi.fn(),
   createSandboxMock: vi.fn(),
   executeSandboxToolMock: vi.fn(),
   executeCustomCommandMock: vi.fn(),
-  writeGeneratedArtifactsMock: vi.fn(),
+  writeGeneratedFilesMock: vi.fn(),
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
@@ -27,8 +27,8 @@ vi.mock("@/chat/discovery", () => ({
   listReferenceFiles: () => ["/tmp/reference.md"],
 }));
 
-vi.mock("@/chat/tools/sandbox/generated-artifacts", () => ({
-  writeSandboxGeneratedArtifacts: writeGeneratedArtifactsMock,
+vi.mock("@/chat/tools/sandbox/generated-files", () => ({
+  writeSandboxGeneratedFiles: writeGeneratedFilesMock,
 }));
 
 import {
@@ -223,18 +223,58 @@ describe("createAgentSandbox", () => {
 
   it("forwards ordinary tools and generated artifacts", async () => {
     executeSandboxToolMock.mockResolvedValue({ cwd: "/workspace" });
-    writeGeneratedArtifactsMock.mockResolvedValue([{ path: "/tmp/file.txt" }]);
+    writeGeneratedFilesMock.mockResolvedValue([{ path: "/tmp/file.txt" }]);
     const sandbox = createAgentSandbox(options());
     const call = { toolName: "bash", input: { command: "pwd" } };
 
     await expect(sandbox.tools.execute(call)).resolves.toEqual({
       cwd: "/workspace",
     });
-    await expect(sandbox.writeGeneratedArtifacts([])).resolves.toEqual([
+    await expect(sandbox.writeGeneratedFiles([])).resolves.toEqual([
       { path: "/tmp/file.txt" },
     ]);
 
     expect(executeSandboxToolMock).toHaveBeenCalledWith(call);
-    expect(writeGeneratedArtifactsMock).toHaveBeenCalledWith(workspace, []);
+    expect(writeGeneratedFilesMock).toHaveBeenCalledWith(workspace, []);
+  });
+
+  it("restores artifacts after preparation and adds the save note to results", async () => {
+    const calls: string[] = [];
+    const artifacts = {
+      restore: vi.fn(async () => {
+        calls.push("restore");
+      }),
+      afterToolCall: vi.fn(async () => "not saved"),
+    };
+    executeSandboxToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "{}" }],
+      details: { exit_code: 0 },
+    });
+    const sandbox = createAgentSandbox(
+      options({
+        artifacts,
+        prepareSandbox: async () => {
+          calls.push("prepare");
+        },
+      }),
+    );
+
+    await capturedOptions.prepare?.(workspace);
+    const result = await sandbox.tools.execute({
+      toolName: "bash",
+      input: { command: "touch artifacts/a" },
+    });
+
+    expect(calls).toEqual(["prepare", "restore"]);
+    expect(artifacts.afterToolCall).toHaveBeenCalledWith("bash", workspace);
+    expect(result).toEqual({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ artifacts_note: "not saved", exit_code: 0 }),
+        },
+      ],
+      details: { artifacts_note: "not saved", exit_code: 0 },
+    });
   });
 });

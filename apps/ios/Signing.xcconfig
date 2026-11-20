@@ -1,0 +1,7 @@
+// Signing for device builds. The simulator signs ad hoc and needs none of it.
+// Put your team in Local.xcconfig next to this file; git ignores that file:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   JUNIOR_BUNDLE_ID = com.example.junior   // Only if your team cannot use the default.
+JUNIOR_BUNDLE_ID = io.sentry.junior
+#include? "Local.xcconfig"

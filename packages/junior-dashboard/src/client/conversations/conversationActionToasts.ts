@@ -23,17 +23,31 @@ export function useConversationActionToasts() {
   const { add, close, update } = useToastManager();
   const queryClient = useQueryClient();
 
+  // `retry` adds Retry, which tries the action again. A high priority toast
+  // is announced as an alert and hides its own buttons from screen readers,
+  // so a toast with Retry keeps the normal priority.
   const showActionError = useCallback(
-    (conversation: Conversation, title: string) => {
+    (conversation: Conversation, title: string, retry?: () => void) => {
+      const id = actionErrorToastId(conversation.id);
       add({
+        ...(retry
+          ? {
+              actionProps: {
+                children: "Retry",
+                onClick: () => {
+                  close(id);
+                  retry();
+                },
+              },
+            }
+          : { priority: "high" }),
         description: conversationDisplayTitle(conversation),
-        id: actionErrorToastId(conversation.id),
-        priority: "high",
+        id,
         title,
         type: "error",
       });
     },
-    [add],
+    [add, close],
   );
 
   const showArchiveError = useCallback(
@@ -88,6 +102,8 @@ export function useConversationActionToasts() {
       function restoreFailed() {
         let kept = false;
         update(ARCHIVED_TOAST_ID, (toast) => {
+          // Base UI types toast data as `any`.
+          // oxlint-disable-next-line typescript/no-unsafe-member-access
           if (toast.data?.conversationId !== conversation.id) return {};
           kept = true;
           return {

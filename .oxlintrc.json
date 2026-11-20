@@ -1,0 +1,447 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": [
+    "./tools/oxlint/type-aware.json",
+    "./tools/oxlint/await-in-loop.json"
+  ],
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "node",
+    "vitest"
+  ],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "junior",
+      "specifier": "./tools/oxlint/junior/index.ts"
+    }
+  ],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/.vercel/**",
+    "**/.output/**",
+    "**/.nitro/**",
+    "**/.astro/**",
+    ".playwright/**",
+    "test-results/**",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "packages/junior-evals/fixtures/**"
+  ],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@earendil-works/pi-ai",
+            "importNames": [
+              "completeSimple",
+              "getEnvApiKey",
+              "getModels",
+              "registerApiProvider"
+            ],
+            "message": "Use @/chat/pi/client so provider calls stay traced and gateway auth stays centralized."
+          },
+          {
+            "name": "@earendil-works/pi-ai/compat",
+            "importNames": [
+              "completeSimple",
+              "getEnvApiKey",
+              "getModels",
+              "registerApiProvider"
+            ],
+            "message": "Use @/chat/pi/client so provider calls stay traced and gateway auth stays centralized."
+          },
+          {
+            "name": "@/chat/pi/sdk",
+            "importNames": [
+              "completeSimple",
+              "getEnvApiKey",
+              "getModels",
+              "registerApiProvider"
+            ],
+            "message": "Use @/chat/pi/client so provider calls stay traced and gateway auth stays centralized."
+          },
+          {
+            "name": "@earendil-works/pi-ai/api/anthropic-messages",
+            "message": "Register anthropic providers only in @/chat/pi/client."
+          }
+        ]
+      }
+    ],
+    "preserve-caught-error": "error",
+    "unicorn/no-array-for-each": "error",
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "vitest/expect-expect": "off",
+    "vitest/hoisted-apis-on-top": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-known-value-widening": "off",
+    "anti-slop/no-module-mocking": "off",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "off",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "off",
+    "anti-slop/no-unknown-returns": "off",
+    "anti-slop/no-unsafe-dictionary-type": "off",
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "junior/no-read-only-object-annotations": "error",
+    "junior/zod-namespace-import": "error"
+  },
+  "overrides": [
+    {
+      "files": ["packages/junior/src/**/*.ts"],
+      "rules": {
+        "junior/touch-conversation-detail": "error"
+      }
+    },
+    {
+      "files": ["packages/junior/src/api/**/*.ts"],
+      "rules": {
+        "junior/no-response-schema-parse": "error"
+      }
+    },
+    {
+      "files": ["packages/*/src/**/*.ts"],
+      "rules": {
+        "junior/no-raw-sql-queries": "error",
+        "junior/no-regex-url-parsing": "error",
+        "junior/no-value-switch": "error"
+      }
+    },
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
+        "junior/bounded-fan-out": "error",
+        "junior/no-service-fallback": "error",
+        "junior/prefer-map-bounded": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-evals/src/fixture/**",
+        "packages/junior-testing/src/**"
+      ],
+      "rules": {
+        "junior/bounded-fan-out": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/chat/cache-warming/warmup.ts",
+        "packages/junior/src/chat/pi/traced-stream.ts",
+        "packages/junior/src/chat/sandbox/egress/vercel.ts"
+      ],
+      "rules": {
+        "junior/no-service-fallback": "off"
+      }
+    },
+    {
+      "files": ["packages/junior/src/**/*.ts", "packages/junior-*/src/**/*.ts"],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "error",
+        "junior/no-prompt-tag-matching": "error",
+        "junior/no-prompt-text-escapes": "error",
+        "junior/prompt-tag-attributes": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-dashboard/**",
+        "packages/junior-evals/**",
+        "packages/junior-plugin-api/src/prompt-tags.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-tag-matching": "off",
+        "junior/no-prompt-text-escapes": "off",
+        "junior/prompt-tag-attributes": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/api/html.ts",
+        "packages/junior/src/api/acp/authorization-page.ts",
+        "packages/junior/src/api/mcp/oauth/consent-page.ts",
+        "packages/junior/src/api/mcp/oauth/page.ts",
+        "packages/junior/src/handlers/oauth-html.ts",
+        "packages/junior/src/chat/slack/tool-support/canvas/html.ts",
+        "packages/junior/src/chat/slack/mrkdwn.ts",
+        "packages/junior-google/src/setup-routes.ts"
+      ],
+      "rules": {
+        "junior/no-hand-built-prompt-tags": "off",
+        "junior/no-prompt-text-escapes": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["@ai-sdk/*"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "regex": "^@earendil-works/pi-ai(/|$)",
+                "allowTypeImports": true,
+                "allowImportNames": [
+                  "calculateContextTokens",
+                  "getInitialSystemMessage",
+                  "getSystemMessageText",
+                  "isRetryableAssistantError",
+                  "mergeClientIdentity",
+                  "renderSystemMessageUpdate"
+                ],
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts. Add a Pi helper to allowImportNames only if it does not call a model."
+              },
+              {
+                "group": ["**/pi/sdk", "**/pi/sdk.js"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["**/pi/client", "**/pi/client.js"],
+                "importNames": [
+                  "completeDecision",
+                  "completeObject",
+                  "completeText",
+                  "embedTexts",
+                  "generateImages",
+                  "rerankTexts",
+                  "searchWeb"
+                ],
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["**/pi/transcription", "**/pi/transcription.js"],
+                "importNames": ["transcribeFromUrl"],
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost."
+              },
+              {
+                "group": ["**/credential-support.js"],
+                "importNames": ["githubRequest", "issueInstallationToken"],
+                "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only webhook handling in src/webhooks/ may call GitHub directly."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/junior-github/src/**/*.ts"],
+      "rules": {
+        "junior/github-graphql-schema": "error",
+        "junior/use-github-api": "error",
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "globalThis",
+            "property": "fetch",
+            "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/junior-github/src/webhooks/**/*.ts",
+        "packages/junior-github/src/credential-support.ts",
+        "packages/junior-github/src/default-branch.ts",
+        "packages/junior-github/src/github-status.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "group": ["@ai-sdk/*"],
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              },
+              {
+                "regex": "^@earendil-works/pi-ai(/|$)",
+                "allowTypeImports": true,
+                "message": "Call models through @/chat/core-model, so each call names its operation and records its cost. For a new kind of call, add the raw call to chat/pi/client.ts and a wrapper to chat/core-model.ts."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": "off",
+        "no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": ["packages/junior-github/src/tool-support/github-api.ts"],
+      "rules": {
+        "junior/use-github-api": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/chat/pi/**",
+        "packages/junior/src/chat/core-model.ts",
+        "packages/junior/src/chat/plugins/model.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/tests/component/**",
+        "packages/junior/tests/integration/**"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/tests/component/workspace-tools.test.ts",
+        "packages/junior/tests/component/plugins/plugin-registry-packages.test.ts",
+        "packages/junior/tests/component/sandbox/snapshot/resolve.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-sandbox.test.ts",
+        "packages/junior/tests/component/briefs/conversation-brief-task.test.ts",
+        "packages/junior/tests/component/memory-plugin-storage.test.ts",
+        "packages/junior/tests/component/plugins/plugin-registry.test.ts",
+        "packages/junior/tests/component/task-execution/conversation-index-redis.test.ts",
+        "packages/junior/tests/component/handlers/sandbox-egress-proxy.test.ts",
+        "packages/junior/tests/component/config/chat-config.test.ts",
+        "packages/junior/tests/component/skills-plugin-provider.test.ts",
+        "packages/junior/tests/component/cli/chat-cli.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-agent-continue.test.ts",
+        "packages/junior/tests/component/cli/local-chat-composition.test.ts",
+        "packages/junior/tests/component/plugins/notion-plugin.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-error-path.test.ts",
+        "packages/junior/tests/component/misc/sandbox-executor.test.ts",
+        "packages/junior/tests/component/tools/load-skill.test.ts",
+        "packages/junior/tests/component/task-execution/checkpoint.test.ts",
+        "packages/junior/tests/component/plugins/amplitude-plugin.test.ts",
+        "packages/junior/tests/component/slack/footer-sentry-link.test.ts",
+        "packages/junior/tests/component/tool-support/pi-tool-adapter.test.ts",
+        "packages/junior/tests/component/runtime/agent-run-tool-timeout-continuation.test.ts",
+        "packages/junior/tests/component/app-sandbox-trace-config.test.ts",
+        "packages/junior/tests/component/plugins/plugin-run-actors.test.ts",
+        "packages/junior/tests/component/vercel-queue-dev.test.ts",
+        "packages/junior/tests/component/slack/inbound-telemetry.test.ts",
+        "packages/junior/tests/component/agent/sandbox.test.ts",
+        "packages/junior/tests/component/plugins/plugin-prompt-hooks.test.ts",
+        "packages/junior/tests/component/sandbox/snapshot/workspace.test.ts"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "off"
+      }
+    },
+    {
+      "files": [
+        "**/tests/**",
+        "**/*.test.ts",
+        "packages/junior-evals/**",
+        "packages/junior-testing/**"
+      ],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-misused-promises": [
+          "error",
+          {
+            "checksVoidReturn": false
+          }
+        ],
+        "typescript/require-array-sort-compare": "off",
+        "typescript/restrict-template-expressions": "off",
+        "typescript/no-unnecessary-type-assertion": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior-evals/evals/**",
+        "packages/junior-evals/**/*.eval.ts",
+        "packages/junior-evals/tests/component/eval-work.test.ts"
+      ],
+      "rules": {
+        "vitest/no-standalone-expect": "off",
+        "vitest/no-conditional-expect": "off",
+        "vitest/valid-expect": "off"
+      }
+    },
+    {
+      "files": ["**/*.js", "**/*.mjs"],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-implied-eval": "off",
+        "typescript/require-array-sort-compare": "off",
+        "typescript/restrict-template-expressions": "off"
+      }
+    },
+    {
+      "files": ["packages/junior-evals/**", "packages/junior-testing/**"],
+      "rules": {
+        "junior/no-raw-sql-queries": "off",
+        "junior/no-regex-url-parsing": "off",
+        "junior/no-service-fallback": "off"
+      }
+    }
+  ],
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  }
+}

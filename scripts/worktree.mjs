@@ -70,7 +70,7 @@ function runRequired(command, args, options = {}) {
     }`;
 
     if (!exitOnFailure) {
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
 
     fail(message);
@@ -525,6 +525,13 @@ function installDependencies(targetRoot, options = {}) {
 
   console.log("Installing dependencies with pnpm install...");
   runRequired("pnpm", ["install"], {
+    cwd: targetRoot,
+    exitOnFailure: options.exitOnFailure,
+  });
+  // Install does not build workspace packages. Build them so checks and
+  // the example app can load their `dist` output.
+  console.log("Building workspace packages with pnpm build...");
+  runRequired("pnpm", ["build"], {
     cwd: targetRoot,
     exitOnFailure: options.exitOnFailure,
   });

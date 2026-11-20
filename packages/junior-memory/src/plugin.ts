@@ -1,15 +1,18 @@
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type ToolRegistrationHookContext,
+  withToolContext,
+} from "@sentry/junior-plugin-api";
 import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
-  createMemoryArchiveTool,
-  createMemoryCreateTool,
-  createMemoryListTool,
-  createMemorySearchTool,
+  memoryArchiveTool,
+  memoryRestoreTool,
+  memoryCreateTool,
+  memoryListTool,
+  memorySearchTool,
   type MemoryCreateToolContext,
-  type MemoryReviewer,
-  type MemoryToolContext,
 } from "./tools";
 import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
@@ -19,6 +22,7 @@ import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
 import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
@@ -48,47 +52,23 @@ function memoryModelId(options: MemoryPluginOptions): string | undefined {
   return envModelId || undefined;
 }
 
-function memoryToolContext(ctx: {
-  agent: MemoryReviewer;
-  conversationId?: string;
-  db: MemoryToolContext["db"];
-  embedder?: MemoryToolContext["embedder"];
-  locationId?: string;
-  actor?: MemoryToolContext["actor"];
-  source: MemoryToolContext["source"];
-  users: MemoryToolContext["users"];
-  userText?: string;
-}): MemoryToolContext {
+function memoryToolContext(
+  ctx: ToolRegistrationHookContext,
+): MemoryCreateToolContext {
+  const agent = createMemoryAgent(ctx.model);
   return {
-    agent: ctx.agent,
+    agent,
     ...(ctx.conversationId
       ? { conversationId: ctx.conversationId }
       : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
-    db: ctx.db,
+    db: ctx.db as MemoryDb,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
     source: ctx.source,
+    supersessionDecider: agent,
     users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
-  };
-}
-
-function memoryCreateToolContext(ctx: {
-  agent: MemoryReviewer;
-  conversationId?: string;
-  db: MemoryCreateToolContext["db"];
-  embedder?: MemoryCreateToolContext["embedder"];
-  locationId?: string;
-  actor?: MemoryCreateToolContext["actor"];
-  source: MemoryCreateToolContext["source"];
-  supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
-  users: MemoryCreateToolContext["users"];
-  userText?: string;
-}): MemoryCreateToolContext {
-  return {
-    ...memoryToolContext(ctx),
-    supersessionDecider: ctx.supersessionDecider,
   };
 }
 
@@ -107,6 +87,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
+      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],
@@ -144,14 +125,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async operationalReport(ctx) {
-        const extractionDays = await memoryCostsByDay(
-          ctx.eventStats,
-          extractionCostFlow,
-          90,
-        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
-          extractionDays,
+          extractionDays: memoryCostsByDay(
+            ctx.eventStats,
+            extractionCostFlow,
+            90,
+          ),
           nowMs: ctx.nowMs,
         });
       },
@@ -163,43 +143,31 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           users: ctx.users,
         });
       },
-      tools(ctx) {
-        const agent = createMemoryAgent(ctx.model);
-        const context = memoryToolContext({
-          ...ctx,
-          agent,
-          db: ctx.db as MemoryDb,
-          embedder: ctx.embedder,
-        });
+      tools() {
+        return withToolContext(
+          {
+            createMemory: memoryCreateTool,
+            archiveMemory: memoryArchiveTool,
+            restoreMemory: memoryRestoreTool,
+            listMemories: memoryListTool,
+            searchMemories: memorySearchTool,
+          },
+          memoryToolContext,
+        );
+      },
+      disabledTools(ctx): Record<string, string> {
         // Only a person's message in a public Conversation may write memory.
         // Disable the write tools instead of omitting them, so the tool list
         // and the prompt cache stay the same in every Turn.
-        const writeAccess =
-          "visibility" in ctx.source && ctx.source.visibility === "public"
-            ? {}
-            : {
-                disabledReason:
-                  "Only a person's message in a public Conversation can write memory.",
-              };
+        if ("visibility" in ctx.source && ctx.source.visibility === "public") {
+          return {};
+        }
+        const reason =
+          "Only a person's message in a public Conversation can write memory.";
         return {
-          createMemory: {
-            ...createMemoryCreateTool(
-              memoryCreateToolContext({
-                ...ctx,
-                agent,
-                db: ctx.db as MemoryDb,
-                embedder: ctx.embedder,
-                supersessionDecider: agent,
-              }),
-            ),
-            ...writeAccess,
-          },
-          archiveMemory: {
-            ...createMemoryArchiveTool(context),
-            ...writeAccess,
-          },
-          listMemories: createMemoryListTool(context),
-          searchMemories: createMemorySearchTool(context),
+          createMemory: reason,
+          archiveMemory: reason,
+          restoreMemory: reason,
         };
       },
       ...(!options.disableRecall
@@ -216,6 +184,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 ...(ctx.locationId
                   ? { locationId: ctx.locationId }
                   : undefined),
+                loadHistory: ctx.loadHistory,
                 log: ctx.log,
                 reranker: ctx.reranker,
                 setSpanAttributes: ctx.setSpanAttributes,

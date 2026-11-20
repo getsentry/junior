@@ -79,6 +79,23 @@ export type SystemPromptContext = Pick<
   platform: Platform;
 };
 
+/** One prompt context that this plugin gave an earlier Turn. */
+export type PromptHistoryContext = PromptContext & {
+  /** When the plugin made it. */
+  loadedAtMs: number;
+};
+
+/** What the model history that a new prompt replays holds. */
+export interface PromptHistory {
+  /**
+   * When this history started: the time of the last History replacement.
+   * Undefined when it holds the whole Conversation.
+   */
+  startedAtMs?: number;
+  /** This plugin's prompt contexts in this history, oldest first. */
+  contexts: PromptHistoryContext[];
+}
+
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
@@ -96,10 +113,21 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
    */
   setSpanAttributes(attributes: Record<string, number>): void;
   /** Location associated with this Conversation. */
-  locationId?: string;
-  actor?: Actor;
+  locationId?: string | undefined;
+  /**
+   * Read the model history that this prompt replays, such as to skip context
+   * that the model still has. Undefined when the prompt has no Conversation.
+   */
+  loadHistory?(): Promise<PromptHistory>;
+  actor?: Actor | undefined;
   source: Source;
   state: PluginState;
+  /**
+   * The request of this Turn: what a person wrote, the task or message of a
+   * parent agent, or the instructions of an Automation. Runtime text, such as
+   * tags, generic instructions, Events, child agent results, and the question
+   * of a Review item, is not in it. Empty when the Turn has no request.
+   */
   text: string;
   users: {
     /** Resolve the current Actor's Identity and User. */

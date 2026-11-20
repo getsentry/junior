@@ -17,10 +17,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import {
-  buildPlanStatus,
-  buildReportedProgressStatus,
-} from "@/chat/runtime/report-progress";
+import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -71,6 +68,7 @@ import {
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { ConversationModelCost } from "@/chat/core-model";
 
 /**
  * How long a preempted tool may take to return its own aborted result. Keep it
@@ -140,20 +138,26 @@ export interface ToolPipelineOptions {
   catalogTools: Record<string, AnyToolDefinition>;
   sandbox: SkillSandbox;
   spanContext: LogContext;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
-  sandboxTools?: SandboxTools;
-  pluginAuthOrchestration?: PluginAuthOrchestration;
-  onToolCall?: (
-    toolCallId: string,
-    toolName: string,
-    params: Record<string, unknown>,
-  ) => void | Promise<void>;
-  agentHooks?: PluginHookRunner;
-  conversationPrivacy?: ConversationPrivacy;
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
-  actionReview?: ToolActionReview;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
+  sandboxTools?: SandboxTools | undefined;
+  pluginAuthOrchestration?: PluginAuthOrchestration | undefined;
+  onToolCall?:
+    | ((
+        toolCallId: string,
+        toolName: string,
+        params: Record<string, unknown>,
+      ) => void | Promise<void>)
+    | undefined;
+  agentHooks?: PluginHookRunner | undefined;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
+  actionReview?: ToolActionReview | undefined;
   /** Keeps the full text of a model-facing result that was cut. */
-  workspace?: Pick<SandboxWorkspace, "writeFiles">;
+  workspace?: Pick<SandboxWorkspace, "writeFiles"> | undefined;
 }
 
 /** One tool call that a Code Mode script made. */
@@ -183,7 +187,7 @@ export type ScriptToolCallOutcome =
   | {
       status: "rejected";
       error: ToolActionRejectedError;
-      marker?: ToolActionRejectionMarker;
+      marker?: ToolActionRejectionMarker | undefined;
     }
   | { status: "error"; error: Error };
 
@@ -296,10 +300,10 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       ...(Object.keys(beforeTool.env).length > 0
         ? {
             env: {
-              ...(toolInput.env &&
-              typeof toolInput.env === "object" &&
-              !Array.isArray(toolInput.env)
-                ? toolInput.env
+              ...(toolInput["env"] &&
+              typeof toolInput["env"] === "object" &&
+              !Array.isArray(toolInput["env"])
+                ? toolInput["env"]
                 : undefined),
               ...beforeTool.env,
             },
@@ -478,11 +482,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     params: Record<string, unknown>,
   ) => {
     const status =
-      executionToolName === "updatePlan"
-        ? buildPlanStatus(params)
-        : executionToolName === "reportProgress"
-          ? buildReportedProgressStatus(params)
-          : undefined;
+      executionToolName === "reportProgress"
+        ? buildReportedProgressStatus(params)
+        : undefined;
     if (status) {
       await onStatus?.(status);
     }
@@ -760,6 +762,36 @@ export function createToolPipeline(options: ToolPipelineOptions) {
 /** A pipeline for one Run's tools. */
 export type ToolPipeline = ReturnType<typeof createToolPipeline>;
 
+/** Run context and callbacks for the tools that `createPiAgentTools` wraps. */
+export interface PiAgentToolsOptions {
+  spanContext: LogContext;
+  /**
+   * Who pays for the tool search rerank call. Callers without a Conversation
+   * pass `{ owner: "none" }`.
+   */
+  searchToolsCost: ConversationModelCost;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
+  sandboxTools?: SandboxTools;
+  pluginAuthOrchestration?: PluginAuthOrchestration;
+  onToolCall?: (
+    toolCallId: string,
+    toolName: string,
+    params: Record<string, unknown>,
+  ) => void | Promise<void>;
+  agentHooks?: PluginHookRunner;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
+  actionReview?: ToolActionReview;
+  codeMode?: Pick<CodeModeToolOptions, "countToolCall"> & {
+    /** Keeps the full text of a model-facing result that was cut. */
+    workspace?: Pick<SandboxWorkspace, "writeFiles">;
+  };
+}
+
 /**
  * Wrap tool definitions into Pi Agent tool objects with logging, validation,
  * and sandbox execution. With `codeMode`, the model also gets the `codemode`
@@ -768,23 +800,19 @@ export type ToolPipeline = ReturnType<typeof createToolPipeline>;
 export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
   sandbox: SkillSandbox,
-  spanContext: LogContext,
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
-  sandboxTools?: SandboxTools,
-  pluginAuthOrchestration?: PluginAuthOrchestration,
-  onToolCall?: (
-    toolCallId: string,
-    toolName: string,
-    params: Record<string, unknown>,
-  ) => void | Promise<void>,
-  agentHooks?: PluginHookRunner,
-  conversationPrivacy?: ConversationPrivacy,
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
-  actionReview?: ToolActionReview,
-  codeMode?: Pick<CodeModeToolOptions, "countToolCall"> & {
-    /** Keeps the full text of a model-facing result that was cut. */
-    workspace?: Pick<SandboxWorkspace, "writeFiles">;
-  },
+  {
+    spanContext,
+    searchToolsCost,
+    onStatus,
+    sandboxTools,
+    pluginAuthOrchestration,
+    onToolCall,
+    agentHooks,
+    conversationPrivacy,
+    onToolResult,
+    actionReview,
+    codeMode,
+  }: PiAgentToolsOptions,
 ): AgentTool[] {
   const plannedTools = planToolExposure(tools);
   const visibleTools: Record<string, AnyToolDefinition> = {
@@ -800,6 +828,7 @@ export function createPiAgentTools(
   }
   visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
     plannedTools.catalogTools,
+    searchToolsCost,
   );
   visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
   const pipeline = createToolPipeline({

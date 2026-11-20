@@ -20,6 +20,7 @@ import {
 const VOLATILE_KEYS = new Set([
   "authorIdentityId",
   "cacheWrite1h",
+  "durationMs",
   "id",
   "idempotencyKey",
   "inputMessageIds",
@@ -71,7 +72,8 @@ function stripVolatile(value: unknown): unknown {
 
 /**
  * Stored rows without volatile fields. A message update folds into its
- * message. Runtime context belongs to the run, not the history. Model cost
+ * message. Runtime context and capability sections belong to the run, not
+ * the history: a Turn after loaded history sends the sections. Model cost
  * events record what a call spent, such as the title, and loaded history
  * spent nothing.
  */
@@ -82,28 +84,30 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
   for (const row of rows) {
     const data = row.data as Record<string, unknown>;
     if (
-      data.type === "user_message" &&
-      (data.provenance as { authority?: string } | undefined)?.authority ===
+      data["type"] === "user_message" &&
+      (data["provenance"] as { authority?: string } | undefined)?.authority ===
         "context"
     ) {
       continue;
     }
+    if (data["type"] === "system_message") continue;
     if (
-      data.type === "structured_event" &&
-      typeof (data.content as { costUsd?: unknown } | undefined)?.costUsd ===
+      data["type"] === "structured_event" &&
+      typeof (data["content"] as { costUsd?: unknown } | undefined)?.costUsd ===
         "number"
     ) {
       continue;
     }
-    if (data.type === "message_updated") {
-      Object.assign(messages.get(String(data.messageId)) ?? {}, {
+    if (data["type"] === "message_updated") {
+      Object.assign(messages.get(String(data["messageId"])) ?? {}, {
         ...data,
         type: "message",
       });
       continue;
     }
     const copy = { ...data };
-    if (data.type === "message") messages.set(String(data.messageId), copy);
+    if (data["type"] === "message")
+      messages.set(String(data["messageId"]), copy);
     result.push(copy);
   }
   return result.map(stripVolatile);

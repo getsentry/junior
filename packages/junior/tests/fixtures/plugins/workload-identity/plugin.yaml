@@ -11,6 +11,7 @@ env-vars:
 # Proxy-Authorization.
 domains:
   - iap-app.example.test
+tools-send-no-credential: true
 api-headers:
   Authorization: Key ${IAP_APP_API_KEY}
 

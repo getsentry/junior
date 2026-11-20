@@ -1,4 +1,4 @@
-import { Children, type ReactNode, type RefCallback } from "react";
+import { Children, useEffect, type ReactNode, type RefCallback } from "react";
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -17,13 +17,17 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
-import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
+import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
+import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
-import { ObjectCard } from "../conversations/ObjectCard";
+import { ObjectRow } from "../conversations/ObjectRow";
 import {
-  ObjectLinkChip,
+  mediaThumbnail,
   ObjectLinkPreview,
+  ObjectThumbnailLink,
+  ObjectTitleLink,
+  PersonLink,
   useKnownObject,
 } from "./ObjectLinks";
 import {
@@ -45,14 +49,24 @@ import {
  * A link to a known object (`KnownObjectsProvider`) previews its card on
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
- * Outside document mode, a bare URL in running text shows as a chip, and a
- * bare URL alone in a top-level paragraph shows the full card.
+ * Outside document mode, a bare URL in running text shows as a plain link
+ * with the object title, or a chip for a person. The first bare URL alone in
+ * a top-level paragraph shows the full card, or only the thumbnail of a
+ * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
+ * earlier text of the same message already shows. Inline mode shows links
+ * only with `chips`, outside a link or a button. With `paragraphs` too, it
+ * keeps the text's paragraphs, line breaks, and lists.
  */
 export function MarkdownText(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  /** Inline mode: show links, with object titles and person chips. */
+  chips?: boolean | undefined;
+  compact?: boolean | undefined;
   document?: boolean;
   inline?: boolean;
+  /** Inline mode with chips: keep paragraphs, line breaks, and lists. */
+  paragraphs?: boolean | undefined;
+  shownCardUrls?: readonly string[];
   text: string;
 }): ReactNode {
   if (!props.text.trim()) return null;
@@ -63,8 +77,20 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={
+          props.paragraphs
+            ? PARAGRAPH_CHIP_COMPONENTS
+            : props.chips
+              ? INLINE_CHIP_COMPONENTS
+              : INLINE_COMPONENTS
+        }
+        remarkPlugins={
+          props.paragraphs
+            ? [remarkGfm, remarkBreaks, remarkBareUrlStops]
+            : props.chips
+              ? [remarkGfm, remarkBareUrlStops]
+              : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -93,7 +119,7 @@ export function MarkdownText(props: {
                   remarkBreaks,
                   remarkBareUrlStops,
                   remarkSectionLabels,
-                  remarkObjectLinks,
+                  [remarkObjectLinks, { shown: props.shownCardUrls }],
                 ]
           }
           urlTransform={safeHref}
@@ -111,7 +137,7 @@ function normalizeSlackBullets(text: string): string {
 }
 
 type MarkdownNode = {
-  children?: MarkdownNode[];
+  children?: MarkdownNode[] | undefined;
   data?: { hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
@@ -184,14 +210,18 @@ function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
 /**
  * Mark each top-level paragraph that holds only a bare URL, so the paragraph
  * can show the full card of a known object. A bare URL in a list, a quote,
- * or a sentence stays inline.
+ * or a sentence stays inline, and so does a URL whose card already shows.
  */
-function remarkObjectLinks() {
+function remarkObjectLinks(options: { shown?: readonly string[] } = {}) {
   return (tree: MarkdownNode) => {
+    const shown = new Set(options.shown);
     for (const node of tree.children ?? []) {
       const [link, ...rest] = node.children ?? [];
       if (node.type !== "paragraph" || rest.length > 0) continue;
-      if (link?.type !== "link" || !isBareLink(link)) continue;
+      if (link?.type !== "link" || !isBareLink(link) || !link.url) continue;
+      const key = objectUrlKey(link.url);
+      if (!key || shown.has(key)) continue;
+      shown.add(key);
       node.data = {
         ...node.data,
         hProperties: { ...node.data?.hProperties, dataObjectUrl: link.url },
@@ -288,7 +318,9 @@ const COMPONENTS: Components = {
     </ol>
   ),
   p: ({ children, node }) => (
-    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
+    <Paragraph objectUrl={node?.properties["dataObjectUrl"]}>
+      {children}
+    </Paragraph>
   ),
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
@@ -391,6 +423,30 @@ const INLINE_COMPONENTS: Components = {
   ul: InlineContainer,
 };
 
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
+};
+
+// Plain block boxes, not grids, so a line clamp counts the lines in them.
+const PARAGRAPH_CLASS = "m-0 min-w-0 [&:not(:first-child)]:mt-1.5";
+
+const PARAGRAPH_CHIP_COMPONENTS: Components = {
+  ...INLINE_CHIP_COMPONENTS,
+  li: ({ children }) => <li className="min-w-0">{renderText(children)}</li>,
+  ol: ({ children, start }) => (
+    <ol className={cn(PARAGRAPH_CLASS, "list-decimal pl-5")} start={start}>
+      {children}
+    </ol>
+  ),
+  p: ({ children }) => (
+    <p className={PARAGRAPH_CLASS}>{renderText(children)}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className={cn(PARAGRAPH_CLASS, "list-disc pl-5")}>{children}</ul>
+  ),
+};
+
 function alignClass(align: unknown): string | undefined {
   if (align === "center") return "text-center";
   if (align === "right") return "text-right";
@@ -398,13 +454,15 @@ function alignClass(align: unknown): string | undefined {
 }
 
 function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
-  const known = useKnownObject(
-    typeof props.objectUrl === "string" ? props.objectUrl : undefined,
-  );
-  if (known) return <ObjectCard card={known} />;
-  if (typeof props.objectUrl === "string" && resolvableUrl(props.objectUrl)) {
+  const objectUrl =
+    typeof props.objectUrl === "string" ? props.objectUrl : undefined;
+  const known = useKnownObject(objectUrl);
+  if (objectUrl && known.card && !known.linkOnly) {
+    return <StandaloneObject card={known.card} href={objectUrl} />;
+  }
+  if (objectUrl && resolvableUrl(objectUrl)) {
     return (
-      <ResolvedParagraph objectUrl={props.objectUrl}>
+      <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}
       </ResolvedParagraph>
     );
@@ -413,10 +471,45 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 }
 
 // The link in the paragraph asks for the card. This reads the same entry.
-function ResolvedParagraph(props: { children: ReactNode; objectUrl: string }) {
-  const { card } = useResolvedObject(props.objectUrl);
-  if (card) return <ObjectCard card={card} live />;
+// A saved link has no facts, so it shows only until the live card resolves.
+function ResolvedParagraph(props: {
+  children: ReactNode;
+  objectUrl: string;
+  saved?: OwnedObjectAnnotation | undefined;
+}) {
+  const { card, request } = useResolvedObject(props.objectUrl);
+  useRequestWhenSaved(props.saved, request);
+  if (card) {
+    return <StandaloneObject card={card} href={props.objectUrl} live />;
+  }
+  if (props.saved) {
+    return <StandaloneObject card={props.saved} href={props.objectUrl} />;
+  }
   return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+// A link alone on its line shows a compact row. A video or image page shows
+// only its thumbnail.
+function StandaloneObject(props: {
+  card: OwnedObjectAnnotation;
+  href: string;
+  live?: boolean;
+}) {
+  const thumbnail = mediaThumbnail(props.card);
+  if (thumbnail) {
+    return <ObjectThumbnailLink {...props} src={thumbnail} />;
+  }
+  return <ObjectRow card={props.card} live={props.live} />;
+}
+
+// The saved card replaces the link, so no visible link asks for the card.
+function useRequestWhenSaved(
+  saved: OwnedObjectAnnotation | undefined,
+  request: () => void,
+) {
+  useEffect(() => {
+    if (saved) request();
+  }, [request, saved]);
 }
 
 function PlainParagraph(props: { children: ReactNode }) {
@@ -430,9 +523,9 @@ function PlainParagraph(props: { children: ReactNode }) {
 function TranscriptAnchor(props: {
   bare?: boolean;
   children: ReactNode;
-  href?: string;
+  href?: string | undefined;
 }) {
-  const card = useKnownObject(props.href);
+  const known = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
   const label =
@@ -441,16 +534,16 @@ function TranscriptAnchor(props: {
     ) : (
       props.children
     );
-  if (card) {
+  if (known.card && !known.linkOnly) {
     return (
-      <ObjectAnchor bare={props.bare} card={card} href={props.href}>
+      <ObjectAnchor bare={props.bare} card={known.card} href={props.href}>
         {label}
       </ObjectAnchor>
     );
   }
   if (resolvableUrl(props.href)) {
     return (
-      <ResolvedAnchor bare={props.bare} href={props.href}>
+      <ResolvedAnchor bare={props.bare} href={props.href} saved={known.card}>
         {label}
       </ResolvedAnchor>
     );
@@ -459,17 +552,40 @@ function TranscriptAnchor(props: {
 }
 
 // A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it.
+// into view or the reader hovers it. A saved link shows until then. Its hover
+// card keeps one height while the live card can still replace it.
 function ResolvedAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   children: ReactNode;
   href: string;
+  saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request } = useResolvedObject(props.href);
+  const { card, request, settled } = useResolvedObject(props.href);
   const observe = useWhenVisible(request);
+  useRequestWhenSaved(props.saved, request);
+  const reserveHeight =
+    props.saved !== undefined && (card !== undefined || !settled);
   if (card) {
     return (
-      <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+      <ObjectAnchor
+        bare={props.bare}
+        card={card}
+        href={props.href}
+        live
+        reserveHeight={reserveHeight}
+      >
+        {props.children}
+      </ObjectAnchor>
+    );
+  }
+  if (props.saved) {
+    return (
+      <ObjectAnchor
+        bare={props.bare}
+        card={props.saved}
+        href={props.href}
+        reserveHeight={reserveHeight}
+      >
         {props.children}
       </ObjectAnchor>
     );
@@ -482,25 +598,24 @@ function ResolvedAnchor(props: {
 }
 
 function ObjectAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   card: OwnedObjectAnnotation;
   children: ReactNode;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
-  if (props.bare) {
-    return (
-      <ObjectLinkChip card={props.card} href={props.href} live={props.live} />
-    );
+  const { bare, children, ...link } = props;
+  const className = useAnchorClass();
+  if (bare && link.card.objectType === "person") {
+    return <PersonLink {...link} />;
+  }
+  if (bare) {
+    return <ObjectTitleLink {...link} />;
   }
   return (
-    <ObjectLinkPreview
-      card={props.card}
-      className={ANCHOR_CLASS}
-      href={props.href}
-      live={props.live}
-    >
-      {props.children}
+    <ObjectLinkPreview {...link} className={className}>
+      {children}
     </ObjectLinkPreview>
   );
 }
@@ -511,10 +626,12 @@ function PlainAnchor(props: {
   observe?: RefCallback<HTMLAnchorElement>;
   onPointerEnter?: () => void;
 }) {
-  if (!/^https?:/i.test(props.href)) {
+  const className = useAnchorClass();
+  const scheme = props.href.slice(0, 6).toLowerCase();
+  if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
     return (
       <a
-        className={ANCHOR_CLASS}
+        className={className}
         href={props.href}
         onPointerEnter={props.onPointerEnter}
         ref={props.observe}
@@ -525,7 +642,7 @@ function PlainAnchor(props: {
   }
   return (
     <OutboundLink
-      className={ANCHOR_CLASS}
+      className={className}
       href={props.href}
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}

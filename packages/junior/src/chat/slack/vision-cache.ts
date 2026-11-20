@@ -13,22 +13,25 @@ function visionCacheKey(conversationId: string): string {
 }
 
 function coerceVisionCache(value: unknown): ConversationVisionState {
-  if (!isRecord(value) || value.schemaVersion !== VISION_CACHE_SCHEMA_VERSION) {
+  if (
+    !isRecord(value) ||
+    value["schemaVersion"] !== VISION_CACHE_SCHEMA_VERSION
+  ) {
     return { byFileId: {} };
   }
 
-  const rawByFileId = isRecord(value.byFileId) ? value.byFileId : {};
+  const rawByFileId = isRecord(value["byFileId"]) ? value["byFileId"] : {};
   const byFileId: Record<string, ConversationVisionSummary> = {};
   for (const [fileId, rawSummary] of Object.entries(rawByFileId)) {
     if (!fileId.trim() || !isRecord(rawSummary)) continue;
-    const summary = toOptionalString(rawSummary.summary);
-    const analyzedAtMs = toOptionalNumber(rawSummary.analyzedAtMs);
+    const summary = toOptionalString(rawSummary["summary"]);
+    const analyzedAtMs = toOptionalNumber(rawSummary["analyzedAtMs"]);
     if (!summary || analyzedAtMs === undefined) continue;
     byFileId[fileId] = { summary, analyzedAtMs };
   }
 
   return {
-    backfillCompletedAtMs: toOptionalNumber(value.backfillCompletedAtMs),
+    backfillCompletedAtMs: toOptionalNumber(value["backfillCompletedAtMs"]),
     byFileId,
   };
 }

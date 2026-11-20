@@ -57,18 +57,21 @@ describe("GitHub conversation sidebar", () => {
         status: "closed",
         key: "getsentry/junior#3",
         label: "junior",
+        url: "https://github.com/getsentry/junior/pull/3",
       },
       {
         objectType: "code_change",
         status: "open",
         key: "getsentry/payments#2",
         label: "payments",
+        url: "https://github.com/getsentry/payments/pull/2",
       },
       {
         objectType: "code_change",
         status: "merged",
         key: "getsentry/junior#1",
         label: "junior",
+        url: "https://github.com/getsentry/junior/pull/1",
       },
     ]);
     expect(() =>
@@ -84,6 +87,7 @@ describe("GitHub conversation sidebar", () => {
           status: "open",
           key: "getsentry/junior#1",
           label: "junior",
+          url: "https://github.com/getsentry/junior/pull/1",
         },
       ],
     );
@@ -107,6 +111,47 @@ describe("GitHub conversation sidebar", () => {
         status: "open",
         key: "getsentry/junior#1",
         label: "junior",
+        url: "https://github.com/getsentry/junior/issues/1",
+      },
+    ]);
+  });
+
+  it("carries a saved object's title, URL, first image and size for row cards", () => {
+    expect(
+      githubSidebarAnnotations([
+        {
+          createdAt: "2026-01-01T00:00:00.000Z",
+          facts: {
+            type: "code_change",
+            additions: 1204,
+            changedFiles: 12,
+            previewImageUrls: [
+              "https://junior.example/public/artifacts/before.png",
+              "https://junior.example/public/artifacts/after.png",
+            ],
+          },
+          key: "getsentry/junior#7",
+          kind: "object",
+          label: "getsentry/junior#7",
+          objectType: "code_change",
+          plugin: "github",
+          status: "open",
+          title: "Show your week under the home composer",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+          url: "https://github.com/getsentry/junior/pull/7",
+        },
+      ]),
+    ).toEqual([
+      {
+        objectType: "code_change",
+        status: "open",
+        key: "getsentry/junior#7",
+        label: "junior",
+        title: "Show your week under the home composer",
+        url: "https://github.com/getsentry/junior/pull/7",
+        imageUrl: "https://junior.example/public/artifacts/before.png",
+        // An unknown part stays unset, so no card shows it as 0.
+        size: { additions: 1204, changedFiles: 12 },
       },
     ]);
   });

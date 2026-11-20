@@ -184,7 +184,7 @@ describe("mergeEventMatchFields", () => {
           },
         },
         pullRequestFields,
-      ).senderId,
+      )["senderId"],
     ).toEqual({
       kind: "number",
       description: "issue commenter id",
@@ -429,7 +429,7 @@ describe("triggers with no identifier", () => {
       displayName: _name,
       anyResourceFields: _fields,
       ...github
-    } = anyCatalog.github!;
+    } = anyCatalog["github"]!;
     expect(issues(github)).toBeUndefined();
     expect(
       issues({

@@ -1,11 +1,13 @@
 import { and, eq, max } from "drizzle-orm";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   CONVERSATION_VERSION_HEADER,
   type Versions,
+  VERSIONS_CONVERSATION_LIMIT,
   versionsSchema,
 } from "@/api/schema";
 import {
@@ -71,6 +73,19 @@ async function childAgentTurn(conversationId: string, atMs: number) {
   });
 }
 
+async function readVersions(
+  app: Awaited<ReturnType<typeof authenticatedApi>>["app"],
+  conversationIds: string[],
+) {
+  return versionsSchema.parse(
+    await (
+      await app.request(
+        `http://localhost/api/versions?${new URLSearchParams({ conversationIds: conversationIds.join(",") })}`,
+      )
+    ).json(),
+  );
+}
+
 /** Name the tokens that differ between two reads. */
 function changed(
   before: Record<string, string | undefined>,
@@ -82,7 +97,10 @@ function changed(
 }
 
 /** Name the feed-row inputs whose part of the feed token differs. */
-function feedMoved(before: Versions, after: Versions) {
+function feedMoved(
+  before: Pick<Versions, "conversations">,
+  after: Pick<Versions, "conversations">,
+) {
   const parts = new Set(before.conversations.split(" "));
   return after.conversations
     .split(" ")
@@ -93,33 +111,30 @@ function feedMoved(before: Versions, after: Versions) {
 
 describe("versions API", () => {
   afterEach(async () => {
-    vi.useRealTimers();
     await closeDb();
   });
 
   it("moves only the token whose read changed", async () => {
-    // Fixture writes such as `replaceHistory` stamp the clock. The test starts
-    // on a whole minute, so its run does not reach the next minute and its
-    // Turns stay newer than those stamps.
-    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
-    vi.setSystemTime(Date.parse("2026-10-01T12:05:00.000Z"));
     const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
     await recordRoot(OTHER, "private");
-    const read = async (conversationId = OWN) =>
-      versionsSchema.parse(
-        await (
-          await app.request(
-            `http://localhost/api/versions?conversationId=${encodeURIComponent(conversationId)}`,
-          )
-        ).json(),
-      );
+    // The one Conversation's token reads as `conversation`, so each step
+    // names the tokens that moved.
+    const read = async (conversationId = OWN) => {
+      const { conversationDetails, ...tokens } = await readVersions(app, [
+        conversationId,
+      ]);
+      return { ...tokens, conversation: conversationDetails[conversationId] };
+    };
     const detailVersion = async () =>
       (
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await read();
+    const first = await expectSqlBudget(() => read(), {
+      statements: 1,
+      serialRounds: 1,
+    });
     expect(await read()).toEqual(first);
     expect(await detailVersion()).toBe(first.conversation);
     // A Conversation that does not exist has no token.
@@ -209,15 +224,25 @@ describe("versions API", () => {
       title: "Approve",
       visibility: "private",
     });
+    // An open item is a status input, so the detail moves too. The feed row
+    // moves from `working` to `needs_input`, which outranks it.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual(["reviewItems"]);
+    expect(changed(withPin, withItem)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
     await closeReviewItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual(["reviewItems"]);
+    expect(changed(withItem, closed)).toEqual([
+      "conversation",
+      "conversations",
+      "reviewItems",
+    ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
     // minute in the past, so the Events below stay in the spend window and
@@ -363,6 +388,24 @@ describe("versions API", () => {
     const threadEnded = await threadTurn("idle", nowMs + 240_000);
     expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
 
+    // A Task has no row, but its work moves the root's tree state.
+    const taskTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationStore().recordExecution({
+        conversationId: `${OWN}:child`,
+        createdAtMs: atMs,
+        execution: { runId: "task-turn-2", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const taskRunning = await taskTurn("running", nowMs + 300_000);
+    expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
+    const taskEnded = await taskTurn("idle", nowMs + 300_000);
+    expect(feedMoved(taskRunning, taskEnded)).toEqual(["threads"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -376,7 +419,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(threadEnded, withReply)).toEqual([
+    expect(changed(taskEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);
@@ -406,5 +449,52 @@ describe("versions API", () => {
       lastReadSeq: reply!.seq!,
     });
     expect(changed(withReply, await read())).toEqual([]);
+  });
+  it("reads a token for each Conversation on screen in one statement", async () => {
+    const { app } = await authenticatedApi();
+    await recordRoot(OWN, "private", SLACK_ACTOR);
+    await recordRoot(OTHER, "private");
+    const missing = "slack:CVERSIONS:missing";
+    const onScreen = [
+      OWN,
+      OTHER,
+      missing,
+      ...Array.from(
+        { length: VERSIONS_CONVERSATION_LIMIT - 3 },
+        (_, index) => `slack:CVERSIONS:absent-${index}`,
+      ),
+    ];
+    const detailVersion = async (conversationId: string) =>
+      (
+        await app.request(
+          `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+        )
+      ).headers.get(CONVERSATION_VERSION_HEADER);
+
+    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
+      statements: 1,
+      serialRounds: 1,
+    });
+    // Each token is the one that the detail report sends. A Conversation
+    // that does not exist has no entry.
+    expect(first.conversationDetails).toEqual({
+      [OTHER]: await detailVersion(OTHER),
+      [OWN]: await detailVersion(OWN),
+    });
+
+    // A change to one Conversation moves only its token.
+    await appendVisibleHistory(OTHER);
+    const next = await readVersions(app, onScreen);
+    expect(next.conversationDetails[OWN]).toBe(first.conversationDetails[OWN]);
+    expect(next.conversationDetails[OTHER]).not.toBe(
+      first.conversationDetails[OTHER],
+    );
+    expect(next.conversationDetails[OTHER]).toBe(await detailVersion(OTHER));
+
+    // One read covers at most the cap.
+    const tooMany = await app.request(
+      `http://localhost/api/versions?${new URLSearchParams({ conversationIds: [...onScreen, "slack:CVERSIONS:extra"].join(",") })}`,
+    );
+    expect(tooMany.status).toBe(400);
   });
 });

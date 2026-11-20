@@ -1,8 +1,9 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
   type Context,
+  type SystemMessage,
 } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +20,13 @@ import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-
 import type { HistoryReplacement } from "@/chat/conversations/history";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { contextProvenance } from "@/chat/conversations/provenance";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import type { PiMessage } from "@/chat/pi/messages";
 import { closeConversationFixture } from "../fixtures/conversation";
+import {
+  writeAgentHistory,
+  type AgentRequestStreamFn,
+} from "@/chat/pi/agent-history";
 
 const CONVERSATION_ID = "local:web:background-compaction";
 
@@ -187,10 +194,10 @@ function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
  */
 function replies(texts: Array<string | { error: string }>): {
   calls: Context[];
-  streamFn: StreamFn;
+  streamFn: AgentRequestStreamFn;
 } {
   const calls: Context[] = [];
-  const streamFn: StreamFn = (_model, context) => {
+  const streamFn: AgentRequestStreamFn = (_model, context) => {
     const reply = texts[calls.length]!;
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
@@ -215,9 +222,18 @@ function replies(texts: Array<string | { error: string }>): {
   return { calls, streamFn };
 }
 
+function sectionsMessage(skills: string, timestamp: number): SystemMessage {
+  return {
+    role: "system",
+    content: "",
+    sections: { "available-skills": skills },
+    timestamp,
+  };
+}
+
 /** The live agent at the end of a Turn whose last request had this input. */
-function liveAgent(inputSize: number): Agent {
-  return new Agent({
+function liveAgent(inputSize: number, history: PiMessage[] = []): Agent {
+  const agent = new Agent({
     getApiKey: getGatewayApiKey,
     sessionId: CONVERSATION_ID,
     streamFn: () => {
@@ -236,9 +252,14 @@ function liveAgent(inputSize: number): Agent {
           execute: async () => ({ content: [], details: undefined }),
         },
       ],
-      messages: [assistant("The blue option is ready.", inputSize)],
     },
   });
+  // The Turn seeds its history after Pi's leading system message.
+  agent.state.messages = writeAgentHistory(agent.state.messages, [
+    ...history,
+    assistant("The blue option is ready.", inputSize),
+  ]);
+  return agent;
 }
 
 /** Complete a Turn and return the background jobs that it sent. */
@@ -271,36 +292,52 @@ describe("background compaction job", () => {
   afterEach(closeConversationFixture);
 
   it("prepares a summary with the request prefix of the last agent request", async () => {
-    const [first] = await getConversationEventStore().append(CONVERSATION_ID, [
-      { createdAtMs: 1, data: userMessage("Remember the blue option.", 1) },
-    ]);
+    // Each Turn saves the capability sections that changed at its start.
+    const history: PiMessage[] = [
+      sectionsMessage("<available-skills>a</available-skills>", 1),
+      {
+        role: "user",
+        content: [{ type: "text", text: "Remember the blue option." }],
+        timestamp: 1,
+      },
+      assistant("The blue option is ready."),
+      sectionsMessage("<available-skills>a, b</available-skills>", 2),
+      {
+        role: "user",
+        content: [{ type: "text", text: "Pick a shade." }],
+        timestamp: 2,
+      },
+    ];
+    const stored = await getConversationEventStore().append(
+      CONVERSATION_ID,
+      history.map((message) => ({
+        createdAtMs: message.timestamp,
+        data: historyItemFromPiMessage(message, contextProvenance),
+      })),
+    );
     const mark = getAgentBackgroundCompactionMarkTokens(MODEL_ID);
 
-    await expect(completeTurn(liveAgent(mark - 1))).resolves.toEqual([]);
-    const agent = liveAgent(mark);
+    await expect(completeTurn(liveAgent(mark - 1, history))).resolves.toEqual(
+      [],
+    );
+    const agent = liveAgent(mark, history);
     const sent = await completeTurn(agent);
     expect(sent).toEqual([
       {
         conversationId: CONVERSATION_ID,
         historyVersion: 0,
-        markSeq: first!.seq,
+        markSeq: stored.at(-1)!.seq,
       },
     ]);
     // A later model request waits for the pending request.
-    await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    await expect(completeTurn(liveAgent(mark, history))).resolves.toEqual([]);
 
     const model = replies(["<summary>The person picked blue.</summary>"]);
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });
 
     // The provider reads the same system prompt and tools, so it can read
     // the cached prefix. Only the summary instruction is added.
-    const expected = await buildAgentModelRequest(agent, [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Remember the blue option." }],
-        timestamp: 1,
-      },
-    ]);
+    const expected = await buildAgentModelRequest(agent, history);
     expect(model.calls).toHaveLength(1);
     expect(model.calls[0]!.systemPrompt).toBe(expected.context.systemPrompt);
     expect(JSON.stringify(model.calls[0]!.tools)).toBe(
@@ -310,7 +347,7 @@ describe("background compaction job", () => {
       expected.context.messages,
     );
     const request = {
-      markSeq: first!.seq,
+      markSeq: stored.at(-1)!.seq,
       historyVersion: 0,
       modelId: MODEL_ID,
     };
@@ -425,7 +462,7 @@ describe("background compaction job", () => {
       liveAgent(getAgentBackgroundCompactionMarkTokens(MODEL_ID)),
     );
     const model = replies(["<summary>Late.</summary>"]);
-    const streamFn: StreamFn = async (...args) => {
+    const streamFn: AgentRequestStreamFn = async (...args) => {
       await events.replaceHistory(CONVERSATION_ID, compaction("Foreground."));
       return await model.streamFn(...args);
     };

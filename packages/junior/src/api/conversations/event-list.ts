@@ -8,6 +8,7 @@ import {
   readConversationEventPageAfter,
   readConversationEventPageAround,
 } from "./event-page";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./record";
 import { conversationEventHistory } from "./projection";
@@ -16,21 +17,21 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import {
   CONVERSATION_EVENT_PAGE_LIMIT,
-  conversationEventPageSchema,
   type ConversationEventPage,
   type ConversationReportEvent,
 } from "../schema/conversation";
 
 /**
  * Where one page starts. Cursors come from earlier pages. A link target
- * (`event` seq or `turn` id) asks for the page around it, so the dashboard
- * opens a linked row with one request.
+ * (`event` seq, `turn` id, or `message` id) asks for the page around it, so
+ * the dashboard opens a linked row with one request.
  */
 type ConversationEventsBoundary =
   | { after: string }
   | { around: string }
   | { before: string }
   | { event: number }
+  | { message: string }
   | { turn: string };
 
 /** Read one bounded page of reporting events before, after, or around a boundary. */
@@ -76,18 +77,16 @@ export async function readConversationEvents(
               ...pageArgs,
               beforeSeq: position.seq,
             });
-  return conversationEventPageSchema.parse(
-    await conversationEventPageReport(getSqlExecutor(), {
-      conversationId,
-      eventHistory: conversationEventHistory({
-        canExposePayload,
-        ...(transcriptPurgedAtMs === undefined
-          ? undefined
-          : { transcriptPurgedAtMs }),
-      }),
-      page,
+  return await conversationEventPageReport(getSqlExecutor(), {
+    conversationId,
+    eventHistory: conversationEventHistory({
+      canExposePayload,
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
-  );
+    page,
+  });
 }
 
 /** Resolve a page boundary to a direction and an event seq. */
@@ -99,6 +98,11 @@ async function boundaryPosition(
   if ("turn" in boundary) {
     const seq = await readTurnStartedSeq(conversationId, boundary.turn);
     if (seq === undefined) throwApiError(404, "Turn not found.");
+    return { direction: "around", seq };
+  }
+  if ("message" in boundary) {
+    const seq = await readMessageSeq(conversationId, boundary.message);
+    if (seq === undefined) throwApiError(404, "Message not found.");
     return { direction: "around", seq };
   }
   const [direction, value] =
@@ -134,6 +138,28 @@ async function readTurnStartedSeq(
   return row?.seq;
 }
 
+/**
+ * Find the event that stored a Message. A fork copies its events with their
+ * seq and payload, so the same id names one row in each Conversation.
+ */
+async function readMessageSeq(
+  conversationId: string,
+  messageId: string,
+): Promise<number | undefined> {
+  const [row] = await getDb()
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        sql`${juniorConversationEvents.payload}->>'messageId' = ${messageId}`,
+      ),
+    )
+    .limit(1);
+  return row?.seq;
+}
+
 /** Attach mentions and signed cursors to one bounded page of events. */
 export async function conversationEventPageReport(
   executor: JuniorSqlDatabase,
@@ -153,7 +179,7 @@ export async function conversationEventPageReport(
   return {
     events: (
       await attachConversationMentions(executor, conversationId, {
-        events: page.events,
+        events: page.events.map(formatConversationEventText),
       })
     ).events,
     eventHistory: args.eventHistory,

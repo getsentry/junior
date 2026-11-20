@@ -3,16 +3,17 @@ export {
   INPUT_IMAGE_TYPES,
 } from "../chat/attachments/media";
 export {
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
-export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
   AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
+  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -32,13 +33,23 @@ export {
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
-export { conversationObjectCard, personObjectCard } from "./objects/cards";
 export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+  webPageObjectCard,
+} from "./objects/cards";
+export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
   MAX_OBJECT_LINKS,
   objectLinksQuerySchema,
   objectLinksReportSchema,
 } from "./schema/object-link";
-export type { ObjectLinksReport } from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -50,8 +61,10 @@ export {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
+  IDLE_CHANGE_DAYS,
 } from "./schema/code";
 export type {
   CodeActivityDay,
@@ -73,7 +86,6 @@ export {
   conversationEventPageSchema,
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
-  conversationFeedQuerySchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -84,6 +96,15 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { activityPreviewText } from "./schema/activity-preview-text";
+export {
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "./schema/conversation-attachment-upload";
+export type {
+  AttachmentUpload,
+  CreateAttachmentUploadBody,
+} from "./schema/conversation-attachment-upload";
 export {
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
@@ -96,10 +117,15 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
-export { conversationFeedSchema } from "./schema/conversation-feed";
+export {
+  CONVERSATION_FEED_PAGE_VERSION_HEADER,
+  conversationFeedQuerySchema,
+  conversationFeedSchema,
+} from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -161,10 +187,13 @@ export type {
   ConversationDeliveryResponse,
 } from "./schema/conversation-delivery";
 export {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -228,6 +257,16 @@ export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
 } from "./schema/watch";
+export {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemStatusBodySchema,
+} from "./schema/plan";
+export type {
+  ConversationPlanItem,
+  ConversationPlanReport,
+  PlanItemStatusBody,
+} from "./schema/plan";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -235,6 +274,11 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  mentionablePersonSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
+  PERSON_CARD_RECENT_LIMIT,
+  personCardReportSchema,
   personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
@@ -260,8 +304,11 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   ActorWindowMetrics,
+  MentionablePerson,
   PeopleActivityDayReport,
+  PeopleSearchReport,
   PersonalSpendReport,
+  PersonCardReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";
@@ -284,6 +331,22 @@ export type {
   NotificationSchedule,
   NotificationSettings,
 } from "./schema/notification";
+export {
+  cacheWarmingBreakerListSchema,
+  cacheWarmingSavingsRefillResponseSchema,
+  cacheWarmingSavingsReportSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
+export type {
+  CacheWarmingSavingsRefill,
+  CacheWarmingSavingsReport,
+} from "./schema/cache-warming";
+export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -331,8 +394,10 @@ export {
   automationExecutionSchema,
   automationExecutionStatusDaySchema,
   automationExecutionStatusSchema,
+  automationListItemSchema,
   automationListQuerySchema,
   automationListSchema,
+  automationListPageSchema,
   automationParamsSchema,
   automationRunListSchema,
   automationRunSchema,
@@ -351,6 +416,8 @@ export type {
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListPage,
+  AutomationListItem,
   AutomationListQuery,
   AutomationRun,
   AutomationRunList,
@@ -359,11 +426,6 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
-export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
-export type {
-  ReplyTimeHistogram,
-  ReplyTimeSegmentsReport,
-} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {
@@ -404,5 +466,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

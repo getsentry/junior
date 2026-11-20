@@ -4,7 +4,9 @@ import {
   isTypeBoxInputSchema,
   type AnyToolDefinition,
 } from "@/chat/tools/definition";
+import { executeToolInputSchema } from "@/chat/tools/execute-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { parseToolInput } from "@/chat/tool-support/zod-tool";
 import {
   findToolNameHint,
   ToolNameMissError,
@@ -24,25 +26,15 @@ function schemaErrorText(schema: TSchema, value: unknown): string {
   return `${firstError.path || "/"} ${firstError.message}`;
 }
 
-/** Resolve and validate a catalog executeTool request at runtime. */
+/** Parse an executeTool envelope and resolve the catalog tool that it names. */
 export function resolveCatalogToolCall(
-  input: Record<string, unknown>,
+  input: unknown,
   catalogTools: Record<string, AnyToolDefinition>,
 ): CatalogToolCall {
-  const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments",
+  const { tool_name: toolName, arguments: args = {} } = parseToolInput(
+    executeToolInputSchema,
+    input,
   );
-  if (extraKeys.length > 0) {
-    throw new ToolInputError(
-      `executeTool arguments must be nested under arguments, not top-level fields: ${extraKeys.join(", ")}`,
-    );
-  }
-
-  const toolName = input.tool_name;
-  if (typeof toolName !== "string" || toolName.length === 0) {
-    throw new ToolInputError("executeTool requires a catalog tool_name.");
-  }
-
   const definition = catalogTools[toolName];
   if (!definition) {
     throw new ToolNameMissError(
@@ -50,18 +42,7 @@ export function resolveCatalogToolCall(
       findToolNameHint(toolName, catalogTools),
     );
   }
-
-  const args = input.arguments;
-  if (args === undefined) {
-    return { arguments: {}, definition, toolName };
-  }
-  if (!args || typeof args !== "object" || Array.isArray(args)) {
-    throw new ToolInputError(
-      "executeTool arguments must be an object when provided.",
-    );
-  }
-
-  return { arguments: args as Record<string, unknown>, definition, toolName };
+  return { arguments: args, definition, toolName };
 }
 
 /**

@@ -35,7 +35,8 @@ export async function mockReadPositionConversation(
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
   const state = {
@@ -55,6 +56,10 @@ export async function mockReadPositionConversation(
     memoryCaptureSeq: -1,
     /** Events that finish a Turn. */
     turnEndSeqs: [] as number[],
+    /** Events that record a Task of the Turn. */
+    taskSeqs: [] as number[],
+    /** Messages that are taller than the viewport. */
+    tallSeqs: [] as number[],
     /** Return only the latest page in detail, like the server. */
     pagedDetail: false,
     /** Return the page around the read position when a detail asks for it. */
@@ -65,19 +70,22 @@ export async function mockReadPositionConversation(
   };
   let stored = input.lastReadSeq;
 
-  await page.route("**/api/conversations", async (route) => {
-    if (new URL(route.request().url()).pathname !== "/api/conversations") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversations: [conversation],
-        generatedAt,
-        source: "conversation_index",
-      },
-    });
-  });
+  await page.route(
+    (url) => url.pathname === "/api/conversations",
+    async (route) => {
+      if (new URL(route.request().url()).pathname !== "/api/conversations") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: {
+          conversations: [conversation],
+          generatedAt,
+          source: "conversation_index",
+        },
+      });
+    },
+  );
   await page.route(
     `**/api/conversations/${conversationId}/messages`,
     async (route) => {
@@ -122,18 +130,38 @@ export async function mockReadPositionConversation(
                   turnId: "qa-turn",
                   presentation: { icon: "brain", title: "2 memories captured" },
                 }
-              : state.turnEndSeqs.includes(seq)
+              : state.taskSeqs.includes(seq)
                 ? {
-                    type: "turn_lifecycle",
-                    state: "succeeded",
-                    turnId: `turn-${seq}`,
+                    type: "subagent",
+                    startedSeq: seq,
+                    startedAt: generatedAt,
+                    childConversationId: `task-${seq}`,
+                    childKind: "task",
+                    subagentKind: "agent",
+                    agentName: "planner",
+                    title: `Task ${seq}`,
+                    status: "completed",
                   }
-                : {
-                    type: "message",
-                    messageId: `message-${seq}`,
-                    role: seq % 2 === 0 ? "user" : "assistant",
-                    text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-                  },
+                : state.turnEndSeqs.includes(seq)
+                  ? {
+                      type: "turn_lifecycle",
+                      state: "succeeded",
+                      turnId: `turn-${seq}`,
+                    }
+                  : {
+                      type: "message",
+                      messageId: `message-${seq}`,
+                      role: seq % 2 === 0 ? "user" : "assistant",
+                      text: state.tallSeqs.includes(seq)
+                        ? [
+                            `Transcript message ${seq} starts here.`,
+                            ...Array.from(
+                              { length: 30 },
+                              (_, line) => `Line ${line} of a long reply.`,
+                            ),
+                          ].join("\n\n")
+                        : `Transcript message ${seq} with enough content to occupy a visible row.`,
+                    },
         seq,
       };
     });
@@ -154,6 +182,7 @@ export async function mockReadPositionConversation(
       const around =
         query.get("around") ??
         query.get("event") ??
+        query.get("message")?.replace(/^message-/, "") ??
         (turn ? String(state.turnStartSeq) : null);
       const newer = after ?? around;
       if (newer && Number(newer) >= state.newerGateAfter) {

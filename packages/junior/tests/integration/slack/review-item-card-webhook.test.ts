@@ -1,10 +1,18 @@
-import type { Identity, User } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type Identity,
+  type User,
+} from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import {
+  pauseConversationDelivery,
+  resumeConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import {
   closeDb,
@@ -13,8 +21,11 @@ import {
   getDb,
 } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { setTrustConfig } from "@/chat/identities/trust";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnReviewItem } from "@/chat/review-items/actions";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import {
   closeReviewItem,
   getReviewItem,
@@ -106,7 +117,7 @@ async function addItem(
 }
 
 function blocksOf(call: { params: Record<string, unknown> } | undefined) {
-  const blocks = call?.params.blocks;
+  const blocks = call?.params["blocks"];
   return (typeof blocks === "string" ? JSON.parse(blocks) : blocks) as Array<{
     elements?: Array<{
       action_id?: string;
@@ -140,11 +151,17 @@ describe("Slack webhook: Review item cards", () => {
   afterEach(async () => {
     process.env = { ...ORIGINAL_ENV };
     resetSlackApiMockState();
+    setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
     await disconnectStateAdapter();
     await closeDb();
   });
 
   function harness(options: { allowedDomains?: string[] } = {}) {
+    // Slack ingress reads the allowed domains that `createApp` applies.
+    setTrustConfig({
+      allowedBotUserIds: [],
+      allowedDomains: options.allowedDomains ?? [],
+    });
     const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
@@ -213,7 +230,6 @@ describe("Slack webhook: Review item cards", () => {
         }),
         waitUntil: waitUntil.fn,
         services: {
-          ...options,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),
@@ -235,6 +251,7 @@ describe("Slack webhook: Review item cards", () => {
         createConversationRoutes({
           attachmentStorage: createMemoryAttachmentStorage(),
           queue,
+          waitUntil: () => undefined,
         }),
       );
       return await app.request(
@@ -272,7 +289,7 @@ describe("Slack webhook: Review item cards", () => {
     // Each linked thread gets a card with one button per choice. The
     // recommended choice is the primary button.
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel).sort()).toEqual([
+    expect(posts.map((post) => post.params["channel"]).sort()).toEqual([
       "C123",
       "C456",
     ]);
@@ -389,9 +406,9 @@ describe("Slack webhook: Review item cards", () => {
     const updates = slackApiOutbox
       .calls("chat.update")
       .slice(updatesBeforeClose);
-    expect(updates.slice(0, 2).map((update) => update.params.channel)).toEqual(
-      expect.arrayContaining(["C123", "C456"]),
-    );
+    expect(
+      updates.slice(0, 2).map((update) => update.params["channel"]),
+    ).toEqual(expect.arrayContaining(["C123", "C456"]));
     for (const update of updates) {
       const blocks = blocksOf(update);
       expect(blocks.some((block) => block.type === "actions")).toBe(false);
@@ -476,6 +493,158 @@ describe("Slack webhook: Review item cards", () => {
     expect(work?.messages[0]?.input.text).toContain(
       "Decision (decision): Ship it",
     );
+  });
+
+  it("gives a click on a plugin item's choice to the plugin, with no Turn", async () => {
+    const answers: string[] = [];
+    let fails = true;
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "deploys",
+            displayName: "Deploys",
+            description: "Deploy test plugin",
+          },
+          hooks: {
+            reviewItemAnswered: ({ choice, dedupeKey }) => {
+              answers.push(`${dedupeKey}: ${choice}`);
+              if (fails) throw new Error("deploy API is down");
+            },
+          },
+        }),
+      ]),
+    });
+    const { click, state } = harness();
+    await slackThread(THREAD, "public");
+    await linkSlackUser("ana@example.com", "U123");
+    await createPluginReviewItems({
+      conversationId: THREAD,
+      plugin: "deploys",
+      show: createSlackReviewItemShow(createSlackAdapterFixture),
+    }).upsert({
+      assigneeIdentityIds: ["identity:U123"],
+      body: "Deploys of `api` stopped after 3 failures.",
+      choices: [{ label: "Resume" }],
+      dedupeKey: "deploy-stopped:api",
+      title: "Deploys stopped · api",
+    });
+
+    // The card asks the body once, and has one button and no Other….
+    const [card] = slackApiOutbox.messages();
+    const text = blocksOf(card)[0]?.text ?? "";
+    expect(text.split("Deploys of `api` stopped")).toHaveLength(2);
+    expect(
+      blocksOf(card)
+        .find((block) => block.type === "actions")
+        ?.elements?.map((element) => element.action_id),
+    ).toEqual(["junior_review_item:choice:0", "junior_review_item:dismiss"]);
+
+    const [item] = await getDb().query.juniorReviewItems.findMany();
+    const resume = (actionTs: string) =>
+      click({
+        actionId: "junior_review_item:choice:0",
+        actionTs,
+        itemId: item!.id,
+        userId: "U123",
+        value: buttonValue(card, "junior_review_item:choice:0"),
+      });
+    // The plugin fails after the click closes the item. The card keeps its
+    // button, and a second click calls the plugin again.
+    await resume("1712345.0003").catch(() => undefined);
+    fails = false;
+    await resume("1712345.0004");
+    expect(answers).toEqual([
+      "deploy-stopped:api: Resume",
+      "deploy-stopped:api: Resume",
+    ]);
+    expect(await getReviewItem(getDb(), item!.id)).toMatchObject({
+      status: "done",
+    });
+    // The plugin does the work, so the thread starts no Turn.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages ?? []).toEqual([]);
+  });
+
+  it("posts one card in a thread that a linked child agent shares", async () => {
+    const { click, state } = harness();
+    await slackThread(THREAD, "public");
+    // A child agent shares the thread of its parent.
+    const child = "agent:card-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    // The child adds the item first, and the parent links it later. The
+    // thread keeps one card.
+    await addItem(ana, input, child);
+    const { item } = await addItem(ana, input);
+    expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
+    const cards = slackApiOutbox.messages();
+    expect(cards).toHaveLength(1);
+
+    await click({
+      actionId: "junior_review_item:choice:0",
+      actionTs: "1712345.0003",
+      itemId: item.id,
+      userId: "U123",
+      value: buttonValue(cards[0], "junior_review_item:choice:0"),
+    });
+
+    // A click acts for the parent, which owns the thread, so the parent gets
+    // the answer once.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input).toMatchObject({ authorId: "U123" });
+  });
+
+  it("posts no card in a detached thread until it attaches again", async () => {
+    harness();
+    await slackThread(THREAD, "public");
+    // A child agent's item reads the detach of its root.
+    const child = "agent:detached-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "thread",
+      nowMs: 1,
+      parentConversationId: THREAD,
+      source: "internal",
+    });
+    await pauseConversationDelivery(THREAD);
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const input = {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    };
+    await addItem(ana, input, child);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+
+    await resumeConversationDelivery(THREAD);
+    await addItem(ana, input);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
   it("names the recommended option of a form in the card text", async () => {
@@ -576,7 +745,7 @@ describe("Slack webhook: Review item cards", () => {
     });
 
     const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.channel)).toEqual(["C123"]);
+    expect(posts.map((post) => post.params["channel"])).toEqual(["C123"]);
     // The title links to the subject.
     expect(blocksOf(posts[0])[0]?.text).toContain(
       "**[Rotate the deploy key](https://github.com/acme/infra/pull/12)**",

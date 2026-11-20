@@ -138,140 +138,140 @@ async function removePartialClone(
 }
 
 /** Clone one GitHub repository into the sandbox as an ad-hoc checkout. */
-export function createGitHubCloneRepositoryTool(ctx: {
-  log: PluginLogger;
-  sandbox: PluginSandbox;
-  workspaces: PluginWorkspaceToolContext;
-}) {
-  return definePluginTool({
-    annotations: {
-      // Remote GitHub effect is contents-read only. Sandbox checkout creation is
-      // the same class of ephemeral local materialization as webFetch artifacts,
-      // so this stays a read-only inspection tool rather than a mutating write.
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or pass allow_ad_hoc=true for an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
-    describeProposal(input) {
-      const directory =
-        typeof input.directory === "string" && input.directory.length > 0
-          ? input.directory
-          : undefined;
-      const adHoc =
-        input.allow_ad_hoc === true ? " as an intentional ad-hoc checkout" : "";
-      return directory
-        ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
-        : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
-    },
-    executionMode: "sequential",
-    inputSchema,
-    outputSchema,
-    async execute(input, options): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const repoId = `${repo.owner}/${repo.name}`;
-      // Look up matching recipes before any sandbox write so a later
-      // switchWorkspace does not discard a just-created ad-hoc clone.
-      let workspaces: string[] = [];
-      let active: { name?: string } | undefined;
-      try {
-        [workspaces, active] = await Promise.all([
-          ctx.workspaces.findByRepository({
-            provider: "github",
-            repo: repoId,
-          }),
-          ctx.workspaces.active(),
-        ]);
-      } catch (error) {
-        // Fail open: a lookup outage must not block inspection clones.
-        ctx.log.error("github.clone.workspaces_lookup.failed", {
-          repo: repoId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      // In the default Sandbox a switch loses nothing, so steer to the
-      // Workspace. Inside another Workspace a switch would drop its files,
-      // so keep the ad-hoc clone and report the matching Workspaces.
-      if (workspaces.length > 0 && !active && input.allow_ad_hoc !== true) {
-        throw workspaceRequiredError(repoId, workspaces);
-      }
-      const otherWorkspaces = workspaces.filter(
-        (name) => name !== active?.name,
-      );
-      const note =
-        active && otherWorkspaces.length > 0
-          ? workspaceAvailableNote(repoId, active, otherWorkspaces)
-          : undefined;
-      const directory = input.directory ?? defaultDirectory(repo.name);
-      const rootSegment = directory.split("/")[0] ?? directory;
-      if (isReservedSandboxDirectory(rootSegment)) {
-        throw new PluginToolInputError(
-          `Directory conflicts with a reserved sandbox path: ${directory}`,
-        );
-      }
-      const path = `${ctx.sandbox.root}/${directory}`;
-      const parentDirectory = directory.includes("/")
-        ? directory.slice(0, directory.lastIndexOf("/"))
+export const gitHubCloneRepositoryTool = definePluginTool({
+  annotations: {
+    // Remote GitHub effect is contents-read only. Sandbox checkout creation is
+    // the same class of ephemeral local materialization as webFetch artifacts,
+    // so this stays a read-only inspection tool rather than a mutating write.
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
+  describeProposal(input) {
+    const directory =
+      typeof input.directory === "string" && input.directory.length > 0
+        ? input.directory
         : undefined;
-      if (parentDirectory) {
-        const mkdir = await ctx.sandbox.run({
-          cmd: "mkdir",
-          args: ["-p", "--", `${ctx.sandbox.root}/${parentDirectory}`],
-          cwd: ctx.sandbox.root,
-          signal: commandSignal(options.signal, 30_000),
-        });
-        if (mkdir.exitCode !== 0) {
-          throw new PluginToolInputError(
-            `Failed to create clone parent directory: ${parentDirectory}`,
-          );
-        }
-      }
-      const exists = await ctx.sandbox.run({
-        cmd: "bash",
-        args: ["-c", `test -e "$1"`, "bash", path],
+    const adHoc =
+      input.allow_ad_hoc === true ? " as an intentional ad-hoc checkout" : "";
+    return directory
+      ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
+      : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
+  },
+  executionMode: "sequential",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    options,
+    ctx: {
+      log: PluginLogger;
+      sandbox: PluginSandbox;
+      workspaces: PluginWorkspaceToolContext;
+    },
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const repoId = `${repo.owner}/${repo.name}`;
+    // Look up matching recipes before any sandbox write so a later
+    // switchWorkspace does not discard a just-created ad-hoc clone.
+    let workspaces: string[] = [];
+    let active: { name?: string } | undefined;
+    try {
+      [workspaces, active] = await Promise.all([
+        ctx.workspaces.findByRepository({
+          provider: "github",
+          repo: repoId,
+        }),
+        ctx.workspaces.active(),
+      ]);
+    } catch (error) {
+      // Fail open: a lookup outage must not block inspection clones.
+      ctx.log.error("github.clone.workspaces_lookup.failed", {
+        repo: repoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // In the default Sandbox a switch loses nothing, so steer to the
+    // Workspace. Inside another Workspace a switch would drop its files,
+    // so keep the ad-hoc clone and report the matching Workspaces.
+    if (workspaces.length > 0 && !active && input.allow_ad_hoc !== true) {
+      throw workspaceRequiredError(repoId, workspaces);
+    }
+    const otherWorkspaces = workspaces.filter((name) => name !== active?.name);
+    const note =
+      active && otherWorkspaces.length > 0
+        ? workspaceAvailableNote(repoId, active, otherWorkspaces)
+        : undefined;
+    const directory = input.directory ?? defaultDirectory(repo.name);
+    const rootSegment = directory.split("/")[0] ?? directory;
+    if (isReservedSandboxDirectory(rootSegment)) {
+      throw new PluginToolInputError(
+        `Directory conflicts with a reserved sandbox path: ${directory}`,
+      );
+    }
+    const path = `${ctx.sandbox.root}/${directory}`;
+    const parentDirectory = directory.includes("/")
+      ? directory.slice(0, directory.lastIndexOf("/"))
+      : undefined;
+    if (parentDirectory) {
+      const mkdir = await ctx.sandbox.run({
+        cmd: "mkdir",
+        args: ["-p", "--", `${ctx.sandbox.root}/${parentDirectory}`],
         cwd: ctx.sandbox.root,
         signal: commandSignal(options.signal, 30_000),
       });
-      if (exists.exitCode === 0) {
-        throw new PluginToolInputError(`destination already exists: ${path}`);
-      }
-      // Git smart HTTP uses git-upload-pack for clone, fetch, pull, deepen, and
-      // ls-remote, so egress policy cannot distinguish clone without also
-      // blocking normal repository workflows. This tool is the bounded,
-      // preferred clone path rather than an enforceable network boundary.
-      let clone;
-      try {
-        clone = await ctx.sandbox.run({
-          cmd: "git",
-          args: [
-            "clone",
-            "--quiet",
-            "--depth=1",
-            "--",
-            `https://github.com/${repo.owner}/${repo.name}.git`,
-            directory,
-          ],
-          cwd: ctx.sandbox.root,
-          signal: commandSignal(options.signal, 2 * 60_000),
-        });
-      } catch (error) {
-        await removePartialClone(ctx, path);
-        throw error;
-      }
-      if (clone.exitCode !== 0) {
-        await removePartialClone(ctx, path);
+      if (mkdir.exitCode !== 0) {
         throw new PluginToolInputError(
-          `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
+          `Failed to create clone parent directory: ${parentDirectory}`,
         );
       }
-      return {
-        target: "cloneRepository",
-        repo: repoId,
-        path,
-        ...(note ? { note } : undefined),
-      };
-    },
-  });
-}
+    }
+    const exists = await ctx.sandbox.run({
+      cmd: "bash",
+      args: ["-c", `test -e "$1"`, "bash", path],
+      cwd: ctx.sandbox.root,
+      signal: commandSignal(options.signal, 30_000),
+    });
+    if (exists.exitCode === 0) {
+      throw new PluginToolInputError(`destination already exists: ${path}`);
+    }
+    // Git smart HTTP uses git-upload-pack for clone, fetch, pull, deepen, and
+    // ls-remote, so egress policy cannot distinguish clone without also
+    // blocking normal repository workflows. This tool is the bounded,
+    // preferred clone path rather than an enforceable network boundary.
+    let clone;
+    try {
+      clone = await ctx.sandbox.run({
+        cmd: "git",
+        args: [
+          "clone",
+          "--quiet",
+          "--depth=1",
+          "--",
+          `https://github.com/${repo.owner}/${repo.name}.git`,
+          directory,
+        ],
+        cwd: ctx.sandbox.root,
+        signal: commandSignal(options.signal, 2 * 60_000),
+      });
+    } catch (error) {
+      await removePartialClone(ctx, path);
+      throw error;
+    }
+    if (clone.exitCode !== 0) {
+      await removePartialClone(ctx, path);
+      throw new PluginToolInputError(
+        `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
+      );
+    }
+    return {
+      target: "cloneRepository",
+      repo: repoId,
+      path,
+      ...(note ? { note } : undefined),
+    };
+  },
+});

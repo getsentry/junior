@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { RemSize } from "../components/ui/resizable";
 import { DESKTOP_LAYOUT_QUERY } from "../layoutMedia";
 
-import { hasPanelSpace } from "../components/DetailsPanel";
+import { hasPanelSpace, useDetailsPanel } from "../components/DetailsPanel";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
 const DETAILS_OPEN_KEY = "junior:conversation:details-open";
@@ -14,6 +14,14 @@ const DETAILS_WIDTH_KEY = "junior:conversation:details-width-rem";
 
 /** Rem limits for the conversation list beside a selected conversation. */
 export const SIDEBAR_WIDTH = { default: 20, max: 30, min: 15 } as const;
+
+/**
+ * Rem limits for the new UI's desktop pane. It holds only short row names,
+ * so it starts slimmer than the list, but wide enough for "Search" and its
+ * shortcut chip in the top bar.
+ */
+export const PANE_WIDTH = { default: 18, max: 30, min: 13 } as const;
+const PANE_WIDTH_KEY = "junior:pane-width-rem";
 
 /** Rem limits for the details panel beside the transcript. */
 export const DETAILS_WIDTH = { default: 25, max: 45, min: 20 } as const;
@@ -54,6 +62,16 @@ export function readSidebarWidth(): RemSize {
 /** Save the conversation list width in px without a React render per drag step. */
 export function saveSidebarWidth(px: number) {
   writeWidth(WIDTH_KEY, px);
+}
+
+/** Read the new UI's desktop pane width saved in this browser, in rem. */
+export function readPaneWidth(): number {
+  return parseFloat(readWidth(PANE_WIDTH_KEY, PANE_WIDTH));
+}
+
+/** Save the new UI's desktop pane width, given in px. */
+export function savePaneWidth(px: number) {
+  writeWidth(PANE_WIDTH_KEY, px);
 }
 
 /** Read the details panel width saved in this browser. */
@@ -97,8 +115,22 @@ export function useSidebarFits(): boolean {
 
 const DETAILS_DEFAULT_OPEN_QUERY = "(min-width: 90rem)";
 
-/** Report whether a Conversation opens with its details panel. */
-export function useDetailsDefaultOpen(): boolean {
+/**
+ * Report whether a Conversation opens with its details panel. The pending
+ * view of a new Conversation and the page that replaces it both use this,
+ * so details do not open and then close when the page loads.
+ */
+export function useDetailsStartOpen(): boolean {
+  const defaultOpen = useDetailsDefaultOpen();
+  const panelFits = useDetailsPanel();
+  // Read once, so a choice made on this page does not change its default.
+  const [saved] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  return saved === undefined ? defaultOpen : saved && panelFits;
+}
+
+function useDetailsDefaultOpen(): boolean {
   return useSyncExternalStore(
     (onChange) => {
       const media = window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY);

@@ -13,7 +13,7 @@ const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const CLASSIFIER_EVAL_TEST_TIMEOUT_MS = 90_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
-  process.env.VITEST_EVALS_OUTPUT_FILE ?? "classifiers-results.json",
+  process.env["VITEST_EVALS_OUTPUT_FILE"] ?? "classifiers-results.json",
 );
 
 loadJuniorTestEnvFiles({
@@ -21,20 +21,26 @@ loadJuniorTestEnvFiles({
   packageRoots: [juniorPackageRoot, evalsPackageRoot],
 });
 
-process.env.JUNIOR_SECRET = "junior-test-secret";
-process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
+process.env["JUNIOR_SECRET"] = "junior-test-secret";
+process.env["JUNIOR_BASE_URL"] ??= "https://junior.example.com";
 // Classifier cases do not touch Redis state, but keep a loopback default so any
 // accidental shared import that reads REDIS_URL stays sandboxed.
-process.env.JUNIOR_STATE_ADAPTER = "redis";
-process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-classifiers:${randomUUID()}`;
-process.env.REDIS_URL =
-  process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
+process.env["JUNIOR_STATE_ADAPTER"] = "redis";
+process.env["JUNIOR_STATE_KEY_PREFIX"] ??=
+  `junior:eval-classifiers:${randomUUID()}`;
+process.env["REDIS_URL"] =
+  process.env["JUNIOR_EVAL_REDIS_URL"]?.trim() || "redis://127.0.0.1:6382";
 
 export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+      // Before the package root, which would also match this subpath.
+      "@sentry/junior-plugin-api/embeddings": path.resolve(
+        pluginApiPackageRoot,
+        "src/embeddings.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",

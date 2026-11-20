@@ -4,6 +4,7 @@
  * Update this schema first, then regenerate packaged migrations with
  * `pnpm --filter @sentry/junior-memory db:generate`.
  */
+import { embeddingVector } from "@sentry/junior-plugin-api/embeddings";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -25,22 +26,6 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
 } from "../types";
-
-/**
- * pgvector column without a fixed size. Rows from different embedding models
- * can have different sizes; the dimensions column records each row's size.
- */
-const vector = customType<{ data: number[]; driverData: string }>({
-  dataType() {
-    return "vector";
-  },
-  toDriver(value) {
-    return JSON.stringify(value);
-  },
-  fromDriver(value) {
-    return value.slice(1, -1).split(",").map(Number);
-  },
-});
 
 const tsvector = customType<{ data: string }>({
   dataType() {
@@ -99,6 +84,12 @@ export const juniorMemoryMemories = pgTable(
       .where(
         sql`${table.idempotencyKey} IS NOT NULL AND ${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),
+    // Finds the archived memory that a retried write would re-create.
+    index("junior_memory_memories_archived_idempotency_idx")
+      .on(table.scope, table.scopeKey, table.idempotencyKey)
+      .where(
+        sql`${table.idempotencyKey} IS NOT NULL AND ${table.archivedAtMs} IS NOT NULL AND ${table.archiveReason} <> 'expired'`,
+      ),
     check(
       "junior_memory_memories_scope_check",
       sql`${table.scope} IN ('private', 'public')`,
@@ -137,7 +128,7 @@ export const juniorMemoryEmbeddings = pgTable(
     dimensions: integer("dimensions").notNull(),
     metric: text("metric", { enum: MEMORY_EMBEDDING_METRICS }).notNull(),
     contentHash: text("content_hash").notNull(),
-    embedding: vector("embedding").notNull(),
+    embedding: embeddingVector("embedding").notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
@@ -197,7 +188,7 @@ export const juniorMemorySignals = pgTable(
     ),
     check(
       "junior_memory_signals_signal_check",
-      sql`${table.signal} IN ('duplicate')`,
+      sql`${table.signal} IN ('duplicate', 'contradicted', 'superseded')`,
     ),
   ],
 );

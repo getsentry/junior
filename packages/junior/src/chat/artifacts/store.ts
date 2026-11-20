@@ -4,7 +4,7 @@ import {
   detectImageMediaType,
   type InputImageType,
 } from "@/chat/attachments/media";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
@@ -118,6 +118,7 @@ export async function publishImage(args: {
       and(
         eq(juniorArtifacts.conversationId, args.conversationId),
         eq(juniorArtifacts.sha256, sha256),
+        eq(juniorArtifacts.visibility, "public"),
       ),
     );
 
@@ -127,12 +128,14 @@ export async function publishImage(args: {
   const storageKey = artifactKey(filename);
 
   await args.storage.put({
-    body: args.body,
+    body: bufferBody(args.body),
+    bytes: args.body.byteLength,
     contentType,
     key: storageKey,
   });
 
-  // Unique on (conversation_id, sha256). Conflict keeps the existing public id.
+  // Unique on (conversation_id, sha256) among public rows. Conflict keeps the
+  // existing public id.
   const [row] = await args.db
     .db()
     .insert(juniorArtifacts)
@@ -144,18 +147,18 @@ export async function publishImage(args: {
       deleteRequestedAt: null,
       ext: extension,
       id,
-      public: true,
       sha256,
       storageKey,
+      visibility: "public",
     })
     .onConflictDoUpdate({
       target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
+      targetWhere: eq(juniorArtifacts.visibility, "public"),
       set: {
         bytes: args.body.byteLength,
         contentType,
         deleteRequestedAt: null,
         ext: extension,
-        public: true,
         // Keep the winning row's id/storage key. A raced put may leave an
         // unused object; that is fine for mvp.
       },
@@ -243,7 +246,7 @@ export async function readPublicArtifact(args: {
     .where(
       and(
         eq(juniorArtifacts.id, parsed.id),
-        eq(juniorArtifacts.public, true),
+        eq(juniorArtifacts.visibility, "public"),
         isNull(juniorArtifacts.deleteRequestedAt),
       ),
     );

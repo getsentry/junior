@@ -4,11 +4,8 @@ import {
   eventTriggerText,
   type EventMatch,
   type EventTriggerDescription,
-  type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import * as z from "zod";
-import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import type { StoredEventAutomation } from "@/chat/event-automations/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
@@ -24,12 +21,12 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { destinationFilterValue } from "@/chat/automations/creator";
-import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import {
-  automationTaskDescription,
-  automationTaskSchema,
-} from "@/chat/automations/task";
+  saveAutomationCardResult,
+  automationResultFields,
+  automationResultFieldSchemas,
+} from "@/chat/automations/result";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 /** Model-facing shape of one event automation. */
 export const compactEventAutomationResultSchema = z
@@ -53,36 +50,7 @@ export const compactEventAutomationResultSchema = z
         problems: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
-    destination: z
-      .object({
-        id: z.string().min(1),
-        channel: z.string().min(1),
-        thread: z.string().min(1).nullable(),
-      })
-      .strict(),
-    credential_mode: z.enum(["system", "creator"]),
-    is_creator: z.boolean(),
-    outcomes: z
-      .array(
-        z
-          .object({
-            action: z.literal("send_message"),
-            destination: z
-              .object({
-                channel: z.string().min(1),
-                thread: z.string().min(1).nullable(),
-              })
-              .strict(),
-          })
-          .strict(),
-      )
-      .max(5),
-    created_by: z
-      .object({
-        name: z.string().min(1).nullable(),
-        username: z.string().min(1).nullable(),
-      })
-      .strict(),
+    ...automationResultFieldSchemas,
   })
   .strict();
 
@@ -154,11 +122,11 @@ export function requireEventAutomationTrigger(
   catalog: EventCatalog,
   input: {
     events: readonly string[];
-    identifier?: string | null;
+    identifier?: string | null | undefined;
     label: string;
-    match?: EventAutomation["trigger"]["match"];
+    match?: EventAutomation["trigger"]["match"] | undefined;
     namespace: string;
-    resourceType?: string | null;
+    resourceType?: string | null | undefined;
   },
   options?: { inputKeys: boolean },
 ): EventAutomation["trigger"] {
@@ -242,26 +210,7 @@ export function compactEventAutomation(
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
     },
-    destination: {
-      id: destinationFilterValue(task.destination),
-      channel: task.destination.channelId,
-      thread: null,
-    },
-    credential_mode: task.credentialMode,
-    is_creator: isCreator,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
-      (outcome) => ({
-        action: outcome.action,
-        destination: {
-          channel: outcome.destination.channelId,
-          thread: outcome.destination.threadTs ?? null,
-        },
-      }),
-    ),
-    created_by: {
-      name: task.createdBy.fullName ?? null,
-      username: task.createdBy.userName ?? null,
-    },
+    ...automationResultFields(task, isCreator),
   });
 }
 
@@ -272,29 +221,15 @@ export async function eventAutomationToolResult(
   catalog: EventCatalog,
   isCreator: boolean,
 ) {
-  const automation = compactEventAutomation(task, catalog, isCreator);
   const description = describeEventAutomationTrigger(task.trigger, catalog);
-  const taskDescription = automationTaskDescription(task.task);
-  const title =
-    automation.title ?? fallbackShortTitle(taskDescription, "Event automation");
-  return {
-    automation,
-    objectCards: await saveObjectAnnotations(conversationId, "junior", [
-      {
-        kind: "object",
-        objectType: "automation",
-        label: title,
-        key: task.id,
-        title,
-        url: automation.dashboard_url,
-        description: taskDescription,
-        status: description.problems.length === 0 ? "ready" : "unavailable",
-        trigger: eventTriggerText(task.trigger.label, description),
-        warning:
-          description.problems.length > 0
-            ? ["Trigger unavailable.", ...description.problems].join(" ")
-            : undefined,
-      } satisfies ObjectAnnotation,
-    ]),
-  };
+  return saveAutomationCardResult(
+    conversationId,
+    compactEventAutomation(task, catalog, isCreator),
+    {
+      task: task.task,
+      fallbackTitle: "Event automation",
+      trigger: eventTriggerText(task.trigger.label, description),
+      triggerProblems: description.problems,
+    },
+  );
 }

@@ -8,6 +8,7 @@
  * pass. Attachment files use their own 30-day window.
  */
 import { collectAttachmentGarbage } from "@/chat/attachments/store";
+import { collectAttachmentUploadGarbage } from "@/chat/attachments/uploads";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { logException, logInfo, withLogContext } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -63,6 +64,7 @@ export async function runRetentionPurge(
   let purged = 0;
   let failed = 0;
   let conversations = 0;
+  /* oxlint-disable no-await-in-loop -- Purge one tree at a time to bound database load. */
   for (const root of roots) {
     await withLogContext({ conversationId: root.conversationId }, async () => {
       try {
@@ -84,6 +86,7 @@ export async function runRetentionPurge(
       }
     });
   }
+  /* oxlint-enable no-await-in-loop */
   const attachmentResult = args.attachmentStorage
     ? await collectAttachmentGarbage({
         db: executor,
@@ -91,8 +94,16 @@ export async function runRetentionPurge(
         storage: args.attachmentStorage,
       })
     : { deleted: 0 };
+  const uploadResult = args.attachmentStorage
+    ? await collectAttachmentUploadGarbage({
+        db: executor,
+        nowMs: args.nowMs,
+        storage: args.attachmentStorage,
+      })
+    : { deleted: 0 };
   logInfo("retention.purge.completed", {
     "app.retention.attachments": attachmentResult.deleted,
+    "app.retention.attachment_uploads": uploadResult.deleted,
     "app.retention.scanned": roots.length,
     "app.retention.purged": purged,
     "app.retention.failed": failed,

@@ -218,7 +218,7 @@ async function readParentResults(harness: Harness, invocationId: string) {
     state: harness.state,
   });
   return (work?.messages ?? []).flatMap((message) => {
-    const event = message.input.metadata?.event as
+    const event = message.input.metadata?.["event"] as
       | { eventType?: string; identifier?: string }
       | undefined;
     return event?.identifier === invocationId && event.eventType

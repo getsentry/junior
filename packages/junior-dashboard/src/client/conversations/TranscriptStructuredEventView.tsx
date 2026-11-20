@@ -1,16 +1,16 @@
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
-import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
 import { DisplayText } from "../display-text/DisplayText";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { formatMessageTimestamp } from "../time";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 
 /** Render one structured event with core-owned transcript interaction. */
 export function TranscriptStructuredEventView(props: {
   part: TranscriptPresentationEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const search = useTranscriptSearch();
   const presentation = props.part.presentation;

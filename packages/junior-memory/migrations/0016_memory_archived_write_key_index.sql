@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_memories_archived_idempotency_idx" ON "junior_memory_memories" USING btree ("scope","scope_key","idempotency_key") WHERE "junior_memory_memories"."idempotency_key" IS NOT NULL AND "junior_memory_memories"."archived_at_ms" IS NOT NULL AND "junior_memory_memories"."archive_reason" <> 'expired';

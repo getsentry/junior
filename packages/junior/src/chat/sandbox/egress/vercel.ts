@@ -44,7 +44,7 @@ type VercelSandboxNetworkPolicy =
 
 /** Runtime dependencies for the Vercel side of the sandbox egress proxy. */
 export interface VercelSandboxEgressProxyDeps extends SandboxEgressProxyDeps {
-  verifyOidc?: (token: string) => Promise<JWTPayload>;
+  verifyOidc?: ((token: string) => Promise<JWTPayload>) | undefined;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
@@ -155,8 +155,8 @@ function normalizePort(value: string | null): string | undefined {
 }
 
 function sandboxIdFromPayload(payload: JWTPayload): string | undefined {
-  return typeof payload.sandbox_id === "string"
-    ? payload.sandbox_id
+  return typeof payload["sandbox_id"] === "string"
+    ? payload["sandbox_id"]
     : undefined;
 }
 
@@ -264,6 +264,10 @@ export async function proxyVercelSandboxEgressRequest(
 
   let oidcPayload: JWTPayload;
   try {
+    // Lint exception (.oxlintrc.json): the eval egress process replaces
+    // `Date` to check tokens that eval workers make with the eval clock.
+    // Vercel signs this token with real time, so evals pass a verifier with
+    // the real clock. Production never passes one.
     oidcPayload = await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
       oidcToken,
     );

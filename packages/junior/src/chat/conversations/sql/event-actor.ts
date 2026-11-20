@@ -22,23 +22,25 @@ function readAuthor(meta: unknown): {
   userId?: string;
   userName?: string;
 } {
-  if (!isRecord(meta) || !isRecord(meta.author)) {
+  if (!isRecord(meta) || !isRecord(meta["author"])) {
     return {};
   }
-  const author = meta.author;
+  const author = meta["author"];
   return {
-    ...(typeof author.email === "string" ? { email: author.email } : undefined),
-    ...(typeof author.fullName === "string"
-      ? { fullName: author.fullName }
+    ...(typeof author["email"] === "string"
+      ? { email: author["email"] }
       : undefined),
-    ...(typeof author.isBot === "boolean"
-      ? { isBot: author.isBot }
+    ...(typeof author["fullName"] === "string"
+      ? { fullName: author["fullName"] }
       : undefined),
-    ...(typeof author.userId === "string"
-      ? { userId: author.userId }
+    ...(typeof author["isBot"] === "boolean"
+      ? { isBot: author["isBot"] }
       : undefined),
-    ...(typeof author.userName === "string"
-      ? { userName: author.userName }
+    ...(typeof author["userId"] === "string"
+      ? { userId: author["userId"] }
+      : undefined),
+    ...(typeof author["userName"] === "string"
+      ? { userName: author["userName"] }
       : undefined),
   };
 }
@@ -74,13 +76,25 @@ export async function loadConversationSlackTenantIds(
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
   const tenants = new Map<string, string>();
   for (const row of rows) {
-    const sessionSource = parseSessionSource(row.sessionSource);
-    const tenantId =
-      row.providerTenantId?.trim() ||
-      (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined);
+    const tenantId = conversationSlackTenantId(row);
     if (tenantId) tenants.set(row.conversationId, tenantId);
   }
   return tenants;
+}
+
+/**
+ * Return the Slack workspace that owns a conversation, from its Destination
+ * tenant or its stored Slack session source.
+ */
+export function conversationSlackTenantId(row: {
+  providerTenantId: string | null | undefined;
+  sessionSource: unknown;
+}): string | undefined {
+  const sessionSource = parseSessionSource(row.sessionSource);
+  return (
+    row.providerTenantId?.trim() ||
+    (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined)
+  );
 }
 
 async function findIdentityIdByProviderSubject(

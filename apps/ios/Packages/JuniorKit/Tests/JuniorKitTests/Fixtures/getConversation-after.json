@@ -1,0 +1,60 @@
+{
+  "conversation": {
+    "conversationId": "internal:dashboard-qa",
+    "title": "Dashboard QA edge cases",
+    "status": "done",
+    "turnActive": false,
+    "surface": "internal",
+    "startedAt": "2026-08-07T07:00:00.000Z",
+    "lastSeenAt": "2026-08-07T08:00:00.000Z",
+    "url": "http://127.0.0.1:4317/conversations/internal%3Adashboard-qa"
+  },
+  "messages": [
+    {
+      "seq": 12,
+      "messageId": "qa-assistant",
+      "createdAt": "2026-08-07T07:00:58.000Z",
+      "role": "assistant",
+      "text": "The canonical event rendering looks sound."
+    },
+    {
+      "seq": 16,
+      "messageId": "qa-unused-context",
+      "createdAt": "2026-08-07T07:01:04.000Z",
+      "role": "user",
+      "author": "Alex Rivera",
+      "text": "This ambient message must not appear in the transcript."
+    },
+    {
+      "seq": 17,
+      "messageId": "qa-used-context",
+      "createdAt": "2026-08-07T07:01:06.000Z",
+      "role": "user",
+      "author": "Alex Rivera",
+      "text": "Can you clarify which dashboard state you mean?"
+    },
+    {
+      "seq": 19,
+      "messageId": "qa-context-answer",
+      "createdAt": "2026-08-07T07:01:09.000Z",
+      "role": "assistant",
+      "text": "I mean the empty, loading, and failed transcript states."
+    },
+    {
+      "seq": 20,
+      "messageId": "qa-reviewer-result",
+      "createdAt": "2026-08-07T07:01:10.000Z",
+      "role": "user",
+      "text": "The reviewer needs access to the dashboard repository."
+    },
+    {
+      "seq": 21,
+      "messageId": "qa-github-review-comment",
+      "createdAt": "2026-08-07T07:01:20.000Z",
+      "role": "user",
+      "text": "Can the empty state reuse the loading skeleton?"
+    }
+  ],
+  "pendingMessages": [],
+  "cursor": "eyJjb252ZXJzYXRpb25JZCI6ImludGVybmFsOmRhc2hib2FyZC1xYSIsInNlcSI6MjQsInZlcnNpb24iOjF9.mock"
+}

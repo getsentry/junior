@@ -1,4 +1,13 @@
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleHelp,
+  CircleSlash,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   ActorIdentity,
@@ -7,18 +16,25 @@ import type {
 
 import { ClampedPreview } from "../components/ClampedPreview";
 import { Detail, DetailList } from "../components/DetailList";
-import { StatusChip, type StatusChipTone } from "../components/StatusChip";
+import {
+  StatusChip,
+  statusToneClass,
+  type StatusChipTone,
+} from "../components/StatusChip";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
-import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { OutboundLink } from "../components/OutboundLink";
+import { formatTime } from "../time";
 
-type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
+/** A Conversation's current Brief. */
+export type ConversationBriefReport = NonNullable<
+  ConversationDetailReport["brief"]
+>;
 
 type BriefContent = ConversationBriefReport["content"];
 
@@ -33,6 +49,56 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
     in_progress: "accent",
     partial: "warning",
   };
+
+type OutcomeStatus = BriefContent["outcome"]["status"];
+
+const outcomeIcons: Record<OutcomeStatus, LucideIcon> = {
+  abandoned: CircleSlash,
+  answered: CircleHelp,
+  blocked: CircleAlert,
+  done: CircleCheck,
+  in_progress: CircleDashed,
+  partial: CircleDot,
+};
+
+/** Show a Brief outcome as a small icon, for a dense list row. */
+export function BriefOutcomeMarker(props: { status: OutcomeStatus }) {
+  const Icon = outcomeIcons[props.status];
+  return (
+    <Icon
+      aria-label={`Brief: ${briefOutcomeLabel(props.status)}`}
+      className={cn(
+        "size-3.5 shrink-0",
+        statusToneClass[outcomeTones[props.status]],
+      )}
+      role="img"
+      strokeWidth={2}
+    />
+  );
+}
+
+/** Name a Brief outcome, such as "In progress". */
+export function briefOutcomeLabel(status: OutcomeStatus): string {
+  const label = displayLabel(status);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Show a Brief outcome as a quiet chip, such as "• Blocked". */
+export function BriefOutcomeChip(props: {
+  className?: string;
+  size?: "compact" | "default";
+  status: OutcomeStatus;
+}) {
+  return (
+    <StatusChip
+      className={props.className}
+      size={props.size ?? "compact"}
+      tone={outcomeTones[props.status]}
+    >
+      {displayLabel(props.status)}
+    </StatusChip>
+  );
+}
 
 /** Show a summary in details, or the durable Brief when a transcript expires. */
 export function ConversationBrief(props: {
@@ -162,7 +228,7 @@ function BriefSection(props: { children: ReactNode; title: string }) {
 
 function BriefDecisions(props: {
   decisions: BriefContent["decisions"];
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
 }) {
   return (
     <ul className="m-0 grid list-none gap-2.5 p-0">
@@ -201,7 +267,7 @@ function BriefDecisions(props: {
 
 function BriefList(props: {
   items: string[];
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
 }) {
   return (
     <ul className="my-0 grid gap-1.5 pl-4">

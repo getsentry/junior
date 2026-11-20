@@ -25,10 +25,12 @@ import {
 } from "../fixtures/sql";
 import {
   loadConnectedMcpProviders,
+  loadConversationSkillNames,
   openConversationProjection,
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
+  recordSkillLoaded,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { trimConversationMessages } from "@/chat/services/conversation-memory";
@@ -259,7 +261,7 @@ it("rejects new handoff writes through the replacement boundary", async () => {
   ).resolves.toEqual([]);
 });
 
-it("keeps actor-owned MCP connections and authorizations once across history replacement", async () => {
+it("keeps actor-owned MCP connections, authorizations, and loaded skills once across history replacement", async () => {
   const conversationId = "local:test:host-fact-before-model";
   const authorization = {
     conversationId,
@@ -281,6 +283,7 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
     });
     await recordAuthorizationCompleted(authorization);
     await recordAuthorizationCompleted(legacyAuthorization);
+    await recordSkillLoaded({ conversationId, skillName: "release" });
   };
   // A row written before host facts had idempotency keys.
   await getConversationEventStore().append(conversationId, [
@@ -313,11 +316,11 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
     }),
   ).resolves.toMatchObject({
     messages: [],
-    replacementSeq: 4,
+    replacementSeq: 5,
   });
   await expect(
     getConversationEventStore().loadHistory(conversationId),
-  ).resolves.toHaveLength(5);
+  ).resolves.toHaveLength(6);
   await expect(
     loadConnectedMcpProviders({
       conversationId,
@@ -327,6 +330,9 @@ it("keeps actor-owned MCP connections and authorizations once across history rep
   await expect(
     loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UBOB" }),
   ).resolves.toEqual([]);
+  await expect(loadConversationSkillNames(conversationId)).resolves.toEqual([
+    "release",
+  ]);
 });
 
 async function seedConversation(

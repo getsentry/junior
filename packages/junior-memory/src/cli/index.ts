@@ -6,7 +6,7 @@ import { configureMemoryShowCommand } from "./show";
 export function createMemoryCliCommand(): PluginCliCommandDefinition {
   return {
     name: "memory",
-    summary: "Inspect Junior memory state",
+    summary: "Inspect memory state",
     configure(command, junior) {
       configureMemorySearchCommand(command, junior);
       configureMemoryShowCommand(command, junior);

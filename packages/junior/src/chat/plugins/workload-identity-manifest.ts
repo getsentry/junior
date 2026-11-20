@@ -8,6 +8,11 @@ const WORKLOAD_IDENTITY_PROVIDER_RE =
   /^projects\/\d+\/locations\/global\/workloadIdentityPools\/[a-z0-9-]+\/providers\/[a-z0-9-]+$/;
 const GCP_SERVICE_ACCOUNT_RE = /^[a-z0-9-]+@[a-z0-9.-]+\.gserviceaccount\.com$/;
 const AZURE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+// Google read-only scopes end in `.readonly`, `.read-only`, or `.read_only`,
+// such as `bigquery.readonly` and `cloud-platform.read-only`. A workload
+// identity token is shared by everyone who uses Junior, so core allows only
+// read-only access. IAM roles on the service account are the second gate.
+const GOOGLE_READ_ONLY_SCOPE_RE = /\.read[-_]?only$/;
 
 const WORKLOAD_IDENTITY_HEADERS = [
   "Authorization",
@@ -45,7 +50,14 @@ const gcpSourceSchema = z.discriminatedUnion(
       .object({
         ...gcpBase,
         token: z.literal("access-token"),
-        scopes: z.array(text).min(1, { error: "must not be empty" }),
+        scopes: z
+          .array(
+            text.regex(GOOGLE_READ_ONLY_SCOPE_RE, {
+              error:
+                "must be read-only scopes, such as https://www.googleapis.com/auth/bigquery.readonly",
+            }),
+          )
+          .min(1, { error: "must not be empty" }),
       })
       .strict(),
   ],
@@ -123,13 +135,83 @@ export function expandWorkloadIdentityEnvRefs(
 ): Record<string, unknown> {
   return {
     ...data,
-    ...(data.gcp !== undefined
-      ? { gcp: expandStrings(data.gcp, "gcp", expand) }
+    ...(data["gcp"] !== undefined
+      ? { gcp: expandStrings(data["gcp"], "gcp", expand) }
       : undefined),
-    ...(data.azure !== undefined
-      ? { azure: expandStrings(data.azure, "azure", expand) }
+    ...(data["azure"] !== undefined
+      ? { azure: expandStrings(data["azure"], "azure", expand) }
       : undefined),
   };
+}
+
+// Google access tokens are accepted only by Google APIs.
+const GOOGLE_API_DOMAIN = "googleapis.com";
+
+function isGoogleApiDomain(domain: string): boolean {
+  return (
+    domain === GOOGLE_API_DOMAIN || domain.endsWith(`.${GOOGLE_API_DOMAIN}`)
+  );
+}
+
+function audienceHost(audience: string): string | undefined {
+  if (!URL.canParse(audience)) {
+    return undefined;
+  }
+  const url = new URL(audience);
+  return url.protocol === "https:" ? url.hostname.toLowerCase() : undefined;
+}
+
+/**
+ * Reject a credential whose minted token could reach a host that the token is
+ * not for.
+ *
+ * All plugins federate as the same Vercel principal, so a manifest can name
+ * any service account that principal can impersonate. Egress sends the token
+ * only to the plugin's own `domains`, and no two plugins can own one domain.
+ * So a JWT or ID token goes only to the host of its audience, and a Google
+ * access token can go only to Google APIs.
+ */
+export function assertWorkloadIdentityTokenTarget(
+  credentials: WorkloadIdentityCredentials,
+  prefix: string,
+): void {
+  const gcp = credentials.gcp;
+  if (!gcp) {
+    return;
+  }
+  if (gcp.token === "access-token") {
+    const other = credentials.domains.find(
+      (domain) => !isGoogleApiDomain(domain),
+    );
+    if (other) {
+      throw new Error(
+        `${prefix}.domains entry "${other}" is not a Google API host (*.${GOOGLE_API_DOMAIN}), so it cannot get a gcp access-token`,
+      );
+    }
+    return;
+  }
+  // A JWT or ID token is a replayable bearer token for its audience, so it
+  // must go only to the audience host.
+  const host = audienceHost(gcp.audience);
+  if (!host || credentials.domains.some((domain) => domain !== host)) {
+    throw new Error(
+      `${prefix}.gcp.audience must be an https URL on the only host in credentials.domains`,
+    );
+  }
+}
+
+/**
+ * Key for the identity that a credential mints tokens for. Two plugins cannot
+ * share one, so one plugin cannot mint another plugin's token.
+ */
+export function workloadIdentityKey(
+  credentials: WorkloadIdentityCredentials,
+): string {
+  if (credentials.azure) {
+    const { clientId, tenantId } = credentials.azure;
+    return `azure app ${tenantId.toLowerCase()}/${clientId.toLowerCase()}`;
+  }
+  return `gcp service account ${credentials.gcp.serviceAccount.toLowerCase()}`;
 }
 
 /** Return the request header that carries the minted token. */
@@ -164,8 +246,11 @@ export function workloadIdentityCredentials(
           : { ...base, token: gcp.token, audience: gcp.audience },
     };
   }
-  // The schema refinement guarantees `azure` when `gcp` is absent.
-  const azure = source.azure as NonNullable<WorkloadIdentitySource["azure"]>;
+  const azure = source.azure;
+  if (!azure) {
+    // The schema refinement requires exactly one of `gcp` or `azure`.
+    throw new Error("workload identity credentials must set gcp or azure");
+  }
   return {
     type: "workload-identity",
     domains,

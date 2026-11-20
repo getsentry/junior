@@ -25,13 +25,13 @@ const stepButtonClass =
  * `previous` and `next` are the adjacent visible rows of the event log.
  */
 export function ConversationEventDetails(props: {
-  conversation?: ConversationTranscript;
-  event?: ConversationReportEvent;
-  next?: number;
+  conversation?: ConversationTranscript | undefined;
+  event?: ConversationReportEvent | undefined;
+  next?: number | undefined;
   onClose(): void;
   onSelect?(seq: number): void;
   overlay?: boolean;
-  previous?: number;
+  previous?: number | undefined;
 }) {
   const { conversation, event, onSelect } = props;
   const time = useEventTime();
