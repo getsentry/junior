@@ -22,16 +22,14 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   and a warm return saves one write minus one read. So warming pays when
   more than 0.2 / (5 − 0.2), about 4%, of warmups reach a return.
 - At or above the background compaction mark, an idle Conversation compacts
-  instead of warming when that costs less. A backtest of idle periods at that size found it
-  cheaper than warming, and the largest saving of the options that it
-  compared. About a third of returning Turns at that size compact in the
-  Turn anyway, and then pay for the full prefix and the compacted one. A
-  compacted prefix of about 120K tokens, against about 360K, also makes each
-  model call of the returning Turn about $0.05 cheaper to read.
-- Junior accepts a quality cost for that saving. About two thirds of the
-  Conversations that compact on idle would not have compacted in their
-  returning Turn. They get a summary in place of history that they would
-  have kept, which can make an answer worse.
+  instead of warming when that costs less. A returning Turn at that size
+  often compacts in the Turn anyway, and then pays for the full prefix and
+  the compacted one. A compacted prefix of 120K tokens, against 360K, also
+  makes each model call of the returning Turn about $0.05 cheaper to read.
+- Junior accepts a quality cost for that saving. Many Conversations that
+  compact on idle would not have compacted in their returning Turn. They
+  get a summary in place of history that they would have kept, which can
+  make an answer worse.
 
 ## Entry points
 
