@@ -94,13 +94,11 @@ a new worktree reuses compiled work.
 Sign-in is Junior's MCP OAuth flow: authorization code with PKCE, Google
 sign-in and the consent page in a browser sheet, and tokens in the Keychain
 (an access token lasts an hour; refresh tokens rotate; a sign-in lasts 30
-days). Junior registers no clients: the app's `client_id` is the URL of
-`oauth-client.json` (a Client ID Metadata Document). Junior accepts only
-`https` and loopback redirect URIs, so the app takes the redirect on
-`http://127.0.0.1:<port>/callback`, as desktop MCP clients do.
-
-`AppModel.oauthClientID` points at this branch's copy on GitHub; point it at a
-stable published URL before release. Junior caches the document for 5 minutes.
+days). Every Junior knows this app's client, `JUNIOR_IOS_CLIENT` in
+`packages/junior/src/api/mcp/oauth/client-metadata.ts`, so sign-in needs no
+hosted Client ID Metadata Document. The redirect goes to
+`junior-ios://oauth/callback`, which only this client may use. A server that
+runs an older Junior rejects the app's client ID.
 
 ## Design sources
 

@@ -37,7 +37,7 @@ final class NavigationUITests: XCTestCase {
   }
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
-  /// loopback redirect, the token exchange, and a Keychain that survives a
+  /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
   /// relaunch. Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
