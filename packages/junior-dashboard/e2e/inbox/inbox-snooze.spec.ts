@@ -20,10 +20,28 @@ test.describe("snooze times", { tag: "@new" }, () => {
   const menu = (page: Page) =>
     page.getByRole("dialog", { name: "Snooze until" });
 
+  /** Step the clock until the versions poll sees the wake and the row is back. */
+  const wakes = (page: Page) =>
+    expect
+      .poll(async () => {
+        await page.clock.fastForward(5_000);
+        return rowHead(todo(page), checkout).count();
+      })
+      .toBe(1);
+
   test.beforeEach(async ({ dashboard, page }) => {
     await page.clock.install({ time: NOW_MS });
-    await mockReviewItems(page, { open: [license, rollout] });
+    // The server checks the wake time against the page's clock.
+    await mockReviewItems(page, {
+      now: () => page.evaluate(() => Date.now()),
+      open: [license, rollout],
+    });
+    // The first versions poll is the baseline that a wake moves from.
+    const polled = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/api/versions"),
+    );
     await page.goto(`${dashboard.baseURL}/`);
+    await polled;
     await expandRow(rowHead(todo(page), checkout));
     // The open row's Snooze; the other row has its own quick one.
     await todo(page)
@@ -64,7 +82,7 @@ test.describe("snooze times", { tag: "@new" }, () => {
       .click();
     await expect(rowHead(todo(page), checkout)).toHaveCount(0);
     await page.clock.fastForward("01:00:01");
-    await expect(rowHead(todo(page), checkout)).toBeVisible();
+    await wakes(page);
   });
 
   test("Custom rejects a past time", async ({ page }) => {
@@ -88,6 +106,6 @@ test.describe("snooze times", { tag: "@new" }, () => {
     await page.clock.fastForward("02:29:00");
     await expect(rowHead(todo(page), checkout)).toHaveCount(0);
     await page.clock.fastForward("00:01:01");
-    await expect(rowHead(todo(page), checkout)).toBeVisible();
+    await wakes(page);
   });
 });

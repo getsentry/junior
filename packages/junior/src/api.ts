@@ -19,6 +19,7 @@ import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
 import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -141,6 +142,7 @@ export function createJuniorApi(
       },
     }),
   );
+  app.route("/api/inbox/snoozes", createInboxSnoozeRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());

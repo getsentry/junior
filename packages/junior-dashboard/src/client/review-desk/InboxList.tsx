@@ -1,6 +1,6 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, type ReactNode } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationListItem,
   ReviewItemPayload,
@@ -112,7 +112,8 @@ export function InboxList(props: {
   const state = useInboxListState(ready);
   const { view } = state;
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
-  const { nowMs, snoozes, sweeper, titleOf } = data;
+  const { nowMs, readSnoozed, snoozes, sweeper, titleOf } = data;
+  useEffect(readSnoozed, [readSnoozed]);
   const done = useReviewItemsData({
     closed: true,
     enabled: data.signedIn && view === "done",
@@ -187,6 +188,7 @@ export function InboxList(props: {
   const {
     key: linkedRowKey,
     open: linkedOpen,
+    rowItemId,
     snoozedKey,
   } = linkedRowOf(view, linkedId, {
     awake: data.awake,
@@ -196,6 +198,8 @@ export function InboxList(props: {
     snoozed: data.snoozedRows,
     todo: data.todoRows,
   });
+  // A snoozed item is still open. Its link opens Snoozed, with its row.
+  const linkedSnoozed = rowItemId ? data.snoozes.hidesItem(rowItemId) : false;
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
   // An item that is not in this list may be closed, or past its first page.
@@ -270,10 +274,15 @@ export function InboxList(props: {
       void navigate(listPath, { replace: true });
       return;
     }
-    if (snoozedKey) {
-      void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
-        replace: true,
-      });
+    if (snoozedKey || linkedSnoozed) {
+      if (view !== "snoozed") {
+        void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
+          replace: true,
+        });
+      } else if (data.snoozedRead.settled) {
+        // Snoozed read every page without the row, so the link is stale.
+        void navigate(listPath, { replace: true });
+      }
       return;
     }
     if (!linkedLoaded) return;
@@ -283,6 +292,12 @@ export function InboxList(props: {
     }
     if (!linked.data) return;
     if (linked.data.status === "open") {
+      // Until Snoozed loads, an open item may still be snoozed. If it
+      // cannot load, the link cannot tell, so it opens no row.
+      if (linkedSnoozed === undefined) {
+        if (data.snoozes.failed) void navigate(listPath, { replace: true });
+        return;
+      }
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
       if (linkedGetsRow && includedId !== linkedId) includeItem(linkedId);
@@ -306,6 +321,9 @@ export function InboxList(props: {
     linkedId,
     linkedLoaded,
     linkedRowKey,
+    linkedSnoozed,
+    data.snoozes.failed,
+    data.snoozedRead.settled,
     linkedStreamIndex,
     listPath,
     loaded,
@@ -333,7 +351,7 @@ export function InboxList(props: {
     leave,
     leaveCard,
     setSnoozeKey,
-    snoozeItem: snoozes.snoozeItem,
+    snoozeItem: (item, untilMs) => void snoozes.snoozeItem(item, untilMs),
     snoozeKey,
   });
 
@@ -414,16 +432,20 @@ export function InboxList(props: {
             ? undefined
             : (untilMs) => {
                 setSnoozeKey(undefined);
-                leave(key, () => snoozes.snooze(row, untilMs));
+                // The snooze hides the row before it saves, and brings it
+                // back with a toast when the save fails.
+                leave(key, () => void snoozes.snooze(row, untilMs));
               }
         }
         onWake={
           options.snoozed
             ? () =>
-                leave(key, () =>
-                  options.stacked
-                    ? snoozes.wakeItem(row.newest)
-                    : snoozes.wake(row),
+                leave(
+                  key,
+                  () =>
+                    void (options.stacked || options.itemRow
+                      ? snoozes.wakeItem(row.newest)
+                      : snoozes.wake(row)),
                 )
             : undefined
         }
@@ -492,7 +514,7 @@ export function InboxList(props: {
           title,
           snooze: (untilMs) => {
             setSnoozeKey(undefined);
-            leave(stackKey, () => snoozes.snooze(row, untilMs));
+            leave(stackKey, () => void snoozes.snooze(row, untilMs));
           },
           snoozed: options.snoozed,
         })}
@@ -809,16 +831,33 @@ export function InboxList(props: {
         />
       );
   } else if (view === "snoozed") {
+    // A failed read keeps the rows already read, with a retry below them.
+    const snoozedRetry = data.snoozedRead.failed ? (
+      <RetryRow
+        loading={data.snoozedRead.loading}
+        onRetry={data.snoozedRead.retry}
+      >
+        Could not load your snoozed rows.
+      </RetryRow>
+    ) : null;
     body =
-      data.snoozedRows.length === 0 ? (
-        <InboxEmptyState label="Nothing snoozed" />
+      data.snoozedRows.length > 0 ? (
+        <>
+          {/* Snoozed rows expand in place like the others, and wake there. */}
+          <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
+            {data.snoozedRows.map((row) =>
+              stackRow(row, STACK_ROW_KEYS.snoozed, { snoozed: true }),
+            )}
+          </ul>
+          {snoozedRetry}
+        </>
       ) : (
-        // Snoozed rows expand in place like the others, and wake there.
-        <ul className="m-0 grid gap-2 p-0 pt-1" data-dock-list="">
-          {data.snoozedRows.map((row) =>
-            stackRow(row, STACK_ROW_KEYS.snoozed, { snoozed: true }),
-          )}
-        </ul>
+        (snoozedRetry ??
+        (data.snoozedRead.loaded ? (
+          <InboxEmptyState label="Nothing snoozed" />
+        ) : (
+          <RowsLoading />
+        )))
       );
   } else if (view === "prs") {
     body = pullRequests.loading ? (
@@ -940,26 +979,4 @@ export function InboxList(props: {
       </div>
     </section>
   );
-}
-
-/**
- * Old Inbox links and the current UI's review desk links open the list:
- * `?bundle=` picks the matching entry, and `?item=` expands that item's
- * row, on Done when the item has closed.
- */
-export function InboxRedirect() {
-  const [params] = useSearchParams();
-  const bundle = params.get("bundle");
-  const itemId = params.get("item") ?? undefined;
-  // Only a link with no entry needs the item's status.
-  const item = useReviewItemData(bundle ? undefined : itemId);
-  if (bundle === "automations") return <Navigate replace to="/automations" />;
-  if (!bundle && itemId && item.isPending) return null;
-  const view =
-    bundle === "prs" || bundle === "decisions" || bundle === "done"
-      ? bundle
-      : item.data && item.data.status !== "open"
-        ? "done"
-        : "inbox";
-  return <Navigate replace to={inboxViewPath(view, { itemId })} />;
 }

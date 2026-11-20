@@ -55,11 +55,6 @@ import {
   cacheWarmingHourlyReportSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
   attachObjectLinkBodySchema,
@@ -91,12 +86,7 @@ import {
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
-  actOnMockReviewItem,
   answerMockReviewItemByReply,
-  readMockReviewItem,
-  readMockReviewItemCounts,
-  readMockReviewItems,
-  readMockWaitingConversations,
   withMockViewerAnswers,
 } from "./review-items";
 import {
@@ -144,6 +134,7 @@ import {
   readMockCacheWarmingSavings,
 } from "./cache-warming";
 import { readMockConversationWatches } from "./watches";
+import { addMockReviewItemRoutes } from "./review-item-routes";
 import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
@@ -866,53 +857,7 @@ export function createMockReportingApi(): Hono<{
       spend: "mock",
     }),
   );
-  // Answer Review item reads and actions from the mock items, so the
-  // dashboard does not query a database that has no review item tables.
-  app.get("/review-items", (c) => {
-    const { conversationId, q, status } = c.req.query();
-    return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, {
-        closed: Boolean(status && status !== "open"),
-        conversationId,
-        q: q || undefined,
-      }),
-    });
-  });
-  app.get("/review-items/count", (c) =>
-    jsonResponse(reviewItemCountSchema, {
-      ...(c.req.query("include") === "automations"
-        ? {
-            automations: mockAutomationCollection(
-              readMockAutomationList(),
-              new URLSearchParams({ owner: "me", scope: "attention" }),
-            ).total,
-          }
-        : undefined),
-      ...readMockReviewItemCounts(
-        NOW_MS,
-        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
-      ),
-    }),
-  );
-  app.get("/review-items/waiting-conversations", () =>
-    jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversations: readMockWaitingConversations(NOW_MS).conversations,
-    }),
-  );
-  app.get("/review-items/:id", (c) => {
-    const item = readMockReviewItem(NOW_MS, c.req.param("id"));
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
-  app.post("/review-items/:id/actions", async (c) => {
-    const body = reviewItemActionSchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid action.", 400);
-    const item = actOnMockReviewItem(NOW_MS, c.req.param("id"), body.data);
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
+  addMockReviewItemRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

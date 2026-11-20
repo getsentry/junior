@@ -462,16 +462,23 @@ export function linkedRowOf(
     snoozed: readonly InboxBundle[];
     todo: readonly InboxBundle[];
   },
-): { key?: string; open?: ReviewItemPayload; snoozedKey?: string } {
+): {
+  key?: string;
+  open?: ReviewItemPayload;
+  rowItemId?: string;
+  snoozedKey?: string;
+} {
   if (!linkedId) return {};
-  const snoozedRow = rows.snoozed.find((row) =>
-    row.items.some((item) => item.id === linkedId),
-  );
-  const snoozedKey = snoozedRow ? linkedId : undefined;
+  // A notice folded into an ask's row opens that row, awake or snoozed.
   const hostId = [...rows.foldedNotices].find(([, notices]) =>
     notices.some((notice) => notice.id === linkedId),
   )?.[0];
-  const open = rows.awake.find((item) => item.id === (hostId ?? linkedId));
+  const rowItemId = hostId ?? linkedId;
+  const snoozedRow = rows.snoozed.find((row) =>
+    row.items.some((item) => item.id === rowItemId),
+  );
+  const snoozedKey = snoozedRow ? rowItemId : undefined;
+  const open = rows.awake.find((item) => item.id === rowItemId);
   const key = (() => {
     if (view === "snoozed") return snoozedKey;
     if (view === "done")
@@ -484,5 +491,5 @@ export function linkedRowOf(
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);
   })();
-  return { key, open, snoozedKey };
+  return { key, open, rowItemId, snoozedKey };
 }

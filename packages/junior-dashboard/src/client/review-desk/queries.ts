@@ -53,6 +53,8 @@ type ReviewItemListFilters = {
   enabled?: boolean;
   forViewer?: boolean;
   q?: string;
+  /** Only the items in Inbox rows that the viewer snoozed: Snoozed. */
+  snoozed?: boolean;
   /**
    * `waiting` pages the open items that wait on the viewer first, so the
    * first page holds what needs them now.
@@ -67,6 +69,7 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
+  if (filters.snoozed) params.set("snoozed", "true");
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
