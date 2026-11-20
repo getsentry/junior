@@ -63,6 +63,8 @@ export function snoozeChoicesAt(nowMs: number): SnoozeChoice[] {
 export interface SnoozeEvents {
   /** Event types, in the order that their source lists them. */
   events: readonly string[];
+  /** How each Event reads after the resource's name, where its source says. */
+  phrases: Readonly<Record<string, string>>;
   /** The resource type, so a label can leave it out. */
   resourceType: string;
 }
@@ -110,7 +112,11 @@ export function eventSnoozeOf(
     onSnooze,
     resolve: items.every((item) => item.canAct),
     subject: shared
-      ? { events: resource.events, resourceType: resource.resourceType }
+      ? {
+          events: resource.events,
+          phrases: resource.phrases,
+          resourceType: resource.resourceType,
+        }
       : undefined,
   };
 }

@@ -11,6 +11,8 @@ import {
  */
 export interface SnoozeResource {
   events: readonly string[];
+  /** How each Event reads after the resource's name, where its source says. */
+  phrases: Readonly<Record<string, string>>;
   identifier: string;
   namespace: string;
   resourceType: string;
@@ -39,8 +41,14 @@ export function snoozeSubjectResource(
     ) {
       return undefined;
     }
+    const phrases: Record<string, string> = {};
+    for (const eventType of resourceType.supportedEvents) {
+      const phrase = registration.events[eventType]?.phrase;
+      if (phrase) phrases[eventType] = phrase;
+    }
     return {
       events: resourceType.supportedEvents,
+      phrases,
       identifier: normalizeEventIdentifier(registration, found.identifier),
       namespace,
       resourceType: resourceType.type,

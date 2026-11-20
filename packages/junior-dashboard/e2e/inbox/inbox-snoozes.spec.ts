@@ -303,7 +303,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     const dialog = customOf(page);
     // The row's own pull request is picked, so its Events show at once,
     // named without "pull request".
-    await expect(dialog.getByText("This pull request")).toBeVisible();
+    await expect(
+      dialog.getByText("This pull request", { exact: true }),
+    ).toBeVisible();
     const wakeWhen = dialog.getByRole("group", { name: "Wake when" });
     await expect(wakeWhen.getByRole("checkbox")).toHaveCount(
       pullRequestResource.events.length,
@@ -315,10 +317,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("button", { name: "Dismiss" }).click();
     const dismissWhen = dialog.getByRole("group", { name: "Dismiss when" });
     await dismissWhen
-      .getByRole("checkbox", { exact: true, name: "Merged" })
+      .getByRole("checkbox", { name: "When this pull request is merged" })
       .click();
     await dismissWhen
-      .getByRole("checkbox", { name: "Closed unmerged" })
+      .getByRole("checkbox", {
+        name: "When this pull request is closed without merging",
+      })
       .click();
     await screenshot(page, "inbox-snooze-event", {
       lightTheme: true,
@@ -352,7 +356,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       dialog.getByRole("group", { name: "On the event" }),
     ).toHaveCount(0);
-    await dialog.getByRole("checkbox", { name: "Checks passed" }).click();
+    await dialog
+      .getByRole("checkbox", {
+        exact: true,
+        name: "When this pull request passes its checks",
+      })
+      .click();
     const created = snoozePost(page);
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
     expect((await created).postDataJSON()).toEqual({
@@ -392,7 +401,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       pullRequestResource.events.length,
     );
     await wakeWhen
-      .getByRole("checkbox", { exact: true, name: "Merged" })
+      .getByRole("checkbox", { name: "When getsentry/junior#3842 is merged" })
       .click();
     // A time too: the first of them ends the snooze.
     await dialog.getByLabel("Wake at").fill("2099-01-05T09:00");
@@ -438,9 +447,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("option", { name: issue }).click();
     // The issue's Events replace those of the row's pull request.
     const wakeWhen = dialog.getByRole("group", { name: "Wake when" });
-    await wakeWhen.getByRole("checkbox", { name: "Closed" }).click();
+    await wakeWhen
+      .getByRole("checkbox", { name: "When the issue is closed" })
+      .click();
     await expect(
-      wakeWhen.getByRole("checkbox", { name: "Merged" }),
+      wakeWhen.getByRole("checkbox", { name: /is merged/ }),
     ).toHaveCount(0);
     await screenshot(page, "inbox-snooze-named-resource", {
       lightTheme: true,
@@ -493,7 +504,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       dialog
         .getByRole("group", { name: "Wake when" })
-        .getByRole("checkbox", { exact: true, name: "Merged" }),
+        .getByRole("checkbox", { name: "When this pull request is merged" }),
     ).toBeVisible();
   });
 

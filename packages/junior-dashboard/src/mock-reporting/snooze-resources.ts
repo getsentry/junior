@@ -1,5 +1,26 @@
 /** The Event resources of mock pages, which a mock snooze can wait on. */
 
+// How the GitHub plugin says each Event reads after its page's name.
+const PHRASES = {
+  "issue.closed": "is closed",
+  "issue.comment.created": "gets a new comment",
+  "issue.opened": "is opened",
+  "issue.reopened": "is reopened",
+  "pull_request.checks.failed": "fails its checks",
+  "pull_request.checks.passed": "passes its checks",
+  "pull_request.checks.recovered": "passes its checks again",
+  "pull_request.closed_unmerged": "is closed without merging",
+  "pull_request.comment.created": "gets a new comment",
+  "pull_request.merge_conflict": "gets a merge conflict",
+  "pull_request.merged": "is merged",
+  "pull_request.opened": "is opened",
+  "pull_request.ready_for_review": "is ready for review",
+  "pull_request.review.approved": "is approved",
+  "pull_request.review.changes_requested": "gets changes requested",
+  "pull_request.review.commented": "gets a review comment",
+  "pull_request.review_comment.created": "gets an inline review comment",
+};
+
 // The Events of a GitHub pull request, as the API lists them.
 export const PULL_REQUEST_RESOURCE = {
   events: [
@@ -18,6 +39,7 @@ export const PULL_REQUEST_RESOURCE = {
     "pull_request.merge_conflict",
   ],
   namespace: "github",
+  phrases: PHRASES,
   resourceType: "pull_request",
 };
 
@@ -30,6 +52,7 @@ const ISSUE_RESOURCE = {
     "issue.reopened",
   ],
   namespace: "github",
+  phrases: PHRASES,
   resourceType: "issue",
 };
 

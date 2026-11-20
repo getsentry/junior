@@ -29,6 +29,8 @@ export const inboxSnoozeResourceSchema = z
   .object({
     events: z.array(z.string().min(1)).min(1),
     namespace: z.string().min(1),
+    /** How each Event reads after the resource's name, such as "is merged". */
+    phrases: z.record(z.string().min(1), z.string().min(1)),
     resourceType: z.string().min(1),
   })
   .strict();

@@ -236,6 +236,7 @@ describe("snoozes", () => {
     }[];
     expect(subject?.resource).toMatchObject({
       namespace: "github",
+      phrases: { "pull_request.checks.passed": "passes its checks" },
       resourceType: "pull_request",
     });
     expect(subject?.resource.events).toContain("pull_request.checks.passed");
@@ -265,11 +266,13 @@ describe("snoozes", () => {
     // An item without a subject can wait on a named page too.
     await addItem(ROOT, [ana], "Review globex entry");
     const asAna = api(fixture, ana);
-    // The menu reads the Events of the pull request that Ana pastes.
+    // The menu reads the Events of the pull request that Ana pastes, with
+    // how the GitHub plugin says each one reads.
     const resource = await asAna.resource(OTHER_PULL_REQUEST.url);
     expect(resource.status).toBe(200);
     expect(await resource.json()).toMatchObject({
       namespace: "github",
+      phrases: { "pull_request.merged": "is merged" },
       resourceType: "pull_request",
     });
 

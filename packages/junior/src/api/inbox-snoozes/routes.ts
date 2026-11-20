@@ -71,6 +71,7 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
       return jsonResponse(inboxSnoozeResourceSchema, {
         events: [...resource.events],
         namespace: resource.namespace,
+        phrases: { ...resource.phrases },
         resourceType: resource.resourceType,
       });
     },

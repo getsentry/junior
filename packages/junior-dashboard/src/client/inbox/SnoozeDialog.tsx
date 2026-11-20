@@ -413,13 +413,43 @@ function EventPicker(props: {
                 checked={props.picked.has(eventType)}
                 onCheckedChange={(on) => toggle(eventType, on)}
               />
-              {sentenceCase(eventLabel(eventType, events.resourceType))}
+              {eventSentence(
+                eventType,
+                events,
+                watchedName(watched, events.resourceType),
+              )}
             </label>
           ))}
         </div>
       ) : null}
     </>
   );
+}
+
+/**
+ * What the Event sentences call the watched page: "this pull request", a
+ * pull request that the search found by name, or "the issue" of a link.
+ */
+function watchedName(watched: Watched, resourceType: string): string {
+  const type = resourceType.replaceAll("_", " ");
+  if (watched.kind === "subject") return `this ${type}`;
+  return watched.reference ? referenceName(watched.reference) : `the ${type}`;
+}
+
+/**
+ * An Event as a sentence about the page, such as "When getsentry/junior#12
+ * is merged", from the phrase of the Event's source. An Event without one
+ * reads as its label on the page.
+ */
+function eventSentence(
+  eventType: string,
+  events: SnoozeEvents,
+  name: string,
+): string {
+  const phrase = events.phrases[eventType];
+  return phrase
+    ? `When ${name} ${phrase}`
+    : `${sentenceCase(eventLabel(eventType, events.resourceType))} on ${name}`;
 }
 
 function sentenceCase(text: string): string {
