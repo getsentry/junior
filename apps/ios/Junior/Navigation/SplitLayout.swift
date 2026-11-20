@@ -13,6 +13,10 @@ extension EnvironmentValues {
   @Entry var splitColumn: SplitColumn? = nil
 }
 
+/// The narrowest window that shows the split: the 360pt list and its 1pt
+/// divider beside an open item at least 400pt wide.
+let splitMinWidth: CGFloat = 761
+
 /// The dashboard's wide layout (`ConversationWorkspace.tsx`): the place's
 /// list beside the open item. Opening an item from the list replaces the
 /// open item; links inside it push over it in its own stack.

@@ -24,8 +24,8 @@ struct JuniorApp: App {
 }
 
 /// The current place under one navigation stack, with the drawer over it.
-/// With regular width (an iPad), the place's list and the open item show
-/// side by side.
+/// With regular width and room for both columns (an iPad), the place's list
+/// and the open item show side by side.
 struct RootView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.horizontalSizeClass) private var sizeClass
@@ -36,7 +36,9 @@ struct RootView: View {
       if !app.signedIn {
         ConnectScreen()
       } else {
-        shell
+        // Half-screen Split View and Stage Manager windows can be regular
+        // but too narrow for the list beside the open item.
+        GeometryReader { shell(split: sizeClass == .regular && $0.size.width >= splitMinWidth) }
       }
     }
     .background(Tokens.bg.ignoresSafeArea())
@@ -51,9 +53,7 @@ struct RootView: View {
     }
   }
 
-  private var split: Bool { sizeClass == .regular }
-
-  private var shell: some View {
+  private func shell(split: Bool) -> some View {
     @Bindable var app = app
     return ZStack {
       Group {
