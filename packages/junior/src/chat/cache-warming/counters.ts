@@ -122,7 +122,7 @@ export interface ModelCacheCounter {
   ): void;
   /**
    * Write what was added since the last write, in one batch, to the hour
-   * that the write happens in. Call it once when the run ends.
+   * that the write happens in. Call it when the run ends.
    */
   write(): Promise<void>;
 }

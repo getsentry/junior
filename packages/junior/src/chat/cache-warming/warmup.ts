@@ -532,6 +532,7 @@ export function createCacheWarmingRecorder(
   let warmupsStopped: Promise<void> | undefined;
   const toolWait = createToolWaitWarmer(conversationId);
   const modelCache = createModelCacheCounter();
+  let stopped = false;
   return {
     wrap:
       (base = streamSimple) =>
@@ -569,6 +570,8 @@ export function createCacheWarmingRecorder(
       // Cache health counts with warming off too, so the two can be compared.
       if (message.stopReason !== "error" && message.stopReason !== "aborted") {
         modelCache.add(request.model.id, message.usage);
+        // A call whose delivery ends after the run stopped writes on its own.
+        if (stopped) await modelCache.write();
       }
       if (!getChatConfig().cacheWarmingEnabled) return;
       try {
@@ -609,6 +612,7 @@ export function createCacheWarmingRecorder(
     },
     stop: async () => {
       // One write for the run, also when it failed or was cut off.
+      stopped = true;
       const modelCacheWritten = modelCache.write();
       try {
         await toolWait.end(answerToolEnding !== undefined);

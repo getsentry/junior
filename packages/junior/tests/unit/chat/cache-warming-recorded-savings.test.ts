@@ -243,5 +243,8 @@ describe("cache warming recorded savings", () => {
       serialRounds: 1,
     });
     expect(await modelCache()).toMatchObject({ calls: 2, fullRewrites: 1 });
+    // A call whose delivery ends after the stop still counts.
+    await call(60_000);
+    expect(await modelCache()).toMatchObject({ calls: 3, fullRewrites: 1 });
   });
 });
