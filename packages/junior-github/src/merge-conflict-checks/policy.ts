@@ -7,7 +7,7 @@
  *   the conflict, at most once a day, and at most 3 times in a row with no
  *   activity by a person between them.
  * - After that, Junior stops, and asks the person who asked for the pull
- *   request to resume, with a review desk item. Resume counts as activity
+ *   request to resume, with a Review item. Resume counts as activity
  *   by a person, and starts a fix at once (`resume.ts`).
  * - After 3 days without activity by a person, nothing.
  * - An approved pull request would be ready to merge but for the conflict,
@@ -292,7 +292,7 @@ async function addStoppedItem(
 /**
  * Return the merge conflict events to publish for one conflicted pull
  * request that a Watch or event automation wants. A fix returns `events`.
- * A stop adds the review desk item and returns no events. The item is
+ * A stop adds the Review item and returns no events. The item is
  * optional, so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
@@ -358,7 +358,7 @@ export const GITHUB_CONFLICT_GONE_REASON =
 
 /**
  * Close the stopped merge conflict item of one Junior pull request. Throws
- * when the review desk fails, so a caller with no later check can try again.
+ * when the Inbox fails, so a caller with no later check can try again.
  */
 export async function closeGitHubConflictItem(args: {
   db: GitHubDb;

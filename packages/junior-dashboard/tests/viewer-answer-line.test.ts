@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { conversationAnswerLine } from "../src/client/review-desk/reviewItemFormat";
+import { conversationAnswerLine } from "../src/client/inbox/reviewItemFormat";
 
 describe("conversationAnswerLine", () => {
   const closedAt = "2026-08-05T16:00:00.000Z";

@@ -29,7 +29,7 @@ describe("Asking a Person", () => {
       ),
     );
 
-    // Only Maya knows the day she is back. The agent asks on the desk, not
+    // Only Maya knows the day she is back. The agent asks in the Inbox, not
     // in plain text.
     expect(askedRequests(conversation)).not.toHaveLength(0);
   });
@@ -42,7 +42,7 @@ describe("Asking a Person", () => {
         [
           "payments-v42 is on the canary. The error rate has been flat for 30 minutes: https://sentry.example.com/organizations/acme/canary/payments-v42/",
           "Morgan posted in #proj-checkout that checkout p95 went from 210 ms to 890 ms right after payments-v42 landed: https://sentry.example.com/organizations/acme/explore/traces/checkout-p95/",
-          "I have to decide whether to roll it out to every region. Ask me on the review desk, with what you would pick.",
+          "I have to decide whether to roll it out to every region. Ask me in the Inbox, with what you would pick.",
         ].join("\n"),
         { author: MAYA },
       ),
@@ -133,7 +133,7 @@ describe("Asking a Person", () => {
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
     // Only Maya knows the region she picked, so the child reports a block.
-    // Its result starts the second Turn. The parent asks on the desk.
+    // Its result starts the second Turn. The parent asks in the Inbox.
     const resultTurn = conversation.turns[1];
     expect(resultTurn).toBeDefined();
     expect(askedRequests(resultTurn!)).not.toHaveLength(0);

@@ -77,7 +77,7 @@ import {
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ChildConversationStatusPill } from "./ChildConversationStatus";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {

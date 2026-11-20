@@ -12,7 +12,7 @@
       "conversationIds": ["internal:question-qa"],
       "createdAt": "2026-08-07T11:34:00.000Z",
       "updatedAt": "2026-08-07T11:34:00.000Z",
-      "url": "http://127.0.0.1:4317/review?item=qa-rollout"
+      "url": "http://127.0.0.1:4317/inbox?item=qa-rollout"
     },
     {
       "id": "qa-migration-negative",
@@ -26,7 +26,7 @@
       "conversationIds": ["internal:questions-qa"],
       "createdAt": "2026-08-07T11:20:00.000Z",
       "updatedAt": "2026-08-07T11:20:00.000Z",
-      "url": "http://127.0.0.1:4317/review?item=qa-migration-negative"
+      "url": "http://127.0.0.1:4317/inbox?item=qa-migration-negative"
     },
     {
       "id": "qa-migration-tables",
@@ -40,7 +40,7 @@
       "conversationIds": ["internal:questions-qa"],
       "createdAt": "2026-08-07T11:19:00.000Z",
       "updatedAt": "2026-08-07T11:19:00.000Z",
-      "url": "http://127.0.0.1:4317/review?item=qa-migration-tables"
+      "url": "http://127.0.0.1:4317/inbox?item=qa-migration-tables"
     },
     {
       "id": "qa-migration-window",
@@ -54,7 +54,7 @@
       "conversationIds": ["internal:questions-qa"],
       "createdAt": "2026-08-07T11:18:00.000Z",
       "updatedAt": "2026-08-07T11:18:00.000Z",
-      "url": "http://127.0.0.1:4317/review?item=qa-migration-window"
+      "url": "http://127.0.0.1:4317/inbox?item=qa-migration-window"
     }
   ],
   "truncated": false

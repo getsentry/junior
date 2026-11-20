@@ -11,6 +11,6 @@
     "conversationIds": ["internal:question-qa"],
     "createdAt": "2026-08-07T11:34:00.000Z",
     "updatedAt": "2026-08-07T11:34:00.000Z",
-    "url": "http://127.0.0.1:4317/review?item=qa-rollout"
+    "url": "http://127.0.0.1:4317/inbox?item=qa-rollout"
   }
 }

@@ -42,7 +42,7 @@ browser.
 3. Build the app, open screens on a simulator, and save screenshots:
 
    ```bash
-   apps/ios/scripts/sim.sh shots /tmp/junior-shots "home|/|dark" "inbox|/review|light"
+   apps/ios/scripts/sim.sh shots /tmp/junior-shots "home|/|dark" "inbox|/inbox|light"
    ```
 
    A shot is `name|dashboard path|theme`. The app opens the path like the web
@@ -84,7 +84,7 @@ a new worktree reuses compiled work.
 | Argument          | Effect                                                        |
 | ----------------- | ------------------------------------------------------------- |
 | `-JuniorServer`   | Dashboard origin. The default is `http://127.0.0.1:4317`.     |
-| `-JuniorOpen`     | A dashboard path to open, such as `/review?item=qa-rollout`.  |
+| `-JuniorOpen`     | A dashboard path to open, such as `/inbox?item=qa-rollout`.  |
 | `-JuniorTheme`    | `dark`, `light`, or `system`.                                 |
 | `-JuniorFixedNow` | An ISO time used as "now", for screenshots of the mock data.  |
 | `-JuniorAccessToken` | Debug builds: start signed in with this token (the mock takes `mock-access-token`). |

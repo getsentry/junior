@@ -718,7 +718,7 @@ describe("Slack webhook: Review item cards", () => {
       );
       expect(texts).toEqual([
         expect.stringContaining("ana@example.com answered"),
-        expect.stringContaining("|Open in the review desk>"),
+        expect.stringContaining("|Open in the Inbox>"),
       ]);
       for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
     } finally {

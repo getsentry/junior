@@ -43,10 +43,9 @@ Do not list behaviors. The verification map in
 - [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
   through Junior's own Google account.
 - [Guardian](./guardian.md): review of each tool action before it runs.
-- [Inbox](./inbox.md): the dashboard view of the Review desk, one stack of
-  cards for each root Conversation.
-- [Review desk](./review-desk.md): work that waits for a person, labeled
-  "Inbox" in the dashboard.
+- [Inbox](./inbox.md): work that waits for a person.
+- [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
+  stack for each root Conversation.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
 - [Slack](./slack.md): requests in Slack, and who can start work there.

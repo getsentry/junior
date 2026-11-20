@@ -12,7 +12,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { FormNotice } from "../../components/FormNotice";
 import { deleteDashboardResource } from "../../http";
-import { refreshDeletedAutomation } from "../../review-desk/inboxQueries";
+import { refreshDeletedAutomation } from "../../inbox/inboxQueries";
 
 /** Confirm deletion by name and keep a failed request available for retry. */
 export function AutomationDeleteDialog(props: {

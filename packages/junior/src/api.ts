@@ -2,6 +2,10 @@ import { waitUntil as vercelWaitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
+import {
+  REVALIDATED_READ_PATHS,
+  revalidateContent,
+} from "./api/content-version";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
@@ -66,7 +70,7 @@ export {
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
 export type { ConversationWorkQueue, JuniorApiVariables };
-export { jsonResponse };
+export { jsonResponse, REVALIDATED_READ_PATHS, revalidateContent };
 
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
@@ -119,6 +123,8 @@ export function createJuniorApi(
         { headers: { "cache-control": "private, no-store" } },
       ),
   );
+
+  for (const path of REVALIDATED_READ_PATHS) app.use(path, revalidateContent);
 
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
