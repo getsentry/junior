@@ -19,6 +19,8 @@ test.describe("snooze times", { tag: "@new" }, () => {
   const todo = (page: Page) => page.getByRole("region", { name: "To do" });
   const menu = (page: Page) =>
     page.getByRole("dialog", { name: "Snooze until" });
+  const custom = (page: Page) =>
+    page.getByRole("dialog", { name: "Custom snooze" });
 
   /** Step the clock until the versions poll sees the wake and the row is back. */
   const wakes = (page: Page) =>
@@ -54,6 +56,8 @@ test.describe("snooze times", { tag: "@new" }, () => {
     page,
   }) => {
     await expect(menu(page).getByRole("button")).toHaveText([
+      /^15 minutes\s*08:15$/,
+      /^30 minutes\s*08:30$/,
       /^1 hour\s*09:00$/,
       /^3 hours\s*11:00$/,
       /^This afternoon\s*14:00$/,
@@ -61,21 +65,18 @@ test.describe("snooze times", { tag: "@new" }, () => {
       /^Tomorrow morning\s*Sat 09:00$/,
       /^Next week\s*Mon 09:00$/,
       "Custom…",
-      // Any row can wait on an Event of a pull request or issue it names.
-      "Event…",
     ]);
     // Focus moves to the first choice, so the keys reach the menu.
     await expect(
-      menu(page).getByRole("button", { name: /^1 hour/ }),
+      menu(page).getByRole("button", { name: /^15 minutes/ }),
     ).toBeFocused();
-    await page.keyboard.press("7");
-    await expect(menu(page).getByLabel("Date and time")).toHaveValue(
-      "2026-08-08T09:00",
-    );
-    await menu(page).getByRole("button", { name: "Back" }).click();
-    await expect(
-      menu(page).getByRole("button", { name: "Custom…" }),
-    ).toBeFocused();
+    await page.keyboard.press("9");
+    // Custom… opens the dialog in place of the menu, at its time field.
+    await expect(menu(page)).toHaveCount(0);
+    await expect(custom(page).getByLabel("Wake at")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(custom(page)).toHaveCount(0);
+    await expect(rowHead(todo(page), checkout)).toBeVisible();
   });
 
   test("1 hour snoozes the row for an hour", async ({ page }) => {
@@ -89,19 +90,21 @@ test.describe("snooze times", { tag: "@new" }, () => {
 
   test("Custom rejects a past time", async ({ page }) => {
     await menu(page).getByRole("button", { name: "Custom…" }).click();
-    const at = menu(page).getByLabel("Date and time");
+    const at = custom(page).getByLabel("Wake at");
     await at.fill("2026-08-07T07:30");
     await at.press("Enter");
-    await expect(menu(page).getByRole("alert")).toHaveText(
+    await expect(custom(page).getByRole("alert")).toHaveText(
       "Pick a time in the future.",
     );
     await expect(at).toHaveAttribute("aria-invalid", "true");
+    // Nothing saved: the dialog stays, and the row with it once it closes.
+    await page.keyboard.press("Escape");
     await expect(rowHead(todo(page), checkout)).toBeVisible();
   });
 
   test("Custom snoozes the row until the picked time", async ({ page }) => {
     await menu(page).getByRole("button", { name: "Custom…" }).click();
-    const at = menu(page).getByLabel("Date and time");
+    const at = custom(page).getByLabel("Wake at");
     await at.fill("2026-08-07T10:30");
     await at.press("Enter");
     await expect(rowHead(todo(page), checkout)).toHaveCount(0);

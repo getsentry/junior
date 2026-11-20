@@ -5,7 +5,6 @@ import {
   type InboxSnoozeCreateBody,
   type InboxSnoozeResource,
   type InboxSnoozeSubjectBody,
-  type InboxSnoozeTrigger,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
@@ -15,11 +14,22 @@ import { useDebouncedValue } from "../debouncedValue";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { invalidateReviewItemCollections } from "./queries";
 import type { InboxBundle } from "./reviewItemFormat";
+import type { CustomSnoozeEnd } from "./snoozeChoices";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
 
-/** When a snooze ends: at a time, as `Date.now()`, or on an Event. */
-export type SnoozeEnd = number | InboxSnoozeTrigger;
+/** When a snooze ends: at a time, as `Date.now()`, or a custom snooze. */
+export type SnoozeEnd = number | CustomSnoozeEnd;
+
+/** The API body of a snooze end. */
+function snoozeEndBody(end: SnoozeEnd) {
+  const untilMs = typeof end === "number" ? end : end.untilMs;
+  const triggers = typeof end === "number" ? [] : end.triggers;
+  return {
+    triggers: triggers.length > 0 ? triggers : undefined,
+    wakeAt: untilMs === undefined ? undefined : new Date(untilMs).toISOString(),
+  };
+}
 
 /** What the Snoozed list says about the viewer's snoozed rows. */
 interface SnoozedRead {
@@ -80,12 +90,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
     hide(key, Infinity);
     startChange();
     try {
-      const body: InboxSnoozeCreateBody = {
-        ...subject,
-        ...(typeof end === "number"
-          ? { wakeAt: new Date(end).toISOString() }
-          : { triggers: [end] }),
-      };
+      const body: InboxSnoozeCreateBody = { ...subject, ...snoozeEndBody(end) };
       await post(inboxSnoozeSchema, SNOOZES_PATH, body);
     } catch {
       // The row leaves while the snooze saves, so a failure brings it back.

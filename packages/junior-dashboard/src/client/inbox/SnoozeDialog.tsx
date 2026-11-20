@@ -1,10 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import {
-  codeChangeSearchReportSchema,
-  type InboxSnoozeTrigger,
-} from "@sentry/junior/api/schema";
+import { codeChangeSearchReportSchema } from "@sentry/junior/api/schema";
 import { Link2 } from "lucide-react";
-import { type RefObject, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -15,8 +12,16 @@ import {
   CommandItem,
   CommandList,
 } from "../components/ui/command";
-import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { FieldError } from "../components/ui/field";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { useSheet } from "../components/ui/useSheet";
 import {
@@ -30,7 +35,11 @@ import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
-import type { EventSnooze, SnoozeEvents } from "./snoozeChoices";
+import type {
+  CustomSnoozeEnd,
+  EventSnooze,
+  SnoozeEvents,
+} from "./snoozeChoices";
 
 // Like the composer's `#` menu: a person who types waits for the next key.
 const SEARCH_DEBOUNCE_MS = 150;
@@ -39,7 +48,7 @@ const SEARCH_STALE_MS = 60_000;
 const SEARCH_MAX_LENGTH = 100;
 
 const EVENT_ROW_CLASS =
-  "flex cursor-pointer items-baseline rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
+  "flex cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
 
 /**
  * The page whose Events end the snooze: the subject of the row's items, or
@@ -50,47 +59,148 @@ type Watched =
   | { kind: "page"; reference?: ComposerReference; url: string };
 
 /**
- * Snooze a row until an Event, in a dialog: first pick the page to watch,
- * from the row's subject, a search of pull requests, or a pasted link; then
- * pick its Event. Wake shows the items again then; Dismiss dismisses them,
- * for a viewer who can dismiss each one.
+ * A custom snooze, in a dialog: a date and time, Events of a page, or
+ * both, and the first of them ends the snooze. The page is the subject of
+ * the row's items, a pull request that the search finds, or a pasted link
+ * to a pull request or issue. Wake shows the items again then; Dismiss
+ * dismisses them, for a viewer who can dismiss each one. The time always
+ * wakes them.
  */
-export function EventSnoozeDialog(props: {
+export function SnoozeDialog(props: {
+  /** Set when the row can snooze until an Event. */
+  events: EventSnooze | undefined;
+  nowMs: number;
   onClose(): void;
-  snooze: EventSnooze;
+  onSnooze(end: CustomSnoozeEnd): void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const sheet = useSheet(props.onClose, inputRef);
-  const [watched, setWatched] = useState<Watched>();
+  const id = useId();
+  const timeRef = useRef<HTMLInputElement>(null);
+  const sheet = useSheet(props.onClose, timeRef);
+  const [time, setTime] = useState("");
+  const [watched, setWatched] = useState<Watched | undefined>(() =>
+    props.events?.subject ? { kind: "subject" } : undefined,
+  );
+  // Change shows the search again, which then takes the keys.
+  const [searchFocus, setSearchFocus] = useState(false);
+  const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  // The time field is wrong, or nothing ends the snooze.
+  const [error, setError] = useState<{ message: string; time: boolean }>();
+  const url = watched?.kind === "page" ? watched.url : "";
+  const named = useSnoozeResource(url);
+  const watch = (next: Watched | undefined) => {
+    setWatched(next);
+    setPicked(new Set());
+    setError(undefined);
+  };
+  const submit = () => {
+    // A `datetime-local` value has no offset, so it parses as local time.
+    const untilMs = time ? new Date(time).getTime() : undefined;
+    if (untilMs !== undefined && Number.isNaN(untilMs)) {
+      setError({ message: "Pick a date and time.", time: true });
+    } else if (untilMs !== undefined && untilMs <= Date.now()) {
+      setError({ message: "Pick a time in the future.", time: true });
+    } else if (untilMs === undefined && picked.size === 0) {
+      setError({ message: "Pick a time or an event.", time: false });
+    } else {
+      props.onSnooze({
+        triggers: [...picked].map((eventType) => ({
+          eventType,
+          outcome,
+          resourceUrl: watched?.kind === "page" ? watched.url : undefined,
+        })),
+        untilMs,
+      });
+      sheet.close();
+    }
+  };
   return (
     <Dialog {...sheet.rootProps}>
       <DialogContent
         {...sheet.contentProps}
-        className="flex max-w-lg flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[min(40rem,90dvh)] max-w-lg flex-col gap-3 overflow-hidden p-4"
       >
-        <DialogTitle className="px-4 pt-4 pb-2 text-base">
-          Snooze until an event
-        </DialogTitle>
-        {watched ? (
-          <EventPicker
-            onBack={() => setWatched(undefined)}
-            onPick={(trigger) => {
-              props.snooze.onSnooze(trigger);
-              sheet.close();
+        <DialogTitle className="text-base">Custom snooze</DialogTitle>
+        <div className="grid gap-1.5">
+          <Label className="text-xs text-muted-foreground" htmlFor={`${id}-at`}>
+            Wake at
+          </Label>
+          <Input
+            aria-describedby={error?.time ? `${id}-error` : undefined}
+            aria-invalid={error?.time ? true : undefined}
+            id={`${id}-at`}
+            min={localInputValue(props.nowMs)}
+            onChange={(event) => {
+              setTime(event.target.value);
+              setError(undefined);
             }}
-            snooze={props.snooze}
-            watched={watched}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              submit();
+            }}
+            ref={timeRef}
+            size="comfortable"
+            type="datetime-local"
+            value={time}
           />
-        ) : (
-          <WatchPicker
-            inputRef={inputRef}
-            onPick={setWatched}
-            subject={props.snooze.subject}
-          />
-        )}
+        </div>
+        {props.events ? (
+          <section
+            aria-labelledby={`${id}-events`}
+            className="flex min-h-0 flex-col gap-1.5"
+          >
+            <h3
+              className="m-0 text-xs font-normal text-muted-foreground"
+              id={`${id}-events`}
+            >
+              Or on an event
+            </h3>
+            {watched ? (
+              <EventPicker
+                named={named}
+                onChange={() => {
+                  watch(undefined);
+                  setSearchFocus(true);
+                }}
+                onOutcome={setOutcome}
+                onPicked={(next) => {
+                  setPicked(next);
+                  setError(undefined);
+                }}
+                outcome={outcome}
+                picked={picked}
+                snooze={props.events}
+                watched={watched}
+              />
+            ) : (
+              <WatchPicker
+                autoFocus={searchFocus}
+                onPick={watch}
+                subject={props.events.subject}
+              />
+            )}
+          </section>
+        ) : null}
+        <FieldError id={`${id}-error`}>{error?.message}</FieldError>
+        <DialogFooter className="flex justify-end gap-1">
+          <Button onClick={sheet.close} type="button" variant="ghost">
+            Cancel
+          </Button>
+          <Button onClick={submit} type="button" variant="outline">
+            Snooze
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+/** The `datetime-local` value of a time, in the browser's timezone. */
+function localInputValue(ms: number): string {
+  const date = new Date(ms);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** "This pull request", for a row's subject of that resource type. */
@@ -126,7 +236,7 @@ function useCodeChangeSearch(query: string) {
  * search finds, or a pasted link to a pull request or issue.
  */
 function WatchPicker(props: {
-  inputRef: RefObject<HTMLInputElement | null>;
+  autoFocus: boolean;
   onPick(watched: Watched): void;
   subject: SnoozeEvents | undefined;
 }) {
@@ -139,12 +249,12 @@ function WatchPicker(props: {
   return (
     <Command label="Pull request or issue" shouldFilter={false}>
       <CommandInput
+        autoFocus={props.autoFocus}
         onValueChange={setQuery}
         placeholder="Search pull requests or paste a link"
-        ref={props.inputRef}
         value={query}
       />
-      <CommandList>
+      <CommandList className="max-h-64">
         {props.subject && !text ? (
           <CommandGroup heading="This item">
             <CommandItem
@@ -226,22 +336,29 @@ function watchedEvents(
   }
 }
 
-/** Pick the Event of the watched page that ends the snooze. */
+/** Pick the Events of the watched page that end the snooze. */
 function EventPicker(props: {
-  onBack(): void;
-  onPick(trigger: InboxSnoozeTrigger): void;
+  named: ReturnType<typeof useSnoozeResource>;
+  onChange(): void;
+  onOutcome(outcome: "resolve" | "wake"): void;
+  onPicked(picked: ReadonlySet<string>): void;
+  outcome: "resolve" | "wake";
+  picked: ReadonlySet<string>;
   snooze: EventSnooze;
   watched: Watched;
 }) {
-  const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
   const { subject } = props.snooze;
   const { watched } = props;
-  const url = watched.kind === "page" ? watched.url : "";
-  const named = useSnoozeResource(url);
-  const { error, events } = watchedEvents(watched, subject, named);
+  const { error, events } = watchedEvents(watched, subject, props.named);
+  const toggle = (eventType: string, on: boolean) => {
+    const next = new Set(props.picked);
+    if (on) next.add(eventType);
+    else next.delete(eventType);
+    props.onPicked(next);
+  };
   return (
-    <div className="grid gap-2 px-3 pb-3">
-      <div className="flex min-w-0 items-center gap-2 px-1">
+    <>
+      <div className="flex min-w-0 items-center gap-2">
         {watched.kind === "page" && watched.reference ? (
           <ReferenceIcon reference={watched.reference} />
         ) : null}
@@ -257,7 +374,7 @@ function EventPicker(props: {
               ? referenceName(watched.reference)
               : watched.url}
         </span>
-        <Button onClick={props.onBack} type="button" variant="ghost">
+        <Button onClick={props.onChange} type="button" variant="ghost">
           Change
         </Button>
       </div>
@@ -266,9 +383,9 @@ function EventPicker(props: {
           aria-label="On the event"
           className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
           onValueChange={([next]) => {
-            if (next) setOutcome(next);
+            if (next) props.onOutcome(next);
           }}
-          value={[outcome]}
+          value={[props.outcome]}
         >
           <ToggleGroupItem className="flex-1" value="wake">
             Wake
@@ -278,39 +395,30 @@ function EventPicker(props: {
           </ToggleGroupItem>
         </ToggleGroup>
       ) : null}
-      {error ? <FieldError className="px-1">{error}</FieldError> : null}
+      {error ? <FieldError>{error}</FieldError> : null}
       {!error && !events ? (
-        <p className="m-0 px-1 font-sans text-sm text-muted-foreground">
+        <p className="m-0 font-sans text-sm text-muted-foreground">
           Checking the link…
         </p>
       ) : null}
       {events ? (
         <div
-          aria-label={outcome === "wake" ? "Wake when" : "Dismiss when"}
-          className="grid max-h-[min(24rem,50dvh)] gap-0.5 overflow-y-auto"
+          aria-label={props.outcome === "wake" ? "Wake when" : "Dismiss when"}
+          className="grid min-h-0 gap-0.5 overflow-y-auto"
           role="group"
         >
-          {events.events.map((eventType, index) => (
-            <button
-              autoFocus={index === 0}
-              className={EVENT_ROW_CLASS}
-              key={eventType}
-              onClick={() =>
-                props.onPick({
-                  eventType,
-                  outcome,
-                  resourceUrl:
-                    watched.kind === "page" ? watched.url : undefined,
-                })
-              }
-              type="button"
-            >
+          {events.events.map((eventType) => (
+            <label className={EVENT_ROW_CLASS} key={eventType}>
+              <Checkbox
+                checked={props.picked.has(eventType)}
+                onCheckedChange={(on) => toggle(eventType, on)}
+              />
               {sentenceCase(eventLabel(eventType, events.resourceType))}
-            </button>
+            </label>
           ))}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
