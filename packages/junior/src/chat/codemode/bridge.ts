@@ -85,6 +85,16 @@ export interface CodeModeScriptRun {
   signal?: AbortSignal | undefined;
 }
 
+/** Services of one Run that the `codemode` tool needs. */
+export interface CodeModeToolOptions {
+  /** Tools a script may call: `scriptTools` from `planToolExposure`. */
+  scriptTools: Record<string, AnyToolDefinition>;
+  modelOnlyTools: CodeModeScriptRun["modelOnlyTools"];
+  pipeline: CodeModeScriptRun["pipeline"];
+  /** Charge one nested call to the Turn's durable tool-call total. */
+  countToolCall(): number;
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
