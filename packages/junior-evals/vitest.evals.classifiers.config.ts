@@ -23,8 +23,8 @@ loadJuniorTestEnvFiles({
 
 process.env["JUNIOR_SECRET"] = "junior-test-secret";
 process.env["JUNIOR_BASE_URL"] ??= "https://junior.example.com";
-// Classifier cases do not touch Redis state, but keep a loopback default so any
-// accidental shared import that reads REDIS_URL stays sandboxed.
+// Each Pi model call reads the enabled gateway providers from state. The
+// loopback default keeps that read sandboxed.
 process.env["JUNIOR_STATE_ADAPTER"] = "redis";
 process.env["JUNIOR_STATE_KEY_PREFIX"] ??=
   `junior:eval-classifiers:${randomUUID()}`;
