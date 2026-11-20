@@ -1,6 +1,6 @@
 // Port of `estimateImageTokens` in chat/services/token-estimate.ts and of
 // chat/services/image-dimensions.ts, for the image attributes of a model
-// request span. Keep them in step: the span drift test compares them.
+// request span. Keep them in step with the core-drift skill.
 import type { ImageContent } from "@earendil-works/pi-ai";
 
 // Characters per token of the size-only estimate: Claude counts about 1.6x

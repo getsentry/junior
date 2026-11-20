@@ -1,8 +1,8 @@
 // Port of `createTracedStreamFn` in chat/pi/traced-stream.ts: each model
-// request gets one `gen_ai.chat` span with the same name, op, and attributes
-// as on the chat agent loop. Keep the two in step: the span drift test
-// compares them. Chat's compaction marker, caller end attributes, and log
-// context attributes are not ported.
+// request gets one `gen_ai.chat` span with the same name, op, and attributes as
+// on the chat agent loop. Keep the two in step with the core-drift skill.
+// Chat's compaction marker, caller end attributes, and log context attributes
+// are not ported.
 import { performance } from "node:perf_hooks";
 import {
   createAssistantMessageEventStream,

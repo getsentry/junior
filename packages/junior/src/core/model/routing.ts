@@ -1,5 +1,5 @@
-// Port of chat/pi/gateway-routing-attributes.ts. Keep the two in step: the
-// span drift test compares them.
+// Port of chat/pi/gateway-routing-attributes.ts. Keep the two in step with the
+// core-drift skill.
 import * as z from "zod";
 
 // AI Gateway reports how it routed an Anthropic Messages request in

@@ -1,6 +1,6 @@
 // Port of the message mappers and summaries of chat/conversation-privacy.ts
-// that a model request span records. Keep the two in step: the span drift
-// test compares them.
+// that a model request span records. Keep the two in step with the core-drift
+// skill.
 import {
   renderSystemMessageUpdate,
   type AssistantMessage,

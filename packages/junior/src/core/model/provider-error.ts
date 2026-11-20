@@ -1,7 +1,7 @@
-// Port of the parts of chat/services/provider-error.ts that the attributes
-// of a failed model reply need. A failed reply carries only its error text,
-// so this reads status and retry-after from the text, as chat does for a
-// string. Keep the two in step: the span drift test compares them.
+// Port of the parts of chat/services/provider-error.ts that the attributes of a
+// failed model reply need. A failed reply carries only its error text, so this
+// reads status and retry-after from the text, as chat does for a string. Keep
+// the two in step with the core-drift skill.
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 type ProviderErrorKind =

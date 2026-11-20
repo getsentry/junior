@@ -1,5 +1,5 @@
-// Port of `extractGenAiUsageAttributes` in chat/logging.ts for one model
-// reply. Keep the two in step: the span drift test compares them.
+// Port of `extractGenAiUsageAttributes` in chat/logging.ts for one model reply.
+// Keep the two in step with the core-drift skill.
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 function toFiniteTokenCount(value: unknown): number | undefined {
