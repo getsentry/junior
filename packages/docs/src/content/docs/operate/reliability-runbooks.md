@@ -28,7 +28,7 @@ Check:
 - `event.name:conversation.work.failed OR event.name:conversation.work.recovery.failed`
 - `event.name:conversation.work.pending.requeued OR event.name:conversation.work.lease_expired.requeued`
 - `event.name:agent.continue.schedule.failed OR event.name:agent.continue.lock.busy`
-- `span.op:queue.process_message`
+- `span.op:[queue.publish,queue.process]`
 
 ## Turn execution failures
 

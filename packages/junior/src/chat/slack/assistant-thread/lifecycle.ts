@@ -1,10 +1,11 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
+import { botConfig } from "@/chat/config";
 import { normalizeSlackConversationId } from "@/chat/slack/client";
 
 interface AssistantThreadLifecycleEvent {
   channelId: string;
   threadTs: string;
-  sourceChannelId?: string;
+  sourceChannelId?: string | undefined;
   getSlackAdapter: () => SlackAdapter;
 }
 
@@ -18,7 +19,11 @@ async function syncAssistantThreadContext(
   }
   const slack = event.getSlackAdapter();
   if (options.setInitialTitle) {
-    await slack.setAssistantTitle(channelId, event.threadTs, "Junior");
+    await slack.setAssistantTitle(
+      channelId,
+      event.threadTs,
+      botConfig.userName,
+    );
   }
   await slack.setSuggestedPrompts(channelId, event.threadTs, [
     {

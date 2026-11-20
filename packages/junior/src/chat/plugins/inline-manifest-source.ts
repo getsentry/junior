@@ -16,10 +16,6 @@ function setDefined(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function unqualifyManifestToken(name: unknown, value: unknown): unknown {
   if (
     typeof name === "string" &&
@@ -41,7 +37,11 @@ function inlineTokenListSource(name: unknown, values: unknown): unknown {
 function inlineCredentialsSource(
   credentials: PluginManifest["credentials"],
 ): unknown {
-  if (credentials === undefined || !isRecord(credentials)) {
+  if (
+    typeof credentials !== "object" ||
+    credentials === null ||
+    Array.isArray(credentials)
+  ) {
     return credentials;
   }
 
@@ -93,7 +93,7 @@ export function accountsSource(
 }
 
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
-  if (mcp === undefined || !isRecord(mcp)) {
+  if (typeof mcp !== "object" || mcp === null || Array.isArray(mcp)) {
     return mcp;
   }
 
@@ -113,7 +113,7 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
 }
 
 function inlineOauthSource(oauth: PluginManifest["oauth"]): unknown {
-  if (oauth === undefined || !isRecord(oauth)) {
+  if (typeof oauth !== "object" || oauth === null || Array.isArray(oauth)) {
     return oauth;
   }
 
@@ -138,7 +138,7 @@ function inlineTargetSource(
   name: unknown,
   target: PluginManifest["target"],
 ): unknown {
-  if (target === undefined || !isRecord(target)) {
+  if (typeof target !== "object" || target === null || Array.isArray(target)) {
     return target;
   }
 
@@ -160,6 +160,7 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "name", manifest.name);
   setDefined(result, "display-name", manifest.displayName);
   setDefined(result, "description", manifest.description);
+  setDefined(result, "review-context", manifest.reviewContext);
   setDefined(
     result,
     "config-keys",
@@ -169,6 +170,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "api-headers", manifest.apiHeaders);
   setDefined(result, "command-env", manifest.commandEnv);
   setDefined(result, "env-vars", manifest.envVars);
+  setDefined(
+    result,
+    "tools-send-no-credential",
+    manifest.toolsSendNoCredential,
+  );
   setDefined(
     result,
     "credentials",

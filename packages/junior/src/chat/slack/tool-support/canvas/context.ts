@@ -1,5 +1,5 @@
 import { extractCanvasId } from "@/chat/slack/tool-support/canvas/api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Model-facing Slack canvas ID or docs URL parameter. */
 export const slackCanvasRefParam = z

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { isUserActor, parseActorUserId, type Actor } from "@/chat/actor";
 import type { LogContext } from "@/chat/log-context";
 

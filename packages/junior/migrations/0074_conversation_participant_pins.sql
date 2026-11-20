@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversation_participants" ADD COLUMN "pinned_at" timestamp with time zone;

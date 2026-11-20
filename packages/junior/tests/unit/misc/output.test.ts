@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildSlackOutputMessage,
-  fitsSlackInlineBudget,
-  getSlackContinuationMarker,
-  getSlackInterruptionMarker,
-  slackOutputPolicy,
-  splitSlackReplyText,
-} from "@/chat/slack/output";
+import { slackOutputPolicy, splitSlackReplyText } from "@/chat/slack/output";
 import {
   ensureBlockSpacing,
   normalizeSlackReplyMarkdown,
@@ -153,127 +146,103 @@ describe("normalizeSlackReplyMarkdown", () => {
       normalizeSlackReplyMarkdown("opened getsentry/junior#1509 for review"),
     ).toBe("opened getsentry/junior#1509 for review");
   });
-});
 
-describe("buildSlackOutputMessage", () => {
-  it("returns inline markdown for short content", () => {
-    const message = buildSlackOutputMessage("hello\nworld");
+  it("turns follow-up paragraphs in list items into bullets at every level", () => {
+    const input = [
+      "1. I checked the side effects:",
+      "   - **Tag:** both change.",
+      "   ",
+      "   So you can have one or the other.",
+      "2. First paragraph.",
+      "",
+      "   Second paragraph.",
+      "3. Outer item:",
+      "   - Inner intro:",
+      "     - deep a",
+      "",
+      "     Inner follow-up.",
+      "   - Inner sibling that",
+      "     wraps onto two lines.",
+      "4. Table item:",
+      "",
+      "   | a | b |",
+      "   |---|---|",
+      "   | 1 | 2 |",
+      "",
+      "Plain paragraph.",
+      "",
+      "    Indented text outside a list.",
+    ].join("\n");
 
-    expect(typeof message).toBe("object");
-    expect("markdown" in (message as object)).toBe(true);
-    expect((message as { markdown: string }).markdown).toBe("hello\n\nworld");
-    expect((message as { files?: unknown[] }).files).toBeUndefined();
-  });
-
-  it("keeps long content inline by default", () => {
-    const longText = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 8 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n");
-    const expectedText = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 8 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n\n");
-    const message = buildSlackOutputMessage(longText) as {
-      markdown: string;
-      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
-    };
-
-    expect(message.markdown).toBe(expectedText);
-    expect(message.files).toBeUndefined();
-  });
-
-  it("normalizes whitespace and line endings", () => {
-    const message = buildSlackOutputMessage("one\r\n\r\n\r\n\r\ntwo   \n") as {
-      markdown: string;
-    };
-
-    expect(message.markdown).toBe("one\n\ntwo");
+    expect(normalizeSlackReplyMarkdown(input)).toBe(
+      [
+        "1. I checked the side effects:",
+        "   - **Tag:** both change.",
+        "",
+        "   - So you can have one or the other.",
+        "",
+        "2. First paragraph.",
+        "",
+        "   - Second paragraph.",
+        "",
+        "3. Outer item:",
+        "   - Inner intro:",
+        "     - deep a",
+        "",
+        "     - Inner follow-up.",
+        "",
+        "   - Inner sibling that",
+        "     wraps onto two lines.",
+        "",
+        "4. Table item:",
+        "",
+        "   | a | b |",
+        "   |---|---|",
+        "   | 1 | 2 |",
+        "",
+        "Plain paragraph.",
+        "",
+        "    Indented text outside a list.",
+      ].join("\n"),
+    );
   });
 });
 
 describe("splitSlackReplyText", () => {
-  it("splits long replies into inline-safe continuation chunks", () => {
-    const longText = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 24 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n");
+  const max = slackOutputPolicy.maxInlineChars;
 
-    const chunks = splitSlackReplyText(longText);
+  it("keeps a reply that fits Slack limits in one post", () => {
+    const text = Array.from({ length: 120 }, (_, i) => `- item ${i + 1}`).join(
+      "\n",
+    );
 
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
-    expect(
-      chunks
-        .slice(0, -1)
-        .every((chunk) => chunk.endsWith(getSlackContinuationMarker())),
-    ).toBe(true);
-    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    expect(splitSlackReplyText(text)).toEqual([text]);
   });
 
-  it("preserves every line when reserving continuation marker space", () => {
-    const longList = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 1 },
-      (_, i) => `- item ${i + 1}`,
+  it("splits long replies at line boundaries without markers", () => {
+    const text = Array.from(
+      { length: 1000 },
+      (_, i) => `- item ${i + 1} of the reply`,
     ).join("\n");
 
-    const chunks = splitSlackReplyText(longList);
+    const chunks = splitSlackReplyText(text);
 
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
-    for (let i = 1; i <= slackOutputPolicy.maxInlineLines + 1; i++) {
-      expect(chunks.some((chunk) => chunk.includes(`- item ${i}`))).toBe(true);
-    }
+    expect(chunks.length).toBeGreaterThan(2);
+    expect(chunks.every((chunk) => chunk.length <= max)).toBe(true);
+    expect(chunks.join("\n")).toBe(text);
   });
 
-  it("omits the continuation marker when a reply only needs two posts", () => {
-    const text = "a".repeat(slackOutputPolicy.maxInlineChars + 1);
+  it("hard-splits text with no boundaries", () => {
+    const text = "a".repeat(max + 1);
     const chunks = splitSlackReplyText(text);
 
     expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(false);
-    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
     expect(chunks.join("")).toBe(text);
   });
 
-  it("marks interrupted final replies explicitly", () => {
-    const chunks = splitSlackReplyText("Partial output", {
-      interrupted: true,
-    });
-
-    expect(chunks).toEqual([`Partial output${getSlackInterruptionMarker()}`]);
-  });
-
-  it("keeps interrupted continuation chunks within the inline budget", () => {
-    const text = "a".repeat(
-      slackOutputPolicy.maxInlineChars -
-        getSlackInterruptionMarker().length +
-        1,
-    );
-
-    const chunks = splitSlackReplyText(text, {
-      interrupted: true,
-    });
-
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(false);
-    expect(chunks[1]?.endsWith(getSlackInterruptionMarker())).toBe(true);
-    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
-    expect(
-      chunks
-        .map((chunk, index) => {
-          if (index === chunks.length - 1) {
-            return chunk.slice(0, -getSlackInterruptionMarker().length);
-          }
-          return chunk;
-        })
-        .join(""),
-    ).toBe(text);
-  });
-
-  it("closes and reopens code fences across continuation chunks", () => {
+  it("closes and reopens code fences across posts", () => {
     const code = Array.from(
-      { length: slackOutputPolicy.maxInlineLines + 20 },
+      { length: 300 },
       (_, i) => `const value${i + 1} = ${i + 1};`,
     ).join("\n");
     const chunks = splitSlackReplyText(`\`\`\`ts\n${code}\n\`\`\``);
@@ -281,7 +250,7 @@ describe("splitSlackReplyText", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks[0]?.endsWith("```")).toBe(true);
     expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
-    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    expect(chunks.every((chunk) => chunk.length <= max)).toBe(true);
   });
 });
 

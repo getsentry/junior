@@ -1,5 +1,23 @@
+import type { Locator, Page } from "@playwright/test";
+
+import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
+import { viewAsParticipant } from "./conversationMenu";
+
+/** Hold new Conversation creates until the returned function runs. */
+async function holdCreate(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await released;
+    await route.fallback();
+  });
+  return release;
+}
 
 const FOCUSED_COMPOSER_HEIGHT_PX = 520;
 const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
@@ -19,7 +37,7 @@ test("records focused mobile conversation composer", async ({
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await composer.focus();
   await page.evaluate(
     ({ height, offsetTop }) => {
@@ -52,6 +70,25 @@ test("records focused mobile conversation composer", async ({
     },
     view: "mobile",
   });
+
+  // A downward swipe puts the keyboard away. An upward swipe keeps it.
+  const touch = await page.context().newCDPSession(page);
+  const swipe = async (from: { x: number; y: number }, dy: number) => {
+    const send = (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      points: { id: number; x: number; y: number }[],
+    ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+    await send("touchStart", [{ id: 1, ...from }]);
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await send("touchMove", [{ id: 1, x: from.x, y: from.y + dy * step }]);
+    }
+    await send("touchEnd", []);
+  };
+  await swipe({ x: 200, y: 400 }, -120);
+  await expect(composer).toBeFocused();
+  await swipe({ x: 200, y: 300 }, 120);
+  await expect(composer).not.toBeFocused();
+  await touch.detach();
 });
 
 /**
@@ -102,7 +139,9 @@ test("starts a new conversation from a centered compose empty state", async ({
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
-  await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Conversation visibility" }),
+  ).toHaveText("Public");
   await expect(composer).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
@@ -151,6 +190,158 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();
+
+  // A short new transcript must not leave the reply composer mid-screen.
+  const releaseCreate = await holdCreate(page);
+  await composer.fill("Check the deploy");
+  await composer.press("Enter");
+  // The new Conversation shows its chrome before its route exists, so the
+  // header does not flash home's menu first.
+  await expect(page.getByLabel("Back to conversations")).toBeDisabled();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "New conversation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open navigation" }),
+  ).toBeHidden();
+  releaseCreate();
+  await expect(page).toHaveURL(/\/conversations\/.+/);
+  await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
+  const reply = page.locator('[aria-placeholder="Message Junior…"]');
+  await reply.focus();
+  await expectFocusedComposerAtVisualViewportBottom(reply, 844);
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("adds a line on Return instead of sending", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toHaveAttribute("enterkeyhint", "enter");
+    await composer.fill("First line");
+    await composer.press("Enter");
+    await composer.pressSequentially("Second line");
+    await expect(composer).toHaveText("First line\nSecond line", {
+      useInnerText: true,
+    });
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("opens the row sheet on a long press of a home card", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const card = page.getByRole("link", { name: "Open Closed issue summary" });
+    await expect(card).toBeVisible();
+    // Playwright has no long press. Hold a touch past the menu delay.
+    await card.dispatchEvent("touchstart", {
+      touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+    });
+    // A touch opens the rows as a sheet, not as a menu at the finger.
+    const sheet = page.getByRole("dialog", { name: "Closed issue summary" });
+    await expect(sheet).toBeVisible();
+    // A mobile browser can send its own contextmenu from the same press.
+    // The open sheet hides the card from role queries.
+    await page
+      .locator('a[aria-label="Open Closed issue summary"]')
+      .dispatchEvent("contextmenu");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await screenshot(page, "conversation-home-card-sheet", { view: "mobile" });
+
+    await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(
+      page
+        .locator("section:has(#conversation-section-pinned)")
+        .getByRole("link", { name: "Open Closed issue summary" }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("moves a pinned home card from its row sheet", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const pinned = page.locator(
+      'section[aria-labelledby="conversation-section-pinned"] a[aria-label]',
+    );
+    const sheet = page.getByRole("dialog");
+    // Playwright has no long press. Hold a touch past the menu delay.
+    const longPress = (card: Locator) =>
+      card.dispatchEvent("touchstart", {
+        touches: [{ clientX: 1, clientY: 1, identifier: 1 }],
+      });
+    for (const name of ["Closed issue summary", "Sandbox validation"]) {
+      await longPress(page.getByRole("link", { name: `Open ${name}` }));
+      await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+      await expect(
+        page
+          .locator('section[aria-labelledby="conversation-section-pinned"]')
+          .getByRole("link", { name: `Open ${name}` }),
+      ).toBeVisible();
+    }
+    const second = await pinned.nth(1).getAttribute("aria-label");
+
+    // A still touch on a pinned card opens the sheet, not a pin drag.
+    await longPress(pinned.first());
+    await expect(sheet.getByRole("button", { name: "Move up" })).toBeDisabled();
+    await sheet.getByRole("button", { name: "Move down" }).click();
+    await expect(pinned.first()).toHaveAttribute("aria-label", second!);
+  });
+
+  test("opens the keyboard on home only when the dashboard opens there", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toBeFocused();
+
+    const conversation = page.getByRole("link", {
+      name: /Investigate checkout latency/,
+    });
+    const heading = page.getByRole("heading", {
+      name: "Investigate checkout latency",
+    });
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("link", { name: "Back to conversations" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A browser back gesture returns to home too.
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A tablet shows the list beside home. Its create button asks to type.
+    await page.setViewportSize({ height: 800, width: 1024 });
+    await conversation.first().click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeFocused();
+  });
 });
 
 test("opens and closes a conversation on mobile", async ({
@@ -180,7 +371,7 @@ test("opens and closes a conversation on mobile", async ({
     name: "Open navigation",
   });
   await expect(navigationTrigger).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
   ).toBeHidden();
@@ -216,7 +407,14 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
+  const accountMenu = page.getByLabel("Account menu for Dashboard User");
+  await expect(
+    accountMenu.getByRole("link", { name: "Code", exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountMenu.getByRole("link", { name: "System", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "API tokens" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
@@ -238,7 +436,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
   ).toBeHidden();
@@ -250,11 +448,48 @@ test("opens and closes a conversation on mobile", async ({
   await expect(menu).toBeVisible();
   await menu.click();
   await expect(
-    page.getByRole("button", { name: "Search transcript" }),
+    page.getByRole("menuitem", { name: "Search transcript" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "App menu" })).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("dialog", { name: "Conversation details" });
+  await expect(details).toHaveAttribute("aria-modal", "true");
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
+  await page.keyboard.press("Shift+Tab");
+  // Mobile hides the title bar, so the sheet names the location.
+  await expect(details.getByText("Location", { exact: true })).toBeVisible();
+  await expect(details.locator(":focus")).toHaveCount(1);
+  await screenshot(page, "conversation-details-sheet", {
+    lightTheme: true,
+    view: "mobile",
+  });
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await menu.click();
+  await page
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
+    .click();
+  await details.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await page
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
+    .click();
+  // The sheet moves focus inside it.
+  await expect(details.locator(":focus")).toHaveCount(1);
+  await page.mouse.click(8, 8);
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();
@@ -262,10 +497,10 @@ test("opens and closes a conversation on mobile", async ({
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
   // Mobile collapsed control owns the total count.
-  const expand = pending.getByRole("button", { name: "5 queued messages" });
+  const expand = pending.getByRole("button", { name: "7 queued messages" });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("5 queued messages")).toHaveCount(1);
+  await expect(pending.getByText("7 queued messages")).toHaveCount(1);
   await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeHidden();
@@ -287,7 +522,7 @@ test("opens and closes a conversation on mobile", async ({
     )
     .toBeLessThanOrEqual(1);
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await expect(composer).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   await composer.focus();
@@ -374,8 +609,9 @@ test("opens and closes a conversation on mobile", async ({
   // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
-  // When the page already shrank for the keyboard, a leftover visual offset
-  // must not shove the fixed shell down (composer under the keyboard).
+  // iOS 18 Safari shrinks innerHeight with the keyboard but keeps
+  // documentElement.clientHeight tall and pans the visual viewport down. The
+  // shell must follow that pan, or it slides up off screen.
   await page.evaluate(() => {
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
@@ -384,6 +620,25 @@ test("opens and closes a conversation on mobile", async ({
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
       offsetTop: { configurable: true, value: 140 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("140px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+  // When the whole page shrank for the keyboard (resizes-content), a leftover
+  // visual offset must not shove the fixed shell down (composer under the
+  // keyboard).
+  await page.evaluate(() => {
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 520,
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
@@ -403,8 +658,9 @@ test("opens and closes a conversation on mobile", async ({
     .toBe("0px");
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 0);
 
-  // Restore classic Safari visual-dock geometry for the remaining checks.
+  // Restore classic visual-dock geometry for the remaining checks.
   await page.evaluate(() => {
+    Reflect.deleteProperty(document.documentElement, "clientHeight");
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
       value: 844,
@@ -527,7 +783,7 @@ test("opens and closes a conversation on mobile", async ({
   await composer.fill("Keep the mobile composer ready");
   await composer.press("Enter");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expect
     .poll(() =>
       transcript.evaluate(
@@ -538,14 +794,25 @@ test("opens and closes a conversation on mobile", async ({
     .toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
+  // The search field keeps focus after the menu closes.
+  await expect(
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByPlaceholder("Search transcript…")).toBeFocused();
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Event log" }).click();
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Hide search" }).click();
+  await page
+    .getByRole("menuitem", { name: "Open event log", exact: true })
+    .click();
+  await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
+  // Back leaves the event log for its Conversation, then the list.
+  await page
+    .getByRole("button", { name: "Back to conversation", exact: true })
+    .click();
+  await expect(page.getByPlaceholder("Search events…")).toBeHidden();
+  await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
@@ -575,4 +842,152 @@ test("opens and closes a conversation on mobile", async ({
   await signOutRequest;
   await expect(openNavigationSheet).toBeHidden();
   finishSignOut?.();
+});
+
+test("keeps the message in view while earlier history and late content load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  const generatedAt = "2026-08-07T11:00:00.000Z";
+  const conversation = {
+    conversationId: "long-history",
+    cumulativeDurationMs: 1_000,
+    displayTitle: "Long history",
+    isParticipant: true,
+    kind: "root",
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "done",
+    turnActive: false,
+    surface: "internal",
+  };
+  const events = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, index) => {
+      const seq = from + index;
+      return {
+        createdAt: new Date(
+          Date.parse(generatedAt) + seq * 1_000,
+        ).toISOString(),
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: seq % 2 === 0 ? "user" : "assistant",
+          text: `Transcript message ${seq} with enough content to occupy a visible row.`,
+        },
+        seq,
+      };
+    });
+  let releaseEarlierPage: (() => void) | undefined;
+  const earlierPageGate = new Promise<void>((resolve) => {
+    releaseEarlierPage = resolve;
+  });
+
+  await page.route("**/api/conversations", async (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversations: [conversation],
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route(
+    "**/api/conversations/long-history/events?*",
+    async (route) => {
+      await earlierPageGate;
+      await route.fulfill({
+        json: {
+          eventHistory: { status: "available" },
+          events: events(0, 40),
+          generatedAt,
+        },
+      });
+    },
+  );
+  await page.route("**/api/conversations/long-history*", async (route) => {
+    await route.fulfill({
+      json: withRequestedMailbox(route, {
+        ...conversation,
+        eventHistory: { status: "available" },
+        events: events(40, 80),
+        generatedAt,
+        previousCursor: "before-40",
+      }),
+    });
+  });
+
+  // A scroll event fires on the next frame, before its animation frame
+  // callbacks. The transcript records the reader's place there, so wait for it
+  // before the layout changes. Otherwise the place it records already
+  // includes the change.
+  const scrollEventHandled = () =>
+    page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+
+  await page.goto(`${dashboard.baseURL}/conversations/long-history`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const latest = transcript.getByText("Transcript message 79 ");
+  await expect(latest).toBeInViewport();
+
+  // Scroll to the top to load earlier history. The reader keeps scrolling
+  // while the page loads, so their place is where they stop, not where the
+  // load started.
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(transcript.getByText("Loading earlier messages…")).toBeVisible();
+  await transcript.evaluate((element) => {
+    element.scrollTop = 160;
+  });
+  await scrollEventHandled();
+  const reading = transcript.getByText("Transcript message 43 ");
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  releaseEarlierPage?.();
+  // Rows far above the reader do not mount, so wait for the load to end.
+  await expect(transcript.getByText("Loading earlier messages…")).toHaveCount(
+    0,
+  );
+  await expect(reading).toBeInViewport({ ratio: 1 });
+  await expect(
+    transcript.getByText("Transcript message 39 "),
+  ).not.toBeInViewport();
+
+  // Rows keep their real size while the reader scrolls up through them, so
+  // the transcript never corrects the reader's own scroll. On phones, such
+  // corrections make the transcript jump.
+  await transcript.evaluate((element) => {
+    const scrollTo = element.scrollTo.bind(element);
+    element.dataset["scrollCorrections"] = "0";
+    element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
+      element.dataset["scrollCorrections"] = String(
+        Number(element.dataset["scrollCorrections"]) + 1,
+      );
+      scrollTo(...args);
+    };
+  });
+  await transcript.hover();
+  for (let step = 0; step < 10; step += 1) {
+    await page.mouse.wheel(0, -150);
+  }
+  await expect(transcript.getByText("Transcript message 30 ")).toBeInViewport();
+  await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+  await transcript.getByText("Transcript message 43 ").scrollIntoViewIfNeeded();
+  await scrollEventHandled();
+
+  // Content that grows above the reader, such as an image that loads late,
+  // must not push the message they are reading out of view. The row must be
+  // one that mounts near the reader.
+  await transcript.getByText("Transcript message 35 ").evaluate((element) => {
+    const spacer = document.createElement("div");
+    spacer.style.height = "1200px";
+    element.append(spacer);
+  });
+  await expect(reading).toBeInViewport({ ratio: 1 });
 });

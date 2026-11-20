@@ -1,0 +1,181 @@
+/**
+ * Slack message permalinks as cards. Junior has no Slack token of the
+ * viewer, so the bot reads the message, and the card shows only what the
+ * viewer's own linked Slack account can see in that workspace.
+ */
+import pLimit from "p-limit";
+import type {
+  ObjectAnnotation,
+  ObjectLinkFilter,
+  User,
+} from "@sentry/junior-plugin-api";
+import { getProductionSlackAdapter } from "@/chat/app/production";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { logWarn } from "@/chat/logging";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
+import {
+  getChannelMessage,
+  getConversationInfo,
+  isConversationMember,
+  isPublicSlackChannel,
+  type SlackConversationInfo,
+} from "@/chat/slack/channel";
+import { SlackActionError } from "@/chat/slack/client";
+import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import { renderSlackPlainText } from "@/chat/slack/message/content";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import { resolveSlackTeamDomain } from "@/chat/slack/team-domain";
+import {
+  parseSlackMessageReference,
+  type SlackMessageReference,
+} from "@/chat/slack/tool-support/slack-message-url";
+import { lookupSlackUser, lookupSlackUserNames } from "@/chat/slack/user";
+import { messageObjectCard } from "./cards";
+
+/** Slack permalinks, such as `acme.slack.com/archives/C123/p1712345000000100`. */
+export const SLACK_MESSAGE_LINK_FILTER: ObjectLinkFilter = {
+  host: "*.slack.com",
+  pathPattern: "/archives/*/*",
+};
+
+// Errors that mean the bot cannot see the channel or the message. The card
+// then shows nothing, the same as for a link to no message.
+const HIDDEN_ERRORS = new Set(["not_found", "not_in_channel", "missing_scope"]);
+
+function isHiddenError(error: unknown): boolean {
+  return error instanceof SlackActionError && HIDDEN_ERRORS.has(error.code);
+}
+
+function channelLabel(info: SlackConversationInfo): string {
+  if (info.isIm) return "Direct message";
+  if (info.isMpim) return "Group message";
+  return info.name ? `#${info.name}` : "Slack channel";
+}
+
+/** Read the card for one viewer, inside the installation of their team. */
+async function readMessageCard(args: {
+  reference: SlackMessageReference;
+  slackUserId: string;
+  teamId: SlackTeamId;
+  url: URL;
+}): Promise<ObjectAnnotation | undefined> {
+  const { channelId, messageTs, threadTs } = args.reference;
+  let info: SlackConversationInfo;
+  try {
+    info = await getConversationInfo(channelId);
+  } catch (error) {
+    if (isHiddenError(error)) return undefined;
+    throw error;
+  }
+  // A public channel is open to full workspace members. A guest sees only
+  // the channels they are in, so a guest, a person Slack does not describe,
+  // and any other channel, DM, or group DM need membership.
+  const openToViewer =
+    isPublicSlackChannel(info) &&
+    (await lookupSlackUser(args.teamId, args.slackUserId))?.isGuest === false;
+  if (
+    !openToViewer &&
+    !(await isConversationMember(channelId, args.slackUserId))
+  ) {
+    return undefined;
+  }
+
+  let message: Awaited<ReturnType<typeof getChannelMessage>>;
+  try {
+    message = await getChannelMessage({ channelId, messageTs, threadTs });
+    // A deleted reply, or a timestamp not in the thread, has no card.
+    if (!message) return undefined;
+  } catch (error) {
+    // A deleted message has no card.
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "thread_not_found"
+    ) {
+      return undefined;
+    }
+    // The bot reads a public channel only after it joins it. Keep the card
+    // without the message, and do not join a channel for a card.
+    if (!isHiddenError(error)) throw error;
+  }
+  const userIds = [
+    ...new Set([
+      ...(message?.user ? [message.user] : []),
+      ...slackMentionedUserIds(message?.text ?? ""),
+    ]),
+  ];
+  const names = new Map(
+    [...(await lookupSlackUserNames(args.teamId, userIds))].flatMap(
+      ([id, name]) => {
+        const label = name.fullName ?? name.userName;
+        return label ? [[id, label] as const] : [];
+      },
+    ),
+  );
+  const author =
+    (message?.user ? names.get(message.user) : undefined) ??
+    message?.bot_profile?.name;
+  return messageObjectCard({
+    ...(author ? { author } : undefined),
+    channel: channelLabel(info),
+    key: `slack:${args.teamId}:${channelId}:${messageTs}`,
+    sentAt: new Date(Number(messageTs) * 1000).toISOString(),
+    ...(message?.text
+      ? { text: renderSlackPlainText(message.text, names) }
+      : undefined),
+    url: args.url.href,
+  });
+}
+
+/**
+ * Resolve a Slack message permalink for the viewer. The link's workspace
+ * must be one where the viewer linked a Slack account. Without that
+ * account, or without access to the channel, the link gets no card.
+ */
+export async function resolveSlackMessageLink(
+  viewer: User,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const parsed = parseSlackMessageReference(url.href);
+  if (!parsed.ok) return undefined;
+  // Look up the domain of each linked Slack workspace at once.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const workspaces = await Promise.all(
+    viewer.identities.map(async (identity) => {
+      const teamId = parseSlackTeamId(identity.providerTenantId);
+      if (identity.provider !== "slack" || !teamId) return undefined;
+      const run = <T>(task: () => Promise<T>) =>
+        runWithSlackInstallation({
+          adapter: getProductionSlackAdapter(),
+          installation: { teamId },
+          task,
+        });
+      try {
+        const domain = await limit(() =>
+          run(() => resolveSlackTeamDomain(teamId)),
+        );
+        return { domain, identity, run, teamId };
+      } catch (error) {
+        // A workspace that removed Junior has no token. Check the next one.
+        logWarn("object_link.slack_team.unavailable", {
+          "app.slack.team_id": teamId,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+      }
+    }),
+  );
+  const workspace = workspaces.find(
+    (candidate) =>
+      candidate?.domain && url.hostname === `${candidate.domain}.slack.com`,
+  );
+  if (!workspace) return undefined;
+  return await workspace.run(() =>
+    readMessageCard({
+      reference: parsed.reference,
+      slackUserId: workspace.identity.providerSubjectId,
+      teamId: workspace.teamId,
+      url,
+    }),
+  );
+}

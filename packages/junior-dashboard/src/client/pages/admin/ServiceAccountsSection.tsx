@@ -5,7 +5,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -13,12 +13,13 @@ import {
   type serviceAccountSchema,
 } from "@sentry/junior/api/schema";
 import { getDashboardAgentName } from "../../agentName";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
-import { formatRelativeTime } from "../../format";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { del, fetchDashboardJson, post } from "../../http";
+import { formatRelativeTime } from "../../time";
 
 type ServiceAccount = z.infer<typeof serviceAccountSchema>;
 
@@ -96,7 +97,10 @@ export function ServiceAccountsSection(props: {
         serviceAccountPath(account.provider),
       ),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: serviceAccountsQueryKey }),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: serviceAccountsQueryKey,
+      }),
   });
 
   const accounts = accountsQuery.data?.serviceAccounts ?? [];
@@ -120,14 +124,16 @@ export function ServiceAccountsSection(props: {
 
   return (
     <Card as="section" padding="md">
-      <h2 className="m-0 font-display text-base font-medium text-dashboard-text">
-        Service accounts
-      </h2>
+      <AnchorHeading
+        anchor="service-accounts"
+        className="m-0 font-display text-base font-medium text-dashboard-text"
+        title="Service accounts"
+      />
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-        A shared account that Junior uses for a plugin. It can do only what its
-        plugin allows, usually read. Everyone who can talk to{" "}
-        {getDashboardAgentName()} can use it, so give it only access that all of
-        them may have.
+        A shared account that {getDashboardAgentName()} uses for a plugin. It
+        can do only what its plugin allows, usually read. Everyone who can talk
+        to {getDashboardAgentName()} can use it, so give it only access that all
+        of them may have.
       </p>
       {displayedError ? (
         <InlineError className={listFailed ? undefined : "mb-4"}>
@@ -192,12 +198,13 @@ export function ServiceAccountsSection(props: {
                     connectMutation.reset();
                     disconnectMutation.mutate(account);
                   }}
-                  tone="danger"
+                  variant="destructive"
                 >
                   Disconnect
                 </Button>
               ) : null}
               <Button
+                variant="outline"
                 aria-busy={
                   connectMutation.isPending &&
                   pendingProvider === account.provider

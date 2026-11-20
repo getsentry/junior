@@ -1,7 +1,7 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
 import { captureSlackPostWarning } from "./post-warning";
-import type { KnownBlock } from "@slack/types";
+import type { KnownBlock, ModalView } from "@slack/types";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
@@ -105,12 +105,12 @@ export async function openSlackDirectMessage(userId: string): Promise<string> {
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
   entities?: SlackEntity[];
-  blocks?: KnownBlock[];
+  blocks?: KnownBlock[] | undefined;
   channelId: string;
   text: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   includePermalink?: boolean;
-}): Promise<{ ts: SlackMessageTs; permalink?: string }> {
+}): Promise<{ ts: SlackMessageTs; permalink?: string | undefined }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack message posting",
@@ -179,6 +179,39 @@ export async function postSlackMessage(input: {
   };
 }
 
+/**
+ * Set or replace the link previews that Junior shows on a posted message.
+ * Pass the `unfurl_id` of a sent message's `link_shared` event when it has
+ * one: Slack accepts it in channels that Junior has not joined.
+ */
+export async function unfurlSlackLinks(input: {
+  channelId: string;
+  messageTs: string;
+  unfurlId?: string;
+  unfurls: Record<string, { blocks: KnownBlock[] }>;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack link unfurl",
+  );
+  const ts = requireSlackMessageTimestamp(input.messageTs, "Slack link unfurl");
+  const target = input.unfurlId
+    ? { source: "conversations_history" as const, unfurl_id: input.unfurlId }
+    : { channel: channelId, ts };
+  await withSlackRetries(
+    () => getSlackClient().chat.unfurl({ ...target, unfurls: input.unfurls }),
+    3,
+    {
+      action: "chat.unfurl",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": ts,
+      },
+    },
+  );
+}
+
 /** Delete a previously posted Slack message through the shared outbound boundary. */
 export async function deleteSlackMessage(input: {
   channelId: string;
@@ -211,17 +244,74 @@ export async function deleteSlackMessage(input: {
   );
 }
 
+/** Replace the text and blocks of a message that Junior posted. */
+export async function updateSlackMessage(input: {
+  blocks: KnownBlock[];
+  channelId: string;
+  text: string;
+  timestamp: SlackMessageTs;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack message update",
+  );
+  const timestamp = requireSlackMessageTimestamp(
+    input.timestamp,
+    "Slack message update",
+  );
+  const text = requireSlackMessageText(input.text, "Slack message update");
+
+  await withSlackRetries(
+    () =>
+      getSlackClient().chat.update({
+        blocks: input.blocks,
+        channel: channelId,
+        text,
+        ts: timestamp,
+      }),
+    3,
+    {
+      action: "chat.update",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": timestamp,
+      },
+    },
+  );
+}
+
+/**
+ * Open a modal for the person who clicked. A `trigger_id` works once and
+ * only for three seconds, so this makes one attempt.
+ * https://docs.slack.dev/reference/methods/views.open
+ */
+export async function openSlackModal(input: {
+  triggerId: string;
+  view: ModalView;
+}): Promise<void> {
+  await withSlackRetries(
+    () =>
+      getSlackClient().views.open({
+        trigger_id: input.triggerId,
+        view: input.view,
+      }),
+    1,
+    { action: "views.open" },
+  );
+}
+
 /**
  * Post an ephemeral Slack message. Delivery is best-effort on Slack's side, but
  * request validation and Web API behavior are centralized here.
  */
 export async function postSlackEphemeralMessage(input: {
-  blocks?: KnownBlock[];
+  blocks?: KnownBlock[] | undefined;
   channelId: string;
   userId: string;
   text: string;
-  threadTs?: string;
-}): Promise<{ messageTs?: string }> {
+  threadTs?: string | undefined;
+}): Promise<{ messageTs?: string | undefined }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack ephemeral message posting",
@@ -342,7 +432,7 @@ export async function addReactionToMessage(input: {
   timestamp: SlackMessageTs;
   emoji: string;
   /** Bound optional ingress UI to one short attempt before durable admission. */
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
 }): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
     input.channelId,
@@ -372,6 +462,7 @@ export async function addReactionToMessage(input: {
       input.timeoutMs === undefined ? 3 : 1,
       {
         action: "reactions.add",
+        expectedErrorCodes: ["already_reacted"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
@@ -420,6 +511,7 @@ export async function removeReactionFromMessage(input: {
       3,
       {
         action: "reactions.remove",
+        expectedErrorCodes: ["no_reaction"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,

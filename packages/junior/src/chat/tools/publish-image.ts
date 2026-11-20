@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { publishImage } from "@/chat/artifacts/store";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
@@ -10,6 +10,7 @@ import {
 } from "@/chat/tools/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 const outputSchema = juniorToolOutputSchema.extend({
   bytes: z.number().int().positive(),
@@ -18,26 +19,29 @@ const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
 });
 
-/** Create a tool that publishes one sandbox image at a public internet URL. */
+/**
+ * Create a tool that publishes one sandbox image at a public internet URL.
+ *
+ * @runBuilt publishImage
+ */
 export function createPublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  publicBaseUrl?: () => string | undefined;
   storage: Pick<AttachmentStorage, "put">;
   workspace: SandboxWorkspace;
 }) {
   return zodTool({
+    exposure: "deferred",
+    source: IMAGES_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
       readOnlyHint: false,
     },
-    approvalMode: "review",
+    approvalMode: "approve",
     description:
       "Publish one sandbox image to a durable public HTTPS URL. Anyone on the internet with the URL can view the image. Use only when an external destination needs a public image URL. Do not use for private file sharing or private conversation storage. Supports PNG, JPEG, GIF, and WebP up to 10 MB.",
-    describeProposal: ({ path }) =>
-      `Publish sandbox image ${path} to a public internet URL.`,
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -49,7 +53,7 @@ export function createPublishImageTool(args: {
       .strict(),
     outputSchema,
     async execute({ path }) {
-      const publicBaseUrl = (args.publicBaseUrl ?? resolveBaseUrl)()?.trim();
+      const publicBaseUrl = resolveBaseUrl()?.trim();
       if (!publicBaseUrl) {
         throw new Error(
           "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.",

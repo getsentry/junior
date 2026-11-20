@@ -1,21 +1,22 @@
-import { createHash } from "node:crypto";
+import { avatarPath } from "../../../fixtures/avatar";
 import { describe, expect, test } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import {
-  readConversationFeedFromSql,
-  readConversationRecordFromSql,
-} from "@/api/conversations/list";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -26,10 +27,6 @@ import {
 } from "@/db/schema";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-
-function dashboardAuthorIdFromEmail(email: string): string {
-  return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
-}
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -81,17 +78,26 @@ describe("conversation list API", () => {
         searchText: "hidden marigold launch",
         modelId: "test-model",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ stoppedAt: new Date() })
+        .where(eq(juniorConversations.conversationId, privateId));
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
       await fixture.sql
         .db()
         .insert(juniorConversationParticipants)
         .values({
-          archivedAt: new Date(2_000),
           lastMessageAt: new Date(1_000),
           rootConversationId: archivedId,
           userId: viewer!.id,
         });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: new Date(2_000) })
+        .where(eq(juniorConversations.conversationId, archivedId));
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -131,7 +137,12 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await privateTitleSearchResponse.json())
           .conversations,
-      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
+      ).toEqual([
+        expect.objectContaining({
+          conversationId: privateId,
+          status: "done",
+        }),
+      ]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
@@ -153,6 +164,10 @@ describe("conversation list API", () => {
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
       });
+      const invalidCursor = await app.request(
+        "http://localhost/api/conversations?cursor=not-a-cursor",
+      );
+      expect(invalidCursor.status).toBe(400);
     } finally {
       await fixture.close();
     }
@@ -234,6 +249,21 @@ describe("conversation list API", () => {
             schemaVersion: 1,
             seq: 0,
             type: "user_message",
+          },
+          // An event Message has the system Identity as its author.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            schemaVersion: 1,
+            seq: 1,
+            type: "message",
           },
         ]);
       setPlugins([
@@ -475,6 +505,7 @@ describe("conversation list API", () => {
         },
         nowMs: 4_000,
         source: "slack",
+        title: "Launch plan",
       });
       const otherUser = await fixture.sql
         .db()
@@ -542,6 +573,7 @@ describe("conversation list API", () => {
         },
         nowMs: 2_000,
         source: "slack",
+        title: "Launch plan follow-up",
         visibility: "private",
       });
       const linkedUser = await fixture.sql
@@ -552,16 +584,13 @@ describe("conversation list API", () => {
         .limit(1);
       const linkedUserId = linkedUser[0]?.id;
       expect(linkedUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .update(juniorIdentities)
-        .set({
-          email: null,
-          emailNormalized: null,
-          emailVerified: false,
-          userId: linkedUserId!,
-        })
-        .where(eq(juniorIdentities.providerSubjectId, "U1B"));
+      // A trusted account link gives the Slack Identity its User later.
+      await upsertLinkedIdentity(fixture.sql, linkedUserId!, {
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1B",
+        providerTenantId: "T1",
+      });
 
       const viewer = {
         ...testViewer("morgan@example.com"),
@@ -590,6 +619,17 @@ describe("conversation list API", () => {
           isParticipant: true,
         }),
       ]);
+      // Search keeps the same membership: a newer match from someone else
+      // must not use up the limit.
+      await expect(
+        readConversationFeedFromSql({ viewer, q: "launch", limit: 1 }),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:D1:morgan-linked",
+          }),
+        ],
+      });
       await expect(
         readConversationFeedFromSql({ actorEmail: "other@example.com" }),
       ).resolves.toMatchObject({ conversations: [] });
@@ -670,21 +710,61 @@ describe("conversation list API", () => {
         .insert(juniorIdentities)
         .values({
           id: "identity-participant-slack",
+          avatarUrl: "https://avatars.slack-edge.com/participant_512.jpg",
           createdAt: new Date(1_000),
           email: "participant@example.com",
           emailNormalized: "participant@example.com",
           emailVerified: true,
           kind: "user",
           provider: "slack",
-          providerSubjectId: "U-PARTICIPANT",
+          providerSubjectId: "UPARTICIPANT1",
           providerTenantId: "T1",
           updatedAt: new Date(1_000),
           userId: participantUserId!,
         });
+      // Photos: the participant has Slack and Google photos, and the owner has
+      // only a Google photo. The Slack photo wins, and Google is the fallback.
+      const [owner] = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "owner@example.com"));
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values(
+          [
+            { subject: "google-participant", userId: participantUserId! },
+            { subject: "google-owner", userId: owner!.id },
+          ].map(({ subject, userId }) => ({
+            id: `identity-${subject}`,
+            avatarUrl: `https://lh3.googleusercontent.com/a/${subject}`,
+            createdAt: new Date(2_000),
+            kind: "user" as const,
+            provider: "google",
+            providerSubjectId: subject,
+            updatedAt: new Date(2_000),
+            userId,
+          })),
+        );
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
         .values([
+          // An event Message author is not a participant.
+          {
+            actorIdentityId: SYSTEM_IDENTITY_ID,
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_300),
+            historyVersion: 0,
+            payload: {
+              messageId: "event-message",
+              role: "user",
+              text: "Pull request merged.",
+            },
+            seq: 2,
+            type: "message",
+          },
           {
             actorIdentityId: "identity-participant-slack",
             conversationId: "slack:C1:shared-thread",
@@ -696,7 +776,7 @@ describe("conversation list API", () => {
                 author: {
                   fullName: "Participant",
                   isBot: false,
-                  userId: "U-PARTICIPANT",
+                  userId: "UPARTICIPANT1",
                   userName: "participant",
                 },
                 explicitMention: true,
@@ -714,7 +794,7 @@ describe("conversation list API", () => {
             payload: {
               messageId: "1786500342.616840",
               role: "assistant",
-              text: "I updated the links and checked the result.",
+              text: "<@UPARTICIPANT1> I updated the links and checked the result.",
             },
             seq: 1,
             type: "message",
@@ -744,8 +824,16 @@ describe("conversation list API", () => {
       expect(feed.conversations[0]).toMatchObject({
         activityPreview: {
           createdAt: new Date(5_400).toISOString(),
+          // Previews resolve mentions like transcript messages do.
+          mentions: [
+            {
+              email: "participant@example.com",
+              fullName: "Participant",
+              slackUserId: "UPARTICIPANT1",
+            },
+          ],
           role: "assistant",
-          text: "I updated the links and checked the result.",
+          text: "<@UPARTICIPANT1> I updated the links and checked the result.",
         },
         actorIdentity: expect.objectContaining({
           slackUserId: "U-OWNER",
@@ -754,13 +842,15 @@ describe("conversation list API", () => {
         isParticipant: true,
         participants: [
           expect.objectContaining({
+            avatarUrl: avatarPath("identity-google-owner"),
             email: "owner@example.com",
             slackUserId: "U-OWNER",
           }),
           expect.objectContaining({
+            avatarUrl: avatarPath("identity-participant-slack"),
             email: "participant@example.com",
             fullName: "Participant",
-            slackUserId: "U-PARTICIPANT",
+            slackUserId: "UPARTICIPANT1",
           }),
         ],
       });
@@ -831,7 +921,8 @@ describe("conversation list API", () => {
             meta: {
               author: {
                 isBot: false,
-                userId: dashboardAuthorIdFromEmail(
+                // Web authors stored this id before they used the User id.
+                userId: legacyWebActorUserId(
                   "dashboard-participant@example.com",
                 ),
               },
@@ -859,21 +950,37 @@ describe("conversation list API", () => {
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 
-      const participantRows = await fixture.sql
-        .db()
-        .select({
-          userId: juniorConversationParticipants.userId,
-        })
-        .from(juniorConversationParticipants)
-        .where(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            "slack:C1:dashboard-author",
-          ),
-        );
-      expect(participantRows.map((row) => row.userId)).toContain(
-        participantUserId,
-      );
+      const readParticipantUserIds = async () =>
+        (
+          await fixture.sql
+            .db()
+            .select({
+              userId: juniorConversationParticipants.userId,
+            })
+            .from(juniorConversationParticipants)
+            .where(
+              eq(
+                juniorConversationParticipants.rootConversationId,
+                "slack:C1:dashboard-author",
+              ),
+            )
+        ).map((row) => row.userId);
+      // A message that does not start a Turn is context, not membership.
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
+
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_600,
+          data: {
+            inputMessageIds: ["dashboard-msg-1"],
+            surface: "api",
+            turnId: "turn-dashboard-msg-1",
+            type: "turn_started",
+          },
+          idempotencyKey: "turn:turn-dashboard-msg-1:started",
+        },
+      ]);
+      expect(await readParticipantUserIds()).toContain(participantUserId);
 
       const feed = await readConversationFeedFromSql({
         viewer: {

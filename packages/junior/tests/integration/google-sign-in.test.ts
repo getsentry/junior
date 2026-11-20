@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
-import { closeDb } from "@/chat/db";
+import { closeDb, getDb } from "@/chat/db";
 import { createSignInAuth } from "@/chat/sign-in/auth";
+import { juniorIdentities } from "@/db/schema";
 import { mswServer } from "../msw/server";
 
 const BASE_URL = "https://junior.example.com";
+const RETRY_URL = `${BASE_URL}/auth/login?next=%2Fconversations`;
 
 function createAuth(allowedDomains: string[]) {
   return createSignInAuth({
@@ -28,7 +31,10 @@ function useGoogleIdToken(idToken: string) {
   );
 }
 
-function useGoogleAccount(claims: { email: string; hd?: string }) {
+// Unsigned Google ID token with these claims.
+type GoogleTestClaims = { email: string; hd?: string; picture?: string };
+
+function googleIdToken(claims: GoogleTestClaims): string {
   const payload = Buffer.from(
     JSON.stringify({
       aud: "google-client",
@@ -38,7 +44,11 @@ function useGoogleAccount(claims: { email: string; hd?: string }) {
       ...claims,
     }),
   ).toString("base64url");
-  useGoogleIdToken(`e30.${payload}.sig`);
+  return `e30.${payload}.sig`;
+}
+
+function useGoogleAccount(claims: GoogleTestClaims) {
+  useGoogleIdToken(googleIdToken(claims));
 }
 
 function cookieHeader(response: Response): string {
@@ -52,13 +62,21 @@ async function startSignIn(auth: ReturnType<typeof createAuth>) {
   const started = await auth.signInWithGoogle(
     new Request(`${BASE_URL}/auth/login`),
     `${BASE_URL}/`,
+    RETRY_URL,
   );
   return { google: new URL(started.headers.get("location")!), started };
 }
 
-/** Start a Google sign-in and come back with a code, like a browser. */
-async function signIn(auth: ReturnType<typeof createAuth>) {
-  const { google, started } = await startSignIn(auth);
+/**
+ * Start a Google sign-in and come back with a code, like a browser. Pass the
+ * cookies of another started sign-in to act like a second tab.
+ */
+async function signIn(
+  auth: ReturnType<typeof createAuth>,
+  otherTab?: Response,
+) {
+  const { google, started: thisTab } = await startSignIn(auth);
+  const started = otherTab ?? thisTab;
   const callback = new URL(`${BASE_URL}/api/auth/callback/google`);
   callback.searchParams.set("state", google.searchParams.get("state")!);
   callback.searchParams.set("code", "google-code");
@@ -97,7 +115,9 @@ describe("Google sign-in", () => {
     ]) {
       useGoogleAccount(claims);
       const rejected = await signIn(auth);
-      expect(rejected.location).toContain("error=unable_to_get_user_info");
+      expect(rejected.location).toBe(
+        `${RETRY_URL}&error=unable_to_get_user_info`,
+      );
       expect(await auth.getSession(rejected.session)).toBeNull();
     }
 
@@ -106,11 +126,65 @@ describe("Google sign-in", () => {
     const malformed = await signIn(auth);
     expect(malformed.location).toContain("error=unable_to_get_user_info");
 
-    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    const picture = "https://lh3.googleusercontent.com/a/person=s96-c";
+    useGoogleAccount({
+      email: "person@example.org",
+      hd: "example.org",
+      picture,
+    });
     const accepted = await signIn(auth);
     expect(accepted.location).toBe(`${BASE_URL}/`);
     expect(await auth.getSession(accepted.session)).toMatchObject({
       user: { email: "person@example.org", emailVerified: true },
     });
+
+    // A second tab replaces the state cookie, so the first tab's callback
+    // fails. Better Auth then uses the retry URL in the cookie, not `/`.
+    const { started: secondTab } = await startSignIn(auth);
+    const staleTab = await signIn(auth, secondTab);
+    expect(staleTab.location).toContain(`${RETRY_URL}&error=`);
+
+    // Each sign-in saves the current Google photo on the Google identity.
+    const savedPhoto = async () =>
+      await getDb()
+        .select({ avatarUrl: juniorIdentities.avatarUrl })
+        .from(juniorIdentities)
+        .where(
+          eq(juniorIdentities.providerSubjectId, "google-person@example.org"),
+        );
+    expect(await savedPhoto()).toEqual([{ avatarUrl: picture }]);
+    const newPicture = "https://lh3.googleusercontent.com/a/new=s96-c";
+    useGoogleAccount({
+      email: "person@example.org",
+      hd: "example.org",
+      picture: newPicture,
+    });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: newPicture }]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    await signIn(auth);
+    expect(await savedPhoto()).toEqual([{ avatarUrl: null }]);
+
+    // Direct ID-token sign-in is off, so a client cannot submit its own
+    // token, even with claims on an allowed domain.
+    const direct = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "google",
+          idToken: {
+            token: googleIdToken({
+              email: "person@example.org",
+              hd: "example.org",
+            }),
+          },
+        }),
+      }),
+    );
+    expect(await direct.json()).toMatchObject({
+      code: "ID_TOKEN_NOT_SUPPORTED",
+    });
+    expect(direct.headers.getSetCookie()).toEqual([]);
   });
 });

@@ -41,13 +41,13 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
-  channelName?: string;
+  channelName?: string | undefined;
   credentialSubject?: CredentialSubject;
   destination: Destination;
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
-  actor?: Actor;
+  actor?: Actor | undefined;
   runSource: Source;
   conversationId: string;
   turnId: string;
@@ -144,6 +144,10 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     get timedOut(): boolean {
       return timedOut;
+    },
+    /** Index in the agent messages where the current Turn starts. */
+    get turnStartMessageIndex(): number | undefined {
+      return turnStartMessageIndex;
     },
     setTurnStartMessageIndex(index: number | undefined): void {
       turnStartMessageIndex = index;
@@ -307,14 +311,16 @@ export function createResumeState(args: ResumeStateArgs) {
       }
     },
     async translateSuspension(ending: {
-      currentUsage?: AgentTurnUsage;
+      currentUsage?: AgentTurnUsage | undefined;
       error: unknown;
+      /** The run classified the error as transient. */
+      retryable?: boolean;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
       const reason =
         error instanceof CooperativeTurnYieldError
           ? "yield"
-          : error instanceof RetryableDeliveryError
+          : ending.retryable || error instanceof RetryableDeliveryError
             ? "retry"
             : timedOut
               ? "timeout"
@@ -324,7 +330,8 @@ export function createResumeState(args: ResumeStateArgs) {
       }
 
       if (reason === "retry") {
-        // Failed assistant message was never saved; regenerate from last safe boundary.
+        // The failed step was never saved; run it again from the last safe
+        // boundary.
         resumeMessages = [...latestSafeBoundaryMessages];
       }
 
@@ -343,7 +350,7 @@ export function createResumeState(args: ResumeStateArgs) {
         resumedBoundaryKey.length > 0 &&
         parkKey === resumedBoundaryKey
       ) {
-        logWarn("agent.turn.no_progress_fail", {
+        logWarn("agent.turn.no_progress.failed", {
           "app.ai.resume_conversation_id": args.conversationId,
           "app.ai.resume_session_id": args.turnId,
           "app.ai.resume_slice_id": currentSliceId,

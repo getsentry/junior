@@ -1,8 +1,13 @@
+import * as z from "zod";
+import { skillLabel } from "../components/SkillLink";
 import { stringifyPartValue } from "../format";
 
 const MAX_VALUE_LENGTH = 48;
 const MAX_PREVIEW_LENGTH = 120;
 const MAX_OBJECT_ENTRIES = 4;
+
+/** Any non-array object, such as tool call arguments. */
+const objectSchema = z.looseObject({});
 
 /** Format the useful arguments from a tool call for its collapsed transcript row. */
 export function toolCallPreview(name: string, input: unknown): string | null {
@@ -11,7 +16,8 @@ export function toolCallPreview(name: string, input: unknown): string | null {
   }
 
   if (name === "loadSkill") {
-    return fieldValue(input, "skill_name");
+    const name = fieldValue(input, "skill_name");
+    return name ? skillLabel(name) : null;
   }
 
   if (name === "webSearch") {
@@ -28,26 +34,29 @@ export function toolCallPreview(name: string, input: unknown): string | null {
 }
 
 function objectFieldPreview(input: unknown, key: string): string | null {
-  if (!isRecord(input)) return null;
-  return objectPreview(input[key]);
+  const parsed = objectSchema.safeParse(input);
+  if (!parsed.success) return null;
+  return objectPreview(parsed.data[key]);
 }
 
 function fieldValue(input: unknown, key: string): string | null {
-  if (!isRecord(input)) return null;
-  const value = input[key];
+  const value = objectSchema.safeParse(input).data?.[key];
   if (typeof value !== "string") return null;
   return compactText(value, MAX_PREVIEW_LENGTH);
 }
 
 function valuePreview(value: unknown, maxLength: number): string | null {
   if (value == null || value === "") return null;
-  if (isRecord(value)) return objectPreview(value);
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return objectPreview(value);
+  }
   return compactText(formatValue(value), maxLength);
 }
 
 function objectPreview(value: unknown): string | null {
-  if (!isRecord(value)) return null;
-  const entries = Object.entries(value);
+  const parsed = objectSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const entries = Object.entries(parsed.data);
   if (entries.length === 0) return null;
 
   const preview = entries
@@ -79,8 +88,4 @@ function joinPreview(...parts: Array<string | null>): string | null {
   return present.length > 0
     ? compactText(present.join(", "), MAX_PREVIEW_LENGTH)
     : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

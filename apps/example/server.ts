@@ -4,16 +4,14 @@ initSentry();
 
 const [
   { createApp },
-  {
-    exampleDashboardAuthRequired,
-    exampleDashboardComponentGallery,
-    exampleDashboardMockConversations,
-  },
+  { exampleDashboardAuthRequired, exampleDashboardMockConversations },
   { plugins },
+  { withExampleLivePreview },
 ] = await Promise.all([
   import("@sentry/junior"),
   import("./dashboard.ts"),
   import("./plugins.ts"),
+  import("./live-preview.ts"),
 ]);
 
 const app = await createApp({
@@ -21,7 +19,6 @@ const app = await createApp({
   briefs: { enabled: true },
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
-    componentGallery: exampleDashboardComponentGallery(),
     mockConversations: exampleDashboardMockConversations(),
   },
   plugins,
@@ -30,4 +27,4 @@ const app = await createApp({
   },
 });
 
-export default app;
+export default withExampleLivePreview(app);

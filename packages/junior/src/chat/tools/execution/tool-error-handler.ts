@@ -5,7 +5,6 @@ import {
   setSpanAttributes,
   type SetSpanAttributes,
 } from "@/chat/logging";
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   getOAuthProviderErrorAttributes,
@@ -19,28 +18,25 @@ import {
 } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { isToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  suggestionCount,
+  ToolNameMissError,
+} from "@/chat/tool-support/tool-name-suggestions";
 import {
   ToolActionRejectedError,
   ToolActionReviewLimitError,
   ToolActionReviewUnavailableError,
-} from "@/chat/tool-support/action-review";
-
-function isPluginToolInputError(error: unknown): boolean {
-  return (
-    error instanceof PluginToolInputError ||
-    (error instanceof Error && error.name === "PluginToolInputError")
-  );
-}
+} from "@/chat/guardian/gate";
 
 /** Classify tool errors into stable observability types. */
 function getToolErrorType(error: unknown): string {
   if (error instanceof McpToolError) return "tool_error";
   if (error instanceof McpProviderError) return "mcp_provider_error";
   if (error instanceof OAuthProviderError) return "oauth_provider_error";
-  if (error instanceof ToolInputError || isPluginToolInputError(error)) {
-    return "tool_input_error";
-  }
+  if (isToolInputError(error)) return "tool_input_error";
+  if (error instanceof PluginToolDeniedError) return "plugin_tool_denied";
   return error instanceof Error ? error.name : "tool_execution_error";
 }
 
@@ -58,7 +54,9 @@ function getToolErrorAttributes(
     ...(error.detailLine !== undefined
       ? { "app.slack.detail_line": error.detailLine }
       : undefined),
-    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : undefined),
+    ...(error.detailRule
+      ? { "app.slack.detail_rule": error.detailRule }
+      : undefined),
   };
 }
 
@@ -86,6 +84,9 @@ export function handleToolExecutionError(
     ...getOAuthProviderErrorAttributes(error),
     ...(error instanceof PluginCredentialFailureError
       ? { "app.credential.provider": error.provider }
+      : undefined),
+    ...(error instanceof ToolNameMissError
+      ? { "app.tool_name_miss.suggestion_count": suggestionCount(error.hint) }
       : undefined),
   };
   if (setExecutionSpanAttributes) {
@@ -117,11 +118,12 @@ export function handleToolExecutionError(
     });
   }
 
-  // Expected tool failures (MCP errors, model input errors) are not Sentry exceptions.
+  // Expected tool failures (MCP errors, model input errors, plugin policy
+  // denials) are not Sentry exceptions.
   const isExpectedToolFailure =
     error instanceof McpToolError ||
-    error instanceof ToolInputError ||
-    isPluginToolInputError(error);
+    error instanceof PluginToolDeniedError ||
+    isToolInputError(error);
   if (!isExpectedToolFailure) {
     logException(error, "agent.tool_call.failed", {
       "gen_ai.operation.name": "execute_tool",

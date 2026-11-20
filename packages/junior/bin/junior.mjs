@@ -3,7 +3,9 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-async function loadCliFunction(moduleName, exportName, unavailableMessage) {
+let cliModule;
+
+async function loadCliModule(moduleName) {
   const currentFile = fileURLToPath(import.meta.url);
   const modulePath = path.join(
     path.dirname(currentFile),
@@ -12,25 +14,27 @@ async function loadCliFunction(moduleName, exportName, unavailableMessage) {
     "cli",
     `${moduleName}.js`,
   );
-  const moduleUrl = pathToFileURL(modulePath).href;
-  const loadedModule = await import(moduleUrl);
-  if (typeof loadedModule[exportName] !== "function") {
-    throw new Error(unavailableMessage);
-  }
-  return loadedModule[exportName];
+  return await import(pathToFileURL(modulePath).href);
 }
 
 async function main() {
-  const runMain = await loadCliFunction(
-    "main",
-    "runMain",
-    "CLI dispatcher module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  await runMain(process.argv.slice(2), { instrument: false });
+  cliModule = await loadCliModule("main");
+  if (typeof cliModule.runMain !== "function") {
+    throw new Error(
+      "CLI dispatcher module is unavailable; reinstall @sentry/junior and retry.",
+    );
+  }
+  await cliModule.runMain(process.argv.slice(2), { instrument: false });
+}
+
+function failureMessage(error) {
+  if (typeof cliModule?.formatCliFailure === "function") {
+    return cliModule.formatCliFailure(error);
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`junior command failed: ${message}`);
+  console.error(`junior command failed: ${failureMessage(error)}`);
   process.exit(1);
 });

@@ -1,30 +1,36 @@
 /**
- * Web edits. Owners and public Destination readers can edit. Creator-only
- * rules still apply, and lifecycle actions stay creator-only.
+ * Web edits and lifecycle actions. Anyone who can read an Automation can
+ * manage it. Creator credential rules still apply.
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
-import { AutomationEditError } from "./edit-rules";
+import { AutomationEditError, requireCredentialStart } from "./edit-rules";
+import { requireAutomationTaskText } from "./instruction-references";
 import type { AutomationEditFields } from "./edit-schema";
 import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
+import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
+  deleteEventAutomation,
   saveEventAutomation,
   setEventAutomationStatus,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
-import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import {
+  deleteScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import {
   weekdaySchema,
   type ScheduleIntent,
 } from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import type { AutomationViewer } from "./creator";
 import { automationRevision, requireAutomationRevision } from "./revision";
 import {
   resolveViewerTaskCandidate,
@@ -46,7 +52,7 @@ type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
 
-/** Owners and public Destination readers can edit. Others get not found. */
+/** Creators and public Destination readers can manage. Others get not found. */
 async function requireEditableAutomation(
   user: User,
   id: string,
@@ -56,26 +62,20 @@ async function requireEditableAutomation(
   return candidate;
 }
 
-/** Lifecycle actions are creator-only. Others get not found. */
-async function requireOwnedAutomation(
-  user: User,
-  id: string,
-): Promise<TaskCandidate> {
-  const candidate = await requireEditableAutomation(user, id);
-  if (!candidate.ownedByViewer) throw new ViewerTaskNotFoundError();
-  return candidate;
-}
-
-/** Record the viewer's Slack identity in the Automation workspace as the editor. */
-function viewerEditor(
-  user: User,
+/**
+ * Return the editor that a new version names: the creator, or the viewer's
+ * account for the Destination provider and workspace.
+ */
+export function automationEditor(
+  viewer: AutomationViewer,
   automation: TaskCandidate,
 ): EventAutomation["createdBy"] | undefined {
   if (automation.ownedByViewer) return automation.task.createdBy;
-  const identity = user.identities.find(
+  const { destination } = automation.task;
+  const identity = viewer.identities.find(
     (candidate) =>
-      candidate.provider === "slack" &&
-      candidate.providerTenantId === automation.task.destination.teamId,
+      candidate.provider === destination.platform &&
+      candidate.providerTenantId === destination.teamId,
   );
   if (!identity) return undefined;
   const editor: EventAutomation["createdBy"] = {
@@ -96,7 +96,7 @@ function editView(
     id: task.id,
     revision: automationRevision(task),
     title: task.title ?? null,
-    instruction: task.task.text,
+    task: task.task,
     credentialMode: task.credentialMode,
     outcomes: task.outcomes,
     destination: task.destination,
@@ -119,10 +119,6 @@ function editView(
     status:
       automation.task.status === "deleted" ? "active" : automation.task.status,
     trigger: automation.task.trigger,
-    triggerAvailable: eventAutomationTriggerAvailable(
-      automation.task,
-      getEventCatalog(),
-    ),
   };
 }
 
@@ -145,6 +141,13 @@ export async function updateViewerAutomation(
   if (input.kind !== current.kind)
     throw new AutomationEditError("The trigger type cannot change.", "kind");
   requireAutomationRevision(current.task, input.revision);
+  if (input.task) {
+    requireAutomationTaskText(input.task, {
+      creator: current.task.createdBy,
+      requester: automationEditor(user, current),
+      current: current.task.task,
+    });
+  }
   return saveViewerEdit(user, current, input);
 }
 
@@ -156,7 +159,7 @@ async function saveViewerEdit(
   restored?: RestoredValues,
 ): Promise<AutomationEdit> {
   const isCreator = current.ownedByViewer;
-  const editedBy = viewerEditor(user, current);
+  const editedBy = automationEditor(user, current);
   if (input.kind === "scheduled" && current.kind === "scheduled") {
     const next = await editScheduledAutomation(
       current.task,
@@ -178,6 +181,8 @@ async function saveViewerEdit(
       input,
       isCreator,
       getEventCatalog(),
+      // Dashboard edits send filters as their plugin declares them.
+      { inputKeys: false },
     );
     const task = await saveEventAutomation(
       getDb(),
@@ -235,11 +240,7 @@ async function restorableOutcomes(
       });
       continue;
     }
-    // Only the creator can change outcomes, so skip the Slack lookup for others.
-    if (
-      current.ownedByViewer &&
-      !task.outcomes.some((stored) => sameDefinitionValue(stored, outcome))
-    ) {
+    if (!task.outcomes.some((stored) => sameDefinitionValue(stored, outcome))) {
       creatorDm ??= (
         await resolveTaskOutcomes(
           [{ action: "send_message", destination: "task_creator" }],
@@ -281,8 +282,8 @@ export async function activateViewerAutomationVersion(
     );
   }
   const fields: AutomationEditFields = {};
-  if (definition.instruction !== current.task.task.text)
-    fields.instruction = definition.instruction;
+  if (!sameDefinitionValue(definition.task, current.task.task))
+    fields.task = definition.task;
   if (definition.credentialMode !== current.task.credentialMode)
     fields.credentialMode = definition.credentialMode;
   if (!sameDefinitionValue(definition.outcomes, current.task.outcomes))
@@ -316,36 +317,48 @@ export async function activateViewerAutomationVersion(
   throw new ViewerTaskNotFoundError();
 }
 
-/** Pause or resume future triggers. Already-claimed work can finish. */
+/** Pause or resume future triggers from the dashboard. */
 export async function changeViewerAutomationLifecycle(
   user: User,
   id: string,
   input: { action: "pause" | "resume"; revision: string },
 ): Promise<AutomationEdit> {
-  const current = await requireOwnedAutomation(user, id);
+  const next = await changeAutomationLifecycle(
+    await requireEditableAutomation(user, id),
+    input,
+  );
+  return editView(next, next.ownedByViewer);
+}
+
+/**
+ * Pause or resume future triggers. Already-claimed work can finish. A
+ * non-creator cannot resume work that uses creator credentials.
+ */
+export async function changeAutomationLifecycle(
+  current: TaskCandidate,
+  input: { action: "pause" | "resume"; revision: string },
+): Promise<TaskCandidate> {
   requireAutomationRevision(current.task, input.revision);
   const status = current.task.status;
+  const ownedByViewer = current.ownedByViewer;
   if (status === "completed")
     throw new AutomationEditError("Completed Automations cannot be restarted.");
-  if (input.action === "pause" && status === "paused")
-    return editView(current, true);
-  if (
-    input.action === "resume" &&
-    status !== "paused" &&
-    status !== "blocked"
-  ) {
-    throw new AutomationEditError(
-      "Only paused or blocked Automations can be resumed.",
-    );
+  if (input.action === "pause" && status === "paused") return current;
+  if (input.action === "resume") {
+    if (status !== "paused" && status !== "blocked")
+      throw new AutomationEditError(
+        "Only paused or blocked Automations can be resumed.",
+      );
+    requireCredentialStart(current.task, ownedByViewer);
   }
   if (current.kind === "event") {
     const task = await setEventAutomationStatus(
       getDb(),
-      id,
+      current.task.id,
       input.action === "pause" ? "paused" : "active",
       input.revision,
     );
-    return editView({ kind: "event", task }, true);
+    return { kind: "event", task, ownedByViewer };
   }
   const nowMs = Date.now();
   const next = { ...current.task, updatedAtMs: nowMs, runNowAtMs: undefined };
@@ -376,5 +389,42 @@ export async function changeViewerAutomationLifecycle(
     }
   }
   const task = await saveScheduledAutomation(getDb(), next, input.revision);
-  return editView({ kind: "scheduled", task }, true);
+  return { kind: "scheduled", task, ownedByViewer };
+}
+
+/** Delete one Automation from the dashboard. */
+export async function deleteViewerTask(user: User, id: string): Promise<void> {
+  if (!(await deleteAutomation(await requireEditableAutomation(user, id))))
+    throw new ViewerTaskNotFoundError();
+}
+
+/**
+ * Delete one Automation that the caller may manage. The row stays for
+ * history. No run can act on its open Review items after the delete, so the
+ * same transaction dismisses them. Returns undefined when it was already
+ * deleted.
+ */
+export async function deleteAutomation(
+  current: TaskCandidate,
+): Promise<TaskCandidate | undefined> {
+  return await getDb().transaction(async (tx) => {
+    // The delete takes the lock of the Automation. It holds until this
+    // transaction ends, so the dismiss runs under it.
+    const dismissItems = () =>
+      dismissOpenReviewItems(tx, {
+        automationId: current.task.id,
+        nowMs: Date.now(),
+        reason: "Automation deleted",
+      });
+    if (current.kind === "event") {
+      const task = await deleteEventAutomation(tx, current.task.id);
+      if (!task) return undefined;
+      await dismissItems();
+      return { ...current, task };
+    }
+    const task = await deleteScheduledAutomation(tx, current.task.id);
+    if (!task) return undefined;
+    await dismissItems();
+    return { ...current, task };
+  });
 }

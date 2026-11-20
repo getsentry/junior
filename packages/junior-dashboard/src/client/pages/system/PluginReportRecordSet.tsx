@@ -1,5 +1,13 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { cn } from "../../styles";
 
 export type PluginReportRecordSetType = NonNullable<
@@ -63,42 +71,35 @@ export function PluginReportRecordSet(props: {
               </div>
             ))}
           </div>
-          <div className="hidden overflow-x-auto border-t border-dashboard-border-subtle sm:block">
-            <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-dashboard-overlay-soft font-sans font-medium text-xs text-dashboard-text-muted">
-                <tr>
+          <div className="hidden border-t border-dashboard-border-subtle sm:block">
+            <Table className="min-w-[36rem]">
+              <TableHeader className="bg-dashboard-overlay-soft">
+                <TableRow>
                   {fields.map((field) => (
-                    <th
-                      className="border-b border-dashboard-border-subtle px-5 py-2.5 font-medium"
-                      key={field.key}
-                      scope="col"
-                    >
+                    <TableHead className="px-5" key={field.key} scope="col">
                       {field.label}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {records.map((record) => (
-                  <tr
-                    className={cn(
-                      "transition-colors hover:bg-dashboard-fill-soft",
-                      rowToneClass(record.tone),
-                    )}
+                  <TableRow
+                    className={rowToneClass(record.tone)}
                     key={record.id}
                   >
                     {fields.map((field) => (
-                      <td
-                        className="max-w-72 truncate border-b border-dashboard-border-subtle px-5 py-3 font-mono text-xs text-dashboard-text-muted"
+                      <TableCell
+                        className="max-w-72 truncate px-5 py-3 font-mono text-xs text-dashboard-text-muted"
                         key={field.key}
                       >
                         {record.values[field.key] ?? ""}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </>
       )}

@@ -2,34 +2,13 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, gt, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import type { MemoryDb } from "./store";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 // TODO: add hour categories + `1` when these system widgets can plot 24h hourly.
 const WINDOWS = [7, 30, 90] as const;
-
-const memoryDaySchema = z
-  .object({
-    date: z.string().date(),
-    private: z.number().int().nonnegative(),
-    public: z.number().int().nonnegative(),
-  })
-  .strict();
-
-function queryRows(result: unknown): unknown[] {
-  if (
-    typeof result !== "object" ||
-    result === null ||
-    !("rows" in result) ||
-    !Array.isArray(result.rows)
-  ) {
-    throw new TypeError("Memory activity query did not return rows");
-  }
-  return result.rows;
-}
 
 function startOfUtcDay(value: number): Date {
   const date = new Date(value);
@@ -40,44 +19,40 @@ function startOfUtcDay(value: number): Date {
 async function aggregateMemoryDays(args: { db: MemoryDb; nowMs: number }) {
   const end = startOfUtcDay(args.nowMs);
   const start = startOfUtcDay(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
-  const endExclusiveMs = end.getTime() + DAY_MS;
   const table = juniorMemoryMemories;
-  const result = await args.db.execute(sql`
-    WITH days AS (
-      SELECT generate_series(
-        date_trunc('day', ${start}::timestamptz AT TIME ZONE 'UTC'),
-        date_trunc('day', ${end}::timestamptz AT TIME ZONE 'UTC'),
-        interval '1 day'
-      ) AS day
-    ), daily AS (
-      SELECT
-        date_trunc(
-          'day',
-          to_timestamp(${table.createdAtMs} / 1000.0) AT TIME ZONE 'UTC'
-        ) AS day,
-        count(*) FILTER (
-          WHERE ${table.scope} = 'private'
-        )::integer AS private,
-        count(*) FILTER (
-          WHERE ${table.scope} = 'public'
-        )::integer AS public
-      FROM ${table}
-      WHERE ${table.createdAtMs} >= ${start.getTime()}
-        AND ${table.createdAtMs} < ${endExclusiveMs}
-      GROUP BY date_trunc(
-        'day',
-        to_timestamp(${table.createdAtMs} / 1000.0) AT TIME ZONE 'UTC'
-      )
+  const date = sql<string>`to_char(to_timestamp(${table.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+  const rows = await args.db
+    .select({
+      date,
+      private:
+        sql<number>`count(*) filter (where ${table.scope} = 'private')`.mapWith(
+          Number,
+        ),
+      public:
+        sql<number>`count(*) filter (where ${table.scope} = 'public')`.mapWith(
+          Number,
+        ),
+    })
+    .from(table)
+    .where(
+      and(
+        gte(table.createdAtMs, start.getTime()),
+        lt(table.createdAtMs, end.getTime() + DAY_MS),
+      ),
     )
-    SELECT
-      to_char(days.day, 'YYYY-MM-DD') AS date,
-      coalesce(daily.private, 0)::integer AS private,
-      coalesce(daily.public, 0)::integer AS public
-    FROM days
-    LEFT JOIN daily ON daily.day = days.day
-    ORDER BY days.day
-  `);
-  return z.array(memoryDaySchema).parse(queryRows(result));
+    .groupBy(date);
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const days: { date: string; private: number; public: number }[] = [];
+  for (let ms = start.getTime(); ms <= end.getTime(); ms += DAY_MS) {
+    const day = new Date(ms).toISOString().slice(0, 10);
+    const row = byDate.get(day);
+    days.push({
+      date: day,
+      private: row?.private ?? 0,
+      public: row?.public ?? 0,
+    });
+  }
+  return days;
 }
 
 function formatCount(value: number): string {
@@ -104,7 +79,7 @@ function formatUsd(value: number): string {
 /** Build aggregate memory storage and indexing diagnostics for the System page. */
 export async function buildMemoryOperationalReport(args: {
   db: MemoryDb;
-  extractionDays: PluginConversationEventCostDay[];
+  extractionDays: Promise<PluginConversationEventCostDay[]>;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
   const active = and(
@@ -116,7 +91,7 @@ export async function buildMemoryOperationalReport(args: {
       gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
     ),
   );
-  const [[counts], memoryDays] = await Promise.all([
+  const [[counts], memoryDays, extractionDays] = await Promise.all([
     args.db
       .select({
         active: sql<number>`count(*) filter (where ${active})`.mapWith(Number),
@@ -128,8 +103,9 @@ export async function buildMemoryOperationalReport(args: {
           sql<number>`count(*) filter (where ${juniorMemoryMemories.createdAtMs} >= ${args.nowMs - 30 * DAY_MS})`.mapWith(
             Number,
           ),
+        // EXISTS, not a join: a memory can have one vector per model.
         embedded:
-          sql<number>`count(${juniorMemoryEmbeddings.memoryId}) filter (where ${active})`.mapWith(
+          sql<number>`count(*) filter (where ${active} and exists (select 1 from ${juniorMemoryEmbeddings} where ${juniorMemoryEmbeddings.memoryId} = ${juniorMemoryMemories.id}))`.mapWith(
             Number,
           ),
         private:
@@ -137,18 +113,15 @@ export async function buildMemoryOperationalReport(args: {
             Number,
           ),
       })
-      .from(juniorMemoryMemories)
-      .leftJoin(
-        juniorMemoryEmbeddings,
-        eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
-      ),
+      .from(juniorMemoryMemories),
     aggregateMemoryDays(args),
+    args.extractionDays,
   ]);
 
   const activeCount = counts?.active ?? 0;
   const embeddedCount = counts?.embedded ?? 0;
   const embeddingCoverage = activeCount === 0 ? 0 : embeddedCount / activeCount;
-  const extractionThirtyDays = args.extractionDays.slice(-30);
+  const extractionThirtyDays = extractionDays.slice(-30);
   const extractionCostThirtyDays = extractionThirtyDays.reduce(
     (total, day) => total + day.costUsd,
     0,
@@ -192,7 +165,7 @@ export async function buildMemoryOperationalReport(args: {
     ],
     widgets: [
       {
-        categories: args.extractionDays.map((day) => ({
+        categories: extractionDays.map((day) => ({
           id: day.date,
           label: day.date,
           values: { costUsd: day.costUsd },

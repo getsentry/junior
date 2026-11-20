@@ -9,10 +9,11 @@ import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createVercelDeploymentTool } from "./tools/deployment.js";
-import { createVercelActionTools } from "./tools/actions.js";
+import { vercelDeploymentTool } from "./tools/deployment.js";
+import { vercelActionTools } from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
+  VERCEL_DEPLOYMENT_MATCH_FIELDS,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
@@ -28,8 +29,18 @@ export function vercelPlugin(): PluginRegistration {
           type: "deployment",
           supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
           suggestedEvents: [...VERCEL_DEPLOYMENT_SUGGESTED_EVENTS],
+          matchFields: VERCEL_DEPLOYMENT_MATCH_FIELDS,
         },
       ],
+      // Deployment events carry status facts, and Junior adds nothing to
+      // Vercel, so they can run for every project. Use the `projectId`
+      // filter to narrow them.
+      events: Object.fromEntries(
+        VERCEL_DEPLOYMENT_EVENTS.map((eventType) => [
+          eventType,
+          { reach: "all" },
+        ]),
+      ),
       isEnabled: () => Boolean(vercelWebhookSecret()),
     },
     manifest: {
@@ -66,11 +77,8 @@ export function vercelPlugin(): PluginRegistration {
           }),
         ];
       },
-      tools(ctx) {
-        return {
-          deployment: createVercelDeploymentTool(ctx),
-          ...createVercelActionTools(ctx),
-        };
+      tools() {
+        return { deployment: vercelDeploymentTool, ...vercelActionTools };
       },
     },
   });

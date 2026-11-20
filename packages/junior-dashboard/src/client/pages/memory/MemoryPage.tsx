@@ -3,17 +3,15 @@ import {
   BrainCircuit,
   CircleAlert,
   Database,
-  Globe2,
-  Lock,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
+import { FilterTabList } from "../../components/FilterBar";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
@@ -24,32 +22,44 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
 import {
   type PluginUserPageRecord,
+  type PluginUserPageRecordAction,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../searchParams";
-import { cn } from "../../styles";
+import { cn, dashboardIconTileClass } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
-  useMemorySearchCounts,
 } from "./memoryDashboard";
-import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
+import { MemoryDetails } from "./MemoryDetails";
 import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
-import { useMemoryRecord } from "./memoryRecord";
+import {
+  useListShowsFilter,
+  useMemoryRecord,
+  useRestoreMemory,
+} from "./memoryRecord";
+import { getDashboardAgentName } from "../../agentName";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
- * widths on `sm` and up. Below `sm` those columns are hidden, so the grid
- * collapses to just the label and trailing visibility icon.
+ * widths on `sm` and up. Below `sm` those columns are hidden.
  */
-const MEMORY_GRID =
-  "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_7rem_9rem_auto]";
+const MEMORY_GRID = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_9rem]";
+
+// The memory plugin page lists archived memories under this filter.
+const ARCHIVED_FILTER = "archived";
+const MEMORY_FILTERS = [
+  { label: "Active", value: "" },
+  { label: "Archived", value: ARCHIVED_FILTER },
+] as const;
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -64,13 +74,16 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
 
   return (
     <MemoryPageLayout>
-      <PageHeader
-        description={props.page.description}
-        {...(overview ? { onRangeChange: setRange, range } : {})}
-        title={props.page.label}
-      />
       {overview ? (
-        <MemoryOverview range={range} />
+        <>
+          <PageHeader
+            description={props.page.description}
+            onRangeChange={setRange}
+            range={range}
+            title={props.page.label}
+          />
+          <MemoryOverview range={range} />
+        </>
       ) : (
         <MemoryLibrary libraryPath={libraryPath} page={props.page} />
       )}
@@ -106,7 +119,7 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
             days: dashboardQuery.data.days,
             hours: dashboardQuery.data.hours,
             range: props.range,
-            emptySixHour: (date) => ({ date, personal: 0, public: 0 }),
+            emptySixHour: (date) => ({ count: 0, date }),
           })}
           range={props.range}
         />
@@ -152,20 +165,54 @@ function MemoryLibrary(props: {
     setFilter,
     setSearchText,
   } = usePluginUserPageData(props.page);
-  const dashboardQuery = useMemoryDashboardData();
-  const searchCountsQuery = useMemorySearchCounts(searchQuery);
-  // Tab totals follow the search. Without a search, the summary owns them.
-  const counts = searchQuery
-    ? searchCountsQuery.data
-    : dashboardQuery.data?.stats;
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
-  const memoryQuery = useMemoryRecord(memoryId);
+  const listRef = useRef<HTMLDivElement>(null);
+  const archived = filter === ARCHIVED_FILTER;
+  const memoryQuery = useMemoryRecord(memoryId, archived);
+  const restore = useRestoreMemory();
+  const listShowsFilter = useListShowsFilter(
+    filter,
+    Boolean(query.data) && !query.isPlaceholderData,
+  );
   const selectedRecord =
-    memoryQuery.data ?? records.find((record) => record.id === memoryId);
+    memoryQuery.data ??
+    (listShowsFilter
+      ? records.find((record) => record.id === memoryId)
+      : undefined);
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
+  const closeDetails = () => {
+    const trigger = memoryId
+      ? listRef.current?.querySelector<HTMLButtonElement>(
+          `button[data-memory-id="${CSS.escape(memoryId)}"]`,
+        )
+      : undefined;
+    void navigate(memoryPath(props.libraryPath));
+    (trigger ?? listRef.current)?.focus();
+  };
+  const runRecordAction = (recordAction: PluginUserPageRecordAction) => {
+    // Forget and restore move the row out of this list, so focus the list.
+    void navigate(memoryPath(props.libraryPath));
+    listRef.current?.focus();
+    runAction(recordAction);
+  };
+  const restoreSelected = (id: string) => {
+    void navigate(memoryPath(props.libraryPath));
+    listRef.current?.focus();
+    restore.mutate(id);
+  };
+
+  useEffect(() => {
+    // An action leaves the shared mutation in success or error. Clear it when
+    // another memory opens, so old action feedback does not stay visible.
+    if (memoryId) {
+      action.reset();
+      restore.reset();
+    }
+    // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
+  }, [memoryId]);
 
   useEffect(() => {
     // Drop stale permalinks after a forget/archive or unknown id once the
@@ -179,7 +226,7 @@ function MemoryLibrary(props: {
       return;
     }
     if (memoryQuery.isError || memoryQuery.isFetched) {
-      navigate(pathWithSearch(props.libraryPath, location.search), {
+      void navigate(pathWithSearch(props.libraryPath, location.search), {
         replace: true,
       });
     }
@@ -195,119 +242,137 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  const loading = !query.data && !query.error;
+  const loading = (!query.data || !listShowsFilter) && !query.error;
 
   return (
-    <section className="grid gap-4" aria-labelledby="memory-library-title">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2
-            className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
-            id="memory-library-title"
-          >
-            {searchQuery ? "Search results" : "What Junior remembers"}
-          </h2>
-        </div>
-        {content?.searchPlaceholder ? (
-          <SearchInput
-            className="w-full max-w-md sm:w-auto"
-            label={content.searchPlaceholder}
-            onChange={setSearchText}
-            placeholder={content.searchPlaceholder}
-            size="default"
-            value={searchText}
-          />
-        ) : null}
-      </div>
-
-      <FilterTabList
-        ariaLabel="Memory collections"
-        items={[
-          {
-            count: counts?.active,
-            label: "All",
-            value: "",
-          },
-          {
-            count: counts?.personal,
-            label: "Private",
-            value: "private",
-          },
-          {
-            count: counts?.public,
-            label: "Public",
-            value: "public",
-          },
-        ]}
-        onChange={setFilter}
-        value={filter}
-      />
-
-      {loading ? (
-        <PageContentSkeleton label="Loading memories" variant="panel" />
-      ) : query.error ? (
-        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
-          <CircleAlert aria-hidden="true" size={18} />
-          {query.error.message}
-        </Card>
-      ) : records.length === 0 ? (
-        <Card className="grid min-h-56 place-items-center p-8 text-center">
-          <div>
-            <Database
-              aria-hidden="true"
-              className="mx-auto text-dashboard-text-muted"
-              size={26}
-            />
-            <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
-              {content?.emptyText ?? "No memories yet."}
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          <Card padding="none">
-            <MemoryListHeader />
-            {records.map((record, index) => (
-              <MemoryRow
-                first={index === 0}
-                key={record.id}
-                onSelect={() =>
-                  navigate(
-                    memoryPath(
-                      memoryId === record.id
-                        ? props.libraryPath
-                        : `/memories/${encodeURIComponent(record.id)}`,
-                    ),
-                  )
-                }
-                record={record}
-                searchQuery={searchQuery}
-                selected={record.id === memoryId}
-              />
-            ))}
-          </Card>
-          <LoadMorePagination
-            className="mt-2"
-            hasMore={!query.isPlaceholderData && Boolean(query.hasNextPage)}
-            loading={query.isFetchingNextPage}
-            onLoadMore={() => void query.fetchNextPage()}
-          />
-          {action.error ? (
-            <InlineError className="text-center">
-              Could not complete this action. Try again.
-            </InlineError>
-          ) : null}
-        </div>
+    <div
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        memoryId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
-      {!loading ? (
-        <MemoryDetailsDrawer
-          action={action}
-          onAction={runAction}
-          onClose={() => navigate(memoryPath(props.libraryPath))}
+    >
+      <div
+        aria-label="Memories list"
+        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        ref={listRef}
+        role="region"
+        tabIndex={0}
+      >
+        <PageLayout className="gap-6 sm:gap-8">
+          <PageHeader
+            description={props.page.description}
+            title={props.page.label}
+          />
+          <section
+            className="grid gap-4"
+            aria-labelledby="memory-library-title"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2
+                  className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
+                  id="memory-library-title"
+                >
+                  {searchQuery
+                    ? "Search results"
+                    : archived
+                      ? "Archived memories"
+                      : `What ${getDashboardAgentName()} remembers`}
+                </h2>
+              </div>
+              {content?.searchPlaceholder ? (
+                <SearchInput
+                  className="w-full max-w-md sm:w-auto"
+                  label={content.searchPlaceholder}
+                  onChange={setSearchText}
+                  placeholder={content.searchPlaceholder}
+                  size="default"
+                  value={searchText}
+                />
+              ) : null}
+            </div>
+
+            <FilterTabList
+              ariaLabel="Memory state"
+              items={MEMORY_FILTERS}
+              onChange={setFilter}
+              value={filter}
+            />
+
+            {loading ? (
+              <PageContentSkeleton label="Loading memories" variant="panel" />
+            ) : query.error ? (
+              <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
+                <CircleAlert aria-hidden="true" size={18} />
+                {query.error.message}
+              </Card>
+            ) : records.length === 0 ? (
+              <Card className="grid min-h-56 place-items-center p-8 text-center">
+                <div>
+                  <Database
+                    aria-hidden="true"
+                    className="mx-auto text-dashboard-text-muted"
+                    size={26}
+                  />
+                  <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
+                    {content?.emptyText ?? "No memories yet."}
+                  </p>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid gap-3">
+                <Card padding="none">
+                  <MemoryListHeader />
+                  {records.map((record, index) => (
+                    <MemoryRow
+                      first={index === 0}
+                      key={record.id}
+                      onSelect={() =>
+                        navigate(
+                          memoryPath(
+                            memoryId === record.id
+                              ? props.libraryPath
+                              : `/memories/${encodeURIComponent(record.id)}`,
+                          ),
+                        )
+                      }
+                      record={record}
+                      searchQuery={searchQuery}
+                      selected={record.id === memoryId}
+                    />
+                  ))}
+                </Card>
+                <LoadMorePagination
+                  className="mt-2"
+                  hasMore={
+                    !query.isPlaceholderData && Boolean(query.hasNextPage)
+                  }
+                  loading={query.isFetchingNextPage}
+                  onLoadMore={() => void query.fetchNextPage()}
+                />
+                {action.error || restore.error ? (
+                  <InlineError className="text-center">
+                    Could not complete this action. Try again.
+                  </InlineError>
+                ) : null}
+              </div>
+            )}
+          </section>
+        </PageLayout>
+      </div>
+      {memoryId ? (
+        <MemoryDetails
+          actionPending={action.isPending || restore.isPending}
+          key={memoryId}
+          onAction={runRecordAction}
+          onClose={closeDetails}
+          onRestore={
+            archived && memoryId ? () => restoreSelected(memoryId) : undefined
+          }
           record={selectedRecord}
         />
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -323,7 +388,6 @@ function MemoryListHeader() {
       <div>Memory</div>
       <div>Type</div>
       <div>Learned</div>
-      <div className="sr-only">Visibility</div>
     </div>
   );
 }
@@ -332,20 +396,10 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const items = [
     {
-      detail: "personal + public",
+      detail: "shared across the workspace",
       label: "Total active",
-      value: stats.active.toLocaleString("en-US"),
-    },
-    {
-      detail: "private to you",
-      label: "Personal",
-      value: stats.personal.toLocaleString("en-US"),
-    },
-    {
-      detail: "workspace shareable",
-      label: "Public",
       tone: "text-dashboard-accent-text",
-      value: stats.public.toLocaleString("en-US"),
+      value: stats.active.toLocaleString("en-US"),
     },
     {
       detail: "in the last 30 days",
@@ -356,7 +410,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   return (
     <section
       aria-label="Memory summary"
-      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-hover lg:grid-cols-4"
+      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-hover"
     >
       {items.map((item) => (
         <div className="bg-dashboard-bg px-4 py-4 sm:px-5" key={item.label}>
@@ -384,15 +438,14 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        What Junior remembers
-      </h2>
-      <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-        Across personal and public scopes.
-      </p>
+      <AnchorHeading
+        anchor="memory-types"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title={`What ${getDashboardAgentName()} remembers`}
+      />
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
-          detail="Almost entirely personal"
+          detail="How people like to work"
           icon={UserRound}
           label="Preferences"
           value={stats.preference}
@@ -419,9 +472,11 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
   const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        How they got here
-      </h2>
+      <AnchorHeading
+        anchor="memory-sources"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title="How they got here"
+      />
       <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         Same totals, split by how they were written.
       </p>
@@ -429,7 +484,7 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
         <OverviewBreakdownRow
           detail="Passive extraction after runs"
           icon={Sparkles}
-          label="Learned by Junior"
+          label={`Learned by ${getDashboardAgentName()}`}
           value={stats.automatic}
         />
         <OverviewBreakdownRow
@@ -458,7 +513,7 @@ function OverviewBreakdownRow(props: {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-bg-elevated px-3 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+      <div className={cn(dashboardIconTileClass, "size-9")}>
         <Icon aria-hidden="true" size={15} />
       </div>
       <div className="min-w-0 flex-1">
@@ -486,8 +541,6 @@ function MemoryRow(props: {
   const kind = metadataValue(props.record, "Type");
   const remembered = metadataValue(props.record, "Remembered");
   const source = metadataValue(props.record, "Source");
-  const visibility = metadataValue(props.record, "Visibility");
-  const isPublic = visibility === "Public";
   return (
     <SelectableRow
       className={cn(
@@ -500,6 +553,7 @@ function MemoryRow(props: {
       <button
         aria-expanded={props.selected}
         aria-label={`View memory details: ${props.record.title}`}
+        data-memory-id={props.record.id}
         className={cn(
           "grid min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left",
           MEMORY_GRID,
@@ -509,11 +563,6 @@ function MemoryRow(props: {
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <VisibilityIcon
-              className="sm:hidden"
-              isPublic={isPublic}
-              size={14}
-            />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
               <MemorySearchHighlight
                 query={props.searchQuery}
@@ -535,35 +584,8 @@ function MemoryRow(props: {
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
-        <VisibilityIcon
-          className="hidden justify-self-center sm:inline-flex"
-          isPublic={isPublic}
-          size={15}
-        />
       </button>
     </SelectableRow>
-  );
-}
-
-/** Render the lock (private) or globe (public) mark for one memory's visibility. */
-function VisibilityIcon(props: {
-  className?: string;
-  isPublic: boolean;
-  size: number;
-}) {
-  const Icon = props.isPublic ? Globe2 : Lock;
-  const label = props.isPublic ? "Public" : "Private";
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center text-dashboard-text-muted",
-        props.className,
-      )}
-      title={label}
-    >
-      <Icon aria-hidden="true" size={props.size} />
-      <span className="sr-only">{label}</span>
-    </span>
   );
 }
 

@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import * as z from "zod";
 import { injectContinuationToolName } from "@/chat/tool-support/structured-result";
 
 function isToolContent(
@@ -11,12 +12,13 @@ function isToolContent(
         return false;
       }
       const record = part as Record<string, unknown>;
-      if (record.type === "text") {
-        return typeof record.text === "string";
+      if (record["type"] === "text") {
+        return typeof record["text"] === "string";
       }
-      if (record.type === "image") {
+      if (record["type"] === "image") {
         return (
-          typeof record.data === "string" && typeof record.mimeType === "string"
+          typeof record["data"] === "string" &&
+          typeof record["mimeType"] === "string"
         );
       }
       return false;
@@ -81,12 +83,19 @@ function replaceGeneratedTextContent(
   ];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+/** Any non-array object; tool details are read field by field. */
+const objectSchema = z.looseObject({});
+
+const continuationDetailsSchema = z.looseObject({
+  continuation: objectSchema,
+});
+
+const permissionDeniedDetailsSchema = z.looseObject({
+  permission_denied: objectSchema,
+});
 
 function hasContinuation(value: unknown): boolean {
-  return isRecord(value) && isRecord(value.continuation);
+  return continuationDetailsSchema.safeParse(value).success;
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
@@ -109,10 +118,12 @@ function stringListField(
     : [];
 }
 
-function accountText(value: unknown): string | undefined {
-  if (!isRecord(value)) {
+function accountText(account: unknown): string | undefined {
+  const parsed = objectSchema.safeParse(account);
+  if (!parsed.success) {
     return undefined;
   }
+  const value = parsed.data;
   const label = stringField(value, "label") || stringField(value, "id");
   const id = stringField(value, "id");
   if (!label) {
@@ -121,12 +132,42 @@ function accountText(value: unknown): string | undefined {
   return id && id !== label ? `${label} (${id})` : label;
 }
 
-function upstreamPermissionDeniedText(value: unknown): string | undefined {
-  if (!isRecord(value) || !isRecord(value.permission_denied)) {
+function policyDeniedText(
+  value: Record<string, unknown>,
+  signal: Record<string, unknown>,
+): string | undefined {
+  const message = stringField(signal, "message");
+  const method = stringField(signal, "method");
+  const upstreamHost = stringField(signal, "upstreamHost");
+  const upstreamPath = stringField(signal, "upstreamPath");
+  if (!message || !method || !upstreamHost || !upstreamPath) {
     return undefined;
   }
+  const command = stringField(value, "command");
+  const stderr = stringField(value, "stderr").trim();
+  return [
+    "The runtime egress policy denied the request. It did not reach the provider.",
+    message,
+    "",
+    `Request: ${method} ${upstreamHost}${upstreamPath}`,
+    ...(command ? [`Command: ${command}`] : []),
+    "",
+    "Do not retry the same request, and do not ask for more permissions or a new credential. Follow the policy message.",
+    ...(stderr ? ["", `stderr:\n${stderr}`] : []),
+  ].join("\n");
+}
+
+function permissionDeniedText(details: unknown): string | undefined {
+  const parsed = permissionDeniedDetailsSchema.safeParse(details);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const value = parsed.data;
   const signal = value.permission_denied;
-  if (signal.source !== "upstream") {
+  if (signal["source"] === "policy") {
+    return policyDeniedText(value, signal);
+  }
+  if (signal["source"] !== "upstream") {
     return undefined;
   }
   const provider = stringField(signal, "provider");
@@ -137,20 +178,18 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
   if (!provider || !message || !upstreamHost || !upstreamPath || !status) {
     return undefined;
   }
-  const grant = isRecord(signal.grant) ? signal.grant : {};
+  const grant = objectSchema.safeParse(signal["grant"]).data ?? {};
   const grantName = stringField(grant, "name");
   const grantAccess = stringField(grant, "access");
   const grantReason = stringField(grant, "reason");
   const grantRequirements = stringListField(grant, "requirements");
-  const account = accountText(signal.account);
+  const account = accountText(signal["account"]);
   const command = stringField(value, "command");
   const stderr = stringField(value, "stderr").trim();
   const stdout = stringField(value, "stdout").trim();
-  const acceptedPermissions = stringField(signal, "acceptedPermissions");
-  const sso = stringField(signal, "sso");
 
   return [
-    "Upstream permission denied.",
+    "Upstream provider rejected the request.",
     message,
     "",
     `Provider: ${provider}`,
@@ -164,13 +203,10 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
       : []),
     `Upstream: ${upstreamHost}${upstreamPath}`,
     `Status: ${status}`,
-    ...(acceptedPermissions
-      ? [`Accepted provider permissions: ${acceptedPermissions}`]
-      : []),
-    ...(sso ? [`Provider SSO: ${sso}`] : []),
     ...(command ? [`Command: ${command}`] : []),
     "",
-    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block; diagnose provider-side permissions, installation scope, SSO, or actor-provider account access.",
+    "The runtime had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local runtime block.",
+    "Read the provider's error in the command output before you choose a cause. A provider can reject a request because of permissions, installation scope, SSO, or account access. It can also reject a valid credential because of the target's state, a rate limit, or another provider rule.",
     ...(stderr ? ["", `stderr:\n${stderr}`] : []),
     ...(stdout ? ["", `stdout:\n${stdout}`] : []),
   ].join("\n");
@@ -201,7 +237,7 @@ export function normalizeToolResult(
 
   if (isStructuredToolExecutionResult(unwrapped)) {
     const normalized = normalizeDetails(unwrapped.details, options);
-    const permissionText = upstreamPermissionDeniedText(normalized.details);
+    const permissionText = permissionDeniedText(normalized.details);
     if (!permissionText && normalized.details === unwrapped.details) {
       return unwrapped;
     }
@@ -236,7 +272,7 @@ export function normalizeToolResult(
       {
         type: "text",
         text:
-          upstreamPermissionDeniedText(normalized.details) ??
+          permissionDeniedText(normalized.details) ??
           toToolContentText(normalized.details),
       },
     ],

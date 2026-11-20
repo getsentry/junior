@@ -1,40 +1,53 @@
 import {
-  Boxes,
   ChevronDown,
-  KeyRound,
+  ChevronsUpDown,
   LogOut,
-  Plug,
   Settings,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
-import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
-import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
+import { navItemIcon } from "./layout/navIcons";
+import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
+import { ThemeSwitcher } from "./ThemeSwitcher";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
-  spend?: PersonalSpendReport;
-  userPages: PluginUserPageLink[];
+  spend?: PersonalSpendReport | undefined;
+  /** Pages that live in this menu instead of the primary nav. */
+  pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the desktop header control.
+   * `popover` is the profile row at the bottom of the desktop nav sidebar.
+   * It shows only the avatar while the sidebar is collapsed.
+   * `top-bar` is the spend and avatar control in the desktop top bar.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?: "popover" | "sheet-spend" | "sheet-links" | "sheet-identity";
+  variant?:
+    | "popover"
+    | "top-bar"
+    | "sheet-spend"
+    | "sheet-links"
+    | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -52,27 +65,93 @@ function initials(name: string | null | undefined, email: string): string {
   return email.slice(0, 1).toUpperCase();
 }
 
-const profileLinkClass =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none";
+/** Show the viewer's photo, with initials while it loads or when there is none. */
+function ProfileAvatar({
+  className,
+  user,
+}: {
+  className?: string;
+  user: Identity["user"];
+}) {
+  return (
+    <Avatar
+      aria-hidden="true"
+      className={cn("border-0 shadow-black/40", className)}
+    >
+      <AvatarImage alt="User avatar" src={user.avatarUrl} />
+      <AvatarFallback className="font-bold tracking-wide">
+        {initials(user.name, user.email)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+const SPEND_COUNT_UP_MS = 700;
+
+/**
+ * Show one spend total. When the total changes, count up from the last shown
+ * value and tint the figure until the count ends.
+ */
+function SpendAmount({ value }: { value?: number | undefined }) {
+  const [shown, setShown] = useState(value);
+  const [counting, setCounting] = useState(false);
+  const shownRef = useRef(value);
+
+  useEffect(() => {
+    const from = shownRef.current;
+    if (
+      value === undefined ||
+      from === undefined ||
+      from === value ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      shownRef.current = value;
+      setShown(value);
+      setCounting(false);
+      return;
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+    const step = (time: number) => {
+      const progress = Math.min(1, (time - startedAt) / SPEND_COUNT_UP_MS);
+      const eased = 1 - (1 - progress) ** 3;
+      const next = progress < 1 ? from + (value - from) * eased : value;
+      shownRef.current = next;
+      setShown(next);
+      if (progress < 1) {
+        frame = requestAnimationFrame(step);
+      } else {
+        setCounting(false);
+      }
+    };
+    setCounting(true);
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return (
+    <span
+      className={cn(
+        "transition-colors duration-700 motion-reduce:transition-none",
+        counting && "text-dashboard-accent-text",
+      )}
+    >
+      {shown === undefined ? "—" : formatCostSummary({ total: shown })}
+    </span>
+  );
+}
 
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
   onSignOut,
   spend,
-  userPages,
+  pages,
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const openTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const email = identity.user.email!;
+  const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
   const sevenDaySpend = spend
     ? formatCostSummary({ total: spend.sevenDaysUsd })
@@ -80,71 +159,12 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
-  const profilePages = userPages.filter(
-    (page) => page.navigation === "profile",
-  );
 
-  function clearHoverTimers() {
-    if (openTimerRef.current) clearTimeout(openTimerRef.current);
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    openTimerRef.current = undefined;
-    closeTimerRef.current = undefined;
-  }
-
-  function openOnHover(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== "mouse") return;
-    clearHoverTimers();
-    openTimerRef.current = setTimeout(() => setOpen(true), HOVER_OPEN_DELAY_MS);
-  }
-
-  function closeOnHover(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== "mouse") return;
-    clearHoverTimers();
-    closeTimerRef.current = setTimeout(
-      () => setOpen(false),
-      HOVER_CLOSE_DELAY_MS,
-    );
-  }
-
-  useEffect(() => clearHoverTimers, []);
-
-  useEffect(() => {
-    if (variant !== "popover" || !open) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open, variant]);
-
-  const avatar = (
-    <span
-      aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-    >
-      {initials(identity.user.name, email)}
-    </span>
-  );
-
+  // Plain content, not a group label: it names no menu items.
   const identityBlock = (
-    <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
+    <div className="px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        {avatar}
+        <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
             {name}
@@ -156,81 +176,56 @@ export function ProfileMenu({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <div
+        aria-label="Personal model spend"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
+        role="group"
+      >
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span>
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
     </div>
   );
 
-  const menuLinks = (close: () => void) => (
+  const menuLinks = (
     <>
-      <Link
-        className={cn(profileLinkClass, "mt-1")}
-        onClick={close}
-        to={peoplePath(email)}
-      >
-        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuLinkItem render={<Link to={peoplePath(email)} />}>
+        <UserRound aria-hidden="true" />
         My profile
-      </Link>
-      <Link className={profileLinkClass} onClick={close} to="/settings">
-        <Settings aria-hidden="true" size={16} strokeWidth={2} />
+      </DropdownMenuLinkItem>
+      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+        <Settings aria-hidden="true" />
         Settings
-      </Link>
-      <Link
-        className={profileLinkClass}
-        onClick={close}
-        to="/settings/api-tokens"
-      >
-        <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
-        API tokens
-      </Link>
-      <Link
-        className={profileLinkClass}
-        onClick={close}
-        to="/settings/connections"
-      >
-        <Plug aria-hidden="true" size={16} strokeWidth={2} />
-        Connected accounts
-      </Link>
+      </DropdownMenuLinkItem>
+      {pages.map((page) => {
+        const Icon = navItemIcon(page.key);
+        return (
+          <DropdownMenuLinkItem key={page.key} render={<Link to={page.to} />}>
+            <Icon aria-hidden="true" />
+            {page.label}
+          </DropdownMenuLinkItem>
+        );
+      })}
       {identity.user.isAdmin ? (
-        <Link className={profileLinkClass} onClick={close} to="/admin">
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
+        <DropdownMenuLinkItem render={<Link to="/admin" />}>
+          <ShieldCheck aria-hidden="true" />
           Admin
-        </Link>
+        </DropdownMenuLinkItem>
       ) : null}
-      {profilePages.map((page) => (
-        <Link
-          className={profileLinkClass}
-          key={`${page.pluginName}:${page.id}`}
-          onClick={close}
-          to={pluginUserPagePath(page.pluginName, page.id)}
-        >
-          <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-          {page.label}
-        </Link>
-      ))}
-      <button
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none"
-        onClick={() => {
-          close();
-          void onSignOut();
-        }}
-        type="button"
-      >
-        <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuItem onClick={() => void onSignOut()}>
+        <LogOut aria-hidden="true" />
         Log out
-      </button>
+      </DropdownMenuItem>
     </>
   );
 
@@ -245,13 +240,13 @@ export function ProfileMenu({
         <span className="whitespace-nowrap">
           7d{" "}
           <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
+            <SpendAmount value={spend?.sevenDaysUsd} />
           </span>
         </span>
         <span className="whitespace-nowrap">
           30d{" "}
           <span className="font-semibold text-dashboard-text">
-            {thirtyDaySpend}
+            <SpendAmount value={spend?.thirtyDaysUsd} />
           </span>
         </span>
       </div>
@@ -272,26 +267,16 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to="/settings">
           Settings
         </Link>
-        <Link className={sheetItemClass} to="/settings/api-tokens">
-          API tokens
-        </Link>
-        <Link className={sheetItemClass} to="/settings/connections">
-          Connected accounts
-        </Link>
+        {pages.map((page) => (
+          <Link className={sheetItemClass} key={page.key} to={page.to}>
+            {page.label}
+          </Link>
+        ))}
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">
             Admin
           </Link>
         ) : null}
-        {profilePages.map((page) => (
-          <Link
-            className={sheetItemClass}
-            key={`${page.pluginName}:${page.id}`}
-            to={pluginUserPagePath(page.pluginName, page.id)}
-          >
-            {page.label}
-          </Link>
-        ))}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
@@ -302,6 +287,7 @@ export function ProfileMenu({
         >
           Log out
         </button>
+        <ThemeSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -312,12 +298,7 @@ export function ProfileMenu({
         aria-label={`Signed in as ${name}`}
         className="flex min-w-0 items-center gap-2.5 px-1"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
+        <ProfileAvatar user={identity.user} />
         <div className="min-w-0">
           <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
             {name}
@@ -332,82 +313,110 @@ export function ProfileMenu({
     );
   }
 
+  const topBar = variant === "top-bar";
+  const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
+  const hoverTrigger = {
+    closeDelay: HOVER_CLOSE_DELAY_MS,
+    delay: HOVER_OPEN_DELAY_MS,
+    openOnHover: true,
+  };
   return (
-    <div
-      className="relative"
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setOpen(false);
+    // Not modal, so the page keeps scrolling while the menu is open.
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(nextOpen, details) => {
+        // A mouse click always keeps the menu open, also after hover opened it.
+        // A keyboard press (detail 0) still toggles it.
+        const mouseClick =
+          details.event instanceof MouseEvent && details.event.detail > 0;
+        if (!nextOpen && details.reason === "trigger-press" && mouseClick) {
+          return;
         }
+        setOpen(nextOpen);
       }}
-      onPointerEnter={openOnHover}
-      onPointerLeave={closeOnHover}
-      ref={rootRef}
+      open={open}
     >
-      <button
-        aria-controls="profile-popover"
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
-        className={cn(
-          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-          open && "bg-dashboard-fill-hover text-dashboard-text",
-        )}
-        onClick={(event) => {
-          clearHoverTimers();
-          setOpen(event.detail === 0 ? (value) => !value : true);
-        }}
-        ref={triggerRef}
-        type="button"
-      >
-        <span className="hidden items-center gap-2 md:flex">
-          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-              7d
-            </span>
-            <span className="text-xs font-semibold text-dashboard-text">
-              {sevenDaySpend}
-            </span>
-          </span>
-          <span
-            aria-hidden="true"
-            className="h-3 w-px bg-dashboard-fill-strong"
-          />
-          <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-            <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-              30d
-            </span>
-            <span className="text-xs font-semibold text-dashboard-text">
-              {thirtyDaySpend}
-            </span>
-          </span>
-        </span>
-        <span
-          aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
-        >
-          {initials(identity.user.name, email)}
-        </span>
-        <ChevronDown
-          aria-hidden="true"
+      {topBar ? (
+        <DropdownMenuTrigger
+          aria-label={`${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
           className={cn(
-            "hidden text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text md:block",
-            open && "rotate-180 text-dashboard-text",
+            "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+            open && "bg-dashboard-fill-hover text-dashboard-text",
           )}
-          size={14}
-          strokeWidth={2}
-        />
-      </button>
-
-      {open ? (
-        <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
-          id="profile-popover"
+          {...hoverTrigger}
         >
-          {identityBlock}
-          {menuLinks(() => setOpen(false))}
+          <span className="flex items-center gap-2">
+            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
+                7d
+              </span>
+              <span className="text-xs font-semibold text-dashboard-text">
+                <SpendAmount value={spend?.sevenDaysUsd} />
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className="h-3 w-px bg-dashboard-fill-strong"
+            />
+            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
+                30d
+              </span>
+              <span className="text-xs font-semibold text-dashboard-text">
+                <SpendAmount value={spend?.thirtyDaysUsd} />
+              </span>
+            </span>
+          </span>
+          <ProfileAvatar user={identity.user} />
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(
+              "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
+              open && "rotate-180 text-dashboard-text",
+            )}
+            size={14}
+            strokeWidth={2}
+          />
+        </DropdownMenuTrigger>
+      ) : (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            aria-label={menuLabel}
+            className={cn(
+              // The collapsed nav sidebar shows only the avatar.
+              "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
+              open && "bg-sidebar-accent",
+            )}
+            render={<DropdownMenuTrigger {...hoverTrigger} />}
+          >
+            <ProfileAvatar user={identity.user} />
+            <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
+              {name}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="text-dashboard-text-muted group-data-[collapsible=icon]:hidden"
+              strokeWidth={2}
+            />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
+      <DropdownMenuContent
+        align="end"
+        side={topBar ? "bottom" : "right"}
+        sideOffset={8}
+        className="w-64"
+        id="profile-popover"
+      >
+        {identityBlock}
+        <DropdownMenuSeparator />
+        <div className="grid gap-1 px-2 py-1.5">
+          <ThemeSwitcher menu />
+          <NavLayoutSwitcher menu />
         </div>
-      ) : null}
-    </div>
+        <DropdownMenuSeparator />
+        {menuLinks}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

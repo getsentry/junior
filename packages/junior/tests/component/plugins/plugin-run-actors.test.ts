@@ -2,15 +2,15 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 /**
- * Proves the `run.actors` runtime threading contract from
- * `packages/junior/src/chat/README.md`: the live actors getter passed into the plugin
+ * Proves the `run.actors` runtime threading contract: the live actors getter
+ * passed into the plugin
  * hook runner is seeded from the run actor and grows as steering messages
  * with a resolvable actor drain into the run, without ever including an
  * unattributable steering message.
  */
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -29,7 +29,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -43,7 +46,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -52,7 +62,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -69,6 +80,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
+      // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+      // the next model call.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });
@@ -154,9 +170,9 @@ describe("run actor composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 

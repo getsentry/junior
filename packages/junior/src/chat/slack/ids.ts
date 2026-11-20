@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 // Slack-owned runtime boundaries parse raw strings into branded IDs here.
@@ -19,6 +19,12 @@ export const slackUserIdSchema = z
   .regex(/^[UW][A-Z0-9]+$/)
   .brand<"SlackUserId">();
 
+export const slackBotIdSchema = z
+  .string()
+  .regex(/^B[A-Z0-9]+$/)
+  .brand<"SlackBotId">();
+
+export type SlackBotId = z.output<typeof slackBotIdSchema>;
 export type SlackChannelId = z.output<typeof slackChannelIdSchema>;
 export type SlackTeamId = z.output<typeof slackTeamIdSchema>;
 export type SlackUserId = z.output<typeof slackUserIdSchema>;

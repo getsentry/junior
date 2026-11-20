@@ -1,15 +1,27 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   listAgentRelatives,
   type ParentAgent,
 } from "@/chat/agent-invocations/list";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { getSqlExecutor } from "@/chat/db";
+import { renderPlanAssignee } from "@/chat/plan/prompt";
+import { listPlanItems } from "@/chat/plan/store";
+import { outputPlanItem, planItemOutputSchema } from "@/chat/plan/tool-output";
+import {
+  isOpenPlanItemStatus,
+  SELF_PLAN_ASSIGNEE,
+  type PlanItem,
+} from "@/chat/plan/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   agentNameSchema,
+  CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
   type ChildAgent,
 } from "@/chat/agent-invocations/types";
+import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 
 const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;
@@ -73,6 +85,12 @@ const listedAgentSchema = z
       .describe(
         "Agent name given by its parent. Pass the name of a child agent to messageAgent.",
       ),
+    kind: z
+      .enum(CHILD_AGENT_KINDS)
+      .optional()
+      .describe(
+        "Kind of a child or sibling. thread: people can message it. task: only its parent messages it.",
+      ),
     status: z
       .enum(LISTED_AGENT_STATUSES)
       .describe(
@@ -92,28 +110,75 @@ const listedAgentSchema = z
       .string()
       .optional()
       .describe("Short display title of the latest task"),
+    dashboard_url: z
+      .string()
+      .url()
+      .optional()
+      .describe("Dashboard link of the conversation"),
+    archived: z
+      .literal(true)
+      .optional()
+      .describe("The conversation is archived."),
     error: z
       .string()
       .optional()
       .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
+    plan: z
+      .array(planItemOutputSchema)
+      .optional()
+      .describe(
+        "Open items of the parent's plan, read-only. Only on the parent. Assignee self is this conversation; parent is the parent's own agent.",
+      ),
   })
   .strict();
 
 type ListedAgent = z.output<typeof listedAgentSchema>;
 
+/**
+ * Render a parent's Plan item for its child: "self" is the child, and
+ * "parent" is the parent's own agent.
+ */
+function parentPlanItem(item: PlanItem, conversationId: string) {
+  const { assignee } = item;
+  if (assignee.kind === "self") {
+    return outputPlanItem(item, "parent");
+  }
+  if (assignee.kind === "agent" && assignee.conversationId === conversationId) {
+    return outputPlanItem(item, SELF_PLAN_ASSIGNEE);
+  }
+  return outputPlanItem(item, renderPlanAssignee(assignee));
+}
+
+/** Open items of the parent's Plan. A child never edits them. */
+async function parentPlan(
+  parentConversationId: string,
+  conversationId: string,
+) {
+  const items = await listPlanItems(getSqlExecutor(), parentConversationId);
+  return items
+    .filter((item) => isOpenPlanItemStatus(item.status))
+    .map((item) => parentPlanItem(item, conversationId));
+}
+
 function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
 ): ListedAgent {
+  const dashboardUrl = getDashboardConversationLink(agent.childConversationId);
   return {
     relation,
     conversation_id: agent.childConversationId,
     ...(agent.agentName ? { name: agent.agentName } : undefined),
+    kind: agent.kind,
     status: childAgentStatus(agent),
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
+    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(agent.archivedAtMs !== undefined
+      ? { archived: true as const }
+      : undefined),
     ...(agent.errorMessage
       ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
@@ -129,6 +194,22 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
+/** Static definition of `listAgents`. */
+export const listAgentsToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: AGENTS_TOOL_SOURCE,
+  description:
+    "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent with the open items of the parent's plan, and its siblings. Results of child agents arrive as new tasks, not through this tool.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({}).strict(),
+  outputSchema: listAgentsOutputSchema,
+});
+
 /**
  * Create the read-only tool that lists the agents one conversation can see:
  * its child agents and, for a child agent, itself, its parent, and its
@@ -136,22 +217,18 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
  */
 export function createListAgentsTool(context: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }) {
   return zodTool({
-    description:
-      "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent, and its siblings. Use it to check which agents are still working, to see what your siblings work on, or to find a child agent before you give it more work with messageAgent. Results still arrive as new tasks; do not poll with this tool.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({}).strict(),
-    outputSchema: listAgentsOutputSchema,
+    ...listAgentsToolDefinition,
     execute: async () => {
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);
+      // listAgentRelatives reads the parent only from the runtime context,
+      // so a child reads only its own parent's plan.
+      const plan = parent
+        ? await parentPlan(parent.conversationId, context.conversationId)
+        : [];
       return {
         agents: [
           ...(self ? [listedChildAgent("self", self)] : []),
@@ -162,6 +239,7 @@ export function createListAgentsTool(context: {
                   conversation_id: parent.conversationId,
                   status: parentAgentStatus(parent),
                   updated_at: new Date(parent.updatedAtMs).toISOString(),
+                  ...(plan.length > 0 ? { plan } : undefined),
                 },
               ]
             : []),

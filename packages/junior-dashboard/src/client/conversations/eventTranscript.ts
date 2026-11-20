@@ -10,6 +10,11 @@ import type {
   TranscriptViewPart,
 } from "../types";
 
+/** A mailbox row, or a local send that can still carry its own files. */
+type PendingTranscriptInput = ConversationPendingMessage & {
+  files?: File[];
+};
+
 type ToolCall =
   | Extract<
       ConversationReportEvent["data"],
@@ -37,6 +42,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -44,9 +50,6 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (data.type === "handoff" && data.triggeringToolCallId) {
-      ids.add(data.triggeringToolCallId);
-    }
     if (data.type === "subagent" && data.parentToolCallId) {
       ids.add(data.parentToolCallId);
     }
@@ -66,7 +69,7 @@ function historyMessageIds(
 
 /** Project one accepted mailbox row into a pending transcript message. */
 export function pendingTranscriptMessage(
-  message: ConversationPendingMessage,
+  message: PendingTranscriptInput,
   index: number,
 ): TranscriptViewMessage {
   return {
@@ -76,6 +79,7 @@ export function pendingTranscriptMessage(
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
     ...(message.attachments ? { attachments: message.attachments } : undefined),
+    ...(message.files?.length ? { files: message.files } : undefined),
     pending: true,
     role: "user",
     source: message.source,
@@ -84,6 +88,13 @@ export function pendingTranscriptMessage(
     timestamp: Date.parse(message.createdAt),
     ...(message.actorIdentity
       ? { actorIdentity: message.actorIdentity }
+      : undefined),
+    ...(message.actorIdentityId
+      ? { actorIdentityId: message.actorIdentityId }
+      : undefined),
+    ...(message.mentions ? { mentions: message.mentions } : undefined),
+    ...(message.reviewItemChange
+      ? { reviewItemChanges: [message.reviewItemChange] }
       : undefined),
   };
 }
@@ -96,7 +107,7 @@ export function pendingTranscriptMessage(
  */
 export function mergePendingTranscriptMessages(
   messages: TranscriptViewMessage[],
-  pending: readonly ConversationPendingMessage[] | undefined,
+  pending: readonly PendingTranscriptInput[] | undefined,
 ): TranscriptViewMessage[] {
   if (!pending?.length) return messages;
   const extras = unresolvedPendingTranscriptMessages(messages, pending);
@@ -111,7 +122,7 @@ export function mergePendingTranscriptMessages(
  */
 export function unresolvedPendingTranscriptMessages(
   messages: readonly TranscriptViewMessage[],
-  pending: readonly ConversationPendingMessage[] | undefined,
+  pending: readonly PendingTranscriptInput[] | undefined,
 ): TranscriptViewMessage[] {
   if (!pending?.length) return [];
   const committedIds = historyMessageIds(messages);
@@ -123,7 +134,7 @@ export function unresolvedPendingTranscriptMessages(
 /** Reduce the ordered reporting event API into dashboard-only transcript rows. */
 export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
-  pendingMessages?: readonly ConversationPendingMessage[],
+  pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
   return transcriptMessagesFromEvents(
     conversation.events,
@@ -136,7 +147,7 @@ export function conversationTranscriptMessages(
 export function transcriptMessagesFromEvents(
   events: ConversationReportEvent[],
   annotations: ConversationTranscript["annotations"],
-  pendingMessages?: readonly ConversationPendingMessage[],
+  pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
   const tools = new Map<
@@ -213,14 +224,27 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
-        ...(data.mentions ? { mentions: data.mentions } : undefined),
+        ...(data.actorIdentityId
+          ? { actorIdentityId: data.actorIdentityId }
+          : undefined),
+        ...(data.agentInvocationId
+          ? { agentInvocationId: data.agentInvocationId }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.eventNamespace
+          ? { eventNamespace: data.eventNamespace }
+          : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
+          : undefined),
+        ...(data.quiet ? { quiet: data.quiet } : undefined),
+        ...(data.reviewItemChanges
+          ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };
@@ -284,22 +308,6 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
-    if (data.type === "turn_routed") {
-      const message = latestUserMessageByTurn.get(data.turnId);
-      if (message) {
-        message.route = {
-          modelProfile: data.modelProfile,
-          modelId: data.modelId,
-          reasoningLevel: data.reasoningLevel,
-          ...(data.confidence !== undefined
-            ? { confidence: data.confidence }
-            : undefined),
-          source: data.source,
-        };
-      }
-      continue;
-    }
-
     if (data.type === "turn_context") {
       const message = latestUserMessageByTurn.get(data.turnId);
       if (message) {
@@ -309,6 +317,7 @@ export function transcriptMessagesFromEvents(
           kind: data.kind,
           loadedAt: event.createdAt,
           pluginName: data.pluginName,
+          turnId: data.turnId,
           version: data.version,
         });
       }
@@ -365,6 +374,7 @@ export function transcriptMessagesFromEvents(
         type: "subagent" as const,
         id: subagentId,
         childConversationId: data.childConversationId,
+        childKind: data.childKind,
         subagentKind: data.subagentKind,
         status: data.status,
         ...(finishedTimestamp === undefined
@@ -388,13 +398,25 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
             presentation: data.presentation,
+            ...(data.turnId ? { turnId: data.turnId } : undefined),
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "reply_posted") {
+      messages.push({
+        ...eventMessage(event, "assistant", [
+          { type: "text", text: data.text },
+        ]),
+        postedTo: data.plugin,
+      });
       continue;
     }
 
@@ -410,36 +432,28 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
-    if (data.type === "compaction" || data.type === "handoff") {
+    if (data.type === "compaction") {
       messages.push(
         eventMessage(event, "system", [
           {
             type: "context_event",
-            event:
-              data.type === "handoff"
-                ? {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    modelId: data.modelId,
-                    modelProfile: data.modelProfile,
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.reasoningLevel
-                      ? { reasoningLevel: data.reasoningLevel }
-                      : undefined),
-                  }
-                : {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    ...(data.modelId ? { modelId: data.modelId } : undefined),
-                    ...(data.modelProfile
-                      ? { modelProfile: data.modelProfile }
-                      : undefined),
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.details ? { details: data.details } : undefined),
-                  },
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
+            event: {
+              type: data.type,
+              createdAt: event.createdAt,
+              ...(data.modelId ? { modelId: data.modelId } : undefined),
+              ...(data.summary ? { summary: data.summary } : undefined),
+              ...(data.details ? { details: data.details } : undefined),
+            },
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "turn_lifecycle" && data.state === "no_reply") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message?.eventType) message.noReply = true;
       continue;
     }
 

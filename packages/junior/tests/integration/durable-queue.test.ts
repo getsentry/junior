@@ -1,9 +1,15 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  botConfig,
+  getChatConfig,
+} from "@/chat/config";
 import {
   commitAcceptedReply,
   loadProjection,
@@ -28,7 +34,7 @@ import {
 } from "@/chat/task-execution/store";
 import {
   getTurnRecord,
-  listTurnSummaries,
+  LOST_WORKER_RESUME_MESSAGE,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -43,7 +49,18 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../fixtures/conversation-work";
-import { chatPostMessageOk } from "../fixtures/slack/factories/api";
+import {
+  expectAnotherPersonsTurn,
+  expectAssistantInSql,
+  expectNextTurn,
+  expectTerminalTurn,
+  expireDeadWorkerLease,
+  expireLiveWorkerLease,
+} from "../fixtures/durable-queue";
+import {
+  chatPostMessageOk,
+  conversationsRepliesPage,
+} from "../fixtures/slack/factories/api";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import {
   queueSlackApiResponse,
@@ -53,6 +70,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -83,7 +101,7 @@ function almostSpentStartedAtMs(remainingMs: number): number {
  * They may fake only model generation at the agent stream boundary and Slack
  * I/O at the adapter boundary.
  */
-async function slack(options: { modelStream?: StreamFn } = {}) {
+async function slack(options: { modelStream?: AgentRequestStreamFn } = {}) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
@@ -97,6 +115,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner },
     state,
   });
@@ -106,7 +125,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       // Use production worker shouldYield (lease + host request deadline).
@@ -126,6 +145,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
         text?: string;
         threadTs?: string;
         ts?: string;
+        user?: string;
       } = {},
     ) =>
       await handleSlackWebhookAndFlush({
@@ -145,109 +165,20 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
   };
 }
 
-type QueueTest = Awaited<ReturnType<typeof slack>>;
-
-/** Assert the durable state left by a turn that cannot run again. */
-async function expectTerminalTurn(
-  q: QueueTest,
-  expected: {
-    turnId: string;
-    state: "completed" | "failed";
-    replies: string[] | number;
-    error?: string;
-  },
-): Promise<void> {
-  const record = await getTurnRecord(CONVERSATION_ID, expected.turnId);
-  expect(record).toMatchObject({
-    state: expected.state,
-    turnId: expected.turnId,
-  });
-  expect(record?.errorMessage ?? "").toContain(expected.error ?? "");
-  await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        state: expected.state,
-        turnId: expected.turnId,
-      }),
-    ]),
-  );
-
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(CONVERSATION_ID),
-  );
-  await hydrateConversationMessages({
-    conversation,
-    conversationId: CONVERSATION_ID,
-  });
-  expect(conversation.processing.activeTurnId).toBeUndefined();
-  expect(conversation.processing.pendingAuth).toBeUndefined();
-  await expect(
-    getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state: q.state,
-    }),
-  ).resolves.toMatchObject({ needsRun: false, messages: [] });
-  expect(q.wakes.hasQueuedMessages()).toBe(false);
-
-  const replies = q.replies();
-  const replyCount =
-    typeof expected.replies === "number"
-      ? expected.replies
-      : expected.replies.length;
-  const expectedReplies =
-    typeof expected.replies === "number" ? replies : expected.replies;
-  expect(replies).toHaveLength(replyCount);
-  expect(replies).toEqual(expectedReplies);
-}
-
-/** Prove that a terminal turn does not block a later user request. */
-async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
-  const priorTurns = new Set(
-    (await listTurnSummaries(CONVERSATION_ID)).map((turn) => turn.turnId),
-  );
-  const priorReplies = q.replies();
-  await q.send({
-    text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
-    threadTs: "1712345.0001",
-    ts,
-  });
-  await expect(q.next()).resolves.toEqual({ status: "completed" });
-
-  const nextTurn = (await listTurnSummaries(CONVERSATION_ID)).find(
-    (turn) => !priorTurns.has(turn.turnId),
-  );
-  if (!nextTurn) throw new Error("Expected a new turn");
-  expect(nextTurn).toMatchObject({ state: "completed" });
-  await expectTerminalTurn(q, {
-    turnId: nextTurn.turnId,
-    state: "completed",
-    replies: [...priorReplies, "Deploy checked."],
-  });
-}
-
-async function expectAssistantInSql(text: string): Promise<void> {
-  await expect(
-    loadProjection({ conversationId: CONVERSATION_ID }),
-  ).resolves.toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        role: "assistant",
-        content: expect.arrayContaining([
-          expect.objectContaining({
-            type: "text",
-            text,
-          }),
-        ]),
-      }),
-    ]),
-  );
-}
-
 /**
  * Seed only the residue a dead prior worker leaves behind. Product paths that
  * the live ingress can create must not use this helper.
  */
-async function seedDeadWorkerResidue(mode: "paused" | "running") {
+async function seedDeadWorkerResidue(
+  mode: "paused" | "running",
+  options: {
+    errorMessage?: string;
+    lostWorkerResumeCount?: number;
+    reason?: "retry" | "timeout";
+    sliceId?: number;
+  } = {},
+) {
+  const { reason = "timeout", ...overrides } = options;
   const turnId = "turn_1712345_0001";
   const assistant = fauxAssistantMessage("checking");
   assistant.timestamp = 2;
@@ -287,16 +218,16 @@ async function seedDeadWorkerResidue(mode: "paused" | "running") {
       visibility: "private",
     }),
     surface: "slack" as const,
+    ...overrides,
   };
   if (mode === "paused") {
-    await saveTurnCheckpoint({ ...checkpoint, mode, reason: "timeout" });
+    await saveTurnCheckpoint({ ...checkpoint, mode, reason });
   } else {
     await saveTurnCheckpoint({ ...checkpoint, mode });
   }
   await persistThreadStateById(CONVERSATION_ID, {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       messages: [
         {
           id: "1712345.0001",
@@ -344,15 +275,22 @@ describe("durable queue contract", () => {
     });
 
     it("publishes a resource wake from a channel-level Slack Location", async () => {
+      // Watch Conversations have their own id, not a Slack thread id.
+      const watchConversationId = "agent-dispatch:watch-1";
       const q = await slack({
         modelStream: createModelStream([
           { type: "text", text: "The subscribed check failed." },
           { type: "text", text: "The subscribed check recovered." },
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
+          { type: "text", text: "Deploy checked." },
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Never sent.", waitFor: "abort" },
         ]),
       });
       const store = getConversationStore();
       await store.recordActivity({
-        conversationId: CONVERSATION_ID,
+        conversationId: watchConversationId,
         destination: SLACK_DESTINATION,
         nowMs: 1_000,
         sessionSource: createSlackSource({
@@ -374,7 +312,7 @@ describe("durable queue contract", () => {
         },
         receivedAtMs: 1_100,
         subscription: {
-          conversationId: CONVERSATION_ID,
+          conversationId: watchConversationId,
           id: "resource-subscription-channel-1",
         },
         text: "The subscribed check failed.",
@@ -398,7 +336,7 @@ describe("durable queue contract", () => {
       });
       expect(posts[0]?.params).not.toHaveProperty("thread_ts");
       await expect(
-        getTurnRecord(CONVERSATION_ID, turnId),
+        getTurnRecord(watchConversationId, turnId),
       ).resolves.toMatchObject({
         actors: [{ platform: "system", name: "event" }],
         state: "completed",
@@ -411,13 +349,13 @@ describe("durable queue contract", () => {
           providerTenantId: SLACK_DESTINATION.teamId,
           providerConversationId: "1712345.0042",
         }),
-      ).resolves.toBe(CONVERSATION_ID);
+      ).resolves.toBe(watchConversationId);
       const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(CONVERSATION_ID),
+        await getPersistedThreadState(watchConversationId),
       );
       await hydrateConversationMessages({
         conversation,
-        conversationId: CONVERSATION_ID,
+        conversationId: watchConversationId,
       });
       expect(conversation.messages).toEqual(
         expect.arrayContaining([
@@ -445,7 +383,7 @@ describe("durable queue contract", () => {
         },
         receivedAtMs: 200_000,
         subscription: {
-          conversationId: CONVERSATION_ID,
+          conversationId: watchConversationId,
           id: "resource-subscription-channel-1",
         },
         text: "The subscribed check recovered.",
@@ -466,7 +404,68 @@ describe("durable queue contract", () => {
         channel: SLACK_DESTINATION.channelId,
         thread_ts: "1712345.0042",
       });
-    }, 10_000);
+
+      // JUNIOR-9D: a human reply in that thread runs in the Watch Conversation.
+      // Its resume must find the reply and answer in the same thread.
+      await q.send({ threadTs: "1712345.0042", ts: "1712345.0050" });
+      await expect(q.next(almostSpentStartedAtMs(10_000))).resolves.toEqual({
+        status: "yielded",
+      });
+      const replyTurnId = "turn_1712345_0050";
+      await expect(
+        getTurnRecord(watchConversationId, replyTurnId),
+      ).resolves.toMatchObject({ state: "paused", resumeReason: "timeout" });
+
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0051" }),
+      });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        getTurnRecord(watchConversationId, replyTurnId),
+      ).resolves.toMatchObject({ state: "completed" });
+      const replyPosts = slackApiOutbox.messages();
+      expect(replyPosts).toHaveLength(3);
+      expect(replyPosts[2]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        text: "Deploy checked.",
+        thread_ts: "1712345.0042",
+      });
+
+      // A later reply yields, and its resumed worker dies before it saves.
+      // The failure notice must reach the same thread with the footer.
+      await q.send({ threadTs: "1712345.0042", ts: "1712345.0060" });
+      await expect(q.next(almostSpentStartedAtMs(10_000))).resolves.toEqual({
+        status: "yielded",
+      });
+      const lostTurnId = "turn_1712345_0060";
+      const lostTurn = await getTurnRecord(watchConversationId, lostTurnId);
+      if (lostTurn?.state !== "paused") throw new Error("expected paused turn");
+      await saveTurnCheckpoint({
+        conversationId: watchConversationId,
+        errorMessage: LOST_WORKER_RESUME_MESSAGE,
+        lostWorkerResumeCount: 1,
+        messages: lostTurn.piMessages,
+        mode: "paused",
+        reason: "retry",
+        sliceId: lostTurn.sliceId,
+        turnId: lostTurnId,
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        getTurnRecord(watchConversationId, lostTurnId),
+      ).resolves.toMatchObject({ state: "failed" });
+      const failurePosts = slackApiOutbox.messages();
+      expect(failurePosts).toHaveLength(4);
+      expect(failurePosts[3]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        text: expect.stringContaining("I ran into an internal error"),
+        thread_ts: "1712345.0042",
+      });
+      expect(JSON.stringify(failurePosts[3]?.params["blocks"])).toContain(
+        watchConversationId,
+      );
+    }, 30_000);
   });
 
   describe("long turn survives host limit", () => {
@@ -531,6 +530,198 @@ describe("durable queue contract", () => {
     }, 30_000);
   });
 
+  describe("another person's mention", () => {
+    it("starts its own Turn after the execution slice times out instead of steering that Turn", async () => {
+      // The mention waits while the first person's Turn runs, until the
+      // execution slice times out. The next Run must start the mention's own
+      // Turn, not steer it into a Turn that runs with another person's
+      // credentials.
+      const q = await slack();
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const otherText = "can you check my deploy too?";
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> ${otherText}`,
+          threadTs: "1712345.0001",
+          ts: "1712345.0002",
+          user: "U0OTHER",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      // Fault: the host deadline is spent, so the execution slice times out
+      // while its model request is in flight.
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      const turnId = "turn_1712345_0001";
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        actor: expect.objectContaining({ userId: "U123" }),
+        state: "paused",
+        resumeReason: "timeout",
+      });
+
+      while (q.wakes.hasQueuedMessages()) {
+        await q.next();
+      }
+
+      await expectAnotherPersonsTurn(q, { endedTurnId: turnId, otherText });
+    }, 30_000);
+
+    it("steers the author's own mention into the Turn after the execution slice times out", async () => {
+      // The Turn's author mentions Junior again while the Turn waits for its
+      // next Run. The mention joins that Turn.
+      const q = await slack();
+      await q.send();
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await q.send({
+        text: `<@${SLACK_BOT_USER_ID}> check staging too`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0002",
+      });
+      while (q.wakes.hasQueuedMessages()) {
+        await q.next();
+      }
+      await expectTerminalTurn(q, {
+        turnId: "turn_1712345_0001",
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+    }, 30_000);
+
+    it("ends a running Turn at its next step and starts the other person's Turn", async () => {
+      // Another person mentions Junior while a multi-step Turn waits on its
+      // model. The Turn ends at its next step, before its execution slice
+      // ends, and the mention starts its own Turn as its author.
+      const requested = deferred();
+      const release = deferred();
+      const q = await slack({
+        modelStream: createModelStream([
+          {
+            type: "toolCall",
+            name: "systemTime",
+            arguments: {},
+            onRequest: () => requested.resolve(),
+            waitFor: release.promise,
+          },
+          { type: "text", text: "Deploy checked." },
+        ]),
+      });
+      const otherText = "can you check my deploy too?";
+      const otherMention = {
+        text: `<@${SLACK_BOT_USER_ID}> ${otherText}`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0002",
+        user: "U0OTHER",
+      };
+      // Turn preparation backfills the thread from Slack, which already has
+      // the other person's mention.
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          threadTs: "1712345.0001",
+          messages: [
+            {
+              ts: "1712345.0001",
+              thread_ts: "1712345.0001",
+              user: "U123",
+              text: `<@${SLACK_BOT_USER_ID}> inspect the deploy`,
+            },
+            { thread_ts: "1712345.0001", ...otherMention },
+          ],
+        }),
+      });
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const run = q.next();
+      await requested.promise;
+      await expect(q.send(otherMention)).resolves.toMatchObject({
+        status: 200,
+      });
+      release.resolve();
+      await expect(run).resolves.toEqual({ status: "yielded" });
+
+      // The Turn yields at its next step, not at a timeout.
+      const turnId = "turn_1712345_0001";
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({ state: "paused", resumeReason: "yield" });
+
+      while (q.wakes.hasQueuedMessages()) {
+        await q.next();
+      }
+      await expectAnotherPersonsTurn(q, { endedTurnId: turnId, otherText });
+    }, 30_000);
+  });
+
+  describe("stop", () => {
+    it("stops a paused turn before its next run can reply", async () => {
+      // The first run yields at the host deadline. The person says `stop`
+      // before the turn continues. The next run must see the stop and end
+      // the turn without the reply.
+      const q = await slack();
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      const turnId = "turn_1712345_0001";
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({ state: "paused" });
+
+      const stop = {
+        eventType: "message" as const,
+        text: "stop",
+        threadTs: "1712345.0001",
+        ts: "1712345.0100",
+      };
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({ state: "abandoned" });
+      // Only the stop acknowledgment posts. The paused turn never replies.
+      expect(q.replies()).toEqual([SLACK_STOP_ACK]);
+      // The stop queued its own wake. It finds no work left.
+      await expect(q.next()).resolves.toEqual({ status: "no_work" });
+      // A mention sent before the stop but delivered after it runs, but it
+      // does not end the stop: only input sent after the stop does. A Slack
+      // retry of the old stop does not stop the Turn that the mention starts.
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> check the deploy`,
+          threadTs: "1712345.0001",
+          ts: "1712345.0050",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.replies()).toEqual([SLACK_STOP_ACK, "Deploy checked."]);
+      await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+        1_712_345_010,
+      );
+
+      // A later mention ends the stop.
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
+          threadTs: "1712345.0001",
+          ts: "1712346.0001",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await expect(
+        getConversationStoppedAtMs(CONVERSATION_ID),
+      ).resolves.toBeUndefined();
+    }, 30_000);
+  });
+
   describe("accepted reply is terminal", () => {
     it("completes once when the host deadline hits during Slack accept", async () => {
       // JUNIOR-7Y: mention → model reply → Slack accept dual-writes SQL → host
@@ -579,7 +770,6 @@ describe("durable queue contract", () => {
         conversationMessageId: `${turnId}:assistant:1`,
         conversation: {
           schemaVersion: 1,
-          compactions: [],
           messages: [
             {
               id: "1712345.0001",
@@ -631,32 +821,172 @@ describe("durable queue contract", () => {
   });
 
   describe("worker dies mid-run", () => {
-    it("fails once when the worker disappears before any reply", async () => {
-      // Dead-worker residue: heartbeat expires the lease, next wake fails the
-      // turn once, keeps committed history, and leaves the conversation free.
+    it("resumes from the last save when the worker stops checking in", async () => {
+      // A blocked event loop and a dead process both leave this residue. The
+      // next wake resumes the turn and replies once, without an error reply.
       const turnId = await seedDeadWorkerResidue("running");
       const q = await slack();
-      await requestConversationWork({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        nowMs: 1_000,
-        state: q.state,
-      });
-      await startConversationWork({
-        conversationId: CONVERSATION_ID,
-        nowMs: 1_000,
-        state: q.state,
-      });
+      await expireDeadWorkerLease(q);
 
-      await expect(
-        recoverConversationWork({
-          nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
-          queue: q.wakes,
-          state: q.state,
-        }),
-      ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expectAssistantInSql("Deploy checked.");
+    });
+
+    it("fails once when the resumed turn loses its worker again", async () => {
+      // A second loss fails the turn once, keeps committed history, and
+      // leaves the conversation free.
+      const turnId = await seedDeadWorkerResidue("running", {
+        lostWorkerResumeCount: 1,
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(q.wakes.sentRecords()).toHaveLength(1);
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+      // The next turn was told that this one failed.
+      expect(
+        JSON.stringify(
+          await loadProjection({ conversationId: CONVERSATION_ID }),
+        ),
+      ).toContain("Your previous turn failed before it finished.");
+    });
+
+    it("fails once when the resumed turn stops before its first save", async () => {
+      // Recovery runs the resumed turn right away. A worker that stops before
+      // its first save leaves the resume message on the paused turn.
+      const turnId = await seedDeadWorkerResidue("paused", {
+        errorMessage: LOST_WORKER_RESUME_MESSAGE,
+        lostWorkerResumeCount: 1,
+        reason: "retry",
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+    });
+
+    /**
+     * Fault: hold a worker inside a model request until its lease expires.
+     * In JUNIOR-G1 a synchronous webFetch conversion blocked one instance's
+     * event loop for 201s. Its workers missed every check-in, another worker
+     * took over the Turn, and the first worker came back with an answer. The
+     * test runs inside one check-in interval, so the held worker also sends
+     * no check-in.
+     */
+    function stall(stalled: { resolve(): void }, release: Promise<void>) {
+      return { onRequest: () => stalled.resolve(), waitFor: release };
+    }
+
+    it("replies once when a stalled worker comes back after recovery finished the Turn", async () => {
+      const stalled = deferred();
+      const release = deferred();
+      const q = await slack({
+        modelStream: createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          // The held worker gets its answer only after recovery replied.
+          {
+            type: "text",
+            text: "Stale answer.",
+            ...stall(stalled, release.promise),
+          },
+          { type: "text", text: "Deploy checked." },
+          { type: "text", text: "Deploy checked." },
+        ]),
+      });
+      const turnId = "turn_1712345_0001";
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const stalledWorker = q.next();
+      await stalled.promise;
+
+      await expireLiveWorkerLease(q, CONVERSATION_WORK_LEASE_TTL_MS);
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      release.resolve();
+      await stalledWorker;
+
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expectNextTurn(q, "1712345.0006");
+    }, 30_000);
+
+    it("keeps a failed Turn failed when its stalled worker comes back", async () => {
+      // Both workers stall, so recovery fails the Turn on the second loss.
+      const firstStalled = deferred();
+      const firstRelease = deferred();
+      const secondStalled = deferred();
+      const secondRelease = deferred();
+      const q = await slack({
+        modelStream: createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          {
+            type: "toolCall",
+            name: "systemTime",
+            arguments: {},
+            ...stall(firstStalled, firstRelease.promise),
+          },
+          {
+            type: "toolCall",
+            name: "systemTime",
+            arguments: {},
+            ...stall(secondStalled, secondRelease.promise),
+          },
+          { type: "text", text: "Deploy checked." },
+        ]),
+      });
+      const turnId = "turn_1712345_0001";
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const firstWorker = q.next();
+      await firstStalled.promise;
+      await expireLiveWorkerLease(q, CONVERSATION_WORK_LEASE_TTL_MS);
+      const secondWorker = q.next();
+      await secondStalled.promise;
+      await expireLiveWorkerLease(q, 2 * CONVERSATION_WORK_LEASE_TTL_MS);
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      secondRelease.resolve();
+      await secondWorker;
+      firstRelease.resolve();
+      await firstWorker;
+
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      expect(q.replies()[0]).toContain("I ran into an internal error");
+      await expectNextTurn(q, "1712345.0006");
+    }, 30_000);
+
+    it("fails once when the lost turn has no slice left to resume", async () => {
+      const turnId = await seedDeadWorkerResidue("running", {
+        sliceId: botConfig.maxSlicesPerTurn,
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
       await expectTerminalTurn(q, {
         turnId,
         state: "failed",

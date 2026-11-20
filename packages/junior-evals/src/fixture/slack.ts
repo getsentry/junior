@@ -4,12 +4,12 @@
  * Shared MSW handlers mock the Slack Web API. This module adds the parts a
  * Conversation needs: the bot identity, unique reply timestamps, thread
  * history for `conversations.replies`, and profiles for `users.info`. It also
- * signs Events API webhooks and slash commands for the app route.
+ * signs Events API webhooks and App Home actions for the app route.
  */
 import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
-import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
+import { getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
@@ -105,7 +105,7 @@ export interface SlackMock {
    * message channel. A link in another channel is not private.
    */
   authorizationLinks(person: {
-    directMessageChannel?: string;
+    directMessageChannel?: string | undefined;
     userId: string;
   }): string[];
   /** The Slack people of the test. */
@@ -144,8 +144,8 @@ async function readSlackParams(
  * is a notification fallback that can repeat the footer.
  */
 function readPostBody(params: Record<string, string>): string {
-  const blocks = params.blocks
-    ? (JSON.parse(params.blocks) as Array<{
+  const blocks = params["blocks"]
+    ? (JSON.parse(params["blocks"]) as Array<{
         text?: string | { text?: string };
         type?: string;
       }>)
@@ -160,15 +160,15 @@ function readPostBody(params: Record<string, string>): string {
     )
     .filter(Boolean)
     .join("\n\n");
-  return body || (params.text ?? "");
+  return body || (params["text"] ?? "");
 }
 
 /** The URL of the Connect button in an authorization message. */
 function readAuthorizationUrl(
   params: Record<string, string>,
 ): string | undefined {
-  const blocks = params.blocks
-    ? (JSON.parse(params.blocks) as Array<{
+  const blocks = params["blocks"]
+    ? (JSON.parse(params["blocks"]) as Array<{
         accessory?: { action_id?: string; url?: string };
       }>)
     : [];
@@ -273,8 +273,8 @@ export function installSlackMock(testName: string): SlackMock {
     ),
     http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
       const params = await readSlackParams(request);
-      const channel = params.channel ?? "";
-      if (params.thread_ts && rejectedReplies > 0) {
+      const channel = params["channel"] ?? "";
+      if (params["thread_ts"] && rejectedReplies > 0) {
         rejectedReplies -= 1;
         return HttpResponse.json(slackError({ error: "channel_not_found" }));
       }
@@ -282,7 +282,9 @@ export function installSlackMock(testName: string): SlackMock {
         channel,
         text: readPostBody(params),
         ts: nextTs(),
-        ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
+        ...(params["thread_ts"]
+          ? { threadTs: params["thread_ts"] }
+          : undefined),
       };
       posts.push(post);
       const authorizationUrl = readAuthorizationUrl(params);
@@ -307,9 +309,9 @@ export function installSlackMock(testName: string): SlackMock {
         const url = readAuthorizationUrl(params);
         if (url) {
           authorizationLinks.push({
-            channel: params.channel ?? "",
+            channel: params["channel"] ?? "",
             url,
-            userId: params.user ?? "",
+            userId: params["user"] ?? "",
           });
         }
         return HttpResponse.json(chatPostEphemeralOk());
@@ -319,10 +321,10 @@ export function installSlackMock(testName: string): SlackMock {
       "https://slack.com/api/conversations.replies",
       async ({ request }) => {
         const params = await readSlackParams(request);
-        const threadTs = params.ts ?? "";
+        const threadTs = params["ts"] ?? "";
         return HttpResponse.json(
           conversationsRepliesPage({
-            messages: threads.get(threadKey(params.channel ?? "", threadTs)),
+            messages: threads.get(threadKey(params["channel"] ?? "", threadTs)),
             threadTs,
           }),
         );
@@ -331,7 +333,7 @@ export function installSlackMock(testName: string): SlackMock {
     http.get(
       "https://files.slack.com/files-pri/:fileKey/:name",
       ({ params }) => {
-        const file = files.get(String(params.fileKey));
+        const file = files.get(String(params["fileKey"]));
         if (!file?.content) {
           return HttpResponse.json(
             { error: "file_not_found" },
@@ -349,7 +351,7 @@ export function installSlackMock(testName: string): SlackMock {
     // Read a copy, so the shared handler can answer for an unknown person.
     http.post("https://slack.com/api/users.info", async ({ request }) => {
       const params = await readSlackParams(request.clone());
-      return usersInfo(params.user ?? null);
+      return usersInfo(params["user"] ?? null);
     }),
   );
 
@@ -503,20 +505,21 @@ async function postSlackEvent(
   );
 }
 
-/** Deliver one slash command of Junior to the app route as Slack does. */
-export async function postSlackCommand(
+/** Deliver one App Home "Unlink" click to the app route as Slack does. */
+export async function postSlackAppHomeUnlink(
   app: RequestApp,
-  command: { channel: string; text: string; user: string },
+  action: { provider: string; user: string },
 ): Promise<void> {
   await postSignedSlackRequest(
     app,
     "application/x-www-form-urlencoded",
     new URLSearchParams({
-      channel_id: command.channel,
-      command: getChatConfig().slack.slashCommand,
-      team_id: SLACK_TEAM_ID,
-      text: command.text,
-      user_id: command.user,
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: SLACK_TEAM_ID },
+        user: { id: action.user, team_id: SLACK_TEAM_ID },
+        actions: [{ action_id: "app_home_disconnect", value: action.provider }],
+      }),
     }).toString(),
   );
 }

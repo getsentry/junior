@@ -1,27 +1,20 @@
-/** Slack slash command and interactive payload forms. */
+/** Slack interactive payload forms. */
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { ChannelImpl, type StateAdapter } from "chat";
-import { parseActorUserId } from "@/chat/actor";
+import type { Message, StateAdapter } from "chat";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { unlinkProvider } from "@/chat/credentials/unlink-provider";
-import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { logException, withLogContext, withSpan } from "@/chat/logging";
+import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
+import { logException, withLogContext } from "@/chat/logging";
 import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { publishAppHomeView } from "@/chat/slack/app-home";
-import { getSlackClient } from "@/chat/slack/client";
-import {
-  getWorkspaceTeamId,
-  runWithWorkspaceTeamId,
-} from "@/chat/slack/workspace-context";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { WaitUntilFn } from "@/handlers/types";
+import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import {
   slackInteractivePayloadSchema,
-  slackSlashCommandSchema,
   type SlackInteractivePayload,
-  type SlackSlashCommandForm,
 } from "./slack-payload";
 
 function parseJson(body: string): unknown {
@@ -32,92 +25,6 @@ function parseJson(body: string): unknown {
   }
 }
 
-function requireSlackPayloadUserId(
-  value: string | null | undefined,
-  source: string,
-): string {
-  const userId = parseActorUserId(value);
-  if (!userId) {
-    throw new Error(`${source} is missing a Slack user id`);
-  }
-  return userId;
-}
-
-async function handleSlashCommandForm(args: {
-  adapter: SlackAdapter;
-  form: SlackSlashCommandForm;
-  state: StateAdapter;
-}): Promise<void> {
-  const { channel_id: channelId, team_id: teamId, user_id: userId } = args.form;
-  const channel = new ChannelImpl({
-    id: `slack:${channelId}`,
-    adapter: args.adapter,
-    stateAdapter: args.state,
-  });
-  await withSpan(
-    "chat.slash_command",
-    "chat.slash_command",
-    { userId: userId },
-    async () => {
-      await handleSlashCommand({
-        channel,
-        channelId,
-        teamId,
-        text: args.form.text,
-        userId,
-      });
-    },
-  );
-}
-
-async function handleInteractivePayload(args: {
-  payload: SlackInteractivePayload;
-  userTokenStore: UserTokenStore;
-}): Promise<void> {
-  if (args.payload.type !== "block_actions") {
-    return;
-  }
-  const action = args.payload.actions?.find(
-    (candidate) => candidate.action_id === "app_home_disconnect",
-  );
-  const provider = action?.selected_option?.value ?? action?.value;
-  if (!provider) {
-    return;
-  }
-  const userId = requireSlackPayloadUserId(
-    args.payload.user?.id,
-    "Slack app home disconnect payload",
-  );
-
-  await withSpan(
-    "chat.app_home_disconnect",
-    "chat.app_home_disconnect",
-    { userId: userId },
-    async () => {
-      try {
-        await unlinkProvider(
-          userId,
-          provider,
-          args.userTokenStore,
-          getWorkspaceTeamId(),
-        );
-      } catch (error) {
-        logException(error, "app_home.disconnect_unlink.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-
-      try {
-        await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
-      } catch (error) {
-        logException(error, "app_home.disconnect_publish.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-    },
-  );
-}
-
 function installationFromInteractive(
   payload: SlackInteractivePayload,
 ): SlackInstallationContext {
@@ -126,57 +33,29 @@ function installationFromInteractive(
   };
 }
 
-/** Handle a Slack slash command or interactive payload form. */
+/** Handle a Slack interactive payload form. */
 export async function handleSlackForm(args: {
   adapter: SlackAdapter;
   body: string;
   getUserTokenStore: () => UserTokenStore;
+  /** Return whether a Slack author may start a Turn, such as by an answer. */
+  isAuthorAllowed: (
+    userId: string,
+    installation: SlackInstallationContext,
+  ) => Promise<boolean>;
+  /** Save one Slack input, such as a user input answer, as a mention. */
+  persistMessage: (
+    message: Message,
+    installation: SlackInstallationContext,
+    facts?: SlackInteractionInputFacts,
+  ) => Promise<void>;
+  queue: ConversationWorkQueue;
   state: StateAdapter;
   waitUntil: WaitUntilFn;
 }): Promise<Response> {
   const params = new URLSearchParams(args.body);
   const { adapter, state } = args;
   await state.connect();
-
-  if (params.has("command") && !params.has("payload")) {
-    const result = slackSlashCommandSchema.safeParse(
-      Object.fromEntries(params),
-    );
-    if (!result.success) {
-      return new Response("Invalid slash command payload", { status: 400 });
-    }
-    const form = result.data;
-    const installation: SlackInstallationContext = {
-      teamId: form.team_id,
-      enterpriseId: form.enterprise_id,
-      isEnterpriseInstall: form.is_enterprise_install === "true",
-    };
-    args.waitUntil(
-      withLogContext(
-        {
-          platform: "slack",
-          userId: form.user_id,
-        },
-        () =>
-          runWithWorkspaceTeamId(installation.teamId, () =>
-            runWithSlackInstallation({
-              adapter,
-              installation,
-              state,
-              task: () =>
-                handleSlashCommandForm({
-                  adapter,
-                  form,
-                  state,
-                }),
-            }),
-          ).catch((error) => {
-            logException(error, "slash_command.failed");
-          }),
-      ),
-    );
-    return new Response("", { status: 200 });
-  }
 
   const rawPayload = params.get("payload");
   if (!rawPayload) {
@@ -202,8 +81,15 @@ export async function handleSlackForm(args: {
             installation,
             state,
             task: () =>
-              handleInteractivePayload({
+              handleSlackInteractivePayload({
+                adapter,
                 payload,
+                isAuthorAllowed: (userId) =>
+                  args.isAuthorAllowed(userId, installation),
+                persistMessage: (message, facts) =>
+                  args.persistMessage(message, installation, facts),
+                queue: args.queue,
+                state,
                 userTokenStore: args.getUserTokenStore(),
               }),
           }),

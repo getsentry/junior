@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   defineJuniorPlugin,
@@ -6,11 +7,13 @@ import {
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
-import { z } from "zod";
+import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import type { ToolActionReview } from "@/chat/guardian/gate";
 import {
   disableTools,
   tool,
@@ -39,6 +42,10 @@ function runtimeContext() {
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+    }).tools,
     workspace: {} as any,
   };
 }
@@ -56,12 +63,23 @@ describe("Pi tool adapter integration", () => {
     const onToolCall = vi.fn();
     const actionReview = {
       projectToolResult: <T>(_: string, result: T) => result,
-      review: vi.fn(async () => ({
-        decision: "allow" as const,
-        reason: "Read-only lookup requested by the user.",
-        riskLevel: "low" as const,
-        userAuthorization: "high" as const,
-      })),
+      review: vi.fn<ToolActionReview["review"]>(
+        async (actions) =>
+          new Map(
+            actions.map((action) => [
+              action.toolCallId,
+              {
+                allowed: true,
+                decision: {
+                  decision: "allow",
+                  reason: "Read-only lookup requested by the user.",
+                  riskLevel: "low",
+                  userAuthorization: "high",
+                },
+              },
+            ]),
+          ),
+      ),
     };
     const previousPlugins = setPlugins([
       defineJuniorPlugin({
@@ -94,8 +112,8 @@ describe("Pi tool adapter integration", () => {
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
                   const input = args as Record<string, unknown>;
-                  return typeof input.customer_id === "string"
-                    ? { customerId: input.customer_id }
+                  return typeof input["customer_id"] === "string"
+                    ? { customerId: input["customer_id"] }
                     : (input as { customerId: string });
                 },
                 execute: async ({ customerId }) =>
@@ -112,22 +130,16 @@ describe("Pi tool adapter integration", () => {
 
     try {
       const registry = createTools([], {}, runtimeContext());
-      const tools = createPiAgentTools(
-        registry,
-        new SkillSandbox([], []),
-        {},
-        undefined,
-        undefined,
-        undefined,
+      const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
         onToolCall,
-        undefined,
-        "private",
-        undefined,
+        conversationPrivacy: "private",
         actionReview,
-      );
+      });
 
-      expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
-      expect(registry.agentDemo_lookupCustomer?.source).toEqual({
+      expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
+      expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
@@ -190,10 +202,14 @@ describe("Pi tool adapter integration", () => {
         },
       );
       expect(actionReview.review).toHaveBeenCalledWith(
-        "tool-execute",
-        "agentDemo_lookupCustomer",
-        registry.agentDemo_lookupCustomer,
-        { customerId: "C123" },
+        [
+          {
+            toolCallId: "tool-execute",
+            toolName: "agentDemo_lookupCustomer",
+            tool: registry["agentDemo_lookupCustomer"],
+            input: { customerId: "C123" },
+          },
+        ],
         undefined,
       );
     } finally {
@@ -201,7 +217,7 @@ describe("Pi tool adapter integration", () => {
     }
   });
 
-  it("keeps direct tools native-visible and executable through executeTool", async () => {
+  it("lists and runs each tool only for its exposure", async () => {
     const definitions: Record<string, AnyToolDefinition> = {
       directDemo: tool({
         description: "Direct demo",
@@ -220,13 +236,42 @@ describe("Pi tool adapter integration", () => {
         inputSchema: Type.Object({}),
         execute: async () => ({ tool: "catalogOnlyDemo" }),
       }),
+      modelOnlyDemo: tool({
+        description: "Model-only demo",
+        exposure: "modelOnly",
+        inputSchema: Type.Object({}),
+        execute: async () => ({ tool: "modelOnlyDemo" }),
+      }),
+      codemodeDemo: tool({
+        description: "Code Mode demo",
+        exposure: "codemode",
+        inputSchema: Type.Object({}),
+        execute: async () => ({ tool: "codemodeDemo" }),
+      }),
     };
-    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
+    const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTool(tools, "executeTool");
 
-    expect(tools.map((candidate) => candidate.name)).toEqual(
-      expect.arrayContaining(["directDemo", "searchTools", "executeTool"]),
-    );
+    expect(tools.map((candidate) => candidate.name).sort()).toEqual([
+      "directDemo",
+      "executeTool",
+      "modelOnlyDemo",
+      "searchTools",
+    ]);
+    await expect(
+      agentTool(tools, "modelOnlyDemo").execute("tool-model-only", {}),
+    ).resolves.toMatchObject({ details: { tool: "modelOnlyDemo" } });
+    for (const toolName of ["modelOnlyDemo", "codemodeDemo"]) {
+      await expect(
+        executeTool.execute(`tool-${toolName}`, {
+          tool_name: toolName,
+          arguments: {},
+        }),
+      ).rejects.toThrow("can only call catalog tools");
+    }
     await expect(
       executeTool.execute("tool-direct", {
         tool_name: "directDemo",
@@ -244,13 +289,73 @@ describe("Pi tool adapter integration", () => {
         tool_name: "hiddenDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: hiddenDemo\.$/,
+    );
     await expect(
       executeTool.execute("tool-missing", {
         tool_name: "missingDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: missingDemo\.$/,
+    );
+    // A close name gets a hint, never a guessed call.
+    await expect(
+      executeTool.execute("tool-misspelled", {
+        tool_name: "catalog_only_demo",
+        arguments: {},
+      }),
+    ).rejects.toThrow(
+      "executeTool can only call catalog tools returned by searchTools: catalog_only_demo. Did you mean `catalogOnlyDemo`?",
+    );
+  });
+
+  it("keeps model-only runtime tools out of the tool catalog", async () => {
+    const spawnAgent = vi.fn();
+    const messageAgent = vi.fn();
+    const registry = createTools(
+      [],
+      {},
+      {
+        ...runtimeContext(),
+        messageAgent,
+        parentConversationId: "local:test:parent",
+        spawnAgent,
+        // Every model-only tool at once, as an agent Turn on a child loads.
+        turnTools: {
+          ...runtimeContext().turnTools,
+          reply: "parent",
+          noReply: true,
+          reportBlocked: "parent",
+        },
+      },
+    );
+    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
+    const modelOnlyTools = [
+      "messageAgent",
+      "noReply",
+      "reply",
+      "reportBlocked",
+      "spawnAgent",
+    ];
+
+    expect(tools.map((candidate) => candidate.name)).toEqual(
+      expect.arrayContaining(modelOnlyTools),
+    );
+    for (const toolName of modelOnlyTools) {
+      await expect(
+        agentTool(tools, "executeTool").execute(`catalog-${toolName}`, {
+          tool_name: toolName,
+          arguments: {},
+        }),
+      ).rejects.toThrow("can only call catalog tools");
+    }
+    expect(spawnAgent).not.toHaveBeenCalled();
+    expect(messageAgent).not.toHaveBeenCalled();
   });
 
   it("keeps a disabled tool in the model tool list but rejects its calls", async () => {
@@ -269,11 +374,15 @@ describe("Pi tool adapter integration", () => {
       }),
     };
     const sandbox = new SkillSandbox([], []);
-    const enabled = createPiAgentTools(definitions, sandbox, {});
-    const disabled = createPiAgentTools(
+    const withCodeMode = (registry: Record<string, AnyToolDefinition>) =>
+      createPiAgentTools(registry, sandbox, {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        codeMode: { countToolCall: () => 1 },
+      });
+    const enabled = withCodeMode(definitions);
+    const disabled = withCodeMode(
       disableTools(definitions, "It needs a person's message."),
-      sandbox,
-      {},
     );
     const modelView = (tools: ReturnType<typeof createPiAgentTools>) =>
       JSON.stringify(
@@ -297,6 +406,13 @@ describe("Pi tool adapter integration", () => {
         arguments: { text: "hi" },
       }),
     ).rejects.toThrow("catalogNotify is disabled in this Turn.");
+    const script = await agentTool(disabled, CODEMODE_TOOL_NAME).execute(
+      "disabled-script",
+      { code: `await tools.catalogNotify({ text: "hi" });` },
+    );
+    expect(script.details).toMatchObject({
+      calls: [{ toolName: "catalogNotify", status: "error" }],
+    });
     expect(execute).not.toHaveBeenCalled();
   });
 });

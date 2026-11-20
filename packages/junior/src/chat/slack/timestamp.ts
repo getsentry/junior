@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Native Slack message timestamp, safe to pass as Slack Web API `message_ts`. */
 export const slackMessageTsSchema = z
@@ -15,4 +15,12 @@ export function parseSlackMessageTs(
 ): SlackMessageTs | undefined {
   const parsed = slackMessageTsSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Write a time in milliseconds as a Slack timestamp, for input that has no
+ * Slack message of its own, such as a submitted form.
+ */
+export function slackMessageTsFromMs(ms: number): SlackMessageTs {
+  return slackMessageTsSchema.parse((ms / 1000).toFixed(6));
 }

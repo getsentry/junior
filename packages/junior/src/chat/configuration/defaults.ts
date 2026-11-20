@@ -3,17 +3,7 @@ let installDefaults: Record<string, unknown> = {};
 function cloneDefaults(
   defaults: Record<string, unknown>,
 ): Record<string, unknown> {
-  return structuredClone(defaults) as Record<string, unknown>;
-}
-
-function isConfigDefaultsRecord(
-  defaults: unknown,
-): defaults is Record<string, unknown> {
-  return (
-    typeof defaults === "object" &&
-    defaults !== null &&
-    !Array.isArray(defaults)
-  );
+  return structuredClone(defaults);
 }
 
 /** Store install-wide configuration defaults. */
@@ -23,13 +13,17 @@ export function setConfigDefaults(defaults: unknown): void {
     return;
   }
 
-  if (!isConfigDefaultsRecord(defaults)) {
+  if (
+    typeof defaults !== "object" ||
+    defaults === null ||
+    Array.isArray(defaults)
+  ) {
     throw new Error(
       "configDefaults must be an object keyed by plugin config key",
     );
   }
 
-  installDefaults = cloneDefaults(defaults);
+  installDefaults = cloneDefaults(Object.fromEntries(Object.entries(defaults)));
 }
 
 /** Return the install-wide configuration defaults (empty object when none set). */

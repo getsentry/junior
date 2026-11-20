@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertLocalPostgresUrl,
   cleanupPostgresHarness,
   setupPostgresTemplate,
   type PostgresHarnessConfig,
@@ -35,24 +36,15 @@ function pluginMigrationRoots(): { dir: string; pluginName: string }[] {
     .filter((root) => existsSync(root.dir));
 }
 
-function assertLocalDatabaseUrl(databaseUrl: string): void {
-  const { hostname } = new URL(databaseUrl);
-  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-    throw new Error(
-      `Junior eval database URL must point at localhost or 127.0.0.1, got ${hostname}`,
-    );
-  }
-}
-
 /** Set up migrated Postgres databases for eval package tests. */
 export default async function setup(
   project: EvalTestProject,
 ): Promise<() => Promise<void>> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
     return async () => undefined;
   }
-  assertLocalDatabaseUrl(databaseUrl);
+  assertLocalPostgresUrl(databaseUrl);
 
   const config = await setupPostgresTemplate({
     applicationName: "junior-evals-vitest",

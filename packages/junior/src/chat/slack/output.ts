@@ -1,91 +1,14 @@
-import type { PostableMessage } from "chat";
-import { getInterruptionMarker } from "@/chat/interruption-marker";
-import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
+import type { PluginMarkdownFormat } from "@/chat/plugins/agent-hooks";
+import { isTableRow, normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
-const MAX_INLINE_CHARS = 2200;
-const MAX_INLINE_LINES = 45;
-const CONTINUED_MARKER = "\n\n[Continued below]";
-
-function countSlackLines(text: string): number {
-  if (!text) {
-    return 0;
-  }
-  return text.split("\n").length;
-}
-
-function fitsInlineBudget(
-  text: string,
-  maxChars = MAX_INLINE_CHARS,
-  maxLines = MAX_INLINE_LINES,
-): boolean {
-  return text.length <= maxChars && countSlackLines(text) <= maxLines;
-}
-
-function findSplitIndex(text: string, maxChars: number): number {
-  if (text.length <= maxChars) {
-    return text.length;
-  }
-
-  const bounded = text.slice(0, maxChars);
-  const newlineIndex = bounded.lastIndexOf("\n");
-  if (newlineIndex > 0) {
-    return newlineIndex;
-  }
-
-  const spaceIndex = bounded.lastIndexOf(" ");
-  if (spaceIndex > 0) {
-    return spaceIndex;
-  }
-
-  return maxChars;
-}
-
-function splitByLineBudget(text: string, maxLines: number): string {
-  if (maxLines <= 0) {
-    return "";
-  }
-
-  const lines = text.split("\n");
-  if (lines.length <= maxLines) {
-    return text;
-  }
-  return lines.slice(0, maxLines).join("\n");
-}
-
-function reserveInlineBudgetForSuffix(
-  suffix: string,
-  maxChars = MAX_INLINE_CHARS,
-  maxLines = MAX_INLINE_LINES,
-): { maxChars: number; maxLines: number } {
-  return {
-    maxChars: Math.max(1, maxChars - suffix.length),
-    maxLines: Math.max(1, maxLines - Math.max(0, countSlackLines(suffix) - 1)),
-  };
-}
-
-type InlineBudget = {
-  maxChars: number;
-  maxLines: number;
-};
+// Slack recommends at most 4,000 characters of message text, and all markdown
+// blocks in one payload share a 12,000 character limit.
+const MAX_INLINE_CHARS = 4000;
 
 type FenceContinuation = {
   closeSuffix: string;
   reopenPrefix: string;
 };
-
-function forceSplitBudget(text: string, budget: InlineBudget): InlineBudget {
-  const lineCount = countSlackLines(text);
-  return {
-    maxChars:
-      text.length <= budget.maxChars
-        ? Math.max(1, text.length - 1)
-        : budget.maxChars,
-    maxLines:
-      lineCount <= budget.maxLines
-        ? Math.max(1, lineCount - 1)
-        : budget.maxLines,
-  };
-}
 
 function getFenceContinuation(text: string): FenceContinuation | null {
   let open:
@@ -125,218 +48,111 @@ function getFenceContinuation(text: string): FenceContinuation | null {
   };
 }
 
-function appendSlackSuffix(text: string, marker: string): string {
-  const carryover = getFenceContinuation(text);
-  return `${text}${carryover?.closeSuffix ?? ""}${marker}`;
+function findSplitIndex(text: string, maxChars: number): number {
+  const bounded = text.slice(0, maxChars);
+  const newlineIndex = bounded.lastIndexOf("\n");
+  if (newlineIndex > 0) {
+    return newlineIndex;
+  }
+
+  const spaceIndex = bounded.lastIndexOf(" ");
+  if (spaceIndex > 0) {
+    return spaceIndex;
+  }
+
+  return maxChars;
 }
 
-function stripTrailingContinuationMarker(text: string): string {
-  return text.endsWith(CONTINUED_MARKER)
-    ? text.slice(0, -CONTINUED_MARKER.length)
-    : text;
-}
-
-function takeSlackContinuationChunk(
+function takePrefix(
   text: string,
-  budget: InlineBudget,
+  maxChars: number,
 ): { prefix: string; rest: string } {
-  let { prefix, rest } = takeSlackInlinePrefix(text, budget);
-  if (!rest) {
-    ({ prefix, rest } = takeSlackInlinePrefix(
-      text,
-      forceSplitBudget(text, budget),
-    ));
+  const prefix =
+    text.slice(0, findSplitIndex(text, maxChars)).trimEnd() ||
+    text.slice(0, maxChars);
+  return { prefix, rest: text.slice(prefix.length).trimStart() };
+}
+
+/**
+ * Keep a pipe table readable when a split lands inside it. Each post renders
+ * on its own, so rows without the header and delimiter rows show as text.
+ * Move a table that starts mid-post to the next post. Repeat the header rows
+ * when one table is longer than a post.
+ */
+function splitOutsideTable(
+  text: string,
+  prefix: string,
+  rest: string,
+): { chunk: string; rest: string } {
+  const lines = prefix.split("\n");
+  // A blank line between the split rows means two tables, not one.
+  const gap = text.slice(prefix.length, text.length - rest.length);
+  if (
+    !isTableRow(lines.at(-1) ?? "") ||
+    !isTableRow(rest) ||
+    /\n\s*\n/.test(gap)
+  ) {
+    return { chunk: prefix, rest };
   }
 
-  let carryover = rest ? getFenceContinuation(prefix) : null;
+  let start = lines.length - 1;
+  while (start > 0 && isTableRow(lines[start - 1] ?? "")) {
+    start--;
+  }
+  const before = lines.slice(0, start).join("\n").trimEnd();
+  const table = lines.slice(start);
+  if (before) {
+    return { chunk: before, rest: `${table.join("\n")}\n${rest}` };
+  }
+  // Repeat the header only when this post also has data rows, so every post
+  // moves the reply forward.
+  if (table.length <= 2) {
+    return { chunk: prefix, rest };
+  }
+  return { chunk: prefix, rest: `${table.slice(0, 2).join("\n")}\n${rest}` };
+}
+
+/** Take one post that fits the budget, closing a code fence it leaves open. */
+function takeChunk(text: string): { chunk: string; rest: string } {
+  let { prefix, rest } = takePrefix(text, MAX_INLINE_CHARS);
+  let carryover = getFenceContinuation(prefix);
   if (!carryover) {
-    return { prefix, rest };
+    return splitOutsideTable(text, prefix, rest);
   }
 
-  const carryoverBudget = reserveInlineBudgetForSuffix(
-    `${carryover.closeSuffix}${CONTINUED_MARKER}`,
-  );
-  ({ prefix, rest } = takeSlackInlinePrefix(text, carryoverBudget));
-  if (!rest) {
-    ({ prefix, rest } = takeSlackInlinePrefix(
-      text,
-      forceSplitBudget(text, carryoverBudget),
-    ));
-  }
-
-  carryover = rest ? getFenceContinuation(prefix) : null;
-  if (!carryover) {
-    return { prefix, rest };
+  ({ prefix, rest } = takePrefix(
+    text,
+    MAX_INLINE_CHARS - carryover.closeSuffix.length,
+  ));
+  carryover = getFenceContinuation(prefix);
+  if (!carryover || !rest) {
+    return { chunk: prefix, rest };
   }
 
   return {
-    prefix,
+    chunk: `${prefix}${carryover.closeSuffix}`,
     rest: `${carryover.reopenPrefix}${rest}`,
   };
 }
 
-/** Return the first continuation-safe chunk plus any remaining text. */
-export function takeSlackContinuationPrefix(
-  text: string,
-  options?: {
-    forceSplit?: boolean;
-    maxChars?: number;
-    maxLines?: number;
-  },
-): { prefix: string; renderedPrefix: string; rest: string } {
-  const budget = {
-    maxChars: options?.maxChars ?? getSlackContinuationBudget().maxChars,
-    maxLines: options?.maxLines ?? getSlackContinuationBudget().maxLines,
-  };
-  const { prefix, rest } = (() => {
-    if (options?.forceSplit) {
-      return takeSlackContinuationChunk(text, budget);
-    }
-    const initial = takeSlackInlinePrefix(text, budget);
-    return initial.rest ? takeSlackContinuationChunk(text, budget) : initial;
-  })();
-  return {
-    prefix,
-    renderedPrefix: rest ? appendSlackSuffix(prefix, CONTINUED_MARKER) : prefix,
-    rest,
-  };
-}
-
-/**
- * Take the largest Slack-safe inline prefix from `text` under the configured
- * character and line budgets. Returns the consumed prefix plus remaining text.
- */
-export function takeSlackInlinePrefix(
-  text: string,
-  options?: {
-    maxChars?: number;
-    maxLines?: number;
-  },
-): { prefix: string; rest: string } {
-  const maxChars = options?.maxChars ?? MAX_INLINE_CHARS;
-  const maxLines = options?.maxLines ?? MAX_INLINE_LINES;
-  const normalized = text.replace(/\r\n?/g, "\n");
-
-  if (!normalized) {
-    return { prefix: "", rest: "" };
-  }
-
-  if (fitsInlineBudget(normalized, maxChars, maxLines)) {
-    return { prefix: normalized, rest: "" };
-  }
-
-  const lineBounded = splitByLineBudget(normalized, maxLines);
-  const cutIndex = findSplitIndex(lineBounded, maxChars);
-  const prefix = lineBounded.slice(0, cutIndex).trimEnd();
-  if (prefix) {
-    return {
-      prefix,
-      rest: normalized.slice(prefix.length).trimStart(),
-    };
-  }
-
-  const hardPrefix = normalized.slice(0, Math.max(1, maxChars)).trimEnd();
-  return {
-    prefix: hardPrefix || normalized.slice(0, Math.max(1, maxChars)),
-    rest: normalized
-      .slice(hardPrefix.length || Math.max(1, maxChars))
-      .trimStart(),
-  };
-}
-
-/**
- * Split a normalized Slack reply into multiple inline-safe thread messages.
- *
- * Replies split across more than two messages receive explicit continuation
- * markers on non-final chunks. When
- * `interrupted` is true, the final chunk receives an interruption marker.
- */
+/** Split a normalized Slack reply into thread posts that fit Slack limits. */
 export function splitSlackReplyText(
   text: string,
-  options?: {
-    interrupted?: boolean;
-  },
+  format?: PluginMarkdownFormat,
 ): string[] {
-  const normalized = normalizeSlackReplyMarkdown(text);
-  if (!normalized) {
-    return [];
-  }
-
   const chunks: string[] = [];
-  const continuationBudget = reserveInlineBudgetForSuffix(CONTINUED_MARKER);
-  let remaining = normalized;
-  while (remaining) {
-    const fitsFinalChunk = options?.interrupted
-      ? fitsInlineBudget(appendSlackSuffix(remaining, getInterruptionMarker()))
-      : fitsInlineBudget(remaining);
-    if (fitsFinalChunk) {
-      chunks.push(
-        options?.interrupted
-          ? appendSlackSuffix(remaining, getInterruptionMarker())
-          : remaining,
-      );
-      break;
-    }
-
-    const { renderedPrefix, rest } = takeSlackContinuationPrefix(remaining, {
-      ...continuationBudget,
-      forceSplit: true,
-    });
-    chunks.push(renderedPrefix);
+  let remaining = normalizeSlackReplyMarkdown(text, format);
+  while (remaining.length > MAX_INLINE_CHARS) {
+    const { chunk, rest } = takeChunk(remaining);
+    chunks.push(chunk);
     remaining = rest;
   }
-
-  if (chunks.length === 2) {
-    chunks[0] = stripTrailingContinuationMarker(chunks[0] ?? "");
+  if (remaining) {
+    chunks.push(remaining);
   }
-
   return chunks;
-}
-
-/** Return the marker added to non-final overflow chunks. */
-export function getSlackContinuationMarker(): string {
-  return CONTINUED_MARKER;
-}
-
-/** Return the marker added when a visible reply ended mid-execution. */
-export function getSlackInterruptionMarker(): string {
-  return getInterruptionMarker();
-}
-
-/**
- * Return true when `text` already fits the repository's inline Slack reply
- * budget without needing continuation messages.
- */
-export function fitsSlackInlineBudget(text: string): boolean {
-  return fitsInlineBudget(normalizeSlackReplyMarkdown(text));
-}
-
-/**
- * Reserve enough inline budget for a continuation suffix on the current chunk.
- */
-export function getSlackContinuationBudget(): {
-  maxChars: number;
-  maxLines: number;
-} {
-  return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
-}
-
-/** Normalize text for Slack and wrap it as a PostableMessage. */
-export function buildSlackOutputMessage(text: string): PostableMessage {
-  const normalized = normalizeSlackReplyMarkdown(text);
-
-  if (!normalized) {
-    throw new Error(
-      `Slack output normalized to empty content: original_length=${text.length} parsed_length=${normalized.length}`,
-    );
-  }
-
-  return {
-    markdown: normalized,
-  };
 }
 
 export const slackOutputPolicy = {
   maxInlineChars: MAX_INLINE_CHARS,
-  maxInlineLines: MAX_INLINE_LINES,
 };

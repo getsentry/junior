@@ -1,8 +1,13 @@
-import type { MessageMetadata } from "@vercel/queue";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
-import { logWarn, withLogContext } from "@/chat/logging";
+import { logWarn, withLogContext, withSpan } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
+import {
+  getQueueProvider,
+  type QueueConsumer,
+  type QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   conversationQueueMessageSchema,
@@ -21,6 +26,7 @@ import {
   type ConversationWorkerResult,
   type ConversationWorkerContext,
 } from "./worker";
+import type { BeforeWorkStops } from "./store";
 import { verifyConversationQueueMessage } from "./queue-signing";
 import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
@@ -29,15 +35,18 @@ export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
   "junior_conversation_work_dev";
 
 export interface ProcessConversationQueueMessageOptions {
+  beforeWorkStops?: BeforeWorkStops | undefined;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
-  nowMs?: () => number;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: () => SlackAdapter;
+  nowMs?: (() => number) | undefined;
   queue?: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
   /** Keep background work started by a turn, such as titles, alive. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
 }
 
 export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
@@ -66,22 +75,70 @@ export function resolveConversationWorkVisibilityTimeoutSeconds(
   );
 }
 
-/** Process one Vercel Queue payload with the generic conversation worker. */
+type QueueTelemetryMetadata = Pick<
+  QueueMessageMetadata,
+  "createdAt" | "deliveryCount" | "messageId" | "topicName"
+>;
+
+/**
+ * Sentry queue attributes for the worker span. The span always sets the
+ * messaging system and destination so the inherited Slack values do not win.
+ */
+function queueProcessAttributes(
+  metadata: QueueTelemetryMetadata | undefined,
+  nowMs: number,
+): Record<string, unknown> {
+  return {
+    "messaging.destination.name":
+      metadata?.topicName ?? resolveConversationWorkQueueTopic(),
+    "messaging.system": getQueueProvider().messagingSystem,
+    ...(metadata && {
+      "messaging.message.id": metadata.messageId,
+      "messaging.message.receive.latency": nowMs - metadata.createdAt.getTime(),
+      "messaging.message.retry.count": metadata.deliveryCount - 1,
+    }),
+  };
+}
+
+/**
+ * Process one queue payload with the generic conversation worker.
+ * Pass the queue metadata to record time in queue and retries on the span.
+ */
 export async function processConversationQueueMessage(
   message: unknown,
   options: ProcessConversationQueueMessageOptions,
+  metadata?: QueueTelemetryMetadata,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
   try {
-    return await processConversationWork(parsed, {
-      checkInIntervalMs: options.checkInIntervalMs,
-      conversationStore: options.conversationStore,
-      nowMs: options.nowMs,
-      queue: options.queue ?? getVercelConversationWorkQueue(),
-      run: options.run,
-      softYieldAfterMs: options.softYieldAfterMs,
-      state: options.state,
-    });
+    return await withSpan(
+      "conversation.work.process",
+      "queue.process",
+      { conversationId: parsed.conversationId },
+      async (setSpanAttributes) => {
+        try {
+          const result = await processConversationWork(parsed, {
+            beforeWorkStops: options.beforeWorkStops,
+            checkInIntervalMs: options.checkInIntervalMs,
+            conversationStore: options.conversationStore,
+            getSlackAdapter: options.getSlackAdapter,
+            nowMs: options.nowMs,
+            queue: options.queue ?? getVercelConversationWorkQueue(),
+            run: options.run,
+            softYieldAfterMs: options.softYieldAfterMs,
+            state: options.state,
+          });
+          setSpanAttributes({ "app.worker.outcome": result.status });
+          return result;
+        } catch (error) {
+          if (isConversationQueueMessageRejectedError(error)) {
+            setSpanAttributes({ "app.worker.outcome": error.reason });
+          }
+          throw error;
+        }
+      },
+      queueProcessAttributes(metadata, options.nowMs?.() ?? Date.now()),
+    );
   } finally {
     // Turns start title work in the background. The worker owns it.
     options.waitUntil?.(settleConversationTitleWork(parsed.conversationId));
@@ -89,7 +146,7 @@ export async function processConversationQueueMessage(
 }
 
 /**
- * Run one queue message through the worker without a Vercel push callback.
+ * Run one queue message through the worker without a queue push callback.
  * In-process queues use this. The callback's kill switch, request deadline,
  * and permanent rejection rules apply; signature checks do not.
  */
@@ -102,18 +159,14 @@ export async function consumeConversationQueueMessage(
     consumerGroup: "in_process",
     createdAt: new Date(nowMs),
     deliveryCount: 1,
-    expiresAt: new Date(
-      nowMs + CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS * 1000,
-    ),
     messageId: options.messageId,
-    region: "local",
     topicName: resolveConversationWorkQueueTopic(options),
   });
 }
 
 function logConversationQueueMessageRejected(
   reason: ConversationQueueMessageRejectedError["reason"] | string,
-  metadata: MessageMetadata,
+  metadata: QueueMessageMetadata,
   error?: unknown,
 ): void {
   const conversationId = isConversationQueueMessageRejectedError(error)
@@ -153,8 +206,8 @@ function conversationWorkCallback(
       });
       return true;
     },
-    run: async (message) => {
-      await processConversationQueueMessage(message, options);
+    run: async (message, metadata) => {
+      await processConversationQueueMessage(message, options, metadata);
     },
     topic: resolveConversationWorkQueueTopic(options),
     verify: verifyConversationQueueMessage,
@@ -169,6 +222,13 @@ export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
   return conversationWorkCallback(options).create();
+}
+
+/** Return the queue consumer for conversation work, for a pulling queue worker. */
+export function conversationWorkQueueConsumer(
+  options: VercelConversationWorkCallbackOptions,
+): QueueConsumer {
+  return conversationWorkCallback(options).consumer;
 }
 
 /** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */

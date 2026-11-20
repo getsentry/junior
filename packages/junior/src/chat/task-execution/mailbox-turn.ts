@@ -1,3 +1,5 @@
+import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import {
   createEventSource,
   createLocalSource,
@@ -6,14 +8,19 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createActor, type Actor, type WebActor } from "@/chat/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { CredentialContext } from "@/chat/credentials/context";
 import type { Location } from "@/chat/conversations/location";
 import type {
   ConversationAuthor,
   ConversationMessage,
 } from "@/chat/state/conversation";
 import {
+  getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
+  type StoredTurnFields,
+  type TurnRecord,
+  type TurnSummary,
 } from "@/chat/task-execution/checkpoint";
 import {
   isEventConversationMessage,
@@ -24,6 +31,7 @@ import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
 } from "@/chat/events/notification";
+import { AGENT_PARENT_MESSAGE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
@@ -32,7 +40,11 @@ import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox
 export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
+  /** Grants of a system Actor that a child agent's input continues. */
+  credentialContext?: CredentialContext;
   message: InboundMessage;
+  /** The words of a parent message, without its tag and generic instructions. */
+  requestText?: string;
   source: Source;
 };
 
@@ -52,10 +64,10 @@ export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
   args: {
     conversationId: string;
-    location?: Location;
-    savedActor?: Actor;
-    savedSource?: Source;
-    visibility?: ConversationPrivacy;
+    location?: Location | undefined;
+    savedActor?: Actor | undefined;
+    savedSource?: Source | undefined;
+    visibility?: ConversationPrivacy | undefined;
   },
 ): TurnInputFacts | undefined {
   if (isEventConversationMessage(message)) {
@@ -100,7 +112,7 @@ export function turnInputFactsFromConversationMessage(
 export function sourceFromTurnInput(args: {
   conversationId: string;
   source: Source;
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | undefined;
 }): Source {
   if (args.source.kind === "web") {
     return createWebSource(
@@ -121,7 +133,7 @@ function hasEventActor(actors: readonly Actor[] | undefined): boolean {
 }
 
 /** Return the active web Turn for one Conversation, if it has one. */
-export async function getActiveConversationTurnId(
+async function getActiveConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
   const summaries = await listTurnSummaries(conversationId);
@@ -151,38 +163,109 @@ export async function getActiveConversationTurnId(
     : undefined;
 }
 
+/** Return the web and event mailbox Turns that are paused or running. */
+export async function listActiveMailboxTurns(
+  conversationId: string,
+): Promise<TurnRecord[]> {
+  const summaries = (await listTurnSummaries(conversationId)).filter(
+    isOpenTurnSummary,
+  );
+  // One cursor read rules out the Turns that are not mailbox Turns, so only
+  // the rest load their Turn history. A legacy cursor with no Source needs
+  // its Actors, which come from Turn history.
+  const stored = await getStoredTurnFields(summaries);
+  const candidates = summaries.filter((_summary, index) => {
+    const fields = stored[index];
+    return (
+      fields !== undefined &&
+      (isActiveMailboxTurn(fields) ||
+        (!fields.source && fields.surface !== "api"))
+    );
+  });
+  return (
+    await mapBounded(candidates, (summary) =>
+      getTurnRecord(conversationId, summary.turnId),
+    )
+  ).filter(
+    (record): record is TurnRecord =>
+      record !== undefined && isActiveMailboxTurn(record),
+  );
+}
+
+/**
+ * List the Source of each active mailbox Turn of several Conversations. It
+ * reads the stored Turn cursors and not their Turn history, so unlike
+ * `listActiveMailboxTurns` it keeps a Turn whose history was deleted.
+ */
+export async function listActiveMailboxTurnSources(
+  conversationIds: readonly string[],
+): Promise<Map<string, Array<Source | undefined>>> {
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const summaries = (
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        limit(() => listTurnSummaries(conversationId)),
+      ),
+    )
+  ).flatMap((list) => list.filter(isOpenTurnSummary));
+  const stored = await getStoredTurnFields(summaries);
+  const sources = new Map<string, Array<Source | undefined>>(
+    conversationIds.map((conversationId) => [conversationId, []]),
+  );
+  await Promise.all(
+    summaries.map((summary, index) =>
+      limit(async () => {
+        const fields = stored[index];
+        // Only a legacy cursor with no Source needs its Actors, which come
+        // from Turn history.
+        const turn =
+          fields && !fields.source && fields.surface !== "api"
+            ? await getTurnRecord(summary.conversationId, summary.turnId)
+            : fields;
+        if (turn && isActiveMailboxTurn(turn)) {
+          sources.get(summary.conversationId)?.push(turn.source);
+        }
+      }),
+    ),
+  );
+  return sources;
+}
+
+function isOpenTurnSummary(summary: TurnSummary): boolean {
+  return (
+    !summary.dispatchId &&
+    (summary.state === "paused" || summary.state === "running")
+  );
+}
+
+// TODO(dcramer): Remove the legacy surface and Actor checks after deployed
+// Turn cursors all store Source.kind.
+function isActiveMailboxTurn(
+  record: StoredTurnFields & Partial<Pick<TurnRecord, "actors">>,
+): boolean {
+  return (
+    !record.dispatchId &&
+    // An Agent invocation Turn is never a mailbox Turn, even with a web or
+    // Event Source.
+    record.surface !== "internal" &&
+    (record.source?.kind === "web" ||
+      record.source?.kind === "event" ||
+      (!record.source &&
+        (record.surface === "api" || hasEventActor(record.actors)))) &&
+    (record.state === "paused" || record.state === "running")
+  );
+}
+
 /** Return the active web or event mailbox Turn. */
 async function getActiveMailboxTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
-  const summaries = await listTurnSummaries(conversationId);
-  const active = (
-    await Promise.all(
-      summaries
-        .filter(
-          (summary) =>
-            !summary.dispatchId &&
-            (summary.state === "paused" || summary.state === "running"),
-        )
-        .map((summary) => getTurnRecord(conversationId, summary.turnId)),
-    )
-  ).filter(
-    (record) =>
-      record &&
-      !record.dispatchId &&
-      (record.source?.kind === "web" ||
-        record.source?.kind === "event" ||
-        (!record.source &&
-          (record.surface === "api" || hasEventActor(record.actors)))) &&
-      (record.state === "paused" || record.state === "running"),
-  );
+  const active = await listActiveMailboxTurns(conversationId);
   if (active.length > 1) {
     throw new Error(
       `Conversation ${conversationId} has multiple active mailbox Turns`,
     );
   }
-  // TODO(dcramer): Remove the legacy surface and Actor checks after deployed
-  // Turn cursors all store Source.kind.
   return active[0]?.turnId;
 }
 
@@ -198,6 +281,7 @@ export async function getAuthPausedConversationTurnId(
     : undefined;
 }
 
+/** Read one web input batch as Turn input. A batch with no web input gives []. */
 function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
@@ -262,7 +346,12 @@ export function getEventBatchDelayMs(
   nowMs = Date.now(),
 ): number {
   const first = messages[0];
-  if (!first || !isEventMailboxMetadata(first.input.metadata)) {
+  // A parent agent task starts at once, as an agent invocation does.
+  if (
+    !first ||
+    !isEventMailboxMetadata(first.input.metadata) ||
+    first.input.metadata.event.eventType === AGENT_PARENT_MESSAGE_EVENT_TYPE
+  ) {
     return 0;
   }
   const waitMs = Math.min(

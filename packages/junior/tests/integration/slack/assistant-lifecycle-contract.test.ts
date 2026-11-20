@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { AssistantThreadStartedEvent } from "@slack/types";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../../fixtures/conversation-work";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { botConfig } from "@/chat/config";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import {
   getCapturedSlackApiCalls,
@@ -34,6 +36,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
     });
     const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => slack,
+      sendPluginTask: sendVercelPluginTask,
     });
 
     await slackRuntime.handleAssistantThreadStarted({
@@ -48,7 +51,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
           thread_ts: DM_THREAD_TS,
-          title: "Junior",
+          title: botConfig.userName,
         }),
       }),
     ]);
@@ -77,7 +80,10 @@ describe("Slack contract: assistant lifecycle delivery", () => {
       getSlackAdapter: () => slack,
       state,
       queue,
-      runtime: createSlackRuntime({ getSlackAdapter: () => slack }),
+      runtime: createSlackRuntime({
+        getSlackAdapter: () => slack,
+        sendPluginTask: sendVercelPluginTask,
+      }),
     };
     const event = {
       type: "assistant_thread_started",

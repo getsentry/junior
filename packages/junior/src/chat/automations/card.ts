@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Saved automation facts shown with a Message, not a live status view. */
 export const automationCardSchema = z

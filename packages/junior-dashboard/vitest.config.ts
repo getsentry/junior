@@ -13,6 +13,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@dashboard\//,
+        replacement: `${path.resolve(import.meta.dirname, "src/client")}/`,
+      },
+      {
         find: /^@sentry\/junior$/,
         replacement: path.resolve(import.meta.dirname, "../junior/src/app.ts"),
       },

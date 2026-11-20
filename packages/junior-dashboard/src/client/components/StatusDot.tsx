@@ -1,7 +1,8 @@
 import { cn } from "../styles";
 import type { StatusChipTone } from "./StatusChip";
 
-const toneClass: Record<StatusChipTone, string> = {
+/** Fill color of each status tone, for dots and other status marks. */
+export const statusDotToneClass: Record<StatusChipTone, string> = {
   accent: "bg-violet-300",
   danger: "bg-rose-300",
   info: "bg-cyan-300",
@@ -25,7 +26,7 @@ export function StatusDot(props: {
         aria-hidden="true"
         className={cn(
           "size-1.5 rounded-full",
-          toneClass[props.tone ?? "neutral"],
+          statusDotToneClass[props.tone ?? "neutral"],
         )}
       />
       <span className="sr-only">{props.label}</span>

@@ -1,4 +1,3 @@
-import { formatDuration } from "../../components/Duration";
 import { UserRound } from "lucide-react";
 import type {
   ActorSummaryReport,
@@ -19,7 +18,12 @@ import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { cn } from "../../styles";
-import { formatCompactNumber, formatCostSummary, peoplePath } from "../../format";
+import {
+  formatCompactNumber,
+  formatCostSummary,
+  peoplePath,
+} from "../../format";
+import { formatDuration } from "../../time";
 
 export type PeopleSort =
   | "conversations"

@@ -9,14 +9,7 @@ export interface ConversationMessageSearchResult {
   role: "assistant" | "user";
 }
 
-/** Runtime-derived public workspace scope for cross-conversation search. */
-export interface ConversationMessageSearchScope {
-  kind: "public_provider_tenant";
-  provider: "slack";
-  providerTenantId: string;
-}
-
-/** Optional filters that narrow retained public workspace search. */
+/** Optional filters that narrow retained public message search. */
 export interface ConversationMessageSearchFilters {
   /** Only conversations active at or after this time. */
   afterMs?: number;
@@ -36,6 +29,5 @@ export interface ConversationMessageSearchStore {
     currentConversationId: string;
     filters: ConversationMessageSearchFilters;
     limit: number;
-    scope: ConversationMessageSearchScope;
   }): Promise<ConversationMessageSearchResult[]>;
 }

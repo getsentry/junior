@@ -9,11 +9,7 @@
  * assistant message through the delivery port; the result carries diagnostics,
  * artifacts, and transcript state for destination-owned completion.
  */
-import {
-  Agent,
-  type AgentLoopTurnUpdate,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -30,47 +26,43 @@ import {
   withLogContext,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import {
-  findSkillByName,
-  parseSkillInvocation,
-  type Skill,
-} from "@/chat/skills";
+import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
-  loadLastModelProfile,
-  loadTurnRoute,
-  openConversationProjection,
+  loadConversationSkillNames,
   recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
-  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
-  agentInstructionProvenance,
   contextProvenance,
   instructionActors,
   instructionProvenanceFor,
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,
   credentialUserSubjectId,
 } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
-  completeObject,
-  completeText,
   getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
+import {
+  readAgentHistory,
+  type AgentRequestStreamFn,
+  withAgentRequest,
+  writeAgentHistory,
+} from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
-import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -78,32 +70,36 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import {
-  FINISH_AUTOMATION_RUN_TOOL_NAME,
-  readAutomationResult,
-  remindMissingAutomationResult,
-} from "@/chat/automation-result";
+  isAnswerToolName,
+  readTurnAnswer,
+  remindMissingAnswer,
+} from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
-  findProviderError,
+  ProviderError,
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
-import { nextProviderRetry } from "@/chat/services/provider-retry";
+import { findInErrorChain } from "@/chat/sandbox/errors";
+import { isRetryableSandboxFailure } from "@/chat/sandbox/provider";
+import { captureTurnFailure } from "@/chat/services/turn-failure-response";
+import {
+  nextProviderRetry,
+  nextRefusalFallback,
+} from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
-import {
-  configuredTurnRoute,
-  selectTurnRoute,
-  toPiReasoningLevel,
-  type TurnRoute,
-} from "@/chat/services/turn-router";
+import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import {
   addAgentTurnUsage,
   agentTurnCostUsd,
@@ -116,13 +112,13 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  TURN_LIMIT_DISABLED_REASON,
+  GATED_TURN_LIMIT_WRAP_UP_MESSAGE,
+  TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
   createTurnLimitGate,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
-import { disabledToolMessage } from "@/chat/tools/definition";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -131,58 +127,65 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationKind } from "@/chat/conversations/store";
+import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
   actorFromRun,
-  isAgentRunFeatureDisabled,
   surfaceFromRun,
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { CHILD_AGENT_USER_INTENT } from "@/chat/tool-support/action-review";
+import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import {
+  discoverRunSkills,
+  restoreActiveSkill,
+  skillInvocationText,
+} from "@/chat/agent/skills";
+import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
+  loadPromptTurnContext,
 } from "@/chat/agent/prompt";
-import { wireAgentTools } from "@/chat/agent/tools";
+import {
+  createPromptHookContext,
+  createRunSandbox,
+  wireAgentTools,
+} from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
+import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
+import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
-  modelIdForProfile,
-  ModelProfileNotConfiguredError,
-  profileConfig,
-  type ModelProfile,
-} from "@/chat/model-profile";
-import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
+  lastRequestInputSize,
+  requestBackgroundCompaction,
+} from "@/chat/services/background-compaction";
+import { createNextInputTracker } from "@/chat/services/context-compaction-telemetry";
 import {
-  applyHandoff,
-  commitHandoff,
-  exclusiveToolName,
-  handoffControl,
-  toolsForHandoffProfile,
-  type PendingHandoff,
-} from "@/chat/agent/handoff";
-import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+  buildAgentModelRequest,
+  CONTEXT_COMPACTION_PROMPT_NAME,
+  requestContextSummary,
+} from "@/chat/agent/context-summary";
+import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
+import {
+  createToolBatchStats,
+  recordToolBatch,
+  toolBatchSpanAttributes,
+} from "@/chat/agent/tool-batch";
+import { mapBounded } from "@/chat/fan-out";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-/** Read visibility from the Conversation, or from its nearest parent with one. */
-async function readRunConversationVisibility(
-  conversationId: string,
-): Promise<ConversationPrivacy | undefined> {
-  const conversationStore = getConversationStore();
-  let conversation = await conversationStore.get({ conversationId });
-  while (!conversation?.visibility && conversation?.parentConversationId) {
-    conversation = await conversationStore.get({
-      conversationId: conversation.parentConversationId,
-    });
-  }
-  return conversation?.visibility;
-}
+// Past a turn limit, a gated Turn gets this many failed answer calls before
+// its run ends without an answer.
+const MAX_FAILED_ANSWER_CALLS_PAST_LIMIT = 2;
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -237,12 +240,23 @@ function waitForAbortSettlement(
  */
 export async function executeAgentRun(
   run: AgentRun,
-  streamFn?: StreamFn,
+  streamFn?: AgentRequestStreamFn,
 ): Promise<AgentRunOutcome> {
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const visibility = await readRunConversationVisibility(run.conversationId);
+  // A child reads visibility from its own Destination row, the same as a root.
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  // Spawning a child writes its row first. Only a root can run before its
+  // row exists.
+  if (!conversation && run.parentConversationId) {
+    throw new Error(
+      `Child Conversation ${run.conversationId} has no Conversation row`,
+    );
+  }
+  const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
@@ -273,32 +287,62 @@ export async function executeAgentRun(
     assistantUserName: botConfig.userName,
   };
   return withLogContext(runLogContext, () =>
-    runWithConversationPrivacy(conversationPrivacy, () =>
-      executeAgentRunInPrivacyContext(
-        run,
-        conversationPrivacy,
-        runLogContext,
-        streamFn,
+    runWithConversationPrivacy(conversationPrivacy, async () =>
+      reportFailedRun(
+        await executeAgentRunInPrivacyContext(
+          run,
+          // TODO(dcramer): Remove the `root` case one release after #3060
+          // step 3. An Automation run in progress at deploy is stored as
+          // `root`.
+          run.dispatch?.declaresResult
+            ? "automation"
+            : (conversation?.kind ?? "root"),
+          conversationPrivacy,
+          runLogContext,
+          streamFn,
+        ),
+        run.signal,
       ),
     ),
   );
 }
 
+// The agent run owns the report of its own failure: callers only read
+// `diagnostics.eventId`. A run that its caller stopped, such as when a person
+// stops the Turn, is not a failure to report; the caller owns that outcome.
+function reportFailedRun(
+  outcome: AgentRunOutcome,
+  signal: AbortSignal | undefined,
+): AgentRunOutcome {
+  if (
+    outcome.status !== "completed" ||
+    outcome.result.diagnostics.outcome === "success" ||
+    signal?.aborted
+  ) {
+    return outcome;
+  }
+  return {
+    ...outcome,
+    result: captureTurnFailure(outcome.result, logException),
+  };
+}
+
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
+  conversationKind: ConversationKind,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
-  streamFn: StreamFn | undefined,
+  streamFn: AgentRequestStreamFn | undefined,
 ): Promise<AgentRunOutcome> {
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const runId = run.runId;
-  const requireAutomationResult = run.dispatch?.declaresResult === true;
+  const behavior = turnBehavior({
+    kind: conversationKind,
+    personInput: isPersonInput(run.source.kind),
+  });
   const input = {
     actor: run.instruction.actor,
-    includeConversationContextWithPiMessages:
-      run.instruction.includeConversationContextWithHistory,
     messageText: run.instruction.text,
     userAttachments: run.instruction.attachments
       ? [...run.instruction.attachments]
@@ -367,7 +411,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run);
+  assertRunConsistency(run, conversationKind);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
@@ -386,6 +430,9 @@ async function executeAgentRunInPrivacyContext(
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let closeTools: (() => Promise<void>) | undefined;
+  // Pre-agent work that runs beside routing. The run waits for it to settle,
+  // so a routing or wiring failure does not leave it running.
+  let preAgentSetup: Promise<unknown> | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -396,23 +443,14 @@ async function executeAgentRunInPrivacyContext(
   const toolCalls: string[] = [];
   let shouldTrace = false;
   let getSandboxRef: (() => typeof state.sandboxRef) | undefined;
-  const configuredReasoningLevel =
-    policy.reasoningLevel ?? botConfig.reasoningLevel;
-  let turnRoute: TurnRoute | undefined = configuredReasoningLevel
-    ? configuredTurnRoute(
-        botConfig.defaultProfile,
-        configuredReasoningLevel,
-        policy.reasoningLevel ? "agent_config" : "default",
-      )
-    : undefined;
-  let activeModelProfile: ModelProfile = botConfig.defaultProfile;
-  let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
+  const reasoningLevel = policy.reasoningLevel ?? botConfig.reasoningLevel;
+  // A refusal fallback replaces this for the rest of the run slice, so
+  // compaction limits and input support follow the model that runs.
+  let activeModelId = botConfig.modelId;
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
   const slackSource = runSource.kind === "slack" ? runSource : undefined;
-  const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
-  const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
   const credentialUserId = run.credentialContext
     ? credentialUserSubjectId(run.credentialContext)
@@ -432,18 +470,26 @@ async function executeAgentRunInPrivacyContext(
     }
     connectedMcpProviders.add(provider);
   };
+  // A worker can stall past its Lease and come back after another worker
+  // took the Conversation. Check the Lease right before each side effect.
+  const requireConversationLease = async (
+    action: "reply" | "save",
+  ): Promise<void> => {
+    if (durability.checkIn && !(await durability.checkIn())) {
+      throw new TurnInputCommitLostError(
+        `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
+      );
+    }
+  };
   const recordActiveMcpProviders = async () => {
     if (!mcpToolManager) {
       return;
     }
-    for (const provider of mcpToolManager.getActiveProviders()) {
-      await recordConnectedMcpProvider(provider);
-    }
+    await mapBounded(mcpToolManager.getActiveProviders(), (provider) =>
+      recordConnectedMcpProvider(provider),
+    );
   };
   try {
-    const projection = await openConversationProjection({ conversationId });
-    activeModelProfile = run.modelProfile ?? projection.modelProfile;
-    activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
@@ -465,12 +511,16 @@ async function executeAgentRunInPrivacyContext(
         "messaging.message.id": slackSource?.messageTs ?? "",
       });
     }
-    const skillInvocation = parseSkillInvocation(userInput, availableSkills);
-    const invokedSkill = skillInvocation
-      ? findSkillByName(skillInvocation.skillName, availableSkills)
-      : null;
-    const activeSkills: Skill[] = [];
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    // An Automation in skill mode names its skill in the dispatch, so its
+    // text is not parsed for one.
+    const dispatchSkill = run.dispatch?.skill;
+    const invokedSkillNames = dispatchSkill
+      ? [dispatchSkill]
+      : parseSkillInvocations(skillInvocationText(run, actor), availableSkills);
+    if (dispatchSkill && !findSkillByName(dispatchSkill, availableSkills)) {
+      throw new Error(missingAutomationSkillReason(dispatchSkill));
+    }
+    const skillSandbox = new SkillSandbox(availableSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
     const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
@@ -482,12 +532,18 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    // A child agent's input is a parent agent task or another agent's
-    // output. An agent wrote it, so it has no Actor.
-    const childAgent = Boolean(run.parentConversationId);
-    const turnStartProvenance = childAgent
-      ? agentInstructionProvenance
-      : instructionProvenanceFor(actor);
+    const turnStartProvenance =
+      run.instruction.provenance ?? instructionProvenanceFor(actor);
+    // Whose instructions this Run follows: its Actor, or nothing when an
+    // agent wrote them. Only the requester's instructions are user intent.
+    const requester = turnStartProvenance.actor;
+    const isRequesterInstruction = (
+      provenance: ConversationMessageProvenance | undefined,
+    ): boolean =>
+      provenance?.authority === "instruction" &&
+      (provenance.actor
+        ? sameActorIdentity(provenance.actor, requester)
+        : !requester);
     const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
       ...(existingSessionRecord?.actors ?? []).map(instructionProvenanceFor),
@@ -508,11 +564,7 @@ async function executeAgentRunInPrivacyContext(
         : [];
     const guardianIntentParts =
       currentTurnMessages.flatMap((message, index) => {
-        const provenance = currentTurnProvenance[index];
-        if (
-          provenance?.authority !== "instruction" ||
-          !sameActorIdentity(provenance.actor, actor)
-        ) {
+        if (!isRequesterInstruction(currentTurnProvenance[index])) {
           return [];
         }
         const text = getUserMessageInstructionText(message);
@@ -522,12 +574,16 @@ async function executeAgentRunInPrivacyContext(
       // Bare @mentions are normal Slack "continue this thread" nudges. After
       // bot-mention strip the instruction is empty; keep a non-blank marker so
       // action review can still run against thread evidence.
-      guardianIntentParts.push(userInput.trim() || "[empty]");
+      // An input that is not an instruction, such as a nested result, is
+      // evidence only.
+      const text = isRequesterInstruction(turnStartProvenance)
+        ? userInput.trim()
+        : "";
+      guardianIntentParts.push(
+        readParentAgentTask(text) ?? (text || "[empty]"),
+      );
     }
-    // No person writes in a child, so no text of the child, on any slice, is
-    // user intent. Action review reads the root Conversation instead.
-    const currentUserIntent = (): string =>
-      childAgent ? CHILD_AGENT_USER_INTENT : guardianIntentParts.join("\n\n");
+    const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       ...(routing.credentialContext &&
@@ -594,144 +650,82 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
-    // A new turn starts with no active skill. A resumed turn recovers only its
-    // last successful loadSkill result, never skill state from older turns.
-    const explicitSkill = await loadRunSkill({
-      activeSkills,
+    // A manual-only skill that `loadSkill` loaded earlier in this
+    // Conversation stays loadable, and so do the skills that it references.
+    const conversationSkillNames =
+      await loadConversationSkillNames(conversationId);
+
+    // A new turn starts with no active skill. A resumed turn recovers the
+    // skill loaded last in this Turn, never skill state from older turns.
+    // Invoked skills wait for the model to call `loadSkill`.
+    await restoreActiveSkill({
       currentTurnMessages,
-      invokedSkill,
       resumed: resumedFromSessionRecord,
       skillSandbox,
     });
     // ── Prompt input ─────────────────────────────────────────────────
-    const { contextContentParts, routerBlocks, userContentParts } =
-      buildPromptInput({
-        instruction: run.instruction,
-        history: run.history,
-      });
+    const { contextContentParts, userContentParts } = buildPromptInput({
+      instruction: run.instruction,
+    });
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    const handoffEnabled = !isAgentRunFeatureDisabled(
-      policy.disabledFeatures,
-      "handoff",
-    );
-    // One profile with a fixed reasoning level leaves the router no choice.
-    const routeIsFixed =
-      Object.keys(botConfig.profiles).length === 1 &&
-      (profileConfig(botConfig, activeModelProfile).reasoningLevel ??
-        configuredReasoningLevel) !== undefined;
-    const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
-    if (storedTurnRoute) {
-      const replacementOverridesRoute =
-        projection.replacementSeq !== undefined &&
-        projection.replacementSeq > storedTurnRoute.seq &&
-        activeModelProfile !== storedTurnRoute.modelProfile;
-      if (replacementOverridesRoute) {
-        const activeProfileConfig = profileConfig(
-          botConfig,
-          activeModelProfile,
-        );
-        // A replacement committed after routing is authority. This includes
-        // compaction after handoff because handoff does not rewrite the route.
-        turnRoute = {
-          profile: activeModelProfile,
-          reasoningLevel:
-            activeProfileConfig.reasoningLevel ??
-            storedTurnRoute.reasoningLevel,
-          reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
-        };
-      } else {
-        turnRoute = {
-          profile: storedTurnRoute.modelProfile,
-          reasoningLevel: storedTurnRoute.reasoningLevel,
-          ...(storedTurnRoute.confidence !== undefined
-            ? { confidence: storedTurnRoute.confidence }
-            : undefined),
-          reason: `persisted:${storedTurnRoute.source}`,
-          source: storedTurnRoute.source,
-        };
-      }
-    } else if (handoffEnabled && !routeIsFixed) {
-      // Route each new turn from the last Turn's profile. The router can keep
-      // unfinished work there or move a new request to another profile.
-      const lastProfile = await loadLastModelProfile({ conversationId });
-      turnRoute = await selectTurnRoute({
-        completeObject,
-        conversationContext: input.conversationContext,
-        context: {
-          threadId: conversationId,
-          channelId: slackChannelId,
-          actorId: slackActor?.userId,
-          runId,
-        },
-        currentProfile:
-          lastProfile && Object.hasOwn(botConfig.profiles, lastProfile)
-            ? lastProfile
-            : botConfig.defaultProfile,
-        currentTurnBlocks: routerBlocks,
-        fastModelId: botConfig.fastModelId,
-        messageText: userInput,
-        profiles: botConfig.profiles,
-      });
-      const routedProfileReasoningLevel = profileConfig(
-        botConfig,
-        turnRoute.profile,
-      ).reasoningLevel;
-      if (configuredReasoningLevel && !routedProfileReasoningLevel) {
-        turnRoute = {
-          ...turnRoute,
-          reasoningLevel: configuredReasoningLevel,
-          reason: `configured:${policy.reasoningLevel ? "agent_config" : "default"}:${turnRoute.reason}`,
-        };
-      }
-    } else {
-      const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
-      const reasoningSource = policy.reasoningLevel
-        ? "agent_config"
-        : activeProfileConfig.reasoningLevel
-          ? "profile"
-          : "default";
-      turnRoute = {
-        profile: activeModelProfile,
-        reasoningLevel:
-          policy.reasoningLevel ??
-          activeProfileConfig.reasoningLevel ??
-          botConfig.reasoningLevel ??
-          "medium",
-        reason: `fixed:${reasoningSource}`,
-        source: "configured",
-      };
-    }
-
-    const routedModelProfile = turnRoute.profile;
-    const routedModelId = modelIdForProfile(botConfig, routedModelProfile);
-    if (!storedTurnRoute) {
-      await recordTurnRoute({
-        conversationId,
-        turnId,
-        modelProfile: routedModelProfile,
-        modelId: routedModelId,
-        ...(turnRoute.costUsd !== undefined
-          ? { costUsd: turnRoute.costUsd }
-          : undefined),
-        reasoningLevel: turnRoute.reasoningLevel,
-        ...(turnRoute.confidence !== undefined
-          ? { confidence: turnRoute.confidence }
-          : undefined),
-        source: turnRoute.source ?? "configured",
-      });
-    }
-    activeModelProfile = routedModelProfile;
-    activeModelId = routedModelId;
+    // ── Pre-agent setup ──────────────────────────────────────────────
+    // Sandbox setup and prompt Turn context such as memory recall do not
+    // read one another's results, so they run at the same time.
+    const runSandbox = await createRunSandbox({
+      availableSkills,
+      configurationValues,
+      currentActor: actor,
+      currentActors: runActors,
+      durability,
+      onSandboxRefChanged: (sandboxRef) => {
+        lastKnownSandboxRef = sandboxRef;
+      },
+      run,
+      skillSandbox,
+      spanContext,
+      state,
+    });
+    closeTools = async () => runSandbox.agentSandbox.close();
+    getSandboxRef = () => runSandbox.agentSandbox.sandboxRef();
+    const repositoryInstructionsPromise = runSandbox.agentSandbox.sandboxRef()
+      ? runSandbox.agentSandbox.captureRepositoryInstructions()
+      : Promise.resolve(undefined);
+    const promptTurnContextPromise = loadPromptTurnContext({
+      context: createPromptHookContext({ actor, run }),
+      currentActor: actor,
+      existingSessionPiMessages: existingSessionRecord?.piMessages,
+      existingTurnStartMessageIndex:
+        existingSessionRecord?.turnStartMessageIndex,
+      resumedFromSessionRecord,
+      turnId,
+      userContentParts,
+    });
+    preAgentSetup = Promise.allSettled([
+      repositoryInstructionsPromise,
+      promptTurnContextPromise,
+    ]);
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // A gated Turn's answer calls past a limit, and how many of them failed.
+    const answerCallsPastLimit = new Set<string>();
+    let failedAnswerCallsPastLimit = 0;
+    // Tool calls that Junior ended the run with. Pi stops after a batch only
+    // when every call in it is one of these.
+    const terminatingToolCallIds = new Set<string>();
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
     const currentAgentMessages = (): PiMessage[] =>
-      agent ? [...agent.state.messages] : [];
+      agent ? readAgentHistory(agent.state.messages) : [];
+    const setAgentHistory = (messages: readonly PiMessage[]): void => {
+      agent!.state.messages = writeAgentHistory(
+        agent!.state.messages,
+        messages,
+      );
+    };
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],
     ): AgentTurnUsage | undefined => {
@@ -742,65 +736,8 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    // baseInstructions is filled after prompt assembly; applyHandoff closes over it.
+    // Prompt assembly fills this; compaction updates close over it.
     let baseInstructions = "";
-    let pendingHandoff: PendingHandoff | undefined;
-    const handoffMetadata = {
-      threadId: conversationId,
-      channelId: slackChannelId,
-      actorId: slackActor?.userId,
-      runId,
-    };
-    const scheduleHandoff = async (args: {
-      profile: ModelProfile;
-      runtimeContextSourceMessages?: PiMessage[];
-      signal?: AbortSignal;
-      sourceMessages: PiMessage[];
-      triggeringToolCallId?: string;
-    }) => {
-      const pending = await commitHandoff({
-        activeModelProfile,
-        beforeMessageCount: runResume.beforeMessageCount,
-        conversationContext: input.conversationContext,
-        conversationId,
-        metadata: handoffMetadata,
-        onStatus: observers.onStatus,
-        profile: args.profile,
-        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
-        signal: args.signal,
-        sourceMessages: args.sourceMessages,
-        triggeringToolCallId: args.triggeringToolCallId,
-        turnRoute: turnRoute!,
-      });
-      if (!pending) {
-        return;
-      }
-      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, pending.phaseUsage);
-      pendingHandoff = pending;
-      activeModelProfile = pending.modelProfile;
-      activeModelId = pending.modelId;
-      turnRoute = pending.turnRoute;
-    };
-    const handoffExecute = async (
-      profile: ModelProfile,
-      options: { signal?: AbortSignal; toolCallId: string },
-    ) =>
-      await scheduleHandoff({
-        profile,
-        signal: options.signal,
-        sourceMessages: [...agent!.state.messages],
-        triggeringToolCallId: options.toolCallId,
-      });
-    const requestHandoff = handoffControl({
-      activeProfile: activeModelProfile,
-      enabled: handoffEnabled,
-      execute: handoffExecute,
-    });
-    const spawnAgentProfiles = {
-      activeProfile: () => activeModelProfile,
-      defaultProfile: botConfig.defaultProfile,
-      profiles: botConfig.profiles,
-    };
 
     setTags({
       ...runLogContext,
@@ -810,9 +747,8 @@ async function executeAgentRunInPrivacyContext(
     // ── Tool wiring ──────────────────────────────────────────────────
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
-      activeSkills,
+      behavior,
       currentActor: actor,
-      currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,
@@ -823,21 +759,18 @@ async function executeAgentRunInPrivacyContext(
       durability,
       authorization,
       generatedFiles,
-      invokedSkill,
+      invokedSkillNames,
+      conversationSkillNames,
       onEvent: run.onEvent,
       onFatalToolError(error) {
         pendingPiHookError = error;
         agent?.abort();
       },
-      onSandboxRefChanged: (sandboxRef) => {
-        lastKnownSandboxRef = sandboxRef;
-      },
       preAgentPromptMessages,
       recordConnectedMcpProvider,
-      requestHandoff,
-      spawnAgentProfiles,
       resume: runResume,
       run,
+      sandbox: runSandbox,
       skillSandbox,
       spanContext,
       state,
@@ -849,10 +782,11 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
-    getSandboxRef = () => wiring.getSandboxRef();
-    const initialRepositoryInstructions = wiring.getSandboxRef()
-      ? await wiring.captureRepositoryInstructions()
-      : undefined;
+    const [initialRepositoryInstructions, promptTurnContext] =
+      await Promise.all([
+        repositoryInstructionsPromise,
+        promptTurnContextPromise,
+      ]);
     const recordAgentsTransition = async (
       instructions: typeof initialRepositoryInstructions,
     ) => {
@@ -872,65 +806,40 @@ async function executeAgentRunInPrivacyContext(
       await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
-      if (!pendingHandoff) {
-        return undefined;
-      }
-      const pending = pendingHandoff;
-      pendingHandoff = undefined;
-      return applyHandoff({
-        agent: agent!,
-        baseInstructions,
-        pending,
-        resume: runResume,
-        tools: toolsForHandoffProfile({
-          activeProfile: pending.modelProfile,
-          agentTools: wiring.agentTools,
-          enabled: handoffEnabled,
-          execute: handoffExecute,
-        }),
-      });
-    };
     // ── Prompt context ───────────────────────────────────────────────
     const {
       baseInstructions: assembledBaseInstructions,
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
+      platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
+      sectionsMessage,
       shouldPromptAgent,
       turnContexts,
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
+      promptMode: behavior.promptMode,
+      sender: behavior.sender,
       currentActor: actor,
       availableSkills,
       configurationValues,
-      contextContentParts: [
-        ...(initialRepositoryInstructions
-          ? [
-              {
-                type: "text" as const,
-                text: renderAgentsInstructions(initialRepositoryInstructions),
-              },
-            ]
-          : []),
-        ...contextContentParts,
-      ],
+      contextContentParts,
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      explicitSkill,
       priorPiMessages,
+      repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
       run,
       spanContext,
-      turnId,
       disabledTools: wiring.disabledTools,
+      scriptTools: wiring.scriptTools,
       toolGuidance: wiring.toolGuidance,
-      toolRuntimeContext: wiring.toolRuntimeContext,
+      turnContext: promptTurnContext,
       userContentParts,
     });
     baseInstructions = assembledBaseInstructions;
@@ -942,18 +851,29 @@ async function executeAgentRunInPrivacyContext(
         await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
-      initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
+      promptHistoryMessages,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
       setMessages(messages) {
-        agent!.state.messages = messages;
+        setAgentHistory(messages);
       },
       shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
-    /** Commit and adopt an active capacity replacement before another model call. */
+    // The same stream as the agent loop, so the summary request reaches the
+    // provider like an agent call. Only its span gets the prompt name.
+    const summaryStreamFn = createTracedStreamFn({
+      conversationPrivacy,
+      promptName: CONTEXT_COMPACTION_PROMPT_NAME,
+      ...(streamFn ? { base: streamFn } : undefined),
+    });
+    const nextInputAfterReplacement = createNextInputTracker();
+    /**
+     * Commit and adopt an active capacity replacement. True when it replaced
+     * history.
+     */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
       hookSignal?: AbortSignal,
@@ -963,23 +883,25 @@ async function executeAgentRunInPrivacyContext(
       }>,
       clearSteeringQueueOnCommit = false,
       pairPendingRuntimeContext = false,
-    ): Promise<AgentLoopTurnUpdate | undefined> => {
-      const compaction = await compactActiveContextIfNeeded(
+      mode: "blocking" | "active" = "active",
+    ): Promise<boolean> => {
+      // A ready background summary replaces history without a model call.
+      const compaction = await compactWithPreparedSummary(
         {
-          conversationContext: input.conversationContext,
           conversationId,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackChannelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
           modelId: activeModelId,
-          modelProfile: activeModelProfile,
           onCompactionStart: () =>
             observers.onStatus?.({ text: "Compacting context" }),
           pendingMessages,
+          mode,
           piMessages: messages,
+          // Not `agent.state.systemPrompt`: it also folds in saved system
+          // messages, which the history estimate counts.
+          requestOverheadTokens: estimateRequestOverheadTokens(
+            baseInstructions,
+            agent!.state.tools,
+            activeModelId,
+          ),
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
                 runtimeContextMessages: [
@@ -989,13 +911,20 @@ async function executeAgentRunInPrivacyContext(
               }
             : undefined),
           signal: hookSignal,
+          turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
-        {
-          completeText: (args) => completeText(args),
-        },
+        async (summaryMessages, summarySignal) =>
+          await requestContextSummary(
+            await buildAgentModelRequest(
+              agent!,
+              summaryMessages,
+              summarySignal,
+            ),
+            summaryStreamFn,
+          ),
       );
       if (!compaction.compacted || !compaction.piMessages) {
-        return undefined;
+        return false;
       }
 
       priorPhaseUsage = addAgentTurnUsage(
@@ -1003,22 +932,41 @@ async function executeAgentRunInPrivacyContext(
         usageSinceCurrentBoundary(messages),
       );
       const replacement = [...compaction.piMessages];
-      await runResume.requireDurableInputCheckpoint(replacement);
-      agent!.state.messages = replacement;
-      runResume.setBeforeMessageCount(replacement.length);
+      // The whole replacement belongs to this Turn. Set the Turn start first,
+      // so the checkpoint does not keep an index into the old history.
+      const previousTurnStartMessageIndex = runResume.turnStartMessageIndex;
       runResume.setTurnStartMessageIndex(0);
+      try {
+        await runResume.requireDurableInputCheckpoint(replacement);
+      } catch (error) {
+        runResume.setTurnStartMessageIndex(previousTurnStartMessageIndex);
+        throw error;
+      }
+      setAgentHistory(replacement);
+      nextInputAfterReplacement.replaced(
+        mode,
+        getAgentContextCompactionTriggerTokens(activeModelId),
+      );
+      runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
         agent!.clearSteeringQueue();
       }
-      return {
-        context: {
-          systemPrompt: baseInstructions,
-          messages: replacement,
-          tools: agent!.state.tools,
-        },
-      };
+      return true;
     };
+    /**
+     * Request a background summary when the model call that just ended was at
+     * or above the mark. It runs after each model call, so a long Turn gets a
+     * summary before it reaches the compaction threshold.
+     */
+    const requestBackgroundCompactionAfterModelCall = async (): Promise<void> =>
+      await requestBackgroundCompaction({
+        agent: agent!,
+        conversationId,
+        conversationPrivacy,
+        modelId: activeModelId,
+        queue: run.environment?.backgroundCompactionQueue,
+      });
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
@@ -1032,6 +980,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
+        await requireConversationLease("reply");
         await delivery(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
@@ -1063,19 +1012,16 @@ async function executeAgentRunInPrivacyContext(
             return;
           }
           await runResume.requireDurableInputCheckpoint(
-            [...agent!.state.messages, ...piMessages],
+            [...currentAgentMessages(), ...piMessages],
             messages.map((message) => message.provenance),
           );
           committedInstructionProvenance.push(
             ...messages.map((message) => message.provenance),
           );
           for (const message of messages) {
-            if (
-              message.provenance.authority === "instruction" &&
-              sameActorIdentity(message.provenance.actor, actor) &&
-              message.text.trim()
-            ) {
-              guardianIntentParts.push(message.text.trim());
+            const text = message.text.trim();
+            if (isRequesterInstruction(message.provenance) && text) {
+              guardianIntentParts.push(readParentAgentTask(text) ?? text);
             }
           }
           for (const message of piMessages) {
@@ -1106,21 +1052,146 @@ async function executeAgentRunInPrivacyContext(
       return acceptedMessages;
     };
 
-    // Pi converts prepareNextTurn exceptions into error turns instead of
-    // rejecting. Preserve Junior's yield so runAgentStep can restore it after
-    // the Pi run settles without leaking Pi mechanics into the resume API.
+    // Pi converts listener exceptions into error turns
+    // instead of rejecting. Preserve Junior's yield so runAgentStep can
+    // restore it after the Pi run settles without leaking Pi mechanics into
+    // the resume API.
+    // A Task inherits the person's actor, but only its parent agent sends it
+    // Turns. Keep its gaps out of the histograms of people.
+    const cacheWarming = createCacheWarmingRecorder(
+      conversationId,
+      {
+        userActor: isUserActor(actor) && conversationKind !== "task",
+        idleNeedsPendingWork: behavior.idleNeedsPendingWork,
+      },
+      { platform: promptPlatform, mode: behavior.promptMode },
+    );
+    // Batch counts go on the `gen_ai.invoke_agent` span, because production
+    // drops info logs.
+    const toolBatchStats = createToolBatchStats();
+    let setAgentSpanAttributes: SetSpanAttributes | undefined;
+    // The `turn_end` listener changed `agent.state.messages`, which Pi does
+    // not read. `prepareNextTurn` gives them to the next model call.
+    let messagesChanged = false;
+    /**
+     * Do Junior's work after a model call and its tool batch, before Pi polls
+     * steering. Pi awaits this listener after every model call. Pi turns its
+     * errors into error turns, so the caller keeps them for the step.
+     */
+    const finishModelStep = async (
+      event: Extract<AgentEvent, { type: "turn_end" }>,
+      runSignal: AbortSignal | undefined,
+    ): Promise<void> => {
+      if (event.toolResults.length > 0) {
+        cacheWarming.toolsReturned();
+        await requireConversationLease("save");
+        await runResume.persistSafeBoundary(currentAgentMessages());
+      }
+      // Pi ends the run after a failed or aborted model call, and the turn
+      // that reports a run failure is the last event. After an abort, such
+      // as an auth pause, no model call follows. Sandbox work here fails on
+      // the aborted signal and hides why the run stopped. Steering stays
+      // queued.
+      if (
+        runSignal?.aborted ||
+        (isAssistantMessage(event.message) &&
+          (event.message.stopReason === "error" ||
+            event.message.stopReason === "aborted"))
+      ) {
+        return;
+      }
+      // A stop of this Conversation ends the Turn at the next step, also
+      // when no stop request reached this worker.
+      await durability.checkStop?.();
+      signal?.throwIfAborted();
+      // The span shows the wait between `gen_ai.chat` spans.
+      const boundary = await withSpan(
+        "agent.step.prepare",
+        "agent.step.prepare",
+        {},
+        async () => {
+          // Pi appends steering after its context, so add AGENTS.md context
+          // first to commit the same message order.
+          const contextUpdated =
+            await repositoryInstructionsContext.applyUpdate(
+              currentAgentMessages(),
+            );
+          const pendingMessages = await drainSteeringMessages();
+          // Another model call follows only after steering or a tool result
+          // that did not end the run. Pi stops after a batch only when every
+          // call in it is one of `terminatingToolCallIds`.
+          const runEnded =
+            pendingMessages.length === 0 &&
+            event.toolResults.every((result) =>
+              terminatingToolCallIds.has(result.toolCallId),
+            );
+          // A background request does not change history, so it runs also
+          // after the last model call.
+          if (runEnded) {
+            await requestBackgroundCompactionAfterModelCall();
+          }
+          return { contextUpdated, pendingMessages, runEnded };
+        },
+      );
+      messagesChanged = boundary.contextUpdated;
+      // After the final response or a batch that ended the run, such as a
+      // `noReply` call, no step follows. A yield would resume the run, and the
+      // next slice would call the model again and post its text. Compaction
+      // would drop the answer and start a retry.
+      if (boundary.runEnded) {
+        return;
+      }
+      // A yield is normal control flow, so it stays out of the span. It
+      // comes before active compaction, so a resumed slice compacts at its
+      // start.
+      const yieldError = runResume.prepareYieldIfDue(currentAgentMessages());
+      if (yieldError) {
+        throw yieldError;
+      }
+      // Pi polls steering after this listener. The replacement ends with the
+      // pending steering, so compacting here takes it out of Pi's queue.
+      // After a batch that ends the run, Pi then stops, and the empty-output
+      // retry answers that steering. A separate path for a slice that already
+      // used the retry is left out until that case is shown to happen.
+      const compacted = await applyActiveContextCompaction(
+        currentAgentMessages(),
+        runSignal,
+        boundary.pendingMessages,
+        true,
+      );
+      if (compacted) {
+        messagesChanged = true;
+        return;
+      }
+      // After a replacement, the usage of the last model call counts the old
+      // history. The next model call reports the new size.
+      await requestBackgroundCompactionAfterModelCall();
+    };
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
-      streamFn: createTracedStreamFn({
-        conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : undefined),
-      }),
+      // One AI Gateway session per Conversation, not a prompt fingerprint.
+      sessionId: conversationId,
+      streamFn: withAgentRequest(
+        createTracedStreamFn({
+          conversationPrivacy,
+          base: cacheWarming.wrap(streamFn),
+          endAttributes: (message) =>
+            nextInputAfterReplacement.attributes(
+              lastRequestInputSize([message]),
+            ),
+        }),
+        { systemPrompt: baseInstructions, tools: wiring.agentTools },
+      ),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage, toolCall }) => {
+      beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
+        if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
+          recordToolBatch(toolBatchStats, toolCalls, context.tools ?? []);
+          setAgentSpanAttributes?.(toolBatchSpanAttributes(toolBatchStats));
+        }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
           return {
@@ -1142,26 +1213,30 @@ async function executeAgentRunInPrivacyContext(
             ),
           ) ?? 0;
         const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
-        const decision = turnLimitGate({
-          assistantMessage,
-          overLimit:
-            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
-        });
+        const overLimit =
+          overBudget || toolCallCount > botConfig.maxToolCallsPerTurn;
+        // A gated Turn must answer, so its answer tool runs past a limit.
+        if (behavior.gated && isAnswerToolName(toolCall.name)) {
+          if (overLimit || runResume.turnLimitWrappedUp) {
+            answerCallsPastLimit.add(toolCall.id);
+          }
+          return undefined;
+        }
+        const decision = turnLimitGate({ assistantMessage, overLimit });
         if (decision === "allow") {
           return undefined;
         }
         if (decision === "wrap_up") {
           runResume.markTurnLimitWrappedUp();
-          logWarn("agent.turn.limit.wrap_up", {
+          logWarn("agent.turn.limit.wrapped_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
           return {
             block: true,
-            reason: disabledToolMessage(
-              toolCall.name,
-              TURN_LIMIT_DISABLED_REASON,
-            ),
+            reason: behavior.gated
+              ? GATED_TURN_LIMIT_WRAP_UP_MESSAGE
+              : TURN_LIMIT_WRAP_UP_MESSAGE,
           };
         }
         // The tool-call total only grows, so a stop under it came from spend.
@@ -1170,6 +1245,7 @@ async function executeAgentRunInPrivacyContext(
             ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
             : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
         pendingPiHookError ??= limitError;
+        terminatingToolCallIds.add(toolCall.id);
         return {
           block: true,
           reason: limitError.message,
@@ -1194,151 +1270,148 @@ async function executeAgentRunInPrivacyContext(
           timedOutResult || projectedResult !== result
             ? projectedResult
             : undefined;
-        // A declared Automation result or blocked report is the last step of
-        // the run.
-        if (
-          (toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME ||
-            toolCall.name === REPORT_BLOCKED_TOOL_NAME) &&
-          !isError &&
-          !override
-        ) {
+        // A reply, blocked report, or no-reply is the last step of the run.
+        if (isAnswerToolName(toolCall.name) && !isError && !override) {
+          cacheWarming.answerToolEnded(toolCall.name);
+          terminatingToolCallIds.add(toolCall.id);
           return { terminate: true };
+        }
+        // Past a limit, the second failed answer call ends the run without
+        // an answer.
+        if (
+          isError &&
+          answerCallsPastLimit.has(toolCall.id) &&
+          ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+        ) {
+          terminatingToolCallIds.add(toolCall.id);
+          return { ...override, terminate: true };
         }
         return override;
       },
-      prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
-        try {
-          const handoffUpdate = applyPendingHandoff();
-          // Pi runs this hook after an abort, such as an auth pause, but no
-          // model call follows. Sandbox work here fails on the aborted signal
-          // and hides why the run stopped. Steering stays queued.
-          if (hookSignal?.aborted) {
-            return handoffUpdate;
-          }
-          // Pi appends steering after this hook returns, so add AGENTS.md
-          // context first to commit the same message order.
-          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
-            handoffUpdate,
-            nextTurn.context,
-          );
-          const pendingMessages = await drainSteeringMessages();
-          const capacityUpdate = await applyActiveContextCompaction(
-            contextUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
-            hookSignal,
-            pendingMessages,
-            true,
-          );
-          const yieldError = runResume.prepareYieldIfDue(
-            currentAgentMessages(),
-          );
-          if (yieldError) {
-            throw yieldError;
-          }
-          return capacityUpdate
-            ? { ...contextUpdate, ...capacityUpdate }
-            : contextUpdate;
-        } catch (error) {
-          pendingPiHookError ??=
-            error instanceof Error ? error : new Error(String(error));
-          throw error;
+      // Pi runs this hook only before another model call. Only its return
+      // value changes the context of that call.
+      prepareNextTurnWithContext: async (nextTurn) => {
+        if (!messagesChanged) {
+          return undefined;
         }
+        messagesChanged = false;
+        return {
+          context: {
+            ...nextTurn.context,
+            messages: writeAgentHistory(
+              nextTurn.context.messages,
+              currentAgentMessages(),
+            ),
+          },
+        };
       },
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(activeModelId),
-        thinkingLevel: toPiReasoningLevel(turnRoute.reasoningLevel),
+        thinkingLevel: toPiReasoningLevel(reasoningLevel),
         tools: wiring.agentTools,
       },
     });
 
-    const unsubscribe = agent.subscribe((event) => {
+    const unsubscribe = agent.subscribe((event, runSignal) => {
       if (event.type === "tool_execution_start") {
         return recordParentToolExecutionStart(event);
       }
-      if (event.type === "turn_end" && event.toolResults.length > 0) {
-        if (pendingHandoff) {
-          return;
-        }
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+      if (event.type === "turn_end") {
+        return finishModelStep(event, runSignal).catch((error: unknown) => {
+          // Pi turns a listener error into a failed model message, so keep
+          // the error for the step to rethrow.
+          pendingPiHookError ??=
+            error instanceof Error ? error : new Error(String(error));
+          throw error;
+        });
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (
-          event.message.stopReason === "error" ||
-          event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        if (
-          event.message.content.some(
-            (part) =>
-              part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
-          )
-        ) {
-          return;
-        }
-        return deliverAssistantMessage(event.message);
+        const message = event.message;
+        const delivery =
+          message.stopReason === "error" || message.stopReason === "aborted"
+            ? undefined
+            : deliverAssistantMessage(message);
+        // Record after delivery, so the reply is not late. Record also when
+        // delivery fails: the model call wrote the cache and ended the idle
+        // period either way.
+        return Promise.resolve(delivery).then(
+          () => cacheWarming.record(message),
+          async (error: unknown) => {
+            await cacheWarming.record(message);
+            throw error;
+          },
+        );
       }
       return undefined;
     });
 
     let newMessages: PiMessage[] = [];
+    // A resumed slice can prompt again, which moves the live Turn start, so
+    // read the answer from the saved start. A slice from before saved Turn
+    // starts reads only its own messages.
+    const turnStartIndex = () =>
+      existingSessionRecord?.turnStartMessageIndex ??
+      runResume.turnStartMessageIndex ??
+      runResume.beforeMessageCount;
+    const turnMessages = () => currentAgentMessages().slice(turnStartIndex());
     try {
       if (resumedFromSessionRecord) {
-        agent.state.messages = shouldPromptAgent
-          ? promptHistoryMessages
-          : existingSessionRecord!.piMessages;
+        setAgentHistory(
+          shouldPromptAgent
+            ? promptHistoryMessages
+            : existingSessionRecord!.piMessages,
+        );
         runResume.setTurnStartMessageIndex(
           existingSessionRecord!.turnStartMessageIndex,
         );
         // Timeout/retry parking needs a durable baseline even when the first
         // mid-run checkpoint fails. Without this, an empty safe boundary can
         // re-park the same stuck slice forever.
-        runResume.adoptCommittedBoundary([...agent.state.messages]);
+        runResume.adoptCommittedBoundary(currentAgentMessages());
       } else if (promptHistoryMessages.length > 0) {
-        agent.state.messages = [...promptHistoryMessages];
+        setAgentHistory(promptHistoryMessages);
       }
-      runResume.setBeforeMessageCount(agent.state.messages.length);
+      // The sections message goes before the Turn start, so the messages of
+      // the Turn stay its context and prompt. The input checkpoint saves it.
+      if (sectionsMessage) {
+        setAgentHistory([...currentAgentMessages(), sectionsMessage]);
+      }
+      runResume.setBeforeMessageCount(currentAgentMessages().length);
       if (shouldPromptAgent) {
-        runResume.setTurnStartMessageIndex(agent.state.messages.length);
+        runResume.setTurnStartMessageIndex(currentAgentMessages().length);
       }
 
       const authPauseOutcome = await withSpan(
         `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
-        async () => {
-          // A declared Automation result is final. Each Automation run owns
-          // its dispatch Conversation, so a result in this history belongs to
-          // this run. A resumed slice returns it without calling the model.
-          if (
-            requireAutomationResult &&
-            readAutomationResult(agent!.state.messages)
-          ) {
+        async (setInvokeAgentSpanAttributes) => {
+          setAgentSpanAttributes = setInvokeAgentSpanAttributes;
+          // An answer is final. A resumed slice of a gated Turn returns it
+          // without calling the model.
+          if (behavior.gated && readTurnAnswer(turnMessages())) {
             return undefined;
           }
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
           const contextMessage: PiMessage | undefined =
             shouldPromptAgent && promptContextContentParts.length > 0
-              ? ({
+              ? {
                   role: "user",
                   content: promptContextContentParts,
                   timestamp: promptTimestamp,
-                } as PiMessage)
+                }
               : undefined;
           const freshPromptMessage: PiMessage = {
             role: "user",
             content: promptUserContentParts,
             timestamp: promptTimestamp,
-          } as PiMessage;
+          };
           if (shouldPromptAgent) {
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint(
                 [
-                  ...agent!.state.messages,
+                  ...currentAgentMessages(),
                   ...(contextMessage ? [contextMessage] : []),
                   freshPromptMessage,
                 ],
@@ -1349,14 +1422,12 @@ async function executeAgentRunInPrivacyContext(
             }
           }
           if (contextMessage) {
-            agent!.state.messages = [...agent!.state.messages, contextMessage];
+            setAgentHistory([...currentAgentMessages(), contextMessage]);
           }
           if (!shouldPromptAgent) {
-            await repositoryInstructionsContext.applyUpdate(undefined, {
-              messages: agent!.state.messages,
-              systemPrompt: agent!.state.systemPrompt,
-              tools: agent!.state.tools,
-            });
+            await repositoryInstructionsContext.applyUpdate(
+              currentAgentMessages(),
+            );
           }
 
           /** Race one provider operation against the turn deadline and abort its owner. */
@@ -1414,12 +1485,7 @@ async function executeAgentRunInPrivacyContext(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
                   "gen_ai.request.model": activeModelId,
-                  ...(turnRoute
-                    ? {
-                        "gen_ai.request.reasoning.level":
-                          turnRoute.reasoningLevel,
-                      }
-                    : undefined),
+                  "gen_ai.request.reasoning.level": reasoningLevel,
                   "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
                   "app.ai.turn_deadline_remaining_ms": Math.max(
                     0,
@@ -1467,36 +1533,10 @@ async function executeAgentRunInPrivacyContext(
           };
 
           let run: Promise<unknown>;
-          let handoffApplied = false;
-          const requestedProfile =
-            activeModelProfile === botConfig.defaultProfile
-              ? turnRoute!.profile
-              : undefined;
-          if (
-            requestedProfile &&
-            requestedProfile !== botConfig.defaultProfile
-          ) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              scheduleHandoff({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [
-                      ...(contextMessage ? [contextMessage] : []),
-                      freshPromptMessage,
-                    ]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            handoffApplied = Boolean(applyPendingHandoff());
-          }
           const compactionAbortController = new AbortController();
-          const capacityUpdate = await runAgentStep(
+          const compacted = await runAgentStep(
             applyActiveContextCompaction(
-              [...agent!.state.messages],
+              currentAgentMessages(),
               compactionAbortController.signal,
               shouldPromptAgent
                 ? [
@@ -1508,34 +1548,32 @@ async function executeAgentRunInPrivacyContext(
                 : undefined,
               false,
               Boolean(contextMessage),
+              // The person waits on this one, before the first model request.
+              "blocking",
             ),
             () => compactionAbortController.abort(),
           );
-          if (shouldPromptAgent && handoffApplied && !capacityUpdate) {
-            await runResume.requireDurableInputCheckpoint([
-              ...agent!.state.messages,
-              freshPromptMessage,
-            ]);
-          }
           run =
-            shouldPromptAgent && !capacityUpdate
+            shouldPromptAgent && !compacted
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
           discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
-          let automationResultReminderUsed = !requireAutomationResult;
+          let answerReminderUsed = !behavior.gated;
           let providerRetryAttempt = 0;
+          let refusalFallbackUsed = false;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
             discardedRetryUsage = addAgentTurnUsage(
               discardedRetryUsage,
-              getDiscardedRetryUsage(agent!.state.messages, messages),
+              getDiscardedRetryUsage(currentAgentMessages(), messages),
             );
-            agent!.state.messages = messages;
+            setAgentHistory(messages);
             await runResume.persistSafeBoundary(messages);
             signal?.throwIfAborted();
           };
           try {
+            /* oxlint-disable no-await-in-loop -- The agent runs one step at a time, and each retry follows the step before. */
             for (;;) {
               await runAgentStep(run);
               if (assistantMessageDeliveryError) {
@@ -1543,7 +1581,7 @@ async function executeAgentRunInPrivacyContext(
               }
               signal?.throwIfAborted();
 
-              newMessages = agent!.state.messages.slice(
+              newMessages = currentAgentMessages().slice(
                 runResume.beforeMessageCount,
               );
               const outputMessages = newMessages.filter(isAssistantMessage);
@@ -1589,7 +1627,7 @@ async function executeAgentRunInPrivacyContext(
 
               const confirmationRetry = actionConfirmationRetryUsed
                 ? undefined
-                : actionConfirmationRetryMessages(agent!.state.messages);
+                : actionConfirmationRetryMessages(currentAgentMessages());
               if (confirmationRetry) {
                 actionConfirmationRetryUsed = true;
                 await prepareRetry(confirmationRetry);
@@ -1597,14 +1635,19 @@ async function executeAgentRunInPrivacyContext(
                 continue;
               }
 
-              const automationResultReminder = automationResultReminderUsed
-                ? undefined
-                : remindMissingAutomationResult(agent!.state.messages);
-              if (automationResultReminder) {
-                automationResultReminderUsed = true;
-                agent!.state.messages = automationResultReminder;
-                await runResume.persistSafeBoundary(automationResultReminder);
-                logWarn("agent.turn.automation_result.reminded", {});
+              const answerReminder =
+                answerReminderUsed ||
+                failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+                  ? undefined
+                  : remindMissingAnswer(
+                      currentAgentMessages(),
+                      turnStartIndex(),
+                    );
+              if (answerReminder) {
+                answerReminderUsed = true;
+                setAgentHistory(answerReminder);
+                await runResume.persistSafeBoundary(answerReminder);
+                logWarn("agent.turn.answer.reminded", {});
                 run = agent!.continue();
                 continue;
               }
@@ -1612,7 +1655,7 @@ async function executeAgentRunInPrivacyContext(
               const emptyOutputContinuation = nextEmptyOutputContinuation({
                 attempt: emptyOutputAttempt,
                 lastAssistant,
-                messages: agent!.state.messages,
+                messages: currentAgentMessages(),
               });
               if (emptyOutputContinuation.kind === "retry") {
                 emptyOutputAttempt += 1;
@@ -1632,10 +1675,34 @@ async function executeAgentRunInPrivacyContext(
               const providerRetry = nextProviderRetry({
                 attempt: providerRetryAttempt,
                 failure: lastAssistant,
-                messages: agent!.state.messages,
+                messages: currentAgentMessages(),
               });
               if (!providerRetry) {
-                break;
+                const refusalFallback = refusalFallbackUsed
+                  ? undefined
+                  : nextRefusalFallback({
+                      failure: lastAssistant,
+                      fallbackModelId: botConfig.refusalFallbackModelId,
+                      messages: currentAgentMessages(),
+                    });
+                if (!refusalFallback) {
+                  break;
+                }
+                // Only the rest of this run slice uses the fallback model. A
+                // later slice or Turn starts again on the main model.
+                refusalFallbackUsed = true;
+                await prepareRetry(refusalFallback.messages);
+                // `gen_ai.request.model` is the main model that refused.
+                // `app.ai.refusal_fallback.model` is the model of the next
+                // `gen_ai.chat` span.
+                logWarn("agent.turn.refusal_fallback", {
+                  "gen_ai.request.model": activeModelId,
+                  "app.ai.refusal_fallback.model": refusalFallback.modelId,
+                });
+                activeModelId = refusalFallback.modelId;
+                agent!.state.model = resolveGatewayModel(activeModelId);
+                run = agent!.continue();
+                continue;
               }
 
               providerRetryAttempt += 1;
@@ -1647,6 +1714,7 @@ async function executeAgentRunInPrivacyContext(
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
+            /* oxlint-enable no-await-in-loop */
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
               // A durable auth pause is a successful span outcome. Persistence
@@ -1660,14 +1728,7 @@ async function executeAgentRunInPrivacyContext(
         {
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.agent.model": activeModelId,
-          "gen_ai.agent.model_profile": activeModelProfile,
-          "gen_ai.agent.reasoning.level": turnRoute.reasoningLevel,
-          "gen_ai.agent.reasoning.level_reason": turnRoute.reason,
-          ...(turnRoute.confidence !== undefined
-            ? {
-                "gen_ai.agent.reasoning.level_confidence": turnRoute.confidence,
-              }
-            : undefined),
+          "gen_ai.agent.reasoning.level": reasoningLevel,
           "gen_ai.output.type": "text",
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
@@ -1688,8 +1749,11 @@ async function executeAgentRunInPrivacyContext(
       }
     } finally {
       unsubscribe();
+      await cacheWarming.stop();
     }
 
+    // The caller saves the completed Turn after this returns.
+    await requireConversationLease("save");
     await recordActiveMcpProviders();
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
@@ -1702,15 +1766,24 @@ async function executeAgentRunInPrivacyContext(
       userInput,
       toolCalls,
       sandboxRef: wiring.getSandboxRef(),
-      piMessages: [...agent.state.messages],
+      piMessages: currentAgentMessages(),
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
       shouldTrace,
       usage: turnUsage,
-      executionProfile: turnRoute,
+      reasoningLevel,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
-      requireAutomationResult,
+      ...(behavior.gated
+        ? {
+            answer: readTurnAnswer(turnMessages()) ?? "missing",
+            // The dispatch Turn of an Automation run fails without an
+            // answer, so the run history shows it.
+            missingAnswerError: run.dispatch
+              ? "Automation run ended without an answer."
+              : behavior.missingAnswerError,
+          }
+        : undefined),
     });
     return {
       status: "completed",
@@ -1727,6 +1800,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
+    // Another worker holds the Lease. Do not complete or park the Turn.
+    if (isTurnInputCommitLostError(runError)) {
+      throw runError;
+    }
     if (
       runError instanceof AuthPausePersistenceError ||
       isTurnExecutionLimitExceededError(runError)
@@ -1744,9 +1821,11 @@ async function executeAgentRunInPrivacyContext(
     // Soft yield after a pure assistant tail is already a no-op (not
     // continuable). Soft yield after delivery + steering still parks so the
     // steered work can run on the next slice.
-    if (resume?.timedOut && acceptedToolFreeAssistant && agent && turnRoute) {
+    if (resume?.timedOut && acceptedToolFreeAssistant && agent) {
+      // The caller saves the completed Turn after this returns.
+      await requireConversationLease("save");
       await recordActiveMcpProviders();
-      const piMessages = [...agent.state.messages];
+      const piMessages = readAgentHistory(agent.state.messages);
       return {
         status: "completed",
         result: buildTurnResult({
@@ -1759,7 +1838,7 @@ async function executeAgentRunInPrivacyContext(
           generatedFileCount: generatedFiles.length,
           shouldTrace,
           usage: turnUsage,
-          executionProfile: turnRoute,
+          reasoningLevel,
           assistantUserName: botConfig.userName,
           modelId: activeModelId,
         }),
@@ -1769,6 +1848,19 @@ async function executeAgentRunInPrivacyContext(
       const outcome = await resume.translateSuspension({
         currentUsage: turnUsage,
         error: runError,
+        // A sandbox call outside a tool, such as the AGENTS.md refresh between
+        // steps, can fail for a short time. Run the step again on a later
+        // slice. Before the input commits, the queue redelivers instead. After
+        // a delivered reply, a retry would post a second reply. Model
+        // failures have their own retry policy.
+        retryable:
+          resume.inputCommitted &&
+          !acceptedToolFreeAssistant &&
+          !findInErrorChain(
+            runError,
+            (candidate) => candidate instanceof ProviderError,
+          ) &&
+          isRetryableSandboxFailure(runError),
       });
       if (outcome) {
         return outcome;
@@ -1779,9 +1871,6 @@ async function executeAgentRunInPrivacyContext(
       throw error.originalError;
     }
 
-    if (error instanceof ModelProfileNotConfiguredError) {
-      throw error;
-    }
     if (isProviderRetryError(error)) {
       throw error;
     }
@@ -1794,14 +1883,6 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
-
-    const providerError = findProviderError(error);
-    logException(
-      error,
-      "assistant.reply.generation.failed",
-      providerError ? getProviderErrorAttributes(providerError) : {},
-    );
-
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);
@@ -1814,11 +1895,7 @@ async function executeAgentRunInPrivacyContext(
           outcome: "provider_error",
           modelId: activeModelId,
           assistantMessageCount: 0,
-          ...(turnRoute
-            ? {
-                reasoningLevel: turnRoute.reasoningLevel,
-              }
-            : undefined),
+          reasoningLevel,
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,
@@ -1830,6 +1907,7 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
+    await preAgentSetup;
     await closeTools?.();
   }
 }

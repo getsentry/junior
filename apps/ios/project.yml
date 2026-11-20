@@ -1,0 +1,96 @@
+name: Junior
+options:
+  bundleIdPrefix: io.sentry.junior
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+fileGroups:
+  - README.md
+  - project.yml
+  - Makefile
+  - Brewfile
+  - Brewfile.ci
+  - Gemfile
+  - Gemfile.lock
+  - .ruby-version
+  - .swift-format
+  - oauth-client.json
+  - fastlane/Appfile
+  - fastlane/Fastfile
+  - fastlane/Matchfile
+  - scripts
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
+    "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+packages:
+  JuniorKit:
+    path: Packages/JuniorKit
+targets:
+  Junior:
+    type: application
+    platform: iOS
+    sources:
+      - path: Junior
+    dependencies:
+      - package: JuniorKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(JUNIOR_BUNDLE_ID)
+        PRODUCT_NAME: Junior
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Junior/Info.plist
+      properties:
+        CFBundleDisplayName: Junior
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Only standard HTTPS, so TestFlight asks no export-compliance question.
+        ITSAppUsesNonExemptEncryption: false
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIAppFonts:
+          - InterVariable.ttf
+          - OutfitVariable.ttf
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+  JuniorUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: JuniorUITests
+    dependencies:
+      - target: Junior
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(JUNIOR_BUNDLE_ID).uitests
+        TEST_TARGET_NAME: Junior
+        GENERATE_INFOPLIST_FILE: "YES"
+schemes:
+  Junior:
+    build:
+      targets:
+        Junior: all
+    run:
+      config: Debug
+  JuniorUITests:
+    build:
+      targets:
+        JuniorUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - JuniorUITests

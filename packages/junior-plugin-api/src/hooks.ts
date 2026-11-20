@@ -1,3 +1,4 @@
+import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
@@ -29,13 +30,16 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
+  AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
+  PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
 } from "./tools";
+import type { ReviewItemAnsweredHookContext } from "./review-items";
 import type {
   PromptMessage,
   SystemPromptContext,
@@ -45,16 +49,75 @@ import type {
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 export interface FormatMarkdownHookContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key, over install defaults. Runtime notices get install defaults.
+   */
+  config: Record<string, string>;
+  /**
+   * Return the destination's mention of the one known person who has this
+   * provider account, or undefined. Core resolves the `@handle` words in
+   * `text` before the hook runs. Insert the result as is. Only Slack text
+   * gets mentions: Slack syntax never goes to another place.
+   */
+  mention(account: { provider: string; handle: string }): string | undefined;
+  /**
+   * Where the text shows: a Slack message, or the dashboard (`web`). The
+   * dashboard shows a bare object link as a card, so keep bare links there.
+   */
+  platform: "slack" | "web";
+  /**
+   * The provider that wrote the text or that it went to, such as `github`
+   * for a GitHub Event or a comment posted to GitHub. In that text, every
+   * `@name` is an account of that provider. Undefined for chat replies.
+   */
+  provider?: string;
+  text: string;
+}
+
+/** First human message of a new Conversation, given before title generation. */
+export interface ConversationTitleContextHookContext extends PluginContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key. For example, `repo` for the `github.repo` config key.
+   */
+  config: Record<string, string>;
+  /**
+   * Host-owned provider egress for title reads. It uses Junior's system
+   * identity, so it never uses a user's credentials or starts authorization.
+   */
+  egress: PluginEgress;
+  /** Ends the hook when the host stops waiting for title context. */
+  signal: AbortSignal;
   text: string;
 }
 
 export interface PluginHooks {
+  /**
+   * Return short facts that help name a new Conversation, such as
+   * `owner/repo#123: Issue title` for a linked issue. Junior shows these facts
+   * only to the title model. Return nothing when the message has no known
+   * objects.
+   */
+  conversationTitleContext?(
+    ctx: ConversationTitleContextHookContext,
+  ): Promise<string[] | undefined> | string[] | undefined;
   conversationSidebar?(
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
+  /**
+   * Return static guidance for the system prompt. Return the same text for one
+   * deployment and platform, so the system prompt stays cacheable. Put text
+   * that changes per request in `userPrompt`. See `policies/system-prompt.md`.
+   */
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];
+  /**
+   * Return per-request context for a new prompt, such as recalled memories.
+   * Junior runs this hook at the same time as Turn routing and sandbox setup,
+   * so it must not depend on either.
+   */
   userPrompt?(
     ctx: UserPromptContext,
   ):
@@ -62,6 +125,11 @@ export interface PluginHooks {
     | UserPromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  /**
+   * Check a tool call after it runs, such as a judge for the files that it
+   * changed. Use `ctx.decision` to add guidance or reject the result.
+   */
+  afterToolExecute?(ctx: AfterToolExecuteHookContext): Promise<void> | void;
   /**
    * Run after a successful hosted MCP tool call.
    *
@@ -83,6 +151,12 @@ export interface PluginHooks {
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
+  /**
+   * Do the work that a person asked for with a choice on an item that this
+   * plugin added. Junior calls it again when the person retries after a
+   * failure, so it must be safe to repeat.
+   */
+  reviewItemAnswered?(ctx: ReviewItemAnsweredHookContext): Promise<void> | void;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
@@ -127,7 +201,16 @@ export interface PluginHooks {
   ): SlackConversationLink | undefined;
   /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
-  tools?(
-    ctx: ToolRegistrationHookContext,
-  ): Record<string, PluginToolDefinition>;
+  /**
+   * Tools by plugin-local camelCase name. Read only deployment configuration
+   * here, never Turn context: the host reads them with no Turn, and passes
+   * the Turn context to each `execute` call.
+   */
+  tools?(): Record<string, PluginToolDefinition>;
+  /**
+   * Tools from `tools()` that this Turn cannot run, with the reason. The host
+   * keeps them in the tool list, so the cached prompt stays the same, and
+   * rejects their calls.
+   */
+  disabledTools?(ctx: ToolRegistrationHookContext): Record<string, string>;
 }

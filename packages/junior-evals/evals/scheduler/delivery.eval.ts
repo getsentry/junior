@@ -6,7 +6,7 @@ import {
   slackDirectMessage,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -86,11 +86,41 @@ describe("Scheduled Delivery", () => {
 
     const delivery = await run(heartbeat());
 
-    expect(
-      completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "send_message" })]);
+    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
     expect(delivery.replies).toHaveLength(1);
     expect(delivery.replies[0]!.text).toMatch(/weekly update/i);
+  });
+
+  test("when a due reminder says me, mention its creator", async ({ run }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Remind me to do healthchecks.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
+  });
+
+  test("when a due reminder names the Automation creator, mention its creator", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Remind the Automation creator to do healthchecks.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
   });
 
   test("when a due reminder goes to its creator's DM, deliver the reminder itself", async ({
@@ -124,7 +154,7 @@ describe("Scheduled Delivery", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a due automation needs a provider that Junior does not have, end it as misconfigured without a post", async ({
+  test("when a due automation needs a provider that Junior does not have, block it without a post", async ({
     run,
   }) => {
     await insertScheduledAutomation({
@@ -139,8 +169,6 @@ describe("Scheduled Delivery", () => {
     // Nobody reads the channel for run problems. The reason goes to the
     // creator through the blocked run, not into a post.
     expect(blocked.replies).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
+    expect(completedToolCalls("reportBlocked", blocked)).toHaveLength(1);
   });
 });

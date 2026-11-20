@@ -12,7 +12,11 @@ import {
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 
 const { span, startSpan } = vi.hoisted(() => {
-  const span = { setAttribute: vi.fn(), setStatus: vi.fn() };
+  const span = {
+    setAttribute: vi.fn(),
+    setAttributes: vi.fn(),
+    setStatus: vi.fn(),
+  };
   return {
     span,
     startSpan: vi.fn(
@@ -42,7 +46,8 @@ describe("Slack inbound telemetry", () => {
         request: slackWebhookRequest({
           ...envelope,
           event_id: "Ev123",
-          is_ext_shared_channel: true,
+          // A shared channel is dropped before the author check runs.
+          is_ext_shared_channel: false,
           event: {
             ...envelope.event,
             team: "T123",
@@ -71,17 +76,16 @@ describe("Slack inbound telemetry", () => {
             "app.slack.source_team": "TEXTERNAL",
             "app.slack.event_team": "T123",
             "app.slack.event_id": "Ev123",
-            "app.slack.is_ext_shared_channel": true,
+            "app.slack.is_ext_shared_channel": false,
             "messaging.message.id": envelope.event.ts,
             "gen_ai.conversation.id": `slack:${envelope.event.channel}:${envelope.event.ts}`,
           }),
         }),
         expect.any(Function),
       );
-      expect(span.setAttribute).toHaveBeenCalledWith(
-        "app.slack.membership",
-        "unverified",
-      );
+      expect(span.setAttributes).toHaveBeenCalledWith({
+        "app.slack.membership": "unverified",
+      });
     } finally {
       await state.disconnect();
     }
@@ -123,6 +127,8 @@ describe("Slack inbound telemetry", () => {
       "app.slack.user_team": "invalid",
       "app.slack.source_team": "E123",
       "app.slack.event_team": "missing",
+      "app.slack.context_team_id": "missing",
+      "app.slack.context_enterprise_id": "missing",
       "app.slack.is_ext_shared_channel": "invalid",
     });
   });

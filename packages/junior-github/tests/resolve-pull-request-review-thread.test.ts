@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
@@ -22,7 +23,10 @@ function toolContext(responses: Response[]) {
   };
   return {
     fetch,
-    tool: createGitHubResolvePullRequestReviewThreadTool(ctx, BOT_EMAIL),
+    tool: bindPluginTool(
+      createGitHubResolvePullRequestReviewThreadTool(BOT_EMAIL),
+      ctx,
+    ),
   };
 }
 
@@ -67,7 +71,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },
       ),
@@ -75,7 +79,7 @@ describe("resolvePullRequestReviewThread", () => {
       target: "resolvePullRequestReviewThread",
       repo: "getsentry/junior",
       number: 1572,
-      threadId: "PRRT_kwDOthread",
+      thread_id: "PRRT_kwDOthread",
       resolved: true,
     });
 
@@ -102,7 +106,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },
       ),
@@ -127,7 +131,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_missing",
+          thread_id: "PRRT_missing",
         },
         { toolCallId: "missing-thread" },
       ),
@@ -149,7 +153,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_wrong_type",
+          thread_id: "PRRT_wrong_type",
         },
         { toolCallId: "wrong-type-thread" },
       ),
@@ -199,7 +203,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread-extra-fields" },
       ),
@@ -207,7 +211,7 @@ describe("resolvePullRequestReviewThread", () => {
       target: "resolvePullRequestReviewThread",
       repo: "getsentry/junior",
       number: 1572,
-      threadId: "PRRT_kwDOthread",
+      thread_id: "PRRT_kwDOthread",
       resolved: true,
     });
     expect(fetch).toHaveBeenCalledTimes(2);

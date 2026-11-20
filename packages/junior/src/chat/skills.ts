@@ -1,11 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { z } from "zod";
+import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
+import { skillBodyReferences, skillReferences } from "@/chat/skill-references";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
+import { mapBounded } from "@/chat/fan-out";
 
 // ---------------------------------------------------------------------------
 // Skill frontmatter parsing
@@ -226,21 +228,19 @@ export interface SkillMetadata {
   name: string;
   description: string;
   skillPath: string;
-  pluginProvider?: string;
-  allowedTools?: string[];
+  pluginProvider?: string | undefined;
+  allowedTools?: string[] | undefined;
   disableModelInvocation?: boolean;
+  /** Names that SKILL.md writes as skill references, such as `$name`. */
+  references?: string[] | undefined;
 }
 
 export interface Skill extends SkillMetadata {
   body: string;
 }
 
-export interface SkillInvocation {
-  skillName: string;
-}
-
 export interface DiscoverSkillsOptions {
-  additionalRoots?: string[];
+  additionalRoots?: string[] | undefined;
 }
 
 let skillCache: {
@@ -257,7 +257,7 @@ export function resetSkillDiscoveryCache(): void {
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots =
-    process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
+    process.env["SKILL_DIRS"]?.split(path.delimiter).filter(Boolean) ?? [];
   const defaults = skillRoots();
   const pluginRoots = pluginCatalogRuntime.getSkillRoots();
 
@@ -324,6 +324,65 @@ function applyPluginRuntimeBoundary(
     : body;
 }
 
+/**
+ * Codex's `agents/openai.yaml` makes a skill manual-only with
+ * `policy.allow_implicit_invocation: false`. Junior treats it the same as
+ * `disable-model-invocation: true`.
+ */
+const openAiSkillPolicySchema = z.object({
+  policy: z
+    .object({ allow_implicit_invocation: z.boolean().optional() })
+    .optional(),
+});
+
+/**
+ * Return whether the text of a skill's `agents/openai.yaml` makes the skill
+ * manual-only. Invalid YAML leaves the skill model-invocable.
+ */
+export function openAiPolicyDisablesImplicitInvocation(
+  raw: string,
+  filePath: string,
+): boolean {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(raw);
+  } catch (error) {
+    logWarn("skill.openai_yaml.invalid", {
+      "file.path": filePath,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+  const result = openAiSkillPolicySchema.safeParse(parsed);
+  return (
+    result.success && result.data.policy?.allow_implicit_invocation === false
+  );
+}
+
+async function openAiImplicitInvocationDisabled(
+  skillDir: string,
+): Promise<boolean> {
+  const policyFile = path.join(skillDir, "agents", "openai.yaml");
+  let raw: string;
+  try {
+    raw = await fs.readFile(policyFile, "utf8");
+  } catch (error) {
+    // An unreadable file, such as a directory, is the same as invalid YAML:
+    // the frontmatter decides.
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      logWarn("skill.openai_yaml.invalid", {
+        "file.path": policyFile,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+    }
+    return false;
+  }
+  return openAiPolicyDisablesImplicitInvocation(raw, policyFile);
+}
+
 async function readSkillDirectory(
   skillDir: string,
 ): Promise<SkillMetadata | null> {
@@ -340,9 +399,14 @@ async function readSkillDirectory(
       return null;
     }
 
-    const { name, description, allowedTools, disableModelInvocation } =
-      parsed.skill;
+    const { name, description, allowedTools } = parsed.skill;
+    // Read `agents/openai.yaml` only when the frontmatter leaves the skill
+    // model-invocable.
+    const disableModelInvocation =
+      parsed.skill.disableModelInvocation === true ||
+      (await openAiImplicitInvocationDisabled(skillDir));
     const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
+    const references = skillBodyReferences(parsed.skill.body);
 
     return {
       name,
@@ -351,6 +415,7 @@ async function readSkillDirectory(
       ...(plugin ? { pluginProvider: plugin.manifest.name } : undefined),
       ...(allowedTools ? { allowedTools } : undefined),
       ...(disableModelInvocation ? { disableModelInvocation } : undefined),
+      ...(references.length > 0 ? { references } : undefined),
     };
   } catch (error) {
     logWarn("skill.directory.read.failed", {
@@ -376,31 +441,33 @@ export async function discoverSkills(
     return skillCache.skills;
   }
 
-  const discovered: SkillMetadata[] = [];
-  const seen = new Set<string>();
-
-  for (const root of roots) {
+  // List every root, then read the skill directories of all roots under one
+  // cap. The first root that has a skill name still wins, so keep the root
+  // and entry order when merging.
+  const directoriesByRoot = await mapBounded(roots, async (root) => {
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const entry of entries.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      )) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const skill = await readSkillDirectory(path.join(root, entry.name));
-        if (skill && !seen.has(skill.name)) {
-          seen.add(skill.name);
-          discovered.push(skill);
-        }
-      }
+      return entries
+        .filter((entry) => entry.isDirectory())
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((entry) => path.join(root, entry.name));
     } catch (error) {
       logWarn("skill.root.read.failed", {
         "file.directory": root,
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
+      return [];
+    }
+  });
+  const skills = await mapBounded(directoriesByRoot.flat(), readSkillDirectory);
+
+  const discovered: SkillMetadata[] = [];
+  const seen = new Set<string>();
+  for (const skill of skills) {
+    if (skill && !seen.has(skill.name)) {
+      seen.add(skill.name);
+      discovered.push(skill);
     }
   }
 
@@ -413,76 +480,21 @@ export async function discoverSkills(
   return sorted;
 }
 
-function isCommonEnvironmentVariable(name: string): boolean {
-  return [
-    "HOME",
-    "LANG",
-    "PATH",
-    "PWD",
-    "SHELL",
-    "TEMP",
-    "TERM",
-    "TMP",
-    "TMPDIR",
-    "USER",
-    "XDG_CONFIG_HOME",
-  ].includes(name.toUpperCase());
-}
+/** Most skills one message can invoke, like Claude Code. */
+const MAX_INVOKED_SKILLS = 6;
 
-/** Extract an explicit skill invocation from a user message. */
-export function parseSkillInvocation(
+/**
+ * Return the skills that a message invokes with `$name`, in message order,
+ * once each. `/name` still works as older input.
+ */
+export function parseSkillInvocations(
   messageText: string,
   availableSkills: SkillMetadata[],
-): SkillInvocation | null {
-  const trimmed = messageText.trim();
-  const escapePattern = (value: string) =>
-    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const slashMatch = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(trimmed);
-  if (slashMatch?.[1]) {
-    const skillName = slashMatch[1].toLowerCase();
-    if (!availableSkills.some((skill) => skill.name === skillName)) {
-      return null;
-    }
-
-    return { skillName };
-  }
-
-  const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
-  for (const match of trimmed.matchAll(dollarPattern)) {
-    const skillName = match[1]?.toLowerCase();
-    if (!skillName) {
-      continue;
-    }
-    if (isCommonEnvironmentVariable(skillName)) {
-      continue;
-    }
-    if (availableSkills.some((skill) => skill.name === skillName)) {
-      return { skillName };
-    }
-  }
-
-  const namedSkill = availableSkills.find((skill) => {
-    if (skill.disableModelInvocation !== true) {
-      return false;
-    }
-    const skillPattern = escapePattern(skill.name);
-    const explicitUse = new RegExp(
-      `\\b(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
-      "i",
-    );
-    const negatedUse = new RegExp(
-      `\\b(?:do\\s+not|don't|dont|never)\\s+(?:use|run|load|call|invoke)\\s+(?:the\\s+)?${skillPattern}(?:\\s+skill)?\\b`,
-      "i",
-    );
-    return explicitUse.test(trimmed) && !negatedUse.test(trimmed);
-  });
-  if (!namedSkill) {
-    return null;
-  }
-
-  return {
-    skillName: namedSkill.name,
-  };
+): string[] {
+  return skillReferences(messageText, availableSkills).slice(
+    0,
+    MAX_INVOKED_SKILLS,
+  );
 }
 
 /** Look up a skill by name from the available set. */
@@ -499,13 +511,7 @@ export async function loadSkillsByName(
   available: SkillMetadata[],
 ): Promise<Skill[]> {
   const selected = new Set(skillNames);
-  const skills: Skill[] = [];
-
-  for (const meta of available) {
-    if (!selected.has(meta.name)) {
-      continue;
-    }
-
+  const loadSkill = async (meta: SkillMetadata): Promise<Skill> => {
     const skillFile = path.join(meta.skillPath, "SKILL.md");
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseSkillFile(raw, meta.name);
@@ -522,16 +528,19 @@ export async function loadSkillsByName(
       ...(parsed.skill.allowedTools
         ? { allowedTools: parsed.skill.allowedTools }
         : undefined),
-      ...(parsed.skill.disableModelInvocation
-        ? { disableModelInvocation: parsed.skill.disableModelInvocation }
+      ...(parsed.skill.disableModelInvocation || meta.disableModelInvocation
+        ? { disableModelInvocation: true }
         : undefined),
     };
 
-    skills.push({
+    return {
       ...loadedMeta,
       body: applyPluginRuntimeBoundary(plugin, parsed.skill.body),
-    });
-  }
+    };
+  };
 
-  return skills;
+  return await mapBounded(
+    available.filter((meta) => selected.has(meta.name)),
+    loadSkill,
+  );
 }

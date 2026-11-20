@@ -155,7 +155,7 @@ describe("callMcpTool", () => {
       ),
     ).resolves.toEqual({
       content: nativeContent,
-      details: { objectCards: [] },
+      details: { result: "image generated", objectCards: [] },
     });
   });
 
@@ -192,94 +192,46 @@ describe("callMcpTool", () => {
     );
   });
 
-  it("rejects top-level MCP arguments instead of silently dropping them", async () => {
-    const manager = {
-      activateProvider: vi.fn(async () => true),
-      getResolvedActiveTools: vi.fn(() => [
-        {
-          name: "mcp__demo__ping",
-          rawName: "ping",
-          provider: "demo",
-          description: "Ping",
-          parameters: {},
-          execute: vi.fn(),
-        },
-      ]),
-    };
-    const callMcpTool = createCallMcpToolTool(manager);
+  it("rejects top-level MCP arguments instead of silently dropping them", () => {
+    const callMcpTool = createCallMcpToolTool({
+      getResolvedActiveTools: () => [],
+    });
 
-    await expect(
-      callMcpTool.execute!(
-        {
-          tool_name: "mcp__demo__ping",
-          query: "hello",
-        } as never,
-        {},
-      ),
-    ).rejects.toThrow(
-      "callMcpTool MCP arguments must be nested under arguments",
+    expect(() =>
+      callMcpTool.prepareArguments({
+        tool_name: "mcp__demo__ping",
+        query: "hello",
+      }),
+    ).toThrow(
+      "callMcpTool MCP arguments must be nested under arguments, not top-level fields: query",
     );
   });
 
-  it("rejects ambiguous mixed top-level and nested MCP arguments", async () => {
-    const execute = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "pong" }],
-    }));
-    const manager = {
-      activateProvider: vi.fn(async () => true),
-      getResolvedActiveTools: vi.fn(() => [
-        {
-          name: "mcp__demo__ping",
-          rawName: "ping",
-          provider: "demo",
-          description: "Ping",
-          parameters: {},
-          execute,
-        },
-      ]),
-    };
-    const callMcpTool = createCallMcpToolTool(manager);
+  it("rejects ambiguous mixed top-level and nested MCP arguments", () => {
+    const callMcpTool = createCallMcpToolTool({
+      getResolvedActiveTools: () => [],
+    });
 
-    await expect(
-      callMcpTool.execute!(
-        {
-          tool_name: "mcp__demo__ping",
-          query: "ignored",
-          arguments: { query: "hello" },
-        } as never,
-        {},
-      ),
-    ).rejects.toThrow(
-      "callMcpTool MCP arguments must be nested under arguments",
-    );
-    expect(execute).not.toHaveBeenCalled();
+    expect(() =>
+      callMcpTool.prepareArguments({
+        tool_name: "mcp__demo__ping",
+        query: "ignored",
+        arguments: { query: "hello" },
+      }),
+    ).toThrow("callMcpTool MCP arguments must be nested under arguments");
   });
 
-  it("rejects non-object nested MCP arguments", async () => {
-    const manager = {
-      activateProvider: vi.fn(async () => true),
-      getResolvedActiveTools: vi.fn(() => [
-        {
-          name: "mcp__demo__ping",
-          rawName: "ping",
-          provider: "demo",
-          description: "Ping",
-          parameters: {},
-          execute: vi.fn(),
-        },
-      ]),
-    };
-    const callMcpTool = createCallMcpToolTool(manager);
+  it("rejects non-object nested MCP arguments", () => {
+    const callMcpTool = createCallMcpToolTool({
+      getResolvedActiveTools: () => [],
+    });
 
-    await expect(
-      callMcpTool.execute!(
-        {
-          tool_name: "mcp__demo__ping",
-          arguments: "hello",
-        } as never,
-        {},
-      ),
-    ).rejects.toThrow("callMcpTool arguments must be an object");
+    expect(() =>
+      callMcpTool.prepareArguments({
+        tool_name: "mcp__demo__ping",
+        arguments: "hello",
+      }),
+    ).toThrow("callMcpTool arguments must be an object");
   });
 
   it("returns an expected MCP error when a resumed catalog is missing the requested tool", async () => {

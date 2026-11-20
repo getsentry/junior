@@ -18,6 +18,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-cloudflare`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
+- `@sentry/junior-figma`
 - `@sentry/junior-tts`
 - `@sentry/junior-github`
 - `@sentry/junior-google`
@@ -28,13 +29,20 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
+- `@sentry/junior-restream`
+- `@sentry/junior-search`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-xdotcom`
 
 ## Package release
 
 1. Open GitHub Actions `Release` workflow.
-2. Choose bump (`patch`, `minor`, `major`).
+2. Choose bump. `auto` (the default) picks it from the commit titles: features
+   and breaking changes bump the minor version, other changes bump the patch
+   version. `pre` releases a prerelease of the version that `auto` picks, for
+   example `0.280.0-alpha.0`. Choose `patch`, `minor` or `major` to override
+   it.
 3. Use `force=true` only when intentionally bypassing blockers.
 
 Required configuration:
@@ -42,6 +50,11 @@ Required configuration:
 - Variable: `SENTRY_RELEASE_BOT_CLIENT_ID`
 - Secret: `SENTRY_RELEASE_BOT_PRIVATE_KEY`
 - npm publish credentials for release runtime
+
+Craft adds short AI summaries above the changelog entries. It sends the
+request with the workflow token, so the organization must allow Copilot use in
+Actions. If the request fails, Craft keeps the entries without summaries and
+the release continues.
 
 ### GitHub packages
 

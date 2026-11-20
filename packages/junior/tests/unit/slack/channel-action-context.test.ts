@@ -65,6 +65,7 @@ describe("slack outbound boundary", () => {
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
       action: "reactions.add",
+      expectedErrorCodes: ["already_reacted"],
       idempotent: true,
       spanAttributes: {
         "app.slack.channel_id": "C123",
@@ -99,6 +100,7 @@ describe("slack outbound boundary", () => {
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
       action: "reactions.remove",
+      expectedErrorCodes: ["no_reaction"],
       idempotent: true,
       spanAttributes: {
         "app.slack.channel_id": "C123",

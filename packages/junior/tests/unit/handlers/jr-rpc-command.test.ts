@@ -47,6 +47,23 @@ describe("jr-rpc custom command", () => {
     expect(result).toEqual({ handled: false });
   });
 
+  it("rejects jr-rpc chained after other shell steps", async () => {
+    const chained = expectHandled(
+      await maybeExecuteJrRpcCustomCommand(
+        "cd /vercel/sandbox && jr-rpc config get github.repo",
+        { activeSkill },
+      ),
+    );
+    expect(chained.result.exit_code).toBe(2);
+    expect(chained.result.stderr).toContain("standalone");
+
+    const mention = await maybeExecuteJrRpcCustomCommand(
+      "grep -rn jr-rpc src",
+      { activeSkill },
+    );
+    expect(mention).toEqual({ handled: false });
+  });
+
   it("requires conversation context for config commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",

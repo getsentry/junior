@@ -2,6 +2,7 @@ import type { PluginEgress } from "@sentry/junior-plugin-api";
 
 interface QueuedResponse {
   body?: unknown;
+  headers?: Record<string, string>;
   status?: number;
 }
 
@@ -23,7 +24,7 @@ export function createGitHubApiTestAdapter(responses: QueuedResponse[]) {
           response.body === undefined
             ? undefined
             : JSON.stringify(response.body),
-          { status: response.status ?? 200 },
+          { headers: response.headers, status: response.status ?? 200 },
         );
       },
     } satisfies PluginEgress,

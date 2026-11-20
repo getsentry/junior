@@ -1,0 +1,7 @@
+name: restream
+display-name: Restream
+description: Restream live streaming via the Restream MCP, using each user's own Restream account. Covers live, upcoming, and past events, destinations and channel health, chat messages and full chat log exports, chat and viewer analytics, recordings, transcripts, and clips, plus scheduling and editing events and destinations.
+
+mcp:
+  transport: http
+  url: https://mcp.restream.io/mcp

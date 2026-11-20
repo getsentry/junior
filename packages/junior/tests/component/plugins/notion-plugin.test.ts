@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { notionPlugin } from "@sentry/junior-notion";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { listToolsMock } = vi.hoisted(() => ({
@@ -37,7 +38,7 @@ afterEach(() => {
 });
 
 describe("Notion plugin package", () => {
-  it("discovers the shipped manifest and exposes only allowlisted MCP tools", async () => {
+  it("registers the shipped manifest and exposes only allowlisted MCP tools", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-notion-package-"),
     );
@@ -72,9 +73,11 @@ describe("Notion plugin package", () => {
 
     const { pluginCatalogRuntime } =
       await import("@/chat/plugins/catalog-runtime");
-    pluginCatalogRuntime.setConfig({
-      packages: ["@sentry/junior-notion"],
-    });
+    const { defineJuniorPlugins, pluginCatalogConfigFromPluginSet } =
+      await import("@/plugins");
+    pluginCatalogRuntime.setConfig(
+      pluginCatalogConfigFromPluginSet(defineJuniorPlugins([notionPlugin()])),
+    );
     const providers = pluginCatalogRuntime.getProviders();
 
     expect(providers).toHaveLength(1);
@@ -83,7 +86,14 @@ describe("Notion plugin package", () => {
     });
     expect(providers[0]?.manifest.mcp?.allowedTools).toEqual(allowedTools);
     expect(providers[0]?.manifest.accounts).toEqual({
-      serviceAccount: { tools: ["notion-search", "notion-fetch"] },
+      serviceAccount: {
+        tools: [
+          "notion-search",
+          "notion-fetch",
+          "notion-create-pages",
+          "notion-update-page",
+        ],
+      },
     });
 
     listToolsMock.mockResolvedValue([

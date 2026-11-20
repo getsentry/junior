@@ -19,8 +19,8 @@ function escapeRegExp(value: string): string {
 export function sentryConversationUrl(
   conversationId: string,
 ): string | undefined {
-  const dsn = process.env.SENTRY_DSN?.trim();
-  const orgSlug = process.env.SENTRY_ORG_SLUG?.trim();
+  const dsn = process.env["SENTRY_DSN"]?.trim();
+  const orgSlug = process.env["SENTRY_ORG_SLUG"]?.trim();
   if (!dsn || !orgSlug) {
     return undefined;
   }
@@ -61,9 +61,9 @@ export function githubConversationFooter(
   const normalizedDashboardUrl = dashboardUrl?.trim();
   const sentryUrl = sentryConversationUrl(id);
   const sessionLinks = normalizedDashboardUrl
-    ? `[View Junior Session](${normalizedDashboardUrl})${sentryUrl ? ` [[Sentry]](${sentryUrl})` : ""}`
+    ? `[View Session](${normalizedDashboardUrl})${sentryUrl ? ` [[Sentry]](${sentryUrl})` : ""}`
     : sentryUrl
-      ? `[View Junior Session in Sentry](${sentryUrl})`
+      ? `[View Session in Sentry](${sentryUrl})`
       : undefined;
   if (!sessionLinks) {
     return undefined;

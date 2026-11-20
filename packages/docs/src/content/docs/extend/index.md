@@ -25,6 +25,7 @@ fixed behavior that code must control.
 | [Amplitude](/extend/amplitude-plugin/)         | Product analytics queries                     |
 | [Cloudflare](/extend/cloudflare-plugin/)       | Cloudflare resources and APIs                 |
 | [Datadog](/extend/datadog-plugin/)             | Logs, metrics, and incidents                  |
+| [Figma](/extend/figma-plugin/)                 | Figma frames and design details (read-only)   |
 | [TTS](/extend/tts-plugin/)                     | Gemini narration through Vercel AI Gateway    |
 | [GitHub](/extend/github-plugin/)               | Repository, issue, and pull-request workflows |
 | [Hex](/extend/hex-plugin/)                     | Hex projects and runs                         |
@@ -33,9 +34,10 @@ fixed behavior that code must control.
 | [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
 | [Notion](/extend/notion-plugin/)               | Notion content                                |
 | [PagerDuty](/extend/pagerduty-plugin/)         | On-call, schedules, and incidents (read-only) |
-| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled automations                 |
+| [Restream](/extend/restream-plugin/)           | Live stream events, chat, and recordings      |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
+| [X](/extend/xdotcom-plugin/)                   | Public X posts and accounts (read-only)       |
 
 ## Install packaged plugins
 
@@ -113,11 +115,9 @@ Run validation before deploy:
 pnpm exec junior check
 ```
 
-If a plugin declares sandbox dependencies, also build its dependency snapshot:
-
-```bash
-pnpm exec junior snapshot create
-```
+The deploy build prepares sandbox dependencies with
+[junior snapshot create](/cli/snapshot-create/). Its build log lists the
+dependencies of each plugin.
 
 ## Next step
 

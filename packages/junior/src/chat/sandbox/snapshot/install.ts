@@ -3,7 +3,10 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_COMMAND_PATH,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { trace } from "@/chat/sandbox/snapshot/span";
 
@@ -12,9 +15,9 @@ async function runOrThrow(
   params: {
     cmd: string;
     args?: string[];
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
     sudo?: boolean;
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
   },
   label: string,
 ): Promise<void> {
@@ -33,9 +36,9 @@ async function tryRun(
   params: {
     cmd: string;
     args?: string[];
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
     sudo?: boolean;
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
   },
 ): Promise<boolean> {
   const result = await runNonInteractiveCommand(sandbox, params);
@@ -212,10 +215,13 @@ export async function dependencies(
         for (const dependency of system) {
           signal?.throwIfAborted();
           if ("url" in dependency) {
+            // oxlint-disable-next-line no-await-in-loop -- Install system dependencies one at a time, in order.
             await installUrl(sandbox, dependency, signal, timeoutMs);
           } else if (dependency.package === "gh") {
+            // oxlint-disable-next-line no-await-in-loop -- Install system dependencies one at a time, in order.
             await installGh(sandbox, signal, timeoutMs);
           } else {
+            // oxlint-disable-next-line no-await-in-loop -- Install system dependencies one at a time, in order.
             await runOrThrow(
               sandbox,
               {
@@ -282,11 +288,12 @@ export async function postinstall(
     async () => {
       for (const command of commands) {
         signal?.throwIfAborted();
+        // oxlint-disable-next-line no-await-in-loop -- Run postinstall commands one at a time, in order.
         const result = await runNonInteractiveCommand(sandbox, {
           cmd: command.cmd,
           args: command.args,
           login: true,
-          pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
+          path: SANDBOX_COMMAND_PATH,
           signal,
           timeoutMs,
           ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),

@@ -19,6 +19,11 @@ const UTILITY_ASSERTION_PATTERN =
 // leave fixed shells under the browser chrome. Prefer dvh or the dashboard
 // viewport CSS variables.
 const CLASSIC_VIEWPORT_HEIGHT_PATTERN = /(?<!\w)100vh\b/;
+// A px breakpoint ignores the browser font size, but the rem-sized layout
+// it guards grows with it. Matches `(min-width: 1280px)`, `width >= 768px`,
+// and Tailwind `min-[900px]:` or `@max-[448px]/name:` variants.
+const PX_BREAKPOINT_PATTERN =
+  /\(\s*(?:(?:min-|max-)?(?:width|height)\s*(?::|[<>]=?)\s*\d+(?:\.\d+)?px\b|\d+(?:\.\d+)?px\s*[<>]=?\s*(?:width|height)\b)|(?<![\w-])@?(?:min|max)-\[\d+(?:\.\d+)?px\]/;
 // Stacking padding + safe-area recreates the composer gap. Prefer max().
 const ADDITIVE_SAFE_AREA_PATTERN =
   /calc\((?:(?!\)[\s"'`]).)*?(?:\+\s*env\(safe-area-inset-(?:top|right|bottom|left)\)|env\(safe-area-inset-(?:top|right|bottom|left)\)\s*\+)/;
@@ -112,6 +117,18 @@ export function findClassicViewportHeights(files) {
   );
 }
 
+/** Report media and container query breakpoints in px instead of rem. */
+export function findPxBreakpoints(files) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return PX_BREAKPOINT_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    }),
+  );
+}
+
 /** Report safe-area padding stacked with + instead of max(). */
 export function findAdditiveSafeAreaPadding(files) {
   return files.flatMap((file) =>
@@ -138,6 +155,33 @@ export function findComposerSafeAreaBottomPadding(files) {
       if (isCommentOnlyLine(line)) return [];
       COMPOSER_SAFE_AREA_BOTTOM_PATTERN.lastIndex = 0;
       return COMPOSER_SAFE_AREA_BOTTOM_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    });
+  });
+}
+
+// The new UI fades text that does not fit, through client/textFade.ts,
+// instead of an ellipsis. These Inbox files also render in the
+// classic UI, which keeps its ellipsis.
+const NEW_UI_PATH_PATTERN = /\/client\/(?:shell|inbox)\//;
+const SHARED_WITH_CLASSIC_PATH_PATTERN =
+  /\/client\/inbox\/(?:ComposerQuestion|InboxSidebar|ReviewItemCard|ReviewItemChangeRow|ReviewItemDetails)\.tsx$/;
+const ELLIPSIS_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*(?:truncate|text-ellipsis)(?![\w-])/;
+
+/** Report ellipsis truncation in the new UI, which fades text instead. */
+export function findNewUiEllipsis(files) {
+  return files.flatMap((file) => {
+    if (
+      !NEW_UI_PATH_PATTERN.test(file.path) ||
+      SHARED_WITH_CLASSIC_PATH_PATTERN.test(file.path)
+    ) {
+      return [];
+    }
+    return file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return ELLIPSIS_PATTERN.test(line)
         ? [`${file.path}:${index + 1}: ${line.trim()}`]
         : [];
     });
@@ -221,23 +265,67 @@ function main() {
       "utf8",
     ),
   );
-  const errors = [
-    ...findNonstandardNeutralTextColors(files),
-    ...findNeutralSurfaceLiterals(files),
-    ...findUnknownDashboardColorTokens(files, tokens),
-    ...findArbitraryTextSizes(files),
-    ...findUndersizedHardcodedFontSizes(files),
-    ...findClassicViewportHeights(files),
-    ...findAdditiveSafeAreaPadding(files),
-    ...findComposerSafeAreaBottomPadding(files),
-    ...findDashboardUtilityAssertions(testFiles),
-  ];
-  if (errors.length === 0) {
+  // Each fix names the design intent so an agent changes the design instead of
+  // rewriting the source until the pattern stops matching.
+  const checks = [
+    {
+      fix: "Use a dashboard text token by meaning: text-dashboard-text-solid, text-dashboard-text, text-dashboard-text-subtle, text-dashboard-text-muted, or text-dashboard-text-faint. Do not use text-white, text-dashboard-text-secondary, or gray hex text.",
+      lines: findNonstandardNeutralTextColors(files),
+    },
+    {
+      fix: "Use a dashboard surface, fill, overlay, or border token instead of raw white or black. Shadows may use black.",
+      lines: findNeutralSurfaceLiterals(files),
+    },
+    {
+      fix: "Use a color token defined in packages/junior-dashboard/src/tailwind.css. Add a new token only when no existing token has this meaning.",
+      lines: findUnknownDashboardColorTokens(files, tokens),
+    },
+    {
+      fix: "Use a named type step (text-2xs through text-4xl) chosen by role. Do not use an absolute text-[N] size.",
+      lines: findArbitraryTextSizes(files),
+    },
+    {
+      fix: `Keep SVG and chart text at ${MIN_PRODUCT_FONT_SIZE_PX}px or larger. Make room in the layout instead of shrinking the text.`,
+      lines: findUndersizedHardcodedFontSizes(files),
+    },
+    {
+      fix: "Use dvh or the visualViewport variables from layout/VisualViewportShell instead of 100vh.",
+      lines: findClassicViewportHeights(files),
+    },
+    {
+      fix: "Write breakpoints in rem, like layoutMedia.ts and the Tailwind breakpoints, so they move with the browser font size as the layout does.",
+      lines: findPxBreakpoints(files),
+    },
+    {
+      fix: "Use max(<padding>, env(safe-area-inset-*)) instead of adding padding to the safe-area inset.",
+      lines: findAdditiveSafeAreaPadding(files),
+    },
+    {
+      fix: "conversations/ComposerDock owns the bottom safe-area pad. Remove this safe-area math and let ComposerDock set it.",
+      lines: findComposerSafeAreaBottomPadding(files),
+    },
+    {
+      fix: "In the new UI, fade text that does not fit with fadeTextClass, or fadeOverflowClass and fadeWhenOverflowing, from client/textFade.ts. Do not use truncate or text-ellipsis.",
+      lines: findNewUiEllipsis(files),
+    },
+    {
+      fix: "Dashboard tests must not assert CSS utility classes. Assert the visible state, role, or text, or leave the look to visual QA.",
+      lines: findDashboardUtilityAssertions(testFiles),
+    },
+  ].filter((check) => check.lines.length > 0);
+  if (checks.length === 0) {
     console.log(
       "Dashboard source uses shared color tokens, type scale, and mobile-safe viewport padding.",
     );
     return;
   }
+  const errors = checks.flatMap((check) => [
+    check.fix,
+    ...check.lines.map((line) => `  ${line}`),
+  ]);
+  errors.push(
+    "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See policies/frontend-components.md.",
+  );
   console.error(["Dashboard style check failed:", ...errors].join("\n"));
   process.exitCode = 1;
 }

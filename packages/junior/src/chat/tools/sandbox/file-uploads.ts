@@ -1,14 +1,21 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_SCRATCH_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Maximum single file size accepted by model-facing upload tools. */
 export const MAX_SANDBOX_FILE_UPLOAD_BYTES = 10 * 1024 * 1024;
 /** Sandbox directory for generated files that later tools can consume. */
-export const SANDBOX_ARTIFACTS_DIR = "/tmp/junior/artifacts";
+export const SANDBOX_GENERATED_DIR = `${SANDBOX_SCRATCH_ROOT}/gen`;
+// A path segment holds at most 255 bytes. A code point takes at most 4 UTF-8
+// bytes, so 60 code points always fit.
+const MAX_GENERATED_FILENAME_CODE_POINTS = 60;
 
 /** Canonical model-facing reference to a file that already exists in the sandbox. */
 export const sandboxFileReferenceSchema = z.object({
@@ -26,7 +33,7 @@ export const sandboxFileReferenceSchema = z.object({
     .describe(
       "Optional filename override shown to the recipient. Null is treated as omitted.",
     ),
-  mimeType: z
+  mime_type: z
     .string()
     .min(1)
     .nullable()
@@ -58,18 +65,16 @@ export type SandboxFileMaterializationInput = WithoutNull<
 >;
 
 /** Generated file reference whose path and metadata can be passed directly to sendFiles. */
-export const generatedArtifactFileRefSchema = sandboxFileReferenceSchema
+export const generatedFileRefSchema = sandboxFileReferenceSchema
   .extend({
     filename: z.string().min(1),
-    mimeType: z.string().min(1).optional(),
+    mime_type: z.string().min(1).optional(),
     bytes: z.number().int().nonnegative(),
   })
   .strict();
 
-/** Fully materialized generated artifact returned to model-facing tools. */
-export type GeneratedArtifactFileRef = z.output<
-  typeof generatedArtifactFileRefSchema
->;
+/** Fully materialized generated file returned to model-facing tools. */
+export type GeneratedFileRef = z.output<typeof generatedFileRefSchema>;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -139,11 +144,32 @@ function sanitizeFilename(
   return "attachment.bin";
 }
 
-/** Return the canonical sandbox artifact path for generated files. */
-export function sandboxArtifactPath(filename: string): string {
+function capFilename(filename: string): string {
+  const codePoints = Array.from(filename);
+  if (codePoints.length <= MAX_GENERATED_FILENAME_CODE_POINTS) {
+    return filename;
+  }
+  const ext = Array.from(path.posix.extname(filename));
+  const keepExt = ext.length < MAX_GENERATED_FILENAME_CODE_POINTS / 2;
+  const stemLength =
+    MAX_GENERATED_FILENAME_CODE_POINTS - (keepExt ? ext.length : 0);
+  return [...codePoints.slice(0, stemLength), ...(keepExt ? ext : [])].join("");
+}
+
+/**
+ * Return the sandbox path for one generated file. The content hash keeps
+ * different files with the same name apart. The last segment keeps the
+ * original name, so a send with only the path still shows that name.
+ */
+export function sandboxGeneratedFilePath(
+  content: Uint8Array,
+  filename: string,
+): string {
+  const hash = createHash("sha256").update(content).digest("hex").slice(0, 12);
   return path.posix.join(
-    SANDBOX_ARTIFACTS_DIR,
-    sanitizeFilename(filename, "artifact.bin"),
+    SANDBOX_GENERATED_DIR,
+    hash,
+    capFilename(sanitizeFilename(filename, "file.bin")),
   );
 }
 
@@ -205,7 +231,7 @@ export async function readSandboxFileUpload(
   const detectedMimeType = await detectMimeType(workspace, targetPath);
   const resolvedMimeType = inferMimeType(
     resolvedFilename,
-    input.mimeType ?? detectedMimeType,
+    input.mime_type ?? detectedMimeType,
   );
 
   return {

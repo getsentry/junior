@@ -6,6 +6,8 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { instructionActorFor } from "@/chat/agent/prompt";
+import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
@@ -20,6 +22,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getTurnAuthorization } from "./authorized-turn";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   completeTurnRecord,
   abandonTurnRecord,
@@ -30,7 +33,11 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  loadTurnCheckpoint,
+  lostWorkerBeforeFirstSave,
+  pauseLostWorkerTurn,
+} from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -44,22 +51,31 @@ import {
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
-  buildConversationContext,
   markConversationMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
-import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import {
+  markTurnClosed,
+  markTurnCompleted,
+  markTurnFailed,
+} from "@/chat/runtime/turn";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import {
   getPausedTurnRequest,
-  wakePausedTurn as defaultWakePausedTurn,
+  recordFailedDispatchTurn,
   type PausedTurnRequest,
+  type PausedTurns,
 } from "@/chat/task-execution/turn-wake";
 import {
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
+  resolveConversationRouting,
+  resolveTurnResumeRouting,
+  type TurnResumeRouting,
 } from "@/chat/services/turn-session-routing";
-import { parseSlackThreadId } from "@/chat/slack/context";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
+import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -75,12 +91,9 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
-import type { AgentRun } from "@/chat/agent/types";
+import type { AgentDurability, AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import {
-  clearPendingAuth,
-  wasPendingAuthStopped,
-} from "@/chat/services/pending-auth";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
@@ -97,16 +110,22 @@ export interface PausedTurnOptions {
     AgentRun,
     "actor" | "credentialContext" | "dispatch" | "surface"
   >;
-  wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
-  scheduleSessionCompletedPluginTasks?: (params: {
-    conversationId: string;
-    sessionId: string;
-  }) => Promise<void>;
+  /** Sends the plugin tasks of a completed Turn. */
+  sendPluginTask: SendPluginTask;
+  /** Paused Turns of the app, on the queue that the app chose. */
+  pausedTurns: PausedTurns;
 }
 
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
-  shouldYield?: () => boolean;
+  /** Builds the steering drain of the resumed Run for its Turn. */
+  drainSteeringMessages?: (
+    turn: TurnRecord,
+  ) => AgentDurability["drainSteeringMessages"];
+  shouldYield?: (() => boolean) | undefined;
+  checkIn?: (() => Promise<boolean>) | undefined;
+  /** Aborts the resumed Run when someone stops the Conversation. */
+  stopSignal?: AbortSignal | undefined;
 }
 
 /** Persist a delivered paused-turn reply as the terminal thread state. */
@@ -185,6 +204,35 @@ async function persistFailedReplyState(
   await persistThreadStateById(turn.conversationId, {
     conversation,
   });
+}
+
+/** Close a paused turn that was stopped before it delivered a reply. */
+async function persistStoppedTurnState(turn: TurnRecord): Promise<void> {
+  await abandonTurnRecord({
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    errorMessage: "Turn interrupted",
+  });
+  const currentState = await getPersistedThreadState(turn.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: turn.conversationId,
+  });
+  clearPendingAuth(conversation, turn.turnId);
+  const userMessageId = getTurnUserMessage(conversation, turn.turnId)?.id;
+  if (userMessageId) {
+    markConversationMessage(conversation, userMessageId, {
+      replied: false,
+      skippedReason: "turn interrupted",
+    });
+  }
+  markTurnClosed({
+    conversation,
+    nowMs: Date.now(),
+    sessionId: turn.turnId,
+  });
+  await persistThreadStateById(turn.conversationId, { conversation });
 }
 
 /** Convert startup failures into durable failed state before rethrowing. */
@@ -267,9 +315,9 @@ async function resolveSlackResumeUserActor(args: {
  * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
-  actor?: Actor;
+  actor?: Actor | undefined;
   conversationId: string;
-  routingContext?: PausedTurnOptions["routingContext"];
+  routingContext?: PausedTurnOptions["routingContext"] | undefined;
   teamId: string;
   userMessage: {
     author?: { userId?: string };
@@ -338,29 +386,7 @@ async function failPausedTurn(args: {
   });
   if (!failed) return;
 
-  if (failed.dispatchId) {
-    try {
-      const routing = await resolveTurnSessionRouting({
-        conversationId: args.conversationId,
-      });
-      await recordTurnSummary({
-        conversationId: args.conversationId,
-        destination: routing.destination,
-        dispatchId: failed.dispatchId,
-        dispatchOutcome: "failed",
-        turnId: failed.turnId,
-        sliceId: failed.sliceId,
-        source: routing.source,
-        state: "failed",
-        surface: failed.surface,
-      });
-    } catch (error) {
-      logException(error, "agent.continue.dispatch_failure_summary.failed", {
-        "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.summary.turnId,
-      });
-    }
-  }
+  await recordFailedDispatchTurn(failed);
 }
 
 /**
@@ -383,23 +409,33 @@ async function runPausedTurnInContext(
   options: PausedTurnOptions,
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
-  const thread = parseSlackThreadId(payload.conversationId);
   const destination = requireSlackDestination(
     payload.destination,
     "Paused turn",
   );
-  const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
+  const routing = await resolveConversationRouting({
+    conversationId: payload.conversationId,
+  });
+  const pausedTurn = await getTurnRecord(
+    payload.conversationId,
+    payload.turnId,
+  );
+  const target = resolveSlackReplyTarget({
+    destination,
+    location: routing?.location,
+    source: pausedTurn?.source,
+  });
 
   return await resumeSlackTurn({
     messageText: "",
     conversationId: payload.conversationId,
     turnId: payload.turnId,
-    channelId: thread?.channelId ?? destination.channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
+    traceContext: payload.traceContext,
+    channelId: target.channelId,
+    ...(target.threadTs ? { threadTs: target.threadTs } : undefined),
     executeTurn: async (run, saveResult) =>
       await executeTurn(options.agentRunner, run, saveResult),
-    scheduleSessionCompletedPluginTasks:
-      options.scheduleSessionCompletedPluginTasks,
+    sendPluginTask: options.sendPluginTask,
     beforeStart: async () => {
       let turn: TurnRecord | undefined;
       try {
@@ -465,8 +501,7 @@ async function runPausedTurnInContext(
               pendingAuth.kind !== authorization.kind ||
               pendingAuth.scope !== authorization.scope ||
               (pendingAuth.kind === "mcp" &&
-                pendingAuth.authSessionId !== authorization.authSessionId) ||
-              wasPendingAuthStopped(conversation, pendingAuth))
+                pendingAuth.authSessionId !== authorization.authSessionId))
           ) {
             await abandonTurnRecord({
               conversationId: payload.conversationId,
@@ -524,14 +559,10 @@ async function runPausedTurnInContext(
 
         const locationConfiguration =
           getLocationConfigurationService(destination);
-        const conversationContext = dispatchId
-          ? undefined
-          : buildConversationContext(conversation, {
-              excludeMessageId: userMessage.id,
-            });
         const sandboxRef = getPersistedSandboxState(currentState);
-        const routing = await resolveTurnSessionRouting({
+        const routing = await resolveTurnResumeRouting({
           conversationId: payload.conversationId,
+          dispatchId,
         });
         const source = routing.source;
         const routingDestination = routing.destination;
@@ -559,20 +590,27 @@ async function runPausedTurnInContext(
           });
         };
 
+        const messageTs = getTurnUserSlackMessageTs(userMessage);
+        const instructionActor = instructionActorFor(actor, messageTs);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
-          messageTs: getTurnUserSlackMessageTs(userMessage),
+          messageTs,
           inputMessageIds: [userMessage.id],
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
-              ...(conversationContext
-                ? { context: conversationContext }
-                : undefined),
+              ...(instructionActor ? { actor: instructionActor } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
-              text: userMessage.text,
+              ...(await savedInputInstruction({
+                runtime:
+                  Boolean(dispatchId) ||
+                  isEventConversationMessage(userMessage),
+                requestText: userMessage.meta?.requestText,
+                reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
+                text: userMessage.text,
+              })),
             },
             // A dispatch reads only history saved for this Turn. Other input
             // must not become part of a system Turn. Other Turns read
@@ -595,12 +633,18 @@ async function runPausedTurnInContext(
               configuration: authorization?.configuration,
               locationConfiguration,
             },
+            ...(runOptions.stopSignal
+              ? { signal: runOptions.stopSignal }
+              : undefined),
             state: {
               pendingAuth: conversation.processing.pendingAuth,
               sandboxRef,
             },
             durability: {
+              drainSteeringMessages:
+                runOptions.drainSteeringMessages?.(activeTurn),
               shouldYield: runOptions.shouldYield,
+              checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {
                 conversation.processing.pendingAuth = nextPendingAuth;
                 await persistThreadStateById(payload.conversationId, {
@@ -621,6 +665,9 @@ async function runPausedTurnInContext(
               error instanceof Error ? error.message : String(error),
             );
             await recordDispatchOutcome("failed");
+          },
+          onStop: async () => {
+            await persistStoppedTurnState(activeTurn);
           },
           onPostDeliveryCommitFailure: async () => {
             await failTurnRecord({
@@ -644,7 +691,7 @@ async function runPausedTurnInContext(
             });
           },
           onSuspend: async (resumeVersion) => {
-            await wakePausedTurn({
+            await options.pausedTurns.wake({
               conversationId: payload.conversationId,
               destination: payload.destination,
               turnId: payload.turnId,
@@ -699,10 +746,44 @@ async function failStrandedTurnWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
   });
-  let routing: RequiredTurnSessionRouting;
-  try {
-    routing = await resolveTurnSessionRouting({
+  // Record the failure in history so the next turn knows about it.
+  await getTurnLifecycle().fail({
+    conversationId: args.conversationId,
+    createdAtMs: Date.now(),
+    ...(eventId ? { eventId } : undefined),
+    failureCode: "agent_run_failed",
+    turnId: failed.turnId,
+  });
+  let replyAttribution: ReplyAttribution | undefined;
+  if (failed.dispatchId) {
+    // The dispatch record owns the routing of a dispatch Conversation. Its
+    // Conversation has no Slack session Source.
+    const dispatch = await getDispatchRecord(failed.dispatchId);
+    await recordTurnSummary({
       conversationId: args.conversationId,
+      destination: dispatch?.destination,
+      dispatchId: failed.dispatchId,
+      dispatchOutcome: "failed",
+      turnId: failed.turnId,
+      sliceId: failed.sliceId,
+      source: dispatch?.source,
+      state: "failed",
+      surface: failed.surface,
+    });
+    // A dispatch whose record is gone has no known outputs.
+    if (
+      !dispatch ||
+      !postsRunNotices(buildDispatchRoutingContext(dispatch).dispatch)
+    ) {
+      return true;
+    }
+    replyAttribution = dispatch.replyAttribution;
+  }
+  let routing: TurnResumeRouting;
+  try {
+    routing = await resolveTurnResumeRouting({
+      conversationId: args.conversationId,
+      dispatchId: failed.dispatchId,
     });
   } catch (error) {
     logException(error, "agent.turn.stranded_session.routing_unavailable", {
@@ -711,33 +792,27 @@ async function failStrandedTurnWithFallback(args: {
     });
     return true;
   }
-  if (failed.dispatchId) {
-    await recordTurnSummary({
-      conversationId: args.conversationId,
-      destination: routing.destination,
-      dispatchId: failed.dispatchId,
-      dispatchOutcome: "failed",
-      turnId: failed.turnId,
-      sliceId: failed.sliceId,
-      source: routing.source,
-      state: "failed",
-      surface: failed.surface,
-    });
-  }
-  const thread = parseSlackThreadId(args.conversationId);
-  const channelId =
-    thread?.channelId ??
-    requireSlackDestination(routing.destination, "Stranded paused turn")
-      .channelId;
-  await postSlackMessage({
-    channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
+  const target = resolveSlackReplyTarget({
+    destination: requireSlackDestination(
+      routing.destination,
+      "Stranded paused turn",
+    ),
+    location: routing.location,
+    source: failed.source,
+  });
+  await sendSlackReply({
+    ...target,
+    conversationId: args.conversationId,
+    replyAttribution,
     text: buildTurnFailureResponse(
       requireTurnFailureEventId(eventId, eventName),
     ),
   });
   return true;
 }
+
+const LOST_WORKER_FAILURE =
+  "Turn lost its worker before reaching a safe boundary";
 
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function runNextPausedTurn(
@@ -755,7 +830,7 @@ async function runNextPausedTurnInContext(
   options: PausedTurnOptions,
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
-  const summaries = await listTurnSummaries(conversationId);
+  let summaries = await listTurnSummaries(conversationId);
   const persisted = await getPersistedThreadState(conversationId);
   const conversation = coerceThreadConversationState(persisted);
   await hydrateConversationMessages({ conversation, conversationId });
@@ -766,6 +841,7 @@ async function runNextPausedTurnInContext(
   const running = newest
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
+  let resumedTurnId: string | undefined;
   if (running?.state === "running") {
     if (turnHasReply(conversation, running.turnId)) {
       const acceptedReply = [...conversation.messages]
@@ -791,17 +867,39 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    await failStrandedTurnWithFallback({
-      conversationId,
-      errorMessage: "Turn lost its worker before reaching a safe boundary",
-      turn: running,
-    });
-    return false;
+    // An expired lease means the worker stopped checking in. Its process may
+    // be dead or blocked, and recovery cannot tell which. Resume the turn once
+    // from its last save. A second loss fails the turn, so one bad turn cannot
+    // block one instance after another.
+    if (!(await pauseLostWorkerTurn(running))) {
+      await failStrandedTurnWithFallback({
+        conversationId,
+        errorMessage: LOST_WORKER_FAILURE,
+        turn: running,
+      });
+      return false;
+    }
+    resumedTurnId = running.turnId;
+    summaries = await listTurnSummaries(conversationId);
   }
 
+  /* oxlint-disable no-await-in-loop -- Run the first paused Turn that can resume, and stop there. */
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
+    }
+    // Recovery runs the resumed turn right away. If a later wake still finds
+    // the resume message, the resumed run lost its worker before it saved.
+    if (summary.turnId !== resumedTurnId && summary.resumeReason === "retry") {
+      const turn = await getTurnRecord(conversationId, summary.turnId);
+      if (turn && lostWorkerBeforeFirstSave(turn)) {
+        await failStrandedTurnWithFallback({
+          conversationId,
+          errorMessage: LOST_WORKER_FAILURE,
+          turn,
+        });
+        continue;
+      }
     }
 
     const request = await getPausedTurnRequest({
@@ -829,6 +927,7 @@ async function runNextPausedTurnInContext(
       errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   return false;
 }

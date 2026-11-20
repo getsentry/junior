@@ -4,7 +4,10 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createEventAutomation } from "@/chat/event-automations/store";
+import {
+  blockEventAutomation,
+  createEventAutomation,
+} from "@/chat/event-automations/store";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
@@ -102,7 +105,9 @@ async function saveReminder(): Promise<ScheduledAutomation> {
     status: "active",
     nextRunAtMs: Date.now() + 86_400_000,
     task: {
-      text: "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
+      kind: "instruction",
+      instruction:
+        "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
     },
   };
   await saveScheduledAutomation(getDb(), task);
@@ -111,7 +116,7 @@ async function saveReminder(): Promise<ScheduledAutomation> {
 
 describe("Slack Work Object details", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -128,6 +133,8 @@ describe("Slack Work Object details", () => {
   it("shows saved annotation facts only within the viewer's Conversation access", async () => {
     await saveReminder();
     const conversationId = "slack:D123:annotation";
+    // A long key must still fit the 128-character Slack reference.
+    const key = `repo/修正#1:"quoted"/${"segment/".repeat(25)}`;
     await getConversationStore().recordActivity({
       conversationId,
       actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
@@ -140,7 +147,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "ENG-1",
       title: "Saved issue",
       objectType: "task",
@@ -152,7 +159,7 @@ describe("Slack Work Object details", () => {
       {
         kind: "object",
         plugin: "objects",
-        key: 'repo/修正#1:"quoted"',
+        key,
         label: "ENG-1",
         title: "Saved issue",
         objectType: "task",
@@ -160,7 +167,7 @@ describe("Slack Work Object details", () => {
       },
       conversationId,
     ).entity!.external_ref.id;
-    expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(id).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
     expect(
       await requestDetails(id, "U123", "T123", "annotation"),
     ).toMatchObject({
@@ -194,7 +201,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "ENG-1",
       title: "Updated issue",
       objectType: "task",
@@ -220,7 +227,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: 'repo/修正#1:"quoted"',
+      key,
       label: "repo#1",
       title: "Saved code change",
       objectType: "code_change",
@@ -246,8 +253,35 @@ describe("Slack Work Object details", () => {
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
+    // Cards already posted with the earlier reference form keep their details.
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "repo#2",
+      label: "repo#2",
+      title: "Legacy card",
+      objectType: "task",
+      url: "https://example.com/issues/2",
+    });
+    const legacyId = Buffer.from(
+      JSON.stringify([conversationId, "objects", "repo#2"]),
+    ).toString("base64url");
+    expect(
+      await requestDetails(legacyId, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id: legacyId, type: "annotation" },
+        entity_payload: { attributes: { title: { text: "Legacy card" } } },
+      },
+    });
+    expect(
+      await requestDetails(legacyId, "U999", "T123", "annotation"),
+    ).toMatchObject({ error: { status: "not_found" } });
     for (const invalidId of [
-      JSON.stringify([conversationId, "objects", 'repo/修正#1:"quoted"']),
+      JSON.stringify([conversationId, "objects", key]),
       Buffer.from('{"not":"a reference tuple"}').toString("base64url"),
     ]) {
       expect(
@@ -274,7 +308,8 @@ describe("Slack Work Object details", () => {
             {
               key: "description",
               label: "Instruction",
-              value: task.task.text,
+              value:
+                "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
               format: "markdown",
             },
             { key: "trigger", value: "Every day at noon" },
@@ -302,7 +337,7 @@ describe("Slack Work Object details", () => {
       title: "Updated reminder",
       status: "blocked",
       nextRunAtMs: undefined,
-      task: { text: "Updated instruction." },
+      task: { kind: "instruction", instruction: "Updated instruction." },
       outcomes: [{ action: "send_message", destination: task.destination }],
     });
     await getConversationStore().recordActivity({
@@ -334,6 +369,10 @@ describe("Slack Work Object details", () => {
               value: "Updated instruction.",
             }),
             expect.objectContaining({ key: "next_run", value: "None" }),
+            expect.objectContaining({
+              key: "warning",
+              value: "This automation is blocked.",
+            }),
             expect.objectContaining({ key: "outcomes", value: "1 message" }),
             expect.objectContaining({
               key: "executions",
@@ -345,6 +384,27 @@ describe("Slack Work Object details", () => {
               value: Math.floor(executedAtMs / 1000),
               link: "https://junior.example.com/conversations/agent-dispatch%3Areminder-run",
             }),
+          ]),
+        },
+      },
+    });
+    // A completed Automation does not need attention.
+    await saveScheduledAutomation(getDb(), { ...task, status: "completed" });
+    const completed = await requestDetails(task.id);
+    expect(completed).toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "status", value: "completed" }),
+          ]),
+        },
+      },
+    });
+    expect(completed).not.toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "warning" }),
           ]),
         },
       },
@@ -382,13 +442,14 @@ describe("Slack Work Object details", () => {
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       destinationVisibility: "public",
       outcomes: [],
-      task: { text: "Summarize the closed issue." },
+      task: { kind: "instruction", instruction: "Summarize the closed issue." },
       trigger: {
         namespace: "linear",
         resourceType: "issue",
         identifier: "ACME-42",
         label: "Issue",
         events: ["issue.closed"],
+        match: { action: ["closed", "resolved"] },
       },
     });
     expect(await requestDetails("event_public")).toMatchObject({
@@ -413,15 +474,35 @@ describe("Slack Work Object details", () => {
               key: "resource",
               value: "Issue · ACME-42",
             }),
-            expect.objectContaining({ key: "events", value: "issue.closed" }),
+            expect.objectContaining({ key: "events", value: "issue closed" }),
+            expect.objectContaining({
+              key: "filters",
+              value: "action is closed or resolved",
+            }),
             expect.objectContaining({
               key: "destination",
               value: "#project · public",
             }),
             expect.objectContaining({
               key: "warning",
+              // Linear is not enabled here, so the saved trigger has a problem.
               value:
-                "Trigger unavailable. This automation cannot receive events.",
+                "Trigger unavailable. The plugin for this source is not enabled.",
+            }),
+          ]),
+        },
+      },
+    });
+    const reason = "This run needs a connected Linear account.";
+    await blockEventAutomation(getDb(), "event_public", reason);
+    expect(await requestDetails("event_public")).toMatchObject({
+      metadata: {
+        entity_payload: {
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({ key: "status", value: "blocked" }),
+            expect.objectContaining({
+              key: "warning",
+              value: `${reason} Trigger unavailable. The plugin for this source is not enabled.`,
             }),
           ]),
         },

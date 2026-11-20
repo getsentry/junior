@@ -9,6 +9,7 @@ describe("mobileViewportMetrics", () => {
   it("clears shell geometry off mobile", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 900,
         editableFocused: false,
         layoutHeight: 900,
         mobile: false,
@@ -22,6 +23,7 @@ describe("mobileViewportMetrics", () => {
   it("ignores rubber-band offset while the keyboard is closed", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 844,
         editableFocused: false,
         layoutHeight: 844,
         mobile: true,
@@ -39,6 +41,7 @@ describe("mobileViewportMetrics", () => {
   it("ignores small visual height jitter while the keyboard is closed", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 844,
         editableFocused: false,
         layoutHeight: 844,
         mobile: true,
@@ -56,6 +59,7 @@ describe("mobileViewportMetrics", () => {
   it("tracks visual viewport geometry while the keyboard is open", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 844,
         editableFocused: true,
         layoutHeight: 844,
         mobile: true,
@@ -75,6 +79,7 @@ describe("mobileViewportMetrics", () => {
     // resting closed height, layout-vs-visual delta stays near zero.
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 520,
         editableFocused: true,
         layoutHeight: 520,
         mobile: true,
@@ -89,11 +94,12 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
-  it("zeros leftover visual offset when layout already matches the visible band", () => {
-    // Hybrid WebKit can still report offsetTop after layout shrank. Trusting
-    // that offset shoves the fixed shell under the keyboard.
+  it("zeros leftover visual offset when the layout viewport already matches the visible band", () => {
+    // resizes-content can still report offsetTop after the layout viewport
+    // shrank. Trusting that offset shoves the fixed shell under the keyboard.
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 520,
         editableFocused: false,
         layoutHeight: 520,
         mobile: true,
@@ -108,11 +114,49 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
+  it("follows the iOS 18 visual pan when innerHeight shrinks but clientHeight stays tall", () => {
+    // Measured on iOS 18.7 Safari with the composer focused.
+    expect(
+      mobileViewportMetrics({
+        documentClientHeight: 714,
+        editableFocused: true,
+        layoutHeight: 404,
+        mobile: true,
+        restingLayoutHeight: 714,
+        visualHeight: 404,
+        visualOffsetTop: 310,
+      }),
+    ).toEqual({
+      heightPx: 404,
+      keyboardOpen: true,
+      offsetTopPx: 310,
+    });
+  });
+
+  it("never caps the visual pan tighter than innerHeight allows", () => {
+    expect(
+      mobileViewportMetrics({
+        documentClientHeight: 760,
+        editableFocused: true,
+        layoutHeight: 844,
+        mobile: true,
+        restingLayoutHeight: 844,
+        visualHeight: 520,
+        visualOffsetTop: 300,
+      }),
+    ).toEqual({
+      heightPx: 520,
+      keyboardOpen: true,
+      offsetTopPx: 300,
+    });
+  });
+
   it("does not treat orientation shrink as a stuck keyboard open", () => {
     // Portrait resting height left behind after rotating closed to landscape.
     // Height alone must not lock keyboard-open forever without focus/offset.
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 390,
         editableFocused: false,
         layoutHeight: 390,
         mobile: true,
@@ -130,6 +174,7 @@ describe("mobileViewportMetrics", () => {
   it("never reports a negative keyboard offset", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 844,
         editableFocused: true,
         layoutHeight: 844,
         mobile: true,
@@ -147,6 +192,7 @@ describe("mobileViewportMetrics", () => {
   it("caps offset so top + height never exceeds layout height", () => {
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 700,
         editableFocused: true,
         layoutHeight: 700,
         mobile: true,
@@ -199,6 +245,7 @@ describe("nextRestingLayoutHeight", () => {
     expect(afterMobileClosed).toBe(700);
     expect(
       mobileViewportMetrics({
+        documentClientHeight: 700,
         editableFocused: true,
         layoutHeight: 700,
         mobile: true,

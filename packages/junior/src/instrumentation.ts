@@ -1,14 +1,32 @@
 import * as Sentry from "@/chat/sentry";
+import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
   scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
-  scrubPrivateSentryTransaction,
 } from "@/chat/sentry-payload-filter";
 import {
   getDeploymentServiceVersion,
   getDeploymentTelemetryAttributes,
 } from "@/deployment";
+
+export {
+  nameRequestRoute,
+  routeNameMiddleware,
+} from "@/chat/sentry-route-name";
+
+// Junior records its own gen_ai spans with usage and cost. These SDK spans
+// would duplicate them, and Pi reads provider streams itself, so they have no
+// usage. Remove this filter after getsentry/sentry-javascript#25869.
+const MANUAL_GEN_AI_INTEGRATIONS = new Set([
+  "Anthropic_AI",
+  "Google_GenAI",
+  "Groq",
+  "Mistral",
+  "OpenAI",
+  "TogetherAI",
+  "VercelAI",
+]);
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -24,45 +42,117 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function getEnvironment(): string | undefined {
+  return (
+    process.env["SENTRY_ENVIRONMENT"] ??
+    process.env["VERCEL_ENV"] ??
+    process.env["NODE_ENV"]
+  );
+}
+
+function getTracesSampleRate(): number {
+  return getSampleRate(process.env["SENTRY_TRACES_SAMPLE_RATE"], 1);
+}
+
+/** Browser SDK settings and the current request's trace, for an HTML page. */
+export interface BrowserSentryConfig {
+  baggage?: string | undefined;
+  dsn: string;
+  environment?: string | undefined;
+  release?: string | undefined;
+  sentryTrace?: string | undefined;
+  tracesSampleRate: number;
+}
+
+/**
+ * Read the settings a served page needs to send browser spans to the same
+ * project, continuing the trace of the request that rendered it.
+ */
+export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
+  const dsn = process.env["SENTRY_DSN"]?.trim();
+  if (!dsn) return undefined;
+  const trace = Sentry.getTraceData();
+  return {
+    baggage: trace.baggage,
+    dsn,
+    environment: getEnvironment(),
+    release: getDeploymentServiceVersion(),
+    sentryTrace: trace["sentry-trace"],
+    tracesSampleRate: getTracesSampleRate(),
+  };
+}
+
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
     return;
   }
 
-  const dsn = process.env.SENTRY_DSN;
-  const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
+  const dsn = process.env["SENTRY_DSN"];
+  // `SENTRY_SPOTLIGHT` sends events to a local server, such as the Sentry
+  // Local server that `pnpm dev` starts. Logs go there too.
+  const enableLogs = getBoolean(
+    process.env["SENTRY_ENABLE_LOGS"],
+    Boolean(dsn || process.env["SENTRY_SPOTLIGHT"]?.trim()),
+  );
   const serviceVersion = getDeploymentServiceVersion();
   const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
 
   Sentry.init({
     dsn,
-    environment:
-      process.env.SENTRY_ENVIRONMENT ??
-      process.env.VERCEL_ENV ??
-      process.env.NODE_ENV,
+    environment: getEnvironment(),
     release: serviceVersion,
-    tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
-    traceLifecycle: "stream",
-    sendDefaultPii: true,
-    enableLogs,
-    registerEsmLoaderHooks: false,
-    streamGenAiSpans: true,
-    beforeSend: scrubPrivateSentryEvent,
-    beforeSendLog: scrubPrivateSentryLog,
-    beforeSendSpan: Sentry.withStreamedSpan(scrubPrivateSentrySpan),
-    beforeSendTransaction: scrubPrivateSentryTransaction,
-    integrations(defaultIntegrations) {
-      return [
-        ...defaultIntegrations,
-        Sentry.vercelAIIntegration({
-          recordInputs: true,
-          recordOutputs: true,
-        }),
-      ];
+    tracesSampleRate: getTracesSampleRate(),
+    ignoreSpans: [
+      // Vercel health checks
+      { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
+    ],
+    dataCollection: {
+      // Request and response bodies carry model prompts, webhook payloads,
+      // signed callbacks, and sandbox egress content. Collect none.
+      httpBodies: [],
+      // Other request headers carry credentials and full upstream paths:
+      // `forwarded` holds a Vercel bearer, `vercel-forwarded-path` and
+      // `referer` keep query strings, and webhooks send HMAC signatures. The
+      // SDK matches these terms as substrings of the header name.
+      httpHeaders: {
+        request: {
+          allow: [
+            "accept",
+            "baggage",
+            "content-encoding",
+            "content-length",
+            "content-type",
+            "host",
+            "sentry-trace",
+            "user-agent",
+            "x-github-delivery",
+            "x-github-event",
+            "x-slack-request-timestamp",
+            "x-slack-retry",
+            "x-vercel-id",
+          ],
+        },
+      },
+      urlQueryParams: false,
+      // Query spans must not carry bound parameter values.
+      databaseQueryData: false,
     },
+    beforeSend: scrubPrivateSentryEvent,
+    beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
+    beforeSendSpan: scrubPrivateSentrySpan,
+    integrations: (defaultIntegrations) =>
+      defaultIntegrations.filter(
+        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+      ),
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.
   Sentry.getGlobalScope().setAttributes(deploymentSpanAttributes);
+  // `beforeSend` sees only error events. User feedback from `submitFeedback`
+  // carries the same request and breadcrumb data, so scrub it the same way.
+  Sentry.getGlobalScope().addEventProcessor((event) =>
+    event.type === "feedback" ? scrubPrivateSentryEvent(event) : event,
+  );
+  subscribeGatewayRequestTiming();
 }

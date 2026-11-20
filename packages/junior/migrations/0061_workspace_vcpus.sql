@@ -1,0 +1,1 @@
+ALTER TABLE "junior_workspaces" ADD COLUMN "vcpus" integer;

@@ -27,6 +27,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 2. Execute via CLI:
 
 - Use `sentry <command>` for structured queries.
+- A repo can put its own `sentry` program first on PATH, for example in a `getsentry/sentry` checkout. If `sentry --help` does not show the Sentry CLI, run `/vercel/sandbox/.junior/bin/sentry` instead.
 - The runtime authenticates Sentry HTTP traffic for this skill. Do not set or print token env vars.
 - Read [references/cli-commands.md](references/cli-commands.md) when choosing command shapes, target formats, flags, API fallback, or troubleshooting behavior.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.

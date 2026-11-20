@@ -1,9 +1,7 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
-import {
-  isSlackWorkspaceMember,
-  runWithWorkspaceTeamId,
-} from "@/chat/ingress/workspace-membership";
+import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 const LOCAL_TEAM = "T0LOCAL";
 

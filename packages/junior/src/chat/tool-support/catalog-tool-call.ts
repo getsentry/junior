@@ -4,7 +4,13 @@ import {
   isTypeBoxInputSchema,
   type AnyToolDefinition,
 } from "@/chat/tools/definition";
+import { executeToolInputSchema } from "@/chat/tools/execute-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { parseToolInput } from "@/chat/tool-support/zod-tool";
+import {
+  findToolNameHint,
+  ToolNameMissError,
+} from "@/chat/tool-support/tool-name-suggestions";
 
 export interface CatalogToolCall {
   arguments: Record<string, unknown>;
@@ -20,47 +26,33 @@ function schemaErrorText(schema: TSchema, value: unknown): string {
   return `${firstError.path || "/"} ${firstError.message}`;
 }
 
-/** Resolve and validate a catalog executeTool request at runtime. */
+/** Parse an executeTool envelope and resolve the catalog tool that it names. */
 export function resolveCatalogToolCall(
-  input: Record<string, unknown>,
+  input: unknown,
   catalogTools: Record<string, AnyToolDefinition>,
 ): CatalogToolCall {
-  const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments",
+  const { tool_name: toolName, arguments: args = {} } = parseToolInput(
+    executeToolInputSchema,
+    input,
   );
-  if (extraKeys.length > 0) {
-    throw new ToolInputError(
-      `executeTool arguments must be nested under arguments, not top-level fields: ${extraKeys.join(", ")}`,
-    );
-  }
-
-  const toolName = input.tool_name;
-  if (typeof toolName !== "string" || toolName.length === 0) {
-    throw new ToolInputError("executeTool requires a catalog tool_name.");
-  }
-
   const definition = catalogTools[toolName];
   if (!definition) {
-    throw new ToolInputError(
-      `executeTool can only call catalog tools returned by searchTools: ${toolName}`,
+    throw new ToolNameMissError(
+      `executeTool can only call catalog tools returned by searchTools: ${toolName}.`,
+      findToolNameHint(toolName, catalogTools),
     );
   }
-
-  const args = input.arguments;
-  if (args === undefined) {
-    return { arguments: {}, definition, toolName };
-  }
-  if (!args || typeof args !== "object" || Array.isArray(args)) {
-    throw new ToolInputError(
-      "executeTool arguments must be an object when provided.",
-    );
-  }
-
-  return { arguments: args as Record<string, unknown>, definition, toolName };
+  return { arguments: args, definition, toolName };
 }
 
-/** Apply a catalog tool's own argument preparation and schema boundary. */
-export function prepareCatalogToolCall(call: CatalogToolCall): CatalogToolCall {
+/**
+ * Apply a tool's own argument preparation and schema boundary to a call that
+ * a dispatcher (`executeTool` or a Code Mode script) makes for the model.
+ */
+export function prepareCatalogToolCall(
+  call: CatalogToolCall,
+  dispatcherName = "executeTool",
+): CatalogToolCall {
   const prepared = call.definition.prepareArguments
     ? call.definition.prepareArguments(call.arguments)
     : call.arguments;
@@ -69,12 +61,12 @@ export function prepareCatalogToolCall(call: CatalogToolCall): CatalogToolCall {
     !Value.Check(call.definition.inputSchema, prepared)
   ) {
     throw new ToolInputError(
-      `executeTool arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition.inputSchema, prepared)}`,
+      `${dispatcherName} arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition.inputSchema, prepared)}`,
     );
   }
   if (!prepared || typeof prepared !== "object" || Array.isArray(prepared)) {
     throw new ToolInputError(
-      `executeTool arguments must prepare to an object for ${call.toolName}.`,
+      `${dispatcherName} arguments must prepare to an object for ${call.toolName}.`,
     );
   }
   return {

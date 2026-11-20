@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { runCheck } from "@/cli/check";
 import { runInit } from "@/cli/init";
 
@@ -32,10 +33,17 @@ function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
+        /  \{ exampleDashboardAuthRequired, exampleDashboardMockConversations \},\n/,
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
+      // Only the example app can show live data in a Preview.
+      .replace("  { withExampleLivePreview },\n", "")
+      .replace('  import("./live-preview.ts"),\n', "")
+      .replace(
+        "export default withExampleLivePreview(app);",
+        "export default app;",
+      )
       // The example deployment allows Sentry; the scaffold uses a placeholder.
       .replace(
         'allowedDomains: ["sentry.io"]',
@@ -50,7 +58,7 @@ function removeExampleDashboardNitroConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardComponentGallery,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
+        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
         "",
       )
       .replace(
@@ -74,7 +82,7 @@ describe("init cli", () => {
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(false);
     expect(fs.existsSync(path.join(target, "api"))).toBe(false);
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
@@ -96,17 +104,18 @@ describe("init cli", () => {
     );
     expect(workflow).toContain("pnpm check");
     expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain('JUNIOR_SKIP_SNAPSHOT: "1"');
     expect(workflow).toContain("pnpm install");
 
     const vercelConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "vercel.json"),
     );
-    expect(vercelConfig.framework).toBe("nitro");
-    expect(vercelConfig.buildCommand).toBe(
+    expect(vercelConfig["framework"]).toBe("nitro");
+    expect(vercelConfig["buildCommand"]).toBe(
       "pnpm exec junior upgrade && pnpm build",
     );
-    expect(vercelConfig.crons).toBeUndefined();
-    expect(vercelConfig.functions).toBeUndefined();
+    expect(vercelConfig["crons"]).toBeUndefined();
+    expect(vercelConfig["functions"]).toBeUndefined();
 
     const serverEntry = fs.readFileSync(path.join(target, "server.ts"), "utf8");
     expect(serverEntry).toContain(
@@ -117,26 +126,12 @@ describe("init cli", () => {
     expect(serverEntry).toContain("createApp({");
     expect(serverEntry).toContain("plugins,");
 
-    const instrumentFile = fs.readFileSync(
-      path.join(target, "instrument.mjs"),
-      "utf8",
-    );
-    expect(instrumentFile).toBe(
-      fs.readFileSync(
-        path.join(repoRoot, "apps", "example", "instrument.mjs"),
-        "utf8",
-      ),
-    );
-
     const nitroConfig = fs.readFileSync(
       path.join(target, "nitro.config.ts"),
       "utf8",
     );
     expect(nitroConfig).toContain(
-      'import { juniorNitro } from "@sentry/junior/nitro";',
-    );
-    expect(nitroConfig).toContain(
-      'import { withSentryConfig } from "@sentry/nitro";',
+      'import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";',
     );
     expect(nitroConfig).toContain('preset: "vercel"');
     expect(nitroConfig).toContain("juniorNitro({");
@@ -147,7 +142,7 @@ describe("init cli", () => {
     const tsConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "tsconfig.json"),
     );
-    expect(tsConfig.extends).toBe("nitro/tsconfig");
+    expect(tsConfig["extends"]).toBe("nitro/tsconfig");
 
     const pluginsFile = fs.readFileSync(
       path.join(target, "plugins.ts"),
@@ -171,38 +166,44 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
-    expect(pkg.dependencies["@sentry/nitro"]).toBe("10.65.0");
-    expect(pkg.devDependencies.nitro).toBeDefined();
-    expect(pkg.devDependencies.vite).toBeUndefined();
-    expect(pkg.devDependencies.vercel).toBeUndefined();
-    expect(pkg.scripts.dev).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
-    );
-    expect(pkg.scripts.check).toBe("junior check");
-    expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
-    expect(pkg.scripts.preview).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
-    );
-    expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+    expect(pkg.dependencies["@sentry/nitro"]).toBeUndefined();
+    expect(pkg.devDependencies["nitro"]).toBeDefined();
+    expect(pkg.devDependencies["vite"]).toBeUndefined();
+    expect(pkg.devDependencies["vercel"]).toBeUndefined();
+    expect(pkg.scripts["dev"]).toBe("nitro dev");
+    expect(pkg.scripts["check"]).toBe("junior check");
+    expect(pkg.scripts["build"]).toBe("junior snapshot create && nitro build");
+    expect(pkg.scripts["preview"]).toBe("nitro preview");
+    expect(pkg.scripts["typecheck"]).toBe("tsc --noEmit");
 
-    const pnpmWorkspace = fs.readFileSync(
-      path.join(target, "pnpm-workspace.yaml"),
-      "utf8",
-    );
-    expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
-`);
+    interface PnpmWorkspace {
+      allowBuilds: Record<string, boolean>;
+      minimumReleaseAge: number;
+      minimumReleaseAgeExclude: string[];
+    }
+    const pnpmWorkspace = parseYaml(
+      fs.readFileSync(path.join(target, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(pnpmWorkspace.minimumReleaseAge).toBe(1440);
+    expect(pnpmWorkspace.minimumReleaseAgeExclude).toEqual(["@sentry/*"]);
+    // Build script decisions match the ones this repo made.
+    const repoWorkspace = parseYaml(
+      fs.readFileSync(path.join(repoRoot, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(
+      Object.fromEntries(
+        Object.keys(pnpmWorkspace.allowBuilds).map((name) => [
+          name,
+          repoWorkspace.allowBuilds[name],
+        ]),
+      ),
+    ).toEqual(pnpmWorkspace.allowBuilds);
 
     const envExample = fs.readFileSync(
       path.join(target, ".env.example"),
       "utf8",
     );
     expect(envExample).toContain("CRON_SECRET=");
-    expect(envExample).toContain("JUNIOR_SLASH_COMMAND=");
-    expect(envExample).toContain("JUNIOR_CROSS_ACTOR_MID_RUN_MODE=");
     expect(envExample).toContain("AI_GUARDIAN_MODEL=");
     expect(envExample).toContain("DATABASE_URL=");
     expect(envExample).toContain("JUNIOR_DATABASE_DRIVER=");
@@ -230,11 +231,14 @@ allowBuilds:
     const scaffoldPackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
+      packageManager: string;
       scripts: Record<string, string>;
     }>(path.join(target, "package.json"));
     const examplePackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
       scripts: Record<string, string>;
     }>(examplePackageJsonPath);
 
@@ -278,14 +282,17 @@ allowBuilds:
     expect(scaffoldPackage.devDependencies).toEqual(
       examplePackage.devDependencies,
     );
+    expect(scaffoldPackage.engines).toEqual(examplePackage.engines);
+    // The scaffold pins the pnpm release that this repo uses.
+    const rootPackage = readJsonFile<{ packageManager: string }>(
+      path.join(repoRoot, "package.json"),
+    );
+    expect(scaffoldPackage.packageManager).toBe(
+      rootPackage.packageManager.split("+")[0],
+    );
 
-    const scaffoldVercelConfig = readJsonFile<Record<string, unknown>>(
-      path.join(target, "vercel.json"),
-    );
-    const exampleVercelConfig = readJsonFile<Record<string, unknown>>(
-      path.join(repoRoot, "apps", "example", "vercel.json"),
-    );
-    expect(scaffoldVercelConfig).toEqual(exampleVercelConfig);
+    // tests/unit/vercel.test.ts checks the example Vercel config, which must
+    // build workspace packages before the scaffold build command.
 
     const scaffoldNitroConfig = fs.readFileSync(
       path.join(target, "nitro.config.ts"),

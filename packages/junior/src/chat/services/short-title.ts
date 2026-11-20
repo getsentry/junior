@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import type { completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
 import { logWarn } from "@/chat/logging";
 
 export const SHORT_TITLE_MAX_LENGTH = 60;
@@ -58,12 +58,18 @@ export function fallbackShortTitle(
   return normalizeShortTitle(firstLine) || fallback;
 }
 
-/** Generate a short title with the fast model, or return undefined on failure. */
+/**
+ * Generate a short title with the fast model, or return undefined on failure.
+ * `context` holds facts about objects that the source text links, such as
+ * issue titles.
+ */
 export async function generateShortTitle(args: {
   completeText: typeof completeText;
+  context?: string[] | undefined;
+  cost: ConversationModelCost;
   kind: ShortTitleKind;
   sourceText: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): Promise<string | undefined> {
   args.signal?.throwIfAborted();
   const sourceText = args.sourceText.trim();
@@ -73,8 +79,8 @@ export async function generateShortTitle(args: {
     const result = await args.completeText({
       signal: args.signal,
       modelId: botConfig.fastModelId,
-      temperature: 0,
-      promptName: `junior.${args.kind}_title`,
+      operation: `${args.kind}_title`,
+      cost: args.cost,
       messages: [
         {
           role: "user",
@@ -82,6 +88,17 @@ export async function generateShortTitle(args: {
             ...TITLE_PROMPTS[args.kind],
             "",
             `${SOURCE_LABELS[args.kind]}: ${sourceText.slice(0, SOURCE_TEXT_MAX_LENGTH[args.kind])}`,
+            // Add this block only with context, so other title requests stay
+            // the same.
+            ...(args.context?.length
+              ? [
+                  "",
+                  "Linked objects:",
+                  ...args.context.map((line) => `- ${line}`),
+                  "",
+                  "When the message refers to a linked object, name it by its number and title, for example: Fix #123: Login fails on Safari.",
+                ]
+              : []),
           ].join("\n"),
           timestamp: Date.now(),
         },
@@ -109,14 +126,16 @@ export async function generateShortTitle(args: {
  */
 export async function resolveTaskTitle(args: {
   completeText: typeof completeText;
+  cost: ConversationModelCost;
   instruction: string;
-  title?: string | null;
-  signal?: AbortSignal;
+  title?: string | null | undefined;
+  signal?: AbortSignal | undefined;
 }): Promise<string | undefined> {
   const explicit = normalizeShortTitle(args.title ?? "");
   if (explicit) return explicit;
   return generateShortTitle({
     completeText: args.completeText,
+    cost: args.cost,
     kind: "task",
     sourceText: args.instruction,
     signal: args.signal,

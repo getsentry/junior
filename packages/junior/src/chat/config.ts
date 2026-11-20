@@ -1,19 +1,19 @@
+import {
+  readAttachmentStorageConfig,
+  type AttachmentStorageConfig,
+} from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
-  TURN_REASONING_LEVELS,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
-import {
-  DEFAULT_MODEL_PROFILES,
-  type ModelProfileConfig,
-  type ModelProfile,
-  type ModelProfileInput,
-  modelProfileSchema,
-} from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -51,7 +51,6 @@ const MAX_EVENT_AUTOMATION_RUNS = 10;
 /** Length of the rolling window for the Event automation run limit. */
 const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
-const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
@@ -79,35 +78,44 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotModelConfig {
+  /** Model that runs every agent Turn. */
+  modelId?: string;
   /** Decision model used by the passive reply router. */
   decisionModelId?: string;
   /** Model used for embeddings. */
   embeddingModelId?: string;
   /** Model used for low-cost structured and utility calls. */
   fastModelId?: string;
+  /** Model used to rerank plugin retrieval candidates. */
+  rerankingModelId?: string;
   /** Model used to review sensitive tool calls. */
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
+  /** Model used to transcribe audio and video attachments. */
+  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
   webSearchModelId?: string;
+  /** Model that continues an agent Turn after the main model refuses it. Unset by default. */
+  refusalFallbackModelId?: string;
 }
 
 export interface BotConfig {
   contextWindowTokens: number;
-  crossActorMidRunMode: CrossActorMidRunMode;
   decisionModelId: string;
-  defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
+  rerankingModelId: string;
   imageGenerationModelId: string;
+  transcriptionModelId: string;
   loadingMessages: string[];
-  profiles: Readonly<Record<string, ModelProfileConfig>>;
-  reasoningLevel?: TurnReasoningLevel;
-  visionModelId?: string;
+  modelId: string;
+  reasoningLevel: TurnReasoningLevel;
+  refusalFallbackModelId?: string | undefined;
+  visionModelId?: string | undefined;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
@@ -120,33 +128,40 @@ export interface BotConfig {
   webSearchModelId: string;
 }
 
-export type CrossActorMidRunMode = "follow_up" | "steer";
-
 export type SqlDriver = "neon" | "postgres";
 
 export interface ChatConfig {
+  attachmentStorage: AttachmentStorageConfig;
   bot: BotConfig;
+  queue: QueueConfig;
   functionMaxDurationSeconds: number;
+  /** Kill switch for prompt cache warming. Defaults to true. */
+  cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
     statementTimeoutMs: number | false;
   };
   slack: {
-    botToken?: string;
-    clientId?: string;
-    clientSecret?: string;
+    botToken?: string | undefined;
+    clientId?: string | undefined;
+    clientSecret?: string | undefined;
     completedReactionEmoji: string;
     processingReactionEmoji: string;
-    signingSecret?: string;
-    slashCommand: string;
+    signingSecret?: string | undefined;
+  };
+  sandbox: {
+    /** Sandbox provider for this deployment. `docker` is for local development. */
+    provider: "vercel" | "docker";
   };
   state: {
     adapter: "memory" | "redis";
-    keyPrefix?: string;
-    redisUrl?: string;
+    keyPrefix?: string | undefined;
+    redisUrl?: string | undefined;
   };
 }
 
@@ -227,17 +242,8 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-function parseSlashCommand(rawValue: string | undefined): string {
-  const command = toOptionalTrimmed(rawValue) ?? DEFAULT_SLACK_SLASH_COMMAND;
-  if (!command.startsWith("/") || /\s/.test(command)) {
-    throw new Error(
-      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
-    );
-  }
-  return command;
-}
-
-function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
+// Operational kill switches default to on. Only "false" turns them off.
+function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
   if (value === undefined || value === "true") {
     return true;
@@ -245,31 +251,21 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   if (value === "false") {
     return false;
   }
-  throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
+  throw new Error(`${name} must be true or false`);
 }
 
-function parseCrossActorMidRunMode(
-  rawValue: string | undefined,
-): CrossActorMidRunMode {
-  const value = toOptionalTrimmed(rawValue) ?? "follow_up";
-  if (value === "follow_up" || value === "steer") {
-    return value;
-  }
-  throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
-}
-
-const DEFAULT_MODEL_ID = resolveGatewayModel(
-  DEFAULT_MODEL_PROFILES.standard.modelId,
-).id;
+const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
+const DEFAULT_REASONING_LEVEL: TurnReasoningLevel = "high";
 const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
-  DEFAULT_MODEL_PROFILES.handoff.modelId,
-).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
-const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
+const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
+// The transcription tool sends a URL, not bytes. The model must accept
+// ElevenLabs `sourceUrl`.
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "elevenlabs/scribe-v2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -295,156 +291,6 @@ function requireModelId(
   return modelId;
 }
 
-function parseOptionalProfileDescription(
-  rawDescription: unknown,
-  configName: string,
-  profile: string,
-): string | undefined {
-  if (rawDescription === undefined) {
-    return undefined;
-  }
-  if (typeof rawDescription !== "string") {
-    throw new Error(
-      `${configName}.${profile}.description must be a string when set`,
-    );
-  }
-  const description = toOptionalTrimmed(rawDescription);
-  if (!description) {
-    throw new Error(
-      `${configName}.${profile}.description must not be empty when set`,
-    );
-  }
-  return description;
-}
-
-function parseOptionalProfileReasoningLevel(
-  rawReasoningLevel: unknown,
-  configName: string,
-  profile: string,
-): TurnReasoningLevel | undefined {
-  if (rawReasoningLevel === undefined) {
-    return undefined;
-  }
-  try {
-    return parseTurnReasoningLevel(rawReasoningLevel);
-  } catch {
-    throw new Error(
-      `${configName}.${profile}.reasoningLevel must be one of ${TURN_REASONING_LEVELS.join(", ")}`,
-    );
-  }
-}
-
-function parseProfileConfig(
-  rawProfile: unknown,
-  configName: string,
-  profile: string,
-): ModelProfileConfig {
-  if (typeof rawProfile === "string") {
-    const modelId = validateGatewayModelId(rawProfile);
-    if (!modelId) {
-      throw new Error(`${configName}.${profile} must not be empty`);
-    }
-    return { modelId };
-  }
-
-  if (
-    !rawProfile ||
-    typeof rawProfile !== "object" ||
-    Array.isArray(rawProfile)
-  ) {
-    throw new Error(
-      `${configName}.${profile} must be a model id string or an object with modelId`,
-    );
-  }
-
-  const rawModelId = (rawProfile as { modelId?: unknown }).modelId;
-  if (typeof rawModelId !== "string") {
-    throw new Error(
-      `${configName}.${profile}.modelId must be a model id string`,
-    );
-  }
-  const modelId = validateGatewayModelId(rawModelId);
-  if (!modelId) {
-    throw new Error(`${configName}.${profile}.modelId must not be empty`);
-  }
-
-  const description = parseOptionalProfileDescription(
-    (rawProfile as { description?: unknown }).description,
-    configName,
-    profile,
-  );
-  const reasoningLevel = parseOptionalProfileReasoningLevel(
-    (rawProfile as { reasoningLevel?: unknown }).reasoningLevel,
-    configName,
-    profile,
-  );
-
-  return {
-    modelId,
-    ...(description ? { description } : undefined),
-    ...(reasoningLevel ? { reasoningLevel } : undefined),
-  };
-}
-
-function parseProfileMap(
-  rawProfiles: unknown,
-  configName: string,
-): Readonly<Record<string, ModelProfileConfig>> {
-  if (
-    !rawProfiles ||
-    typeof rawProfiles !== "object" ||
-    Array.isArray(rawProfiles)
-  ) {
-    const objectType =
-      configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
-    throw new Error(`${configName} must be ${objectType}`);
-  }
-  const profiles: Record<string, ModelProfileConfig> = {};
-  for (const [profile, rawProfile] of Object.entries(rawProfiles)) {
-    if (!modelProfileSchema.safeParse(profile).success) {
-      throw new Error(
-        `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
-      );
-    }
-    profiles[profile] = parseProfileConfig(rawProfile, configName, profile);
-  }
-  return profiles;
-}
-
-// TODO(dcramer): Remove env profile settings after supported deployments no
-// longer use AI_MODEL, AI_HANDOFF_MODEL, or AI_MODEL_PROFILES.
-function parseProfiles(
-  rawValue: string | undefined,
-  standardModelId: string,
-  handoffModelId: string,
-): Readonly<Record<string, ModelProfileConfig>> {
-  const profiles: Record<string, ModelProfileConfig> = {
-    standard: {
-      ...DEFAULT_MODEL_PROFILES.standard,
-      modelId: standardModelId,
-    },
-    handoff: {
-      ...DEFAULT_MODEL_PROFILES.handoff,
-      modelId: handoffModelId,
-    },
-  };
-  const trimmed = toOptionalTrimmed(rawValue);
-  if (trimmed === undefined) {
-    return profiles;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    throw new Error("AI_MODEL_PROFILES must be a JSON object");
-  }
-  return {
-    ...profiles,
-    ...parseProfileMap(parsed, "AI_MODEL_PROFILES"),
-  };
-}
-
 function parseReactionEmoji(
   envName: string,
   rawValue: string | undefined,
@@ -463,68 +309,57 @@ function parseReactionEmoji(
   return normalized;
 }
 
-function warnDeprecatedProfileEnv(env: NodeJS.ProcessEnv): void {
-  for (const envName of [
-    "AI_MODEL",
-    "AI_HANDOFF_MODEL",
-    "AI_MODEL_PROFILES",
-  ] as const) {
-    if (toOptionalTrimmed(env[envName]) !== undefined) {
-      logWarn("config.profile_env.deprecated", {
-        "app.config.env_name": envName,
-        "app.config.replacement": "createApp({ defaultProfile, profiles })",
-      });
-    }
-  }
-}
-
 function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
 ): BotConfig {
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
-  const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
-  const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
+  const modelId = validateGatewayModelId(env["AI_MODEL"]) ?? DEFAULT_MODEL_ID;
+  const reasoningLevel = toOptionalTrimmed(env["AI_REASONING_LEVEL"]);
   const fastModelId =
-    validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
+    validateGatewayModelId(env["AI_FAST_MODEL"] ?? env["AI_MODEL"]) ??
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
-    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
-  const handoffModelId =
-    validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
+    validateGatewayModelId(env["AI_GUARDIAN_MODEL"]) ??
+    DEFAULT_GUARDIAN_MODEL_ID;
 
   return {
-    userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
-    defaultProfile: "standard",
-    crossActorMidRunMode: parseCrossActorMidRunMode(
-      env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
-    ),
-    profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
+    userName: toOptionalTrimmed(env["JUNIOR_BOT_NAME"]) ?? "junior",
+    modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
         "AI_MODEL_CONTEXT_WINDOW_TOKENS",
-        env.AI_MODEL_CONTEXT_WINDOW_TOKENS,
+        env["AI_MODEL_CONTEXT_WINDOW_TOKENS"],
       ) ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
     reasoningLevel:
       reasoningLevel === undefined
-        ? undefined
+        ? DEFAULT_REASONING_LEVEL
         : parseTurnReasoningLevel(reasoningLevel),
     decisionModelId:
-      toOptionalTrimmed(env.AI_DECISION_MODEL) ?? DEFAULT_DECISION_MODEL_ID,
+      toOptionalTrimmed(env["AI_DECISION_MODEL"]) ?? DEFAULT_DECISION_MODEL_ID,
     fastModelId,
     guardianModelId,
     imageGenerationModelId:
-      toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
+      toOptionalTrimmed(env["AI_IMAGE_MODEL"]) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
+    transcriptionModelId:
+      toOptionalTrimmed(env["AI_TRANSCRIPTION_MODEL"]) ??
+      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
-      validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
+      validateEmbeddingModelId(env["AI_EMBEDDING_MODEL"]) ??
       DEFAULT_EMBEDDING_MODEL_ID,
-    loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    rerankingModelId:
+      toOptionalTrimmed(env["AI_RERANKING_MODEL"]) ??
+      DEFAULT_RERANKING_MODEL_ID,
+    loadingMessages: parseLoadingMessages(env["JUNIOR_LOADING_MESSAGES"]),
+    refusalFallbackModelId: validateGatewayModelId(
+      env["AI_REFUSAL_FALLBACK_MODEL"],
+    ),
     visionModelId:
-      env.AI_VISION_MODEL === undefined
+      env["AI_VISION_MODEL"] === undefined
         ? DEFAULT_VISION_MODEL_ID
-        : validateGatewayModelId(env.AI_VISION_MODEL),
-    maxAgentDepth: 0,
+        : validateGatewayModelId(env["AI_VISION_MODEL"]),
+    maxAgentDepth: 1,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
@@ -532,17 +367,17 @@ function readBotConfig(
     maxEventAutomationRuns: MAX_EVENT_AUTOMATION_RUNS,
     eventAutomationRunWindowMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
-      env.AGENT_TURN_TIMEOUT_MS,
+      env["AGENT_TURN_TIMEOUT_MS"],
       maxTurnTimeoutMs,
     ),
     webSearchModelId:
-      validateGatewayModelId(env.AI_WEB_SEARCH_MODEL) ??
+      validateGatewayModelId(env["AI_WEB_SEARCH_MODEL"]) ??
       DEFAULT_WEB_SEARCH_MODEL_ID,
   };
 }
 
 function readDatabaseUrl(env: NodeJS.ProcessEnv): string {
-  const databaseUrl = toOptionalTrimmed(env.DATABASE_URL);
+  const databaseUrl = toOptionalTrimmed(env["DATABASE_URL"]);
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
   }
@@ -563,7 +398,7 @@ function isLocalDatabaseUrl(databaseUrl: string): boolean {
 }
 
 function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
-  const value = toOptionalTrimmed(env.JUNIOR_DATABASE_DRIVER);
+  const value = toOptionalTrimmed(env["JUNIOR_DATABASE_DRIVER"]);
   if (value === undefined) {
     if (isLocalDatabaseUrl(databaseUrl)) {
       return "postgres";
@@ -577,7 +412,7 @@ function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
 }
 
 function readSqlStatementTimeoutMs(env: NodeJS.ProcessEnv): number | false {
-  const rawValue = toOptionalTrimmed(env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS);
+  const rawValue = toOptionalTrimmed(env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"]);
   if (rawValue === undefined) {
     return DEFAULT_SQL_STATEMENT_TIMEOUT_MS;
   }
@@ -596,19 +431,26 @@ export function readChatConfig(
   functionMaxDurationSeconds = DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
 ): ChatConfig {
   const databaseUrl = readDatabaseUrl(env);
-  warnDeprecatedProfileEnv(env);
   const resolvedFunctionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(
     functionMaxDurationSeconds,
   );
   return {
+    attachmentStorage: readAttachmentStorageConfig(env),
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
+    queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
-    conversationWorkEnabled: parseConversationWorkEnabled(
-      env.JUNIOR_CONVERSATION_WORK_ENABLED,
+    cacheWarmingEnabled: parseKillSwitch(
+      "JUNIOR_CACHE_WARMING_ENABLED",
+      env["JUNIOR_CACHE_WARMING_ENABLED"],
+    ),
+    conversationWorkEnabled: parseKillSwitch(
+      "JUNIOR_CONVERSATION_WORK_ENABLED",
+      env["JUNIOR_CONVERSATION_WORK_ENABLED"],
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -616,22 +458,27 @@ export function readChatConfig(
     },
     slack: {
       botToken:
-        toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??
-        toOptionalTrimmed(env.SLACK_BOT_USER_TOKEN),
-      clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
-      clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
+        toOptionalTrimmed(env["SLACK_BOT_TOKEN"]) ??
+        toOptionalTrimmed(env["SLACK_BOT_USER_TOKEN"]),
+      clientId: toOptionalTrimmed(env["SLACK_CLIENT_ID"]),
+      clientSecret: toOptionalTrimmed(env["SLACK_CLIENT_SECRET"]),
       completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
       processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
-      signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
-      slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
+      signingSecret: toOptionalTrimmed(env["SLACK_SIGNING_SECRET"]),
+    },
+    sandbox: {
+      provider:
+        env["JUNIOR_SANDBOX_PROVIDER"]?.trim().toLowerCase() === "docker"
+          ? "docker"
+          : "vercel",
     },
     state: {
       adapter:
-        env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
+        env["JUNIOR_STATE_ADAPTER"]?.trim().toLowerCase() === "memory"
           ? "memory"
           : "redis",
-      keyPrefix: toOptionalTrimmed(env.JUNIOR_STATE_KEY_PREFIX),
-      redisUrl: toOptionalTrimmed(env.REDIS_URL),
+      keyPrefix: toOptionalTrimmed(env["JUNIOR_STATE_KEY_PREFIX"]),
+      redisUrl: toOptionalTrimmed(env["REDIS_URL"]),
     },
   };
 }
@@ -645,7 +492,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 0, lets only the root Conversation start child agents.
+   * default, 1, lets a child of the root start child agents, and those
+   * cannot start more. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
@@ -792,11 +640,6 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
   }
 }
 
-/** Apply the Slack cross-actor steering mode from createApp(). */
-export function setCrossActorMidRunMode(mode: CrossActorMidRunMode): void {
-  chatConfig.bot.crossActorMidRunMode = parseCrossActorMidRunMode(mode);
-}
-
 /** Return the chat configuration (parsed once at startup). */
 export function getChatConfig(): ChatConfig {
   return chatConfig;
@@ -821,22 +664,18 @@ export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
 }
 
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
-}
-
 // ---------------------------------------------------------------------------
 // Runtime metadata
 // ---------------------------------------------------------------------------
 
 export interface RuntimeMetadata {
-  version?: string;
+  version?: string | undefined;
 }
 
 /** Return runtime metadata (version from deploy environment). */
 export function getRuntimeMetadata(): RuntimeMetadata {
   return {
-    version: toOptionalTrimmed(process.env.VERCEL_GIT_COMMIT_SHA),
+    version: toOptionalTrimmed(process.env["VERCEL_GIT_COMMIT_SHA"]),
   };
 }
 
@@ -847,6 +686,13 @@ export interface SlackReactionConfig {
 
 /** Apply model overrides from createApp(). */
 export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.modelId !== undefined) {
+    botConfig.modelId = requireModelId(
+      "modelId",
+      config.modelId,
+      validateGatewayModelId,
+    );
+  }
   if (config.decisionModelId !== undefined) {
     botConfig.decisionModelId = requireModelId(
       "decisionModelId",
@@ -875,6 +721,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
+  if (config.rerankingModelId !== undefined) {
+    botConfig.rerankingModelId = requireModelId(
+      "rerankingModelId",
+      config.rerankingModelId,
+      toOptionalTrimmed,
+    );
+  }
   if (config.imageGenerationModelId !== undefined) {
     botConfig.imageGenerationModelId = requireModelId(
       "imageGenerationModelId",
@@ -882,10 +735,24 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateEmbeddingModelId,
     );
   }
+  if (config.transcriptionModelId !== undefined) {
+    botConfig.transcriptionModelId = requireModelId(
+      "transcriptionModelId",
+      config.transcriptionModelId,
+      toOptionalTrimmed,
+    );
+  }
   if (config.visionModelId !== undefined) {
     botConfig.visionModelId = requireModelId(
       "visionModelId",
       config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.refusalFallbackModelId !== undefined) {
+    botConfig.refusalFallbackModelId = requireModelId(
+      "refusalFallbackModelId",
+      config.refusalFallbackModelId,
       validateGatewayModelId,
     );
   }
@@ -898,26 +765,14 @@ export function setBotModelConfig(config: BotModelConfig): void {
   }
 }
 
-/** Apply profiles from createApp(). */
-export function setProfiles(
-  profiles: Readonly<Record<string, ModelProfileInput>> | undefined,
-  defaultProfile: string | undefined,
-): void {
-  if (!profiles || !defaultProfile) {
-    throw new Error("profiles and defaultProfile must be configured together");
+/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+export function setBotName(name: string | undefined): void {
+  if (name === undefined) return;
+  const trimmed = toOptionalTrimmed(name);
+  if (!trimmed) {
+    throw new Error("botName must not be empty");
   }
-  const configuredProfiles = parseProfileMap(profiles, "profiles");
-  const selectedDefault = defaultProfile;
-  if (!modelProfileSchema.safeParse(selectedDefault).success) {
-    throw new Error(
-      `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,
-    );
-  }
-  if (!Object.hasOwn(configuredProfiles, selectedDefault)) {
-    throw new Error(`defaultProfile "${selectedDefault}" is not configured`);
-  }
-  botConfig.profiles = configuredProfiles;
-  botConfig.defaultProfile = selectedDefault;
+  botConfig.userName = trimmed;
 }
 
 /** Return the current Slack reaction emoji config. */

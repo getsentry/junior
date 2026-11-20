@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "sentry": {
-      "url": "https://mcp.sentry.dev/mcp/sentry/junior?experimental=1"
+      "command": "sentry",
+      "args": ["mcp", "sentry/junior", "--experimental"]
     }
   }
 }

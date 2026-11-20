@@ -1,10 +1,21 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
-import { renderTaskInput } from "@/chat/task-input";
+import {
+  renderTaskBatchInput,
+  renderTaskInput,
+  type EventDoneBy,
+  type TaskBatchEvent,
+} from "@/chat/task-input";
+import type {
+  ConversationMessageEvent,
+  ConversationMessageMeta,
+} from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { RuntimeInstructionInput } from "@/chat/agent/types";
 import {
   appendAndEnqueueInboundMessage,
   type AppendAndEnqueueInboundMessageResult,
@@ -13,12 +24,15 @@ import {
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { EVENT_AUTHOR_ID, eventBotAuthorId } from "@/chat/events/actor";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { addConversationNote } from "@/chat/conversations/notes";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -35,13 +49,38 @@ export interface EventNotification {
   untrustedText?: string;
 }
 
+const eventTaskFactsSchema = z.object({
+  about: z.string().optional(),
+  instructions: z.string().min(1),
+  guidance: z.string().optional(),
+  people: z.array(z.string()).optional(),
+  trustedSummary: z.string().optional(),
+  verifiedDetails: z.record(z.string(), z.unknown()).optional(),
+  externalText: z.string().optional(),
+  doneBy: z
+    .object({ mention: z.string(), handle: z.string().optional() })
+    .optional(),
+  /** The Event author's own text and who wrote it. It is context. */
+  authorText: z
+    .object({
+      text: z.string().min(1),
+      authorId: z.string().optional(),
+      authorName: z.string().optional(),
+      verified: z.boolean(),
+    })
+    .optional(),
+});
+
+/** Facts for one Watch Event, saved so several Events can share one message. */
+export type EventTaskFacts = z.output<typeof eventTaskFactsSchema>;
+
 /**
- * Render the runtime-owned conversation message for a subscribed event.
+ * Collect the task facts for one subscribed Event.
  *
  * Keep this short: facts the model cannot reconstruct, plus a one-line handling
  * contract. Stable delivery rules live in runtime and docs, not this prompt.
  */
-export function renderEventNotificationText(
+export function eventTaskFacts(
   subscription: Pick<Watch, "guidance" | "intent" | "label" | "resourceType">,
   event: Pick<
     EventNotification,
@@ -49,29 +88,33 @@ export function renderEventNotificationText(
   >,
   /** Mentions resolved from the Event people. */
   people: readonly string[] = [],
-): string {
-  // Resource type guidance applies to every Watch. Watch guidance comes from
+  /** Resolved person who did what the Event describes. */
+  doneBy?: EventDoneBy,
+  /** Core's decision for the Event author. */
+  author: AuthorTrust = { status: "system" },
+): EventTaskFacts {
+  // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
   const guidance = [
-    eventGuidance(
-      getEventCatalog(),
-      event.namespace,
-      subscription.resourceType,
-      event.eventType,
-    ),
+    eventGuidance(getEventCatalog(), event.namespace, event.eventType),
     subscription.guidance?.[event.eventType],
   ]
     .filter((text): text is string => Boolean(text?.trim()))
     .join(" ");
-  return renderTaskInput({
+  const authorText = eventAuthorText(author);
+  return {
     about: subscription.label,
-    people,
     instructions: subscription.intent,
-    guidance,
+    ...(guidance ? { guidance } : undefined),
+    ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
-    verifiedDetails: event.data,
-    externalText: event.untrustedText,
-  });
+    ...(event.data ? { verifiedDetails: event.data } : undefined),
+    ...(authorText ? { authorText } : undefined),
+    ...(event.untrustedText
+      ? { externalText: event.untrustedText }
+      : undefined),
+    ...(doneBy ? { doneBy } : undefined),
+  };
 }
 
 /** Resource-event metadata stored on plain mailbox input. */
@@ -84,12 +127,17 @@ export type EventMailboxMetadata = {
     identifier: string;
     /** Watch that matched the Event. Core Events without a Watch omit it. */
     subscriptionId?: string;
-    objectType?: ObjectType;
+    objectType?: ObjectType | undefined;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
+  /**
+   * Watch task facts. A batch of several Events uses them to write one
+   * message. Input without them keeps its own text.
+   */
+  task?: EventTaskFacts;
 } & Record<string, unknown>;
 
 /** Whether mailbox metadata is a plain event wake. */
@@ -100,25 +148,25 @@ export function isEventMailboxMetadata(
     return false;
   }
   const record = value as Record<string, unknown>;
-  if (record.kind !== "event") {
+  if (record["kind"] !== "event") {
     return false;
   }
-  const event = record.event;
+  const event = record["event"];
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     return false;
   }
   const fields = event as Record<string, unknown>;
   return (
-    typeof fields.eventKey === "string" &&
-    typeof fields.eventType === "string" &&
-    typeof fields.namespace === "string" &&
-    typeof fields.identifier === "string" &&
-    (fields.subscriptionId === undefined ||
-      typeof fields.subscriptionId === "string") &&
-    (fields.objectType === undefined ||
-      objectTypeSchema.safeParse(fields.objectType).success) &&
-    (fields.trustedSummary === undefined ||
-      typeof fields.trustedSummary === "string")
+    typeof fields["eventKey"] === "string" &&
+    typeof fields["eventType"] === "string" &&
+    typeof fields["namespace"] === "string" &&
+    typeof fields["identifier"] === "string" &&
+    (fields["subscriptionId"] === undefined ||
+      typeof fields["subscriptionId"] === "string") &&
+    (fields["objectType"] === undefined ||
+      objectTypeSchema.safeParse(fields["objectType"]).success) &&
+    (fields["trustedSummary"] === undefined ||
+      typeof fields["trustedSummary"] === "string")
   );
 }
 
@@ -154,15 +202,200 @@ export function timerWatchCredentialSubject(
   return shared;
 }
 
+/**
+ * Read the saved Watch task facts from one Event mailbox entry. Entries
+ * without a Watch or saved facts, such as child agent results and input queued
+ * before facts were saved, return undefined and keep their own text.
+ */
+function readEventTaskFacts(
+  message: InboundMessage,
+):
+  | { facts: EventTaskFacts; metadata: EventMailboxMetadata; watchId: string }
+  | undefined {
+  const metadata = message.input.metadata;
+  if (!isEventMailboxMetadata(metadata)) return undefined;
+  const watchId = metadata.event.subscriptionId;
+  if (!watchId) return undefined;
+  const parsed = eventTaskFactsSchema.safeParse(metadata.task);
+  return parsed.success ? { facts: parsed.data, metadata, watchId } : undefined;
+}
+
+/**
+ * Write the agent inputs for an Event batch, one prompt content part each.
+ *
+ * One Event keeps its own text. Several Watch Events become one `<task>`
+ * with one group per Watch, so shared instructions appear once. Entries
+ * without task facts, such as child agent results, keep their own text as
+ * their own inputs after the task. `rendered` replaces the input of an entry
+ * by inbound message id, such as a person change to a Review item.
+ */
+export function renderEventBatchInputs(
+  messages: readonly InboundMessage[],
+  rendered: ReadonlyMap<string, RuntimeInstructionInput> = new Map(),
+): RuntimeInstructionInput[] {
+  const groups = new Map<
+    string,
+    {
+      about?: string;
+      instructions: string;
+      people: string[];
+      events: TaskBatchEvent[];
+    }
+  >();
+  const others: InboundMessage[] = [];
+  for (const message of messages) {
+    const saved = readEventTaskFacts(message);
+    if (!saved) {
+      others.push(message);
+      continue;
+    }
+    const { facts, metadata, watchId } = saved;
+    let group = groups.get(watchId);
+    if (!group) {
+      group = {
+        about: facts.about,
+        instructions: facts.instructions,
+        people: [],
+        events: [],
+      };
+      groups.set(watchId, group);
+    }
+    for (const person of facts.people ?? []) {
+      if (!group.people.includes(person)) group.people.push(person);
+    }
+    group.events.push({
+      eventType: metadata.event.eventType,
+      guidance: facts.guidance,
+      source: metadata.event.namespace,
+      trustedSummary: facts.trustedSummary,
+      verifiedDetails: facts.verifiedDetails,
+      authorText: facts.authorText,
+      externalText: facts.externalText,
+      doneBy: facts.doneBy,
+    });
+  }
+
+  const ownInputs = (entries: readonly InboundMessage[]) =>
+    entries
+      .map(
+        (message): RuntimeInstructionInput =>
+          rendered.get(message.inboundMessageId) ?? {
+            kind: "runtime",
+            text: message.input.text.trim(),
+          },
+      )
+      .filter((input) => input.text);
+  const taskCount = messages.length - others.length;
+  if (taskCount < 2) {
+    return ownInputs(messages);
+  }
+  return [
+    {
+      kind: "runtime",
+      text: renderTaskBatchInput({ groups: [...groups.values()] }),
+    },
+    ...ownInputs(others),
+  ];
+}
+
+/** Return the conversation message entry for one Event input. */
+function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
+  const metadata = message.input.metadata;
+  if (!isEventMailboxMetadata(metadata)) return [];
+  const label = readEventTaskFacts(message)?.facts.about;
+  return [
+    {
+      eventType: metadata.event.eventType,
+      ...(label ? { label } : undefined),
+      ...(metadata.event.objectType
+        ? { objectType: metadata.event.objectType }
+        : undefined),
+      ...(metadata.event.trustedSummary
+        ? { trustedSummary: metadata.event.trustedSummary }
+        : undefined),
+    },
+  ];
+}
+
+/**
+ * Return the saved Message fields for the Event inputs of one Turn.
+ *
+ * A person change to a Review item is not one of the Message's own Events:
+ * its record goes to `reviewItemChanges`, and the dashboard shows it as a
+ * change row. The Message's own Event is its first Watch Event, the
+ * kind the task message counts, or else its first other input, such as an
+ * agent result. `events` lists the Watch Events when several arrived. When
+ * changes share the Message with one own Event, `events` lists that Event, so
+ * a reader can tell it from a Message that only records changes.
+ */
+export function eventBatchMessageMeta(
+  messages: readonly InboundMessage[],
+): Pick<
+  ConversationMessageMeta,
+  | "eventNamespace"
+  | "eventObjectType"
+  | "eventType"
+  | "events"
+  | "reviewItemChanges"
+  | "trustedSummary"
+> {
+  const reviewItemChanges = messages.flatMap((message) =>
+    message.input.reviewItemChange ? [message.input.reviewItemChange] : [],
+  );
+  const own = messages.filter((message) => !message.input.reviewItemChange);
+  const watched = own.filter((message) => readEventTaskFacts(message));
+  const primary = watched[0] ?? own[0];
+  const metadata = (primary ?? messages[0])?.input.metadata;
+  if (!isEventMailboxMetadata(metadata)) return {};
+  const events =
+    watched.length > 1
+      ? watched.flatMap(messageEvent)
+      : reviewItemChanges.length && primary
+        ? messageEvent(primary)
+        : [];
+  return {
+    eventType: metadata.event.eventType,
+    eventNamespace: metadata.event.namespace,
+    eventObjectType: metadata.event.objectType,
+    ...(metadata.event.trustedSummary
+      ? { trustedSummary: metadata.event.trustedSummary }
+      : undefined),
+    ...(events.length ? { events } : undefined),
+    ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
+  };
+}
+
+// A linked trusted author writes the Event Message, like a Slack author. A
+// listed bot has no Identity, so it gets only its own author id. Batching splits
+// Messages whose authors differ. Other Events are written by the system.
+function eventMessageAuthor(
+  author: AuthorTrust | undefined,
+): Pick<InboundMessage["input"], "authorId" | "authorIdentityId"> {
+  if (author?.status !== "trusted") {
+    return { authorId: EVENT_AUTHOR_ID, authorIdentityId: SYSTEM_IDENTITY_ID };
+  }
+  if (author.identityId) {
+    return { authorId: EVENT_AUTHOR_ID, authorIdentityId: author.identityId };
+  }
+  // No system Identity either: with it, the bot's Message could join a
+  // paused system Event Turn, whose owner has only that Identity.
+  return { authorId: eventBotAuthorId(author.provider, author.handle) };
+}
+
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
   subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
+  /** Facts behind `text`, used when several Events share one message. */
+  task?: EventTaskFacts;
+  /** Core's decision for the Event author. */
+  author?: AuthorTrust;
   receivedAtMs?: number;
 }): InboundMessage {
   const metadata: EventMailboxMetadata = {
     kind: "event",
+    ...(input.task ? { task: input.task } : undefined),
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
       : undefined),
@@ -185,10 +418,29 @@ export function createEventInboundMessage(input: {
     receivedAtMs: input.receivedAtMs ?? Date.now(),
     input: {
       text: input.text,
-      authorId: EVENT_AUTHOR_ID,
+      ...eventMessageAuthor(input.author),
       metadata,
     },
   };
+}
+
+/**
+ * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
+ * automated-turn limit does not apply. The next Turn sees the note as
+ * runtime context. Core writes how to use it before the Event facts, so a
+ * long summary that the note limit cuts never loses that rule.
+ */
+export async function addQuietEventNote(args: {
+  event: EventNotification;
+  subscription: Pick<Watch, "conversationId" | "id" | "label">;
+}): Promise<void> {
+  const { event, subscription } = args;
+  await addConversationNote({
+    conversationId: subscription.conversationId,
+    createdAtMs: event.occurredAtMs,
+    key: `quiet_event:${subscription.id}:${event.eventKey}`,
+    text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
+  });
 }
 
 /**
@@ -199,13 +451,17 @@ export function createEventInboundMessage(input: {
  * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueEventNotification(args: {
+  /** Core's decision for the Event author. */
+  author?: AuthorTrust;
+  /** Resolved person who did what the Event describes. */
+  doneBy?: EventDoneBy | undefined;
   event: EventNotification;
   /** Mentions resolved from the Event people. */
-  people?: readonly string[];
+  people?: readonly string[] | undefined;
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const decision = await admitAutomatedTurn({
     conversationId: args.subscription.conversationId,
@@ -228,26 +484,35 @@ export async function enqueueEventNotification(args: {
         conversationId: args.subscription.conversationId,
         maxTurns,
         nowMs: args.event.occurredAtMs,
+        queue: args.queue,
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "duplicate" };
+    return { status: "paused" };
   }
 
-  const text = renderEventNotificationText(
+  const task = eventTaskFacts(
     args.subscription,
     args.event,
     args.people,
+    args.doneBy,
+    args.author,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
+      author: args.author,
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,
         credentialSubject: args.subscription.credentialSubject,
         id: args.subscription.id,
       },
-      text,
+      task,
+      text: renderTaskInput({
+        ...task,
+        event: args.event.eventType,
+        source: args.event.namespace,
+      }),
     }),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,

@@ -1,12 +1,13 @@
+import { getChatConfig } from "@/chat/config";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   resolve as resolveSnapshot,
   type ProgressPhase,
 } from "@/chat/sandbox/snapshot/resolve";
 import * as profile from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
-const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function progressMessage(phase: ProgressPhase): string {
@@ -106,12 +107,12 @@ function logSnapshotProfile(
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
 ): Promise<void> {
-  if (process.env.JUNIOR_SKIP_SNAPSHOT === "1") {
+  if (process.env["JUNIOR_SKIP_SNAPSHOT"] === "1") {
     log("Skipping sandbox snapshot create (JUNIOR_SKIP_SNAPSHOT=1)");
     return;
   }
 
-  const runtime = DEFAULT_RUNTIME;
+  const runtime = SANDBOX_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 
   try {
@@ -134,6 +135,7 @@ export async function runSnapshotCreate(
       `resolve_outcome=${snapshot.resolveOutcome}`,
       `cache_hit=${snapshot.cacheHit}`,
       `dependency_count=${snapshot.dependencyCount}`,
+      `state=${getChatConfig().state.adapter}`,
       ...(snapshot.profileHash ? [`profile_hash=${snapshot.profileHash}`] : []),
       ...(snapshot.snapshotId ? [`snapshot_id=${snapshot.snapshotId}`] : []),
       ...(snapshot.rebuildReason

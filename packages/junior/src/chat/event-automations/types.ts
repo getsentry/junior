@@ -6,7 +6,8 @@ import {
   slackDestinationSchema,
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 /** Keep indexed event-automation selectors within PostgreSQL B-tree entry limits. */
 export const EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH = 300;
@@ -20,17 +21,36 @@ export const eventAutomationPrincipalSchema = z
   })
   .strict();
 
-/** Validate one persisted event-automation selector and its presentation metadata. */
+/**
+ * Validate one persisted event-automation selector and its presentation
+ * metadata. A trigger names one resource with a resource type and an
+ * identifier, or it names neither. With neither, it runs for every resource
+ * of the namespace that its filters match.
+ */
 export const eventAutomationTriggerSchema = z
   .object({
     events: z.array(eventTypeSchema).min(1),
     label: z.string().min(1),
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
-    identifier: z.string().min(1).max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH),
-    resourceType: z.string().min(1),
+    identifier: z
+      .string()
+      .min(1)
+      .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
+      .optional(),
+    resourceType: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (trigger) =>
+      (trigger.identifier === undefined) ===
+      (trigger.resourceType === undefined),
+    {
+      message:
+        "Set both a resource type and an identifier, or leave out both to run for every resource.",
+      path: ["identifier"],
+    },
+  );
 
 /** Event automations target a Slack channel or DM, never a message thread. */
 const eventAutomationDestinationSchema = slackDestinationSchema.omit({
@@ -54,7 +74,7 @@ export const eventAutomationSchema = z
     destinationVisibility: destinationVisibilitySchema,
     /** Explicit visible effects after successful work. An empty list is silent. */
     outcomes: z.array(eventAutomationOutcomeSchema).max(5),
-    task: z.object({ text: z.string().min(1) }).strict(),
+    task: automationTaskSchema,
     trigger: eventAutomationTriggerSchema,
   })
   .strict();
@@ -65,7 +85,7 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
    * Short display title generated from the task instruction.
    * SQL-backed column; never stored inside the JSON task payload.
    */
-  title?: string;
+  title?: string | undefined;
 };
 
 /** The part of an event automation that has no SQL column of its own. */

@@ -1,13 +1,15 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import {
   formatMessageTimestamp,
-  formatRelativeMessageTimestamp,
+  formatTranscriptMessageTime,
   formatTranscriptTimestampDetails,
-} from "../format";
-
-const FULL_TIMESTAMP_AGE_MS = 12 * 60 * 60 * 1000;
+} from "../time";
 
 const TranscriptTimestampContext = createContext<{
   full: boolean;
@@ -30,12 +32,9 @@ export function TranscriptTimestampProvider(props: { children: ReactNode }) {
 export function TranscriptTimestamp(props: { value: number | undefined }) {
   const context = useContext(TranscriptTimestampContext);
   const valid = typeof props.value === "number" && Number.isFinite(props.value);
-  const old = valid && Date.now() - props.value! > FULL_TIMESTAMP_AGE_MS;
   const label = context?.full
     ? formatMessageTimestamp(props.value, true)
-    : old
-      ? formatRelativeMessageTimestamp(props.value)
-      : formatMessageTimestamp(props.value);
+    : formatTranscriptMessageTime(props.value);
 
   const button = (
     <button
@@ -47,22 +46,20 @@ export function TranscriptTimestamp(props: { value: number | undefined }) {
     </button>
   );
 
-  if (!old || context?.full || !valid) return button;
+  if (context?.full || !valid) return button;
 
   const details = formatTranscriptTimestampDetails(props.value!);
   return (
-    <Tooltip
-      content={
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>
         <span className="grid grid-cols-[auto_auto] gap-x-3">
           <span>Local</span>
           <span>{details.local}</span>
           <span>UTC</span>
           <span>{details.utc}</span>
         </span>
-      }
-      placement="above"
-    >
-      {button}
+      </TooltipContent>
     </Tooltip>
   );
 }

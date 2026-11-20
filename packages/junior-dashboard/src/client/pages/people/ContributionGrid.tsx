@@ -1,16 +1,25 @@
 import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
-import { formatDuration } from "../../components/Duration";
-import { Tooltip } from "../../components/Tooltip";
+import {
+  contributionLevel,
+  contributionLevelClass,
+} from "../../components/charts/contributionLevel";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { getDashboardAgentName } from "../../agentName";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { cn } from "../../styles";
+import { formatDuration, formatTime } from "../../time";
 
 type ContributionDay = {
   conversations: number;
-  costUsd?: number;
+  costUsd?: number | undefined;
   date: string;
   durationMs: number;
-  tokens?: number;
+  tokens?: number | undefined;
 };
 
 /** Render a calendar grid for daily conversation activity. */
@@ -46,7 +55,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
     ) {
       return "";
     }
-    return new Date(`${firstDay.date}T00:00:00Z`).toLocaleString(undefined, {
+    return formatTime(`${firstDay.date}T00:00:00Z`, {
       month: "short",
       timeZone: "UTC",
     });
@@ -79,8 +88,24 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
           {weeks.flatMap((week, weekIndex) =>
             week.map((day, dayIndex) =>
               day ? (
-                <Tooltip
-                  content={
+                <Tooltip key={day.date}>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
+                        className={cn(
+                          "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
+                          contributionLevelClass(
+                            contributionLevel(day.conversations, max),
+                          ),
+                        )}
+                        role="listitem"
+                        tabIndex={0}
+                      />
+                    }
+                  />
+                  <TooltipContent>
+                    <TooltipTitle>{formatDate(day.date)}</TooltipTitle>
                     <ActivityTooltipRows
                       rows={[
                         ["conversations", day.conversations],
@@ -92,19 +117,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                         ["tokens", formatCompactNumber(day.tokens ?? 0)],
                       ]}
                     />
-                  }
-                  key={day.date}
-                  label={formatDate(day.date)}
-                >
-                  <span
-                    aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
-                    className={cn(
-                      "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
-                      activityClass(day.conversations, max),
-                    )}
-                    role="listitem"
-                    tabIndex={0}
-                  />
+                  </TooltipContent>
                 </Tooltip>
               ) : (
                 <span
@@ -118,16 +131,12 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
         </div>
         <div className="mt-3 flex items-center gap-1 text-xs font-semibold leading-none text-dashboard-text-muted">
           <span>Less</span>
-          {[0, 1, 2, 3, 4].map((level) => (
+          {([0, 1, 2, 3, 4] as const).map((level) => (
             <span
               aria-hidden="true"
               className={cn(
                 "size-3 border border-dashboard-overlay",
-                level === 0 && "bg-dashboard-surface-hover",
-                level === 1 && "bg-[#133225]",
-                level === 2 && "bg-[#176a4a]",
-                level === 3 && "bg-[#22a06b]",
-                level === 4 && "bg-[#8bdc97]",
+                contributionLevelClass(level),
               )}
               key={level}
             />
@@ -140,7 +149,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
 }
 
 function formatDate(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+  return formatTime(`${date}T00:00:00Z`, {
     day: "numeric",
     month: "short",
     timeZone: "UTC",
@@ -151,13 +160,4 @@ function formatDate(date: string): string {
 function activityRuntime(day: ContributionDay): string {
   if (day.durationMs <= 0 && day.conversations > 0) return "unknown";
   return formatDuration(day.durationMs);
-}
-
-function activityClass(count: number, max: number): string {
-  if (count <= 0) return "bg-dashboard-surface-hover";
-  const ratio = count / max;
-  if (ratio >= 0.75) return "bg-[#8bdc97]";
-  if (ratio >= 0.45) return "bg-[#22a06b]";
-  if (ratio >= 0.2) return "bg-[#176a4a]";
-  return "bg-[#133225]";
 }

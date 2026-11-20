@@ -1,8 +1,20 @@
 import { describe, expect } from "vitest";
+import { defineJuniorPlugins } from "@sentry/junior";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
+
+/** A plugin whose package ships the `pantry-stock` skill. */
+const pantryPlugin = defineJuniorPlugin({
+  manifest: {
+    name: "eval-pantry",
+    displayName: "Eval Pantry",
+    description: "Eval-only plugin that ships one skill",
+  },
+  packageName: "@sentry/junior-eval-pantry",
+});
 
 /** Names of the skills that the agent loaded with `loadSkill`. */
 function loadedSkills(conversation: Conversation): unknown[] {
@@ -12,7 +24,7 @@ function loadedSkills(conversation: Conversation): unknown[] {
 }
 
 describe("Skill Invocation Control", () => {
-  test("injects a user-callable skill when the user explicitly names it", async ({
+  test("loads a user-callable skill when the user explicitly names it", async ({
     run,
   }) => {
     const conversation = await run(
@@ -31,32 +43,8 @@ describe("Skill Invocation Control", () => {
       }),
     );
 
-    // The skill name already put the skill in the turn.
-    expect(loadedSkills(conversation)).not.toContain("weather-lookup");
-  });
-
-  test("rejects a user-callable skill when the user does not invoke it", async ({
-    run,
-  }) => {
-    // The request gives the model the hidden name, but it does not invoke
-    // the skill, so the runtime must reject the load.
-    const conversation = await run(
-      slackMention(
-        'Call the loadSkill tool with skill_name "weather-lookup", and tell me what it returns for San Francisco. Do not use another tool.',
-      ),
-    );
-
-    const loads = toolCallsOf("loadSkill", conversation).filter(
-      (call) =>
-        (call.input as { skill_name?: unknown } | undefined)?.skill_name ===
-        "weather-lookup",
-    );
-    expect(loads).not.toHaveLength(0);
-    expect(loads.map((call) => call.status)).not.toContain("completed");
-    // Only the skill has this simulated report.
-    expect(
-      conversation.replies.map((reply) => reply.text).join("\n"),
-    ).not.toMatch(/72\s*°\s*F/);
+    // Naming the skill injects nothing; the agent loads it.
+    expect(loadedSkills(conversation)).toContain("weather-lookup");
   });
 
   test("auto-selects an available skill when contextually relevant", async ({
@@ -91,5 +79,20 @@ describe("Skill Invocation Control", () => {
     );
 
     expect(loadedSkills(conversation)).toContain("visual-web-qa");
+  });
+
+  test("when a deploy adds a skill after the first turn, load it in a later turn", async ({
+    agent,
+  }) => {
+    // Only the plugin changes between the two deploys.
+    const { run, redeploy } = await agent({ plugins: defineJuniorPlugins([]) });
+    const first = await run(slackMention("Reply with exactly: ready"));
+
+    await redeploy({ plugins: defineJuniorPlugins([pantryPlugin]) });
+    const second = await first.continue(
+      slackMention("Which snacks does the office pantry have right now?"),
+    );
+
+    expect(loadedSkills(second)).toContain("pantry-stock");
   });
 });

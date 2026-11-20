@@ -4,29 +4,14 @@ import type {
   AssistantThreadStartedEvent,
   GenericMessageEvent,
 } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
+import { slackTeamIdSchema } from "@/chat/slack/ids";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
-import {
-  slackChannelIdSchema,
-  slackTeamIdSchema,
-  slackUserIdSchema,
-} from "@/chat/slack/ids";
 
 // Message dates must also fit JavaScript's Date range.
 const eventTimestampSchema = slackMessageTsSchema.refine((value) =>
   Number.isFinite(new Date(Number(value) * 1_000).getTime()),
 );
-
-export const slackSlashCommandSchema = z.object({
-  channel_id: z.string().trim().pipe(slackChannelIdSchema),
-  team_id: z.string().trim().pipe(slackTeamIdSchema),
-  user_id: z.string().trim().pipe(slackUserIdSchema),
-  text: z.string(),
-  enterprise_id: z.string().optional(),
-  is_enterprise_install: z.enum(["true", "false"]).optional(),
-});
-
-export type SlackSlashCommandForm = z.output<typeof slackSlashCommandSchema>;
 
 export const slackAssistantThreadSchema = z.object({
   channel_id: z.string().min(1),
@@ -139,6 +124,8 @@ export const slackEventEnvelopeSchema = z.object({
   // Retain diagnostic fields without making them requirements for ingress.
   event_id: z.unknown().optional(),
   is_ext_shared_channel: z.unknown().optional(),
+  context_enterprise_id: z.unknown().optional(),
+  context_team_id: z.unknown().optional(),
   enterprise_id: z.string().optional(),
   event: slackEventSchema.optional(),
   is_enterprise_install: z.boolean().optional(),
@@ -150,21 +137,92 @@ export const slackEventEnvelopeSchema = z.object({
 export type SlackEventEnvelope = z.output<typeof slackEventEnvelopeSchema>;
 export type SlackInboundEvent = z.output<typeof slackEventSchema>;
 
+/**
+ * Where an event happened, from the signed envelope. `external` is a channel
+ * shared with another organization. `workspace` is a channel that only the
+ * receiving workspace can post in. `enterprise` is a channel in this
+ * workspace of an Enterprise Grid org, which other workspaces of the org can
+ * also post in when the channel is shared across the org. Other envelopes
+ * are `unknown`.
+ */
+export type SlackChannelScope =
+  | "workspace"
+  | "enterprise"
+  | "external"
+  | "unknown";
+
+// https://docs.slack.dev/apis/events-api#callback-field
+const workspaceChannelSchema = z.object({
+  context_enterprise_id: z.string().nullish(),
+  context_team_id: slackTeamIdSchema,
+  enterprise_id: z.string().optional(),
+  is_ext_shared_channel: z.literal(false),
+  team_id: slackTeamIdSchema,
+});
+
+/** Read the channel scope of an event from its envelope. */
+export function slackChannelScope(body: SlackEventEnvelope): SlackChannelScope {
+  if (body.is_ext_shared_channel === true) return "external";
+  const parsed = workspaceChannelSchema.safeParse(body);
+  if (!parsed.success || parsed.data.context_team_id !== parsed.data.team_id) {
+    return "unknown";
+  }
+  const enterpriseId = parsed.data.context_enterprise_id;
+  if (enterpriseId == null) return "workspace";
+  return enterpriseId === parsed.data.enterprise_id ? "enterprise" : "unknown";
+}
+
+// Keep these fields loose. Each handler validates the fields it needs, so
+// one unusual payload shape does not reject unrelated interactions.
+// https://docs.slack.dev/reference/interaction-payloads/block_actions-payload
+// https://docs.slack.dev/reference/interaction-payloads/view-interactions-payload
+const slackViewStateValueSchema = z.object({
+  selected_option: z.object({ value: z.string().optional() }).nullish(),
+  selected_options: z
+    .array(z.object({ value: z.string().optional() }))
+    .nullish(),
+  value: z.string().nullish(),
+});
+
 export const slackInteractivePayloadSchema = z.object({
   actions: z
     .array(
       z.object({
         action_id: z.string().optional(),
+        action_ts: z.string().optional(),
         selected_option: z.object({ value: z.string().optional() }).optional(),
         value: z.string().optional(),
       }),
     )
     .optional(),
+  channel: z.object({ id: z.string().optional() }).nullish(),
+  message: z
+    .object({
+      thread_ts: z.string().optional(),
+      ts: z.string().optional(),
+    })
+    .nullish(),
   team: z.object({ id: z.string().optional() }).nullish(),
+  trigger_id: z.string().optional(),
   type: z.string(),
   user: z
     .object({ id: z.string().optional(), team_id: z.string().optional() })
     .optional(),
+  view: z
+    .object({
+      callback_id: z.string().optional(),
+      id: z.string().optional(),
+      private_metadata: z.string().optional(),
+      state: z
+        .object({
+          values: z.record(
+            z.string(),
+            z.record(z.string(), slackViewStateValueSchema),
+          ),
+        })
+        .optional(),
+    })
+    .nullish(),
 });
 
 export type SlackInteractivePayload = z.output<

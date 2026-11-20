@@ -1,123 +1,64 @@
 # Contributing
 
-Use this guide for local development in the `junior` monorepo.
+This guide explains how to propose changes to the `junior` monorepo and run it
+locally. Full contributor docs are in
+`packages/docs/src/content/docs/contribute/` (published at
+`junior.sentry.dev`).
 
-## Requirements
+## Open an Issue Before Larger Changes
 
-- Node.js 20+
-- pnpm
-- Vercel CLI (`pnpm dlx vercel@latest`)
-- Slack app credentials configured in Vercel
-- Redis configured in Vercel (`REDIS_URL`)
+Before you open a pull request for a larger change, open a GitHub issue. State
+the problem and your approach. Link the issue from the pull request, for
+example with `Fixes #123`.
+
+Larger changes are:
+
+- new features or changes to existing behavior
+- architecture, plugin API, configuration, or extension point changes
+- broad refactors
+- prompt, tool description, or skill changes that try to fix agent behavior,
+  even when the diff is small
+
+Small changes need no issue: a focused bug fix, a small docs fix, a test-only
+fix, or a dependency update.
+
+The issue lets maintainers find architecture problems before you write code.
+For agent behavior, a prompt change often hides the real cause. Read
+`policies/` (start with `policies/agent-steering.md`) before you propose a
+change.
+
+Junior checks each new pull request, including drafts. If a larger change has
+no linked issue, Junior closes the pull request and explains why. Open an
+issue, then open a new pull request that links it, or ask a maintainer to
+reopen the old one. Users with the `maintain` or `admin` role are exempt.
 
 ## Local Setup
 
-1. Install dependencies:
+You need Node.js 24, pnpm 10 or later, Docker, the Vercel CLI
+(`pnpm dlx vercel@latest`), and access to the Sentry Vercel team. pnpm
+switches to the version that `packageManager` in `package.json` pins.
 
 ```bash
-make
-# or: make install
-```
-
-This runs `pnpm install` and `dotagents install`.
-
-2. Link the repo to Vercel and pull development env vars:
-
-```bash
+make   # pnpm install + pnpm build + dotagents install
 pnpm dlx vercel@latest login
 pnpm dlx vercel@latest switch
 pnpm dlx vercel@latest link --yes --scope sentry
 pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
-```
-
-3. Start the app:
-
-```bash
 pnpm dev
 ```
 
-## Development Commands
-
-Run from repo root:
-
-```bash
-pnpm test
-pnpm evals                 # behavioral suite
-pnpm evals:integration       # hard pass/fail integration suite
-pnpm evals:guardian        # isolated Guardian snapshots
-pnpm evals:router          # isolated turn route snapshots
-pnpm typecheck
-pnpm skills:check
-pnpm docs:check
-pnpm release:check
-```
+[Development](packages/docs/src/content/docs/contribute/development.md)
+explains what `pnpm dev` starts, how to run checks, local Docker sandboxes,
+dashboard mock data, Slack tunnels, and the `pnpm worktree` helper. Sentry
+staff use `junior-dev.sentry.cool` as the stable tunnel hostname.
 
 ## Documentation
 
-Write public and internal docs in ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required terms from `TERMINOLOGY.md`. Explain them when needed. Remove other jargon. Public docs have more rules in `packages/docs/src/content/docs/contribute/documentation-guidelines.md`.
+Write docs in ASD-STE100 English and use the words in `TERMINOLOGY.md`.
 
-- `policies/` contains durable repo-wide engineering rules.
-- Package and module `README.md` files explain implemented architecture and
-  non-obvious invariants near the code they describe.
-- Code, schemas, exported types, and tests are the implementation authority.
-- `openspec/changes/` contains temporary implementation plans. Move durable
-  explanation beside the code and delete a plan when its work is complete.
-
-Plans cannot override policies. Change the policy explicitly when the repository
-intends to adopt a new default or exception.
-
-## Worktree Helpers
-
-Worktrees are development-only contributor tooling. Use the repo helper when
-starting isolated branch work, especially when a coding agent such as Codex
-should work without taking over your main checkout:
-
-```bash
-pnpm worktree new codex/my-task --agent "codex"
-pnpm worktree new review/pr-123 --open "code ."
-pnpm worktree list
-pnpm worktree exec codex/my-task -- pnpm typecheck
-pnpm worktree remove codex/my-task
-```
-
-Codex app worktrees are separate from the repo helper. When you choose
-**Worktree** in Codex, Codex creates managed, disposable worktrees under
-`$CODEX_HOME/worktrees`; do not point `JUNIOR_WORKTREE_DIR` there or rely on
-that directory for long-lived branch work. Use the repo helper when you want a
-named local worktree you can keep, inspect, and remove yourself.
-
-Make sure Codex trusts the main checkout before starting agent work. In Codex,
-trust the project from the app prompt, or add the checkout to
-`~/.codex/config.toml`:
-
-```toml
-[projects."/absolute/path/to/junior"]
-trust_level = "trusted"
-```
-
-If you create a long-lived helper worktree and open it as its own Codex project,
-trust that worktree path too. Shared repo instructions stay in `AGENTS.md`;
-personal Codex defaults such as model, sandbox, approvals, and MCP servers stay
-in `~/.codex/config.toml` or your personal `.codex/config.toml` layers, not in
-these dev-only helper files.
-
-New worktrees are created under `../junior-worktrees` by default, copy matching
-local files from the primary checkout using `scripts/worktree.include`, and run
-`pnpm install`. The copied files include env files and Vercel project links, so
-fresh worktrees can run `pnpm dev`, `pnpm dev:env`, and focused checks without
-relinking every time. `pnpm worktree list` marks the checkout running the helper
-with `*`. Set `JUNIOR_WORKTREE_DIR`, `JUNIOR_WORKTREE_BASE`, or pass `--path`,
-`--from`, `--source`, or `--no-install` to override those defaults. Set
-`JUNIOR_WORKTREE_SOURCE` to change the checkout copied into new worktrees and
-`setup` runs. Relative `JUNIOR_WORKTREE_DIR` values resolve from the primary
-checkout root. `--from` and `JUNIOR_WORKTREE_BASE` only apply when creating a
-new branch; existing branches open at their current tip.
-
-Build and validate the published package artifacts:
-
-```bash
-pnpm build:pkg
-```
+- Internal docs: follow `policies/documentation.md`.
+- Public docs: follow `contribute/documentation-guidelines.md` and the `public-docs`
+  skill.
 
 ## Releasing
 
@@ -130,6 +71,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-cloudflare`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
+- `@sentry/junior-figma`
 - `@sentry/junior-tts`
 - `@sentry/junior-github`
 - `@sentry/junior-google`
@@ -140,83 +82,15 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
+- `@sentry/junior-restream`
+- `@sentry/junior-search`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-xdotcom`
 
-Run `pnpm release:check` before changing release package lists so `.craft.yml`, CI,
-the bump script, and the release docs stay aligned.
+Run `pnpm release:check` after you change this list. It keeps CI, the bump
+script, and the release docs aligned. Craft publishes every public workspace
+package, so `.craft.yml` has no package list.
 
-Trigger releases from GitHub Actions:
-
-1. Open `Actions` -> `Release`.
-2. Run workflow with `bump` (`patch`, `minor`, or `major`).
-3. Set `force=true` only when intentionally bypassing release blockers.
-
-Required repository/org configuration:
-
-- Variable: `SENTRY_RELEASE_BOT_CLIENT_ID`
-- Secret: `SENTRY_RELEASE_BOT_PRIVATE_KEY`
-- npm publish credentials available to Craft/action-prepare-release runtime.
-
-## File-Scoped Tests
-
-Run a single unit test file:
-
-```bash
-pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts
-```
-
-Run a single eval file:
-
-```bash
-pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts
-```
-
-## Evals
-
-Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting, tools, and expected outputs). Evals do not test live Slack transport.
-
-See `policies/testing.md`, `packages/junior/tests/README.md`, and
-`packages/junior-evals/README.md` for authoring details.
-
-## Slack Tunnel (Cloudflare)
-
-Install `cloudflared` first (`brew install cloudflared` on macOS).
-
-`pnpm dev` serves the example app on `http://localhost:3000` by default. The
-bundled Cloudflare tunnel helper targets the same port unless
-`CLOUDFLARE_TUNNEL_URL` overrides it.
-
-Quick tunnel with a random hostname:
-
-```bash
-cloudflared tunnel --url http://localhost:3000
-```
-
-Stable hostname setup:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create junior-dev
-cloudflared tunnel route dns junior-dev junior-dev.sentry.cool
-```
-
-Add the named tunnel token to `.env.local`:
-
-```bash
-pnpm cloudflare:token
-```
-
-Run `pnpm cloudflare:token` again after `vercel env pull` whenever it rewrites `.env.local`.
-
-Run local dev with the stable tunnel:
-
-```bash
-pnpm dev
-```
-
-Set Slack Event Subscriptions and Interactivity request URL to:
-
-```text
-https://junior-dev.sentry.cool/api/webhooks/slack
-```
+[Releasing](packages/docs/src/content/docs/contribute/releasing.md) has the
+release steps and the required repository configuration.

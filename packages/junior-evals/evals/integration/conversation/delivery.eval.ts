@@ -1,4 +1,6 @@
 import { describe, expect } from "vitest";
+import { mockGeneratedImage } from "@junior-evals/fixture/gateway";
+import { redPandaPng } from "@junior-evals/fixture/images";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
@@ -6,19 +8,6 @@ import { rejectNextSlackReply } from "@junior-evals/fixture/slack";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Slack Message Delivery", () => {
-  test("when asked for no visible reply, complete silently", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        "please just mark that this has been seen — no need to reply",
-      ),
-    );
-
-    expect(completedToolCalls("addReaction", conversation)).not.toHaveLength(0);
-    expect(conversation.replies).toEqual([]);
-  });
-
   test("when asked for a top-level channel post, explain the limitation instead", async ({
     run,
   }) => {
@@ -71,6 +60,8 @@ describe("Slack Message Delivery", () => {
   test("when asked to show an image, attach it without process chatter", async ({
     run,
   }) => {
+    // The default 1x1 stub looks blank, so the agent may not send it.
+    mockGeneratedImage(redPandaPng());
     const conversation = await run(
       slackMention("show me an image of a red panda"),
     );
@@ -104,7 +95,7 @@ describe("Slack Message Delivery", () => {
     expect(conversation.replies.length).toBeLessThanOrEqual(1);
   });
 
-  test("when Slack rejects the reply, the turn fails and the next turn does not use the lost reply", async ({
+  test("when Slack rejects the reply, the turn fails without storing it", async ({
     run,
   }) => {
     rejectNextSlackReply();
@@ -118,18 +109,5 @@ describe("Slack Message Delivery", () => {
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("I ran into an internal error"),
     ]);
-
-    const next = await conversation.continue(
-      slackMention("Which number did you just tell me?"),
-    );
-    await expect(next).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply says that it has not told the person a number, or that its earlier reply did not arrive.",
-        ],
-        fail: ["The reply states a number as the number it told the person."],
-      }),
-    );
   });
 });

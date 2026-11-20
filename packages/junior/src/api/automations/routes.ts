@@ -7,12 +7,15 @@ import { zValidator } from "@hono/zod-validator";
 import {
   activateViewerAutomationVersion,
   changeViewerAutomationLifecycle,
+  deleteViewerTask,
   readViewerAutomationEdit,
   updateViewerAutomation,
 } from "@/chat/automations/edit";
 import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { Hono } from "hono";
-import { emptyResponse, jsonResponse } from "@/api/http";
+import * as z from "zod";
+import { emptyResponse, jsonResponse, throwApiError } from "@/api/http";
+import { decodePageCursor, encodePageCursor } from "@/api/page-cursor";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
@@ -25,7 +28,7 @@ import {
   automationUpdateSchema,
   automationExecutionListSchema,
   automationListQuerySchema,
-  automationListSchema,
+  automationListPageSchema,
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
@@ -35,8 +38,9 @@ import {
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
+import { getSqlExecutor } from "@/chat/db";
+import { attachAutomationMentions } from "./mentions";
 import {
-  deleteViewerTask,
   readViewerAutomationExecutions,
   readViewerAutomationRuns,
   readViewerAutomations,
@@ -77,6 +81,14 @@ function editErrorResponse(error: unknown): Response {
   throw error;
 }
 
+/** Position after the last row of a `sort=activity` page. */
+const automationListCursorSchema = z
+  .object({
+    activityAtMs: z.number().int().nonnegative(),
+    id: z.string().min(1),
+  })
+  .strict();
+
 /** Create authenticated native task list and action routes. */
 export function createAutomationRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
@@ -91,10 +103,27 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const user = context.get("viewer");
       const query = context.req.valid("query");
-      return jsonResponse(
-        automationListSchema,
-        await readViewerAutomations(user, query),
-      );
+      if (query.cursor && query.sort !== "activity") {
+        throwApiError(400, "A cursor pages only sort=activity.");
+      }
+      const after = query.cursor
+        ? decodePageCursor(
+            automationListCursorSchema,
+            query.cursor,
+            "Invalid Automation list cursor.",
+          )
+        : undefined;
+      const { next, ...list } = await readViewerAutomations(user, query, after);
+      return jsonResponse(automationListPageSchema, {
+        ...list,
+        automations: await attachAutomationMentions(
+          getSqlExecutor(),
+          list.automations,
+        ),
+        ...(next
+          ? { nextCursor: encodePageCursor(automationListCursorSchema, next) }
+          : undefined),
+      });
     },
   );
   app.get("/event-catalog", requireViewer, () => {
@@ -287,7 +316,10 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       context.req.param("id"),
     );
     return automation
-      ? jsonResponse(automationSummarySchema, automation)
+      ? jsonResponse(
+          automationSummarySchema,
+          (await attachAutomationMentions(getSqlExecutor(), [automation]))[0]!,
+        )
       : jsonResponse(
           apiErrorSchema,
           { error: "Automation was not found." },

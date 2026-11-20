@@ -7,8 +7,9 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubRepositorySubscribable } from "../events/repository.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -16,9 +17,9 @@ const inputSchema = z
   })
   .strict();
 const repositorySchema = z.object({
-  defaultBranch: z.string(),
+  default_branch: z.string(),
   description: z.string().nullable(),
-  fullName: z.string(),
+  full_name: z.string(),
   private: z.boolean(),
   subscribable: subscribableResourceSchema.optional(),
   url: z.string(),
@@ -26,7 +27,7 @@ const repositorySchema = z.object({
 type Repository = z.output<typeof repositorySchema>;
 interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   repositorySchema.extend({
@@ -34,87 +35,60 @@ const outputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1] };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 /** Read one repository and expose its stable subscription identity. */
-export function createGitHubGetRepositoryTool(ctx: {
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
+export const gitHubGetRepositoryTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub repository. Use this when repository-wide issue activity may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
     },
-    description:
-      "Get a GitHub repository. Use this when repository-wide issue activity may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await ctx.egress.fetch({
-        provider: "github",
-        operation: "github.repository.get",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`,
-          {
-            headers: {
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          },
-        ),
-      });
-      const parsed = await readJson(response);
-      if (!response.ok) {
-        throw new PluginToolInputError(
-          `GitHub repository lookup failed with HTTP ${response.status}`,
-        );
-      }
-      const providerResult = z
-        .object({
-          default_branch: z.string(),
-          description: z.string().nullable(),
-          full_name: z.string(),
-          html_url: z.string(),
-          private: z.boolean(),
-        })
-        .parse(parsed);
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubRepositorySubscribable({
-            repo: providerResult.full_name,
-          })
-        : undefined;
-      const data: Repository = {
-        defaultBranch: providerResult.default_branch,
-        description: providerResult.description,
-        fullName: providerResult.full_name,
-        private: providerResult.private,
-        ...(subscribable ? { subscribable } : undefined),
-        url: providerResult.html_url,
-      };
-      return {
-        target: "getRepository",
-        ...data,
-      };
-    },
-  });
-}
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(ctx.egress, {
+      operation: "github.repository.get",
+      path: repoPath(repo),
+    });
+    if (!response.ok) {
+      throw new PluginToolInputError(
+        `GitHub repository lookup failed with HTTP ${response.status}`,
+      );
+    }
+    const providerResult = z
+      .object({
+        default_branch: z.string(),
+        description: z.string().nullable(),
+        full_name: z.string(),
+        html_url: z.string(),
+        private: z.boolean(),
+      })
+      .parse(response.body);
+    const subscribable = gitHubRepositorySubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      repo: providerResult.full_name,
+    });
+    const data: Repository = {
+      default_branch: providerResult.default_branch,
+      description: providerResult.description,
+      full_name: providerResult.full_name,
+      private: providerResult.private,
+      ...(subscribable ? { subscribable } : undefined),
+      url: providerResult.html_url,
+    };
+    return {
+      target: "getRepository",
+      ...data,
+    };
+  },
+});

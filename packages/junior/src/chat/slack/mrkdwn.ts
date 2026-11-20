@@ -1,5 +1,8 @@
 import { truncateStatusText } from "@/chat/slack/status-format";
-import { applyPluginFormatMarkdown } from "@/chat/plugins/agent-hooks";
+import {
+  applyPluginFormatMarkdown,
+  type PluginMarkdownFormat,
+} from "@/chat/plugins/agent-hooks";
 
 /** Escape dynamic text for Slack mrkdwn without changing intended formatting. */
 export function escapeSlackMrkdwnText(text: string): string {
@@ -10,7 +13,7 @@ export function escapeSlackMrkdwnText(text: string): string {
 }
 
 /** Escape a URL for Slack explicit link syntax while preserving query semantics. */
-export function escapeSlackLinkUrl(url: string): string {
+function escapeSlackLinkUrl(url: string): string {
   return url
     .replaceAll("&", "&amp;")
     .replaceAll("<", "%3C")
@@ -67,7 +70,11 @@ function readExistingSlackAngleToken(
   }
 
   const body = line.slice(start + 1, close);
-  if (/^(?:https?:\/\/|@|#|!)/.test(body)) {
+  if (
+    ["https://", "http://", "@", "#", "!"].some((prefix) =>
+      body.startsWith(prefix),
+    )
+  ) {
     return { text: line.slice(start, close + 1), end: close + 1 };
   }
 
@@ -156,7 +163,10 @@ function readBareUrl(
     peel();
   }
 
-  if (!/^https?:\/\/.+/.test(raw)) {
+  const scheme = ["https://", "http://"].find((prefix) =>
+    raw.startsWith(prefix),
+  );
+  if (!scheme || raw.length === scheme.length) {
     return undefined;
   }
 
@@ -184,7 +194,7 @@ function readBareSlackUserMention(
  * Wrap bare http(s) URLs and bare `@U123` Slack user IDs on a single line as
  * Slack explicit `<url>` links and `<@U123>` mentions.
  */
-function wrapBareReferencesOnLine(line: string): string {
+function wrapBareReferencesOnLine(line: string, urls: boolean): string {
   let result = "";
   let i = 0;
 
@@ -217,7 +227,10 @@ function wrapBareReferencesOnLine(line: string): string {
       continue;
     }
 
-    if (line.startsWith("https://", i) || line.startsWith("http://", i)) {
+    if (
+      urls &&
+      (line.startsWith("https://", i) || line.startsWith("http://", i))
+    ) {
       const parsed = readBareUrl(line, i);
       if (parsed) {
         result += `<${parsed.url}>${parsed.suffix}`;
@@ -237,12 +250,13 @@ function wrapBareReferencesOnLine(line: string): string {
  * Pre-wrap bare http(s) URLs outside fenced code blocks as Slack explicit
  * links, preventing Slack's auto-linker from consuming adjacent formatting
  * markers into the URL. Bare `@U123` user IDs become `<@U123>` mentions,
- * because Slack shows a bare ID as literal text.
+ * because Slack shows a bare ID as literal text. Pass `urls: false` to wrap
+ * only the user IDs.
  *
  * Uses the same fence-toggle rule as `ensureBlockSpacing` so both passes
  * agree on which lines are code.
  */
-function wrapBareReferences(text: string): string {
+function wrapBareReferences(text: string, urls = true): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let inCodeBlock = false;
@@ -253,16 +267,72 @@ function wrapBareReferences(text: string): string {
       out.push(line);
       continue;
     }
-    out.push(inCodeBlock ? line : wrapBareReferencesOnLine(line));
+    out.push(inCodeBlock ? line : wrapBareReferencesOnLine(line, urls));
   }
 
   return out.join("\n");
 }
 
+/**
+ * Wrap bare `@U123` Slack user IDs as `<@U123>` mentions. Call it before
+ * plugin Markdown rewrites of chat text, so a plugin does not read `@U123`
+ * as an account name of its provider.
+ */
+export function wrapBareSlackUserIds(text: string): string {
+  return wrapBareReferences(text, false);
+}
+
+const LIST_ITEM_PATTERN = /^[-*•]\s|^\d+\.\s/;
+
+/**
+ * Report whether a line is a Markdown pipe-table row. Slack's `markdown`
+ * block renders a table only when its rows are on consecutive lines.
+ */
+export function isTableRow(line: string): boolean {
+  return line.trimStart().startsWith("|");
+}
+
+/**
+ * Turn a follow-up paragraph inside a list item into a bullet at the same
+ * indent.
+ *
+ * Slack's `markdown` block keeps only one paragraph per list item. It joins
+ * the other paragraphs to the top-level item's text with no space and renders
+ * nested lists after them. As a bullet, the paragraph keeps its place and
+ * nesting.
+ */
+function bulletListFollowUpParagraphs(text: string): string {
+  const lines = text.split("\n");
+  let inCodeBlock = false;
+  let inList = false;
+
+  for (const [i, line] of lines.entries()) {
+    const trimmed = line.trimStart();
+    const isFence = trimmed.startsWith("```");
+    if (!inCodeBlock && trimmed && trimmed.length === line.length) {
+      inList = LIST_ITEM_PATTERN.test(line);
+    } else if (
+      !inCodeBlock &&
+      inList &&
+      trimmed &&
+      !isFence &&
+      lines[i - 1]?.trim() === "" &&
+      !LIST_ITEM_PATTERN.test(trimmed) &&
+      !isTableRow(trimmed)
+    ) {
+      lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
+    }
+    if (isFence) {
+      inCodeBlock = !inCodeBlock;
+    }
+  }
+
+  return lines.join("\n");
+}
+
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
   const codeBlockPattern = /^```/;
-  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
   const lines = text.split("\n");
   const result: string[] = [];
   let inCodeBlock = false;
@@ -288,14 +358,20 @@ export function ensureBlockSpacing(text: string): string {
     }
 
     const prev = result.length > 0 ? result[result.length - 1] : undefined;
+    const isListItem = LIST_ITEM_PATTERN.test(line.trimStart());
+    // An indented line under a list item continues that item's text.
+    const isListContinuation =
+      prev !== undefined &&
+      !isListItem &&
+      /^\s/.test(line) &&
+      (/^\s/.test(prev) || LIST_ITEM_PATTERN.test(prev));
     if (
       prev !== undefined &&
       prev.trim() !== "" &&
       line.trim() !== "" &&
-      !(
-        listItemPattern.test(prev.trimStart()) &&
-        listItemPattern.test(line.trimStart())
-      )
+      !isListContinuation &&
+      !(LIST_ITEM_PATTERN.test(prev.trimStart()) && isListItem) &&
+      !(isTableRow(prev) && isTableRow(line))
     ) {
       result.push("");
     }
@@ -310,16 +386,23 @@ export function ensureBlockSpacing(text: string): string {
  * Normalize model-authored Slack markdown for delivery via `markdown_text`
  * or `{ type: "markdown" }` blocks.
  *
- * Plugins may first rewrite ordinary Markdown. Core then applies Slack-only
- * delivery shaping: bare URL wrapping and block spacing. Slack reply delivery
- * owns chunking and continuation markers separately.
+ * Plugins may first rewrite ordinary Markdown with the Conversation facts in
+ * `format`. Core then applies Slack-only
+ * delivery shaping: bare URL wrapping, block spacing, and list follow-up
+ * paragraph bullets. Slack reply delivery owns chunking and continuation
+ * markers separately.
  */
-export function normalizeSlackReplyMarkdown(text: string): string {
-  let normalized = applyPluginFormatMarkdown(text)
+export function normalizeSlackReplyMarkdown(
+  text: string,
+  format?: PluginMarkdownFormat,
+): string {
+  // URLs wait, because plugins rewrite them.
+  let normalized = applyPluginFormatMarkdown(wrapBareSlackUserIds(text), format)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
   normalized = ensureBlockSpacing(normalized);
+  normalized = bulletListFollowUpParagraphs(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -335,4 +418,14 @@ export function normalizeSlackStatusText(text: string): string {
 /** Render a Slack user mention, which Slack shows as the person's name. */
 export function slackMention(userId: string): string {
   return `<@${userId}>`;
+}
+
+/** Slack user mentions: `<@U123>` or `<@U123|label>`. */
+export const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
+
+/** Return the Slack user IDs that the text mentions, once each, in order. */
+export function slackMentionedUserIds(text: string): string[] {
+  return [
+    ...new Set([...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!)),
+  ];
 }

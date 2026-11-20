@@ -1,10 +1,13 @@
 import { eq } from "drizzle-orm";
+import { avatarPath } from "../../fixtures/avatar";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
   automationExecutionListSchema,
+  automationListPageSchema,
   automationListSchema,
   automationRunListSchema,
+  automationSummarySchema,
 } from "@/api/schema/automation";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -21,6 +24,7 @@ import {
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorIdentities } from "@/db/schema/identities";
 import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
@@ -47,7 +51,7 @@ describe("Automations API", () => {
     expect(response.status).toBe(401);
   });
 
-  test("lists owned and public automations but only deletes viewer-owned tasks", async () => {
+  test("lists owned and public automations and denies private deletes", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -112,7 +116,7 @@ describe("Automations API", () => {
       await fixture.sql
         .db()
         .update(juniorIdentities)
-        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .set({ avatarUrl: "https://avatars.slack-edge.com/aisha_512.png" })
         .where(eq(juniorIdentities.id, otherIdentity!.id));
 
       // Keep fixture times inside the trailing 7-day stats window.
@@ -132,6 +136,21 @@ describe("Automations API", () => {
           7: countSince(7 * dayMs),
           30: countSince(30 * dayMs),
           90: countSince(90 * dayMs),
+        };
+      };
+      const costWindows = (...runs: Array<[atMs: number, costUsd: number]>) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const costSince = (agoMs: number) =>
+          Math.round(
+            runs
+              .filter(([atMs]) => atMs >= nowMs - agoMs)
+              .reduce((total, [, costUsd]) => total + costUsd, 0) * 1e12,
+          ) / 1e12;
+        return {
+          1: costSince(1 * dayMs),
+          7: costSince(7 * dayMs),
+          30: costSince(30 * dayMs),
+          90: costSince(90 * dayMs),
         };
       };
       const startDate = todayUtc.toISOString().slice(0, 10);
@@ -161,7 +180,7 @@ describe("Automations API", () => {
           timezone: "UTC",
         },
         status: "active",
-        task: { text: "" },
+        task: { kind: "instruction", instruction: "Post the daily digest." },
         updatedAtMs: nowMs,
       };
       await saveScheduledAutomation(fixture.sql.db(), scheduledAutomation);
@@ -176,7 +195,10 @@ describe("Automations API", () => {
           platform: "slack",
           teamId: "T123",
         },
-        task: { text: "Post the public incident digest." },
+        task: {
+          kind: "instruction",
+          instruction: "Post the public incident digest for <@U456>.",
+        },
         updatedAtMs: nowMs + 2,
       });
       await createEventAutomation(fixture.sql.db(), {
@@ -192,7 +214,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Summarize the closed issue." },
+        task: {
+          kind: "instruction",
+          instruction: "Summarize the closed issue.",
+        },
         trigger: {
           events: ["issue.closed"],
           match: { action: ["closed", "resolved"] },
@@ -215,7 +240,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Notify responders when the incident changes." },
+        task: {
+          kind: "instruction",
+          instruction: "Notify responders when the incident changes.",
+        },
         trigger: {
           events: ["incident.updated"],
           identifier: "INC-17",
@@ -237,7 +265,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "private",
         outcomes: [],
-        task: { text: "This private task must stay hidden." },
+        task: {
+          kind: "instruction",
+          instruction: "This private task must stay hidden.",
+        },
         trigger: {
           events: ["incident.updated"],
           identifier: "INC-PRIVATE",
@@ -321,10 +352,20 @@ describe("Automations API", () => {
       });
       await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
+        errorMessage: "Dispatch failed.",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,
         status: "failed",
       });
+      await fixture.sql
+        .db()
+        .update(juniorAutomationRuns)
+        .set({
+          automationVersion: 1,
+          scheduledForMs: scheduledRun2AtMs - 60_000,
+          startedAtMs: scheduledRun2AtMs - 42_000,
+        })
+        .where(eq(juniorAutomationRuns.id, "sched-run-2"));
       await recordAutomationExecution("event_automations_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
@@ -342,14 +383,12 @@ describe("Automations API", () => {
         "http://localhost/api/automations",
       );
       expect(response.status).toBe(200);
-      expect(automationListSchema.parse(await response.json())).toEqual({
-        executionDays: expect.any(Array),
-        executionHours: expect.any(Array),
-        executionSixHours: expect.any(Array),
+      const listed = automationListSchema.parse(await response.json());
+      expect(listed).toEqual({
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -362,13 +401,20 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
               visibility: "public",
             }),
             id: "sched_public_tasks_api",
+            // Instructions resolve mentions like transcript messages do.
+            mentions: [
+              expect.objectContaining({
+                email: "aisha@example.com",
+                slackUserId: "U456",
+              }),
+            ],
             schedule: "Schedule unavailable",
             timezone: "UTC",
             kind: "scheduled",
@@ -377,15 +423,17 @@ describe("Automations API", () => {
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
             id: "event_automations_api",
-            match: { action: ["closed", "resolved"] },
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
-            runs: runWindows(eventRunAtMs),
             source: "linear",
-            totalRuns: 1,
-            triggerAvailable: false,
+            // Linear is not enabled here, so the saved trigger has a problem.
+            trigger: {
+              events: ["issue closed"],
+              filters: ["action is closed or resolved"],
+              problems: ["The plugin for this source is not enabled."],
+            },
           }),
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
@@ -393,17 +441,31 @@ describe("Automations API", () => {
               label: "#project-updates",
             }),
             id: "sched_tasks_api",
-            instruction: "Untitled scheduled automation",
+            task: {
+              kind: "instruction",
+              instruction: "Post the daily digest.",
+            },
             kind: "scheduled",
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
-            runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
+            // The list strip gets the newest runs, oldest first.
+            recentRuns: [
+              {
+                durationMs: 18_000,
+                executedAt: new Date(scheduledRun1AtMs).toISOString(),
+                status: "completed",
+              },
+              {
+                durationMs: 42_000,
+                executedAt: new Date(scheduledRun2AtMs).toISOString(),
+                status: "failed",
+              },
+            ],
             schedule: "Schedule unavailable",
             timezone: "UTC",
             status: "active",
-            title: "Untitled scheduled automation",
-            totalRuns: 2,
+            title: "Post the daily digest.",
           }),
         ],
         total: 4,
@@ -413,6 +475,38 @@ describe("Automations API", () => {
         creators: expect.any(Array),
         destinations: expect.any(Array),
       });
+
+      // List rows leave out the totals that read every run; the
+      // Automation page reads them from the summary.
+      for (const automation of listed.automations) {
+        expect(automation).not.toHaveProperty("totalRuns");
+        expect(automation).not.toHaveProperty("costUsd");
+      }
+      const summaryResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/sched_tasks_api");
+      expect(summaryResponse.status).toBe(200);
+      expect(
+        automationSummarySchema.parse(await summaryResponse.json()),
+      ).toEqual(
+        expect.objectContaining({
+          // Spend sums the linked Conversation cost of each run.
+          costUsd: costWindows(
+            [scheduledRun1AtMs, 0.18],
+            [scheduledRun2AtMs, 0.42],
+          ),
+          lastConversationId: "agent-dispatch:sched-run-2",
+          lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
+          lastRunStatus: "failed",
+          recentRuns: [
+            expect.objectContaining({ status: "completed" }),
+            expect.objectContaining({ status: "failed" }),
+          ],
+          runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
+          totalCostUsd: 0.6,
+          totalRuns: 2,
+        }),
+      );
 
       // An avatar does not make an unverified email a profile link.
       await fixture.sql
@@ -428,8 +522,8 @@ describe("Automations API", () => {
         .automations.find(
           (automation) => automation.id === "event_public_tasks_api",
         );
-      expect(unverifiedCreator?.createdByAvatarUrl).toBe(
-        "https://example.com/aisha.png",
+      expect(unverifiedCreator?.createdByAvatarUrl).toEqual(
+        avatarPath(otherIdentity!.id),
       );
       expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 
@@ -442,6 +536,51 @@ describe("Automations API", () => {
           .parse(await searchResponse.json())
           .automations.map((task) => task.id),
       ).toEqual(["event_automations_api"]);
+
+      // `sort=activity` lists the latest run, or else creation, first, and
+      // pages by cursor. Mine and All page the same way.
+      const activityPage = async (query: string) => {
+        const pageResponse = await authenticatedApi(
+          "viewer@example.com",
+        ).request(`http://localhost/api/automations?sort=activity&${query}`);
+        expect(pageResponse.status).toBe(200);
+        return automationListPageSchema.parse(await pageResponse.json());
+      };
+      const ids = (page: { automations: Array<{ id: string }> }) =>
+        page.automations.map((automation) => automation.id);
+      const firstPage = await activityPage("scope=all&pageSize=3");
+      expect(ids(firstPage)).toEqual([
+        "event_public_tasks_api",
+        "sched_public_tasks_api",
+        "sched_tasks_api",
+      ]);
+      expect(firstPage.total).toBe(4);
+      expect(firstPage.nextCursor).toEqual(expect.any(String));
+      const secondPage = await activityPage(
+        `scope=all&pageSize=3&cursor=${firstPage.nextCursor}`,
+      );
+      expect(ids(secondPage)).toEqual(["event_automations_api"]);
+      expect(secondPage.nextCursor).toBeUndefined();
+      // Later pages skip the counts and options that the first page has.
+      expect(secondPage.total).toBeUndefined();
+      expect(secondPage.creators).toBeUndefined();
+      const mineFirst = await activityPage("scope=mine&pageSize=1");
+      expect(ids(mineFirst)).toEqual(["sched_tasks_api"]);
+      expect(mineFirst.total).toBe(2);
+      const mineLast = await activityPage(
+        `scope=mine&pageSize=1&cursor=${mineFirst.nextCursor}`,
+      );
+      expect(ids(mineLast)).toEqual(["event_automations_api"]);
+      expect(mineLast.nextCursor).toBeUndefined();
+      for (const query of [
+        `sort=newest&cursor=${firstPage.nextCursor}`,
+        "sort=activity&cursor=not-a-cursor",
+      ]) {
+        const invalid = await authenticatedApi("viewer@example.com").request(
+          `http://localhost/api/automations?${query}`,
+        );
+        expect(invalid.status).toBe(400);
+      }
 
       const runsResponse = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/automations/runs",
@@ -456,7 +595,7 @@ describe("Automations API", () => {
             kind: "scheduled",
             status: "failed",
             automationId: "sched_tasks_api",
-            automationTitle: "Untitled scheduled automation",
+            automationTitle: "Post the daily digest.",
             totalTokens: 1_200,
           }),
           expect.objectContaining({
@@ -493,11 +632,16 @@ describe("Automations API", () => {
         executionSixHours: expect.any(Array),
         executions: [
           {
+            automationVersion: 1,
             conversationId: "agent-dispatch:sched-run-2",
             costUsd: 0.42,
+            credentialMode: "creator",
             durationMs: 42_000,
+            error: "Dispatch failed.",
             executedAt: new Date(scheduledRun2AtMs).toISOString(),
             executionId: "sched-run-2",
+            scheduledFor: new Date(scheduledRun2AtMs - 60_000).toISOString(),
+            startedAt: new Date(scheduledRun2AtMs - 42_000).toISOString(),
             status: "failed",
             title: "Automation execution fixture",
             totalTokens: 1_200,
@@ -513,11 +657,6 @@ describe("Automations API", () => {
             totalTokens: 400,
           },
         ],
-        automation: expect.objectContaining({
-          id: "sched_tasks_api",
-          kind: "scheduled",
-          totalRuns: 2,
-        }),
         truncated: false,
       });
       expect(executionList.executionDays).toHaveLength(90);
@@ -526,6 +665,8 @@ describe("Automations API", () => {
       ).toEqual({
         blocked: 0,
         completed: 1,
+        // Daily cost sums every run of the day, failed runs included.
+        costUsd: 0.6,
         date: scheduledRunDay,
         failed: 1,
       });
@@ -549,7 +690,10 @@ describe("Automations API", () => {
             platform: "slack",
             teamId: "T123",
           },
-          task: { text: `Public crowding task ${index}.` },
+          task: {
+            kind: "instruction",
+            instruction: `Public crowding task ${index}.`,
+          },
           updatedAtMs: nowMs + 1_000 + index,
         });
       }
@@ -560,16 +704,8 @@ describe("Automations API", () => {
       const crowdedList = automationListSchema.parse(
         await crowdedResponse.json(),
       );
-      expect(crowdedList.executionDays).toHaveLength(90);
       expect(crowdedList.automations).toHaveLength(25);
       expect(crowdedList.total).toBe(505);
-      // Neither the foreign workspace run nor private work contributes to charts.
-      expect(
-        crowdedList.executionDays.reduce(
-          (sum, day) => sum + day.event + day.scheduled,
-          0,
-        ),
-      ).toBe(2);
       expect(crowdedList.counts).toEqual({
         all: 505,
         mine: 2,
@@ -593,6 +729,23 @@ describe("Automations API", () => {
       expect(
         attention.automations.find((task) => task.id === "sched_tasks_api"),
       ).toMatchObject({ status: "active", lastRunStatus: "failed" });
+      // The Inbox lists only the viewer's own Automations that need attention.
+      expect(
+        (await list("scope=attention&owner=me")).automations.map(
+          (task) => task.id,
+        ),
+      ).toEqual(["event_automations_api", "sched_tasks_api"]);
+      // The Inbox badge counts the same two, so it matches To do.
+      const count = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/review-items/count?include=automations",
+      );
+      expect(await count.json()).toEqual({
+        automations: 2,
+        codeChanges: 0,
+        decisions: 0,
+        needsViewer: 0,
+        snoozed: 0,
+      });
       expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");
       expect(lastPage.automations.map((task) => task.id)).toEqual([
@@ -625,8 +778,11 @@ describe("Automations API", () => {
         "sched_tasks_api",
       );
       expect(
-        (await list("q=crowding&sort=title")).automations[0]?.instruction,
-      ).toBe("Public crowding task 0.");
+        (await list("q=crowding&sort=title")).automations[0]?.task,
+      ).toEqual({
+        kind: "instruction",
+        instruction: "Public crowding task 0.",
+      });
       expect((await list("page=1000")).page).toBe(21);
       const direct = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/automations/sched_tasks_api",
@@ -678,9 +834,30 @@ describe("Automations API", () => {
       await saveScheduledAutomation(fixture.sql.db(), {
         ...scheduledAutomation,
         title: "Manual title",
-        task: { text: "Unique instruction phrase" },
+        task: { kind: "instruction", instruction: "Unique instruction phrase" },
       });
       expect((await list("q=unique%20instruction")).total).toBe(1);
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        id: "sched_skill_api",
+        task: {
+          kind: "skill",
+          skill: "release-check",
+          context: "Only check getsentry/junior.",
+        },
+      });
+      expect(
+        (await list("skill=release-check")).automations.map((task) => task.id),
+      ).toEqual(["sched_skill_api"]);
+      expect((await list("skill=release-check&type=event")).total).toBe(0);
+      expect((await list("skill=release")).total).toBe(0);
+      expect(
+        (await list("q=release-check")).automations.map((task) => task.id),
+      ).toEqual(["sched_skill_api"]);
+      await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/sched_skill_api",
+        { method: "DELETE" },
+      );
 
       await conversationStore.recordActivity({
         conversationId: "slack:C456:tasks-api-private",
@@ -707,7 +884,6 @@ describe("Automations API", () => {
       const privateList = automationListSchema.parse(
         await privateResponse.json(),
       );
-      expect(privateList.executionDays).toHaveLength(90);
       expect(privateList.counts).toEqual({
         all: 2,
         mine: 2,
@@ -736,12 +912,12 @@ describe("Automations API", () => {
         true,
       );
 
-      const deniedPublicDelete = await authenticatedApi(
+      const deniedPrivateDelete = await authenticatedApi(
         "viewer@example.com",
       ).request("http://localhost/api/automations/event_public_tasks_api", {
         method: "DELETE",
       });
-      expect(deniedPublicDelete.status).toBe(404);
+      expect(deniedPrivateDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",

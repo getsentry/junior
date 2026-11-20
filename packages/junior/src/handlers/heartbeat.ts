@@ -1,42 +1,26 @@
-import { timingSafeEqual } from "node:crypto";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
+import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
-}
-
-function getHeartbeatSecret(): string | undefined {
-  return (
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim()
-  );
-}
-
-function verifyHeartbeatRequest(request: Request): boolean {
-  const secret = getHeartbeatSecret();
-  if (!secret) {
-    return false;
-  }
-
-  const authorization = request.headers.get("authorization")?.trim();
-  if (!authorization?.startsWith("Bearer ")) {
-    return false;
-  }
-  const actual = Buffer.from(authorization.slice("Bearer ".length));
-  const expected = Buffer.from(secret);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  dispatchForIdentity: IdentityDispatcher;
+  events: AppEventPublisher;
+  showReviewItem?: ShowReviewItem;
 }
 
 /** Handle the authenticated internal heartbeat. */
 export async function GET(
   request: Request,
   waitUntil: WaitUntilFn,
-  options: HeartbeatHandlerOptions = {},
+  options: HeartbeatHandlerOptions,
 ): Promise<Response> {
-  if (!verifyHeartbeatRequest(request)) {
+  if (!verifySchedulerRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -44,9 +28,12 @@ export async function GET(
   waitUntil(() =>
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,
+      dispatchForIdentity: options.dispatchForIdentity,
+      events: options.events,
       nowMs,
+      showReviewItem: options.showReviewItem,
     }).catch((error) => {
-      logException(error, "heartbeat.failed", {
+      logException(error, "heartbeat.run.failed", {
         "app.heartbeat.now_ms": nowMs,
       });
     }),

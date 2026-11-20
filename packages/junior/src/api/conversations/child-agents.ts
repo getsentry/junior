@@ -2,10 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getConversationStore, getDb } from "@/chat/db";
 import { throwApiError } from "../http";
-import {
-  conversationChildAgentsReportSchema,
-  type ConversationChildAgentsReport,
-} from "../schema/child-agent";
+import { type ConversationChildAgentsReport } from "../schema/child-agent";
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import {
@@ -16,11 +13,12 @@ import {
 /**
  * Load the direct child agents of one Conversation, or throw a standard API
  * not-found error. Viewers who cannot see private content get only the status,
- * time, and usage of each child agent.
+ * time, and usage of each child agent. Archived children stay in the report,
+ * so the dashboard can show and restore them.
  */
 export async function requireConversationChildAgents(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationChildAgentsReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");
@@ -52,6 +50,11 @@ export async function requireConversationChildAgents(
         ? { auxiliaryCosts: auxiliaryCosts.total }
         : undefined),
       ...(childAgentTotals ? { childAgentTotals } : undefined),
+      archivedAt:
+        agent.archivedAtMs !== undefined
+          ? new Date(agent.archivedAtMs).toISOString()
+          : null,
+      kind: agent.kind,
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
       ...(canExposePayload
@@ -65,5 +68,5 @@ export async function requireConversationChildAgents(
     };
   });
 
-  return conversationChildAgentsReportSchema.parse({ agents, conversationId });
+  return { agents, conversationId };
 }

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 const taskMessageDestinationInputSchema = z
   .enum(["current_conversation", "task_creator"])

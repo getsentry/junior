@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
+import { describe, expect, it } from "vitest";
+import { gitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
@@ -7,16 +8,11 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetRepositoryTool, ctx) };
 }
 
 describe("getRepository", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns repository metadata and a subscription hint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([
       {
         body: {
@@ -35,13 +31,13 @@ describe("getRepository", () => {
         { toolCallId: "get-repository" },
       ),
     ).resolves.toMatchObject({
-      defaultBranch: "main",
-      fullName: "GetSentry/Junior",
+      default_branch: "main",
+      full_name: "GetSentry/Junior",
       subscribable: {
         identifier: "getsentry/junior",
         label: "GitHub repository GetSentry/Junior",
         namespace: "github",
-        suggestedEvents: [
+        suggested_events: [
           "issue.opened",
           "pull_request.opened",
           "issue.comment.created",
@@ -55,13 +51,23 @@ describe("getRepository", () => {
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
+          "deployment.created",
+          "deployment.queued",
+          "deployment.pending",
+          "deployment.in_progress",
+          "deployment.succeeded",
+          "deployment.failed",
+          "deployment.error",
           "issue.comment.created",
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "issue.updated",
           "pull_request.checks.failed",
+          "pull_request.checks.passed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
           "pull_request.opened",
@@ -72,6 +78,7 @@ describe("getRepository", () => {
           "pull_request.review_comment.created",
           "pull_request.merged",
           "pull_request.closed_unmerged",
+          "pull_request.merge_conflict",
         ],
         type: "repository",
       },
@@ -82,29 +89,6 @@ describe("getRepository", () => {
         provider: "github",
       }),
     ]);
-  });
-
-  it("omits the hint when GitHub webhooks are not configured", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
-    const { tool } = toolContext([
-      {
-        body: {
-          default_branch: "main",
-          description: null,
-          full_name: "getsentry/junior",
-          html_url: "https://github.com/getsentry/junior",
-          private: false,
-        },
-      },
-    ]);
-
-    const result = await tool.execute?.(
-      { repo: "getsentry/junior" },
-      { toolCallId: "get-repository" },
-    );
-
-    expect(result).not.toHaveProperty("subscribable");
-    expect(result).not.toHaveProperty("data.subscribable");
   });
 
   it("reports a missing repository as a repairable tool error", async () => {

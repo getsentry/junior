@@ -45,3 +45,30 @@ export async function runMcpOauthCallbackRoute(args: {
   if (!args.conversationWorkQueue) await work.drain();
   return response;
 }
+
+/**
+ * The person opens an MCP authorization link and approves. The fake provider
+ * redirects to the MCP OAuth callback route, which queues the resumed Turn on
+ * `conversationWorkQueue`.
+ */
+export async function approveMcpAuthorizationLink(args: {
+  link: string;
+  provider: string;
+  conversationWorkQueue: ConversationWorkQueue;
+}): Promise<void> {
+  const approval = await fetch(args.link, { redirect: "manual" });
+  const location = approval.headers.get("location");
+  if (!location) {
+    throw new Error(`The authorization link returned ${approval.status}`);
+  }
+  const callback = new URL(location).searchParams;
+  const response = await runMcpOauthCallbackRoute({
+    provider: args.provider,
+    state: callback.get("state") ?? "",
+    code: callback.get("code") ?? "",
+    conversationWorkQueue: args.conversationWorkQueue,
+  });
+  if (response.status !== 200) {
+    throw new Error(`The MCP OAuth callback returned ${response.status}`);
+  }
+}

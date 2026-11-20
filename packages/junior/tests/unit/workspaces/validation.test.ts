@@ -7,6 +7,7 @@ describe("normalizeWorkspaceRecipe", () => {
       normalizeWorkspaceRecipe({
         name: " Sentry ",
         setupScript: "pnpm install",
+        vcpus: 8,
         repos: [
           {
             provider: " GitHub ",
@@ -17,6 +18,7 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: 8,
       repos: [
         {
           provider: "github",
@@ -38,11 +40,20 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       repos: [
         { provider: "github", repo: "getsentry/sentry" },
         { provider: "github", repo: "getsentry/relay" },
       ],
     });
+  });
+
+  it("rejects vCPUs that are not positive integers", () => {
+    for (const vcpus of [0, -2, 1.5]) {
+      expect(() =>
+        normalizeWorkspaceRecipe({ name: "sentry", vcpus, repos: [] }),
+      ).toThrow("vCPUs must be a positive integer.");
+    }
   });
 
   it("rejects checkout path collisions", () => {
@@ -72,6 +83,7 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "empty",
       setupScript: "",
+      vcpus: null,
       repos: [],
     });
   });

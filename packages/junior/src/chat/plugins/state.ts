@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PluginState } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 
 const MAX_PLUGIN_STATE_KEY_LENGTH = 512;
 
@@ -62,21 +63,14 @@ export function createPluginState(
         ttlMs,
       );
     },
-    async withLock(key, ttlMs, callback) {
+    async withLock(key, ttlMs, callback, options) {
       validatePluginStateKey(key);
       const state = getAdapter();
       await state.connect();
-      const lockKey = pluginStateKey(plugin, key);
-      const lock = await state.acquireLock(lockKey, ttlMs);
-      if (!lock) {
-        throw new Error(`Could not acquire plugin state lock for ${key}`);
-      }
-
-      try {
-        return await callback();
-      } finally {
-        await state.releaseLock(lock);
-      }
+      return await withLock(state, pluginStateKey(plugin, key), callback, {
+        ttlMs,
+        waitMs: options?.waitMs,
+      });
     },
   };
 }

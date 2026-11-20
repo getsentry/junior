@@ -21,10 +21,9 @@ import {
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { mockTitleModel } from "../../fixtures/title-model";
-import { mockTurnRouterModel } from "../../fixtures/turn-router-model";
 
 const emptyThreadReplies = async () => [];
-const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
+const ORIGINAL_AI_GATEWAY_API_KEY = process.env["AI_GATEWAY_API_KEY"];
 
 function createRuntime(
   args: {
@@ -70,7 +69,6 @@ function createAwaitingContinuationState(args: {
   return {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       piMessages: [],
       messages: [
         {
@@ -107,8 +105,7 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
-    mockTurnRouterModel();
+    process.env["AI_GATEWAY_API_KEY"] = "test-gateway-key";
     mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
@@ -117,9 +114,9 @@ describe("bot handlers (integration)", () => {
 
   afterEach(async () => {
     if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
-      delete process.env.AI_GATEWAY_API_KEY;
+      delete process.env["AI_GATEWAY_API_KEY"];
     } else {
-      process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+      process.env["AI_GATEWAY_API_KEY"] = ORIGINAL_AI_GATEWAY_API_KEY;
     }
     resetSlackApiMockState();
     resetConversationTitleStateForTests();
@@ -167,7 +164,7 @@ describe("bot handlers (integration)", () => {
         text: "please keep working",
         isMention: true,
       }),
-      { destination },
+      { conversationId: thread.id, destination },
     );
 
     expect(queue.sentRecords()).toEqual([
@@ -215,7 +212,10 @@ describe("bot handlers (integration)", () => {
       text: "what happened?",
       isMention: true,
     });
-    await slackRuntime.handleNewMention(thread, followUp, { destination });
+    await slackRuntime.handleNewMention(thread, followUp, {
+      conversationId: thread.id,
+      destination,
+    });
 
     expect(queue.queuedMessages()).toEqual([]);
     await expect(
@@ -225,9 +225,11 @@ describe("bot handlers (integration)", () => {
       getTurnRecord(conversationId, activeSessionId),
     ).resolves.toMatchObject({ state: "paused" });
     expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
+      {
+        markdown: expect.stringContaining(
+          "I ran into an internal error while processing that.",
+        ),
+      },
     ]);
   });
 });

@@ -1,10 +1,8 @@
 import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
-import { SubscribedReplyReason } from "@/chat/services/subscribed-decision";
 import type {
   ConversationPendingAuthState,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { abandonTurnRecord } from "@/chat/task-execution/checkpoint";
 
 // A fresh private auth link is worth reissuing after ~10 minutes: long enough
@@ -18,7 +16,7 @@ const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
 export function canReusePendingAuthLink(args: {
   kind: AuthorizationPauseKind;
   nowMs?: number;
-  pendingAuth?: ConversationPendingAuthState;
+  pendingAuth?: ConversationPendingAuthState | undefined;
   provider: string;
   actorId: string;
   scope?: string;
@@ -111,34 +109,4 @@ export async function abandonReplacedPendingAuth(args: {
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });
   }
-}
-
-/**
- * Whether the person told Junior to stop after the request that waits for
- * authorization. No other later message ends the wait: the agent reads the
- * thread when the authorization resumes the request, and it decides whether
- * the request is still wanted.
- */
-export function wasPendingAuthStopped(
-  conversation: ThreadConversationState,
-  pendingAuth: ConversationPendingAuthState,
-): boolean {
-  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    if (message?.role !== "user") {
-      continue;
-    }
-    if (buildDeterministicTurnId(message.id) === pendingAuth.sessionId) {
-      return false;
-    }
-    if (
-      message.meta?.skippedReason?.startsWith(
-        `${SubscribedReplyReason.ThreadOptOut}:`,
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return false;
 }

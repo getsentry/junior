@@ -1,15 +1,25 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
-import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
+import {
+  logException,
+  logInfo,
+  logWarn,
+  setSpanAttributes,
+  withLogContext,
+} from "@/chat/logging";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
+  nudgeIdempotencyKey,
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
+import { requestLostLeaseRecovery } from "./lost-lease";
 import {
   ackMessages,
   beginConversationResume,
@@ -33,9 +43,11 @@ import {
   requestAnotherSlice,
   startConversationWork,
   type AttemptFailure,
+  type BeforeWorkStops,
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
+import { isAttemptInterrupt, selectAttemptMessages } from "./attempt-selection";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
 const CONVERSATION_STOP_CHECK_INTERVAL_MS = 500;
@@ -44,17 +56,22 @@ export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
   stopSignal?(): AbortSignal;
+  /**
+   * Read the stored stop of the Conversation once, and abort `stopSignal`
+   * when it stopped during this attempt. A Run calls it at each step.
+   */
+  checkStop?(): Promise<void>;
 }
 
 export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /**
    * Give pending mailbox messages to the active Turn. By default only
    * `interrupt` messages for this attempt are offered. With `deferred`, every
@@ -64,6 +81,11 @@ export interface InboxAttempt {
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
     options?: { deferred?: boolean },
   ): Promise<InboundMessage[]>;
+  /**
+   * True when a failure of this attempt can end the work: the worker gives up
+   * and drops the mailbox. The adapter must record its own failure first.
+   * Resume attempts, which have no messages, can also be final.
+   */
   isFinalAttempt: boolean;
   messages: InboundMessage[];
 }
@@ -87,131 +109,20 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
-  checkInIntervalMs?: number;
-  conversationStore?: ConversationStore;
-  nowMs?: () => number;
+  beforeWorkStops?: BeforeWorkStops | undefined;
+  checkInIntervalMs?: number | undefined;
+  conversationStore?: ConversationStore | undefined;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
+  nowMs?: (() => number) | undefined;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }
 
 function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
-}
-
-function selectContiguousTurnBatch(
-  messages: readonly InboundMessage[],
-): InboundMessage[] {
-  const first = messages[0];
-  if (!first) {
-    return [];
-  }
-  const nextTurnIndex = messages.findIndex(
-    (message) =>
-      message.input.authorId !== first.input.authorId ||
-      message.source !== first.source,
-  );
-  return messages.slice(
-    0,
-    nextTurnIndex === -1 ? messages.length : nextTurnIndex,
-  );
-}
-
-/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
-function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
-  const messages = work.messages;
-  const interrupts = messages.filter(
-    (message) => message.delivery === "interrupt",
-  );
-  if (interrupts.length > 0) {
-    return selectContiguousTurnBatch(interrupts);
-  }
-  if (work.execution.status === "paused") return [];
-  const nonEventMessages = messages.filter(
-    (message) => message.source !== "event",
-  );
-  return selectContiguousTurnBatch(
-    nonEventMessages.length > 0 ? nonEventMessages : messages,
-  );
-}
-
-function nudgeIdempotencyKey(
-  reason: string,
-  conversationId: string,
-  nowMs: number,
-): string {
-  return `${reason}:${conversationId}:${nowMs}`;
-}
-
-async function requestLostLeaseRecovery(args: {
-  conversationId: string;
-  destination?: Destination;
-  leaseToken: string;
-  nowMs: number;
-  options: ProcessConversationWorkOptions;
-}): Promise<void> {
-  const before = await getConversationWorkState({
-    conversationId: args.conversationId,
-    state: args.options.state,
-  });
-  const retry = await recordConversationRetry({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (retry === "lost_lease") {
-    return;
-  }
-  if (retry === "stopped") {
-    logException(
-      new Error("Conversation work stopped after repeated failed attempts"),
-      "conversation.work.retry.exhausted",
-      {
-        "app.run.id": before?.execution.runId ?? "unknown",
-        "app.worker.last_progress_at_ms":
-          before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
-        "app.worker.retry_count": (before?.execution.retryCount ?? 0) + 1,
-      },
-    );
-    return;
-  }
-  const sliceRequested = await requestAnotherSlice({
-    conversationId: args.conversationId,
-    destination: args.destination,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!sliceRequested) {
-    return;
-  }
-  const released = await releaseConversationWork({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!released) {
-    return;
-  }
-  await ensureConversationWake({
-    conversationId: args.conversationId,
-    conversationStore: args.options.conversationStore,
-    idempotencyKey: nudgeIdempotencyKey(
-      "lost_lease",
-      args.conversationId,
-      args.nowMs,
-    ),
-    nowMs: args.nowMs,
-    queue: args.options.queue,
-    replaceExistingWake: true,
-    state: args.options.state,
-  });
 }
 
 /**
@@ -252,6 +163,21 @@ function isTerminalFailure(failure: AttemptFailure): boolean {
     failure.status === "recorded" &&
     failure.deadLetteredMessages.length > 0 &&
     failure.pendingCount === 0
+  );
+}
+
+/**
+ * Return whether a failure of this attempt can end the conversation work. The
+ * retry limit applies to every attempt, also one with no messages, such as a
+ * resume. A message also ends it at its own delivery limit.
+ */
+function isLastConversationAttempt(
+  work: ConversationWorkState,
+  messages: readonly InboundMessage[],
+): boolean {
+  return (
+    (work.execution.retryCount ?? 0) + 1 >= CONVERSATION_WORK_MAX_RETRIES ||
+    messages.some((message) => isFinalAttempt(message))
   );
 }
 
@@ -298,12 +224,17 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
+/**
+ * Poll the run-scoped stop marker only when an adapter observes remote stops.
+ * The stored stop time of the Conversation is the source of truth. The stop
+ * marker only makes a running model call end sooner.
+ */
 function createConversationStopSignal(args: {
   conversationId: string;
   initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
+  startedAtMs: number;
 }) {
   const controller = new AbortController();
   let checking = false;
@@ -339,6 +270,13 @@ function createConversationStopSignal(args: {
   };
 
   return {
+    async checkStored(): Promise<void> {
+      if (controller.signal.aborted) return;
+      const stoppedAtMs = await getConversationStoppedAtMs(args.conversationId);
+      if (stoppedAtMs !== undefined && stoppedAtMs >= args.startedAtMs) {
+        requestStop();
+      }
+    },
     close(): void {
       if (timer) clearInterval(timer);
     },
@@ -395,12 +333,9 @@ async function processConversationWorkInContext(
     }
     throw error;
   }
-  if (
-    !initial ||
-    (countPendingConversationMessages(initial) === 0 &&
-      initial.execution.status === "idle" &&
-      !initial.execution.lease)
-  ) {
+  const pendingCount = initial ? countPendingConversationMessages(initial) : 0;
+  setSpanAttributes({ "app.worker.pending_count": pendingCount });
+  if (!initial?.needsRun) {
     if (initial) {
       await clearConsumedConversationWake({
         conversationId,
@@ -411,9 +346,9 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit Destination. Read it from this root Conversation
-  // only. Conversations with a parent keep no Destination, so invocation and
-  // dispatch workers stay free of provider Destinations.
+  // Mailbox wakes may omit Destination. Read it from a root Conversation
+  // only. A child stores its root's Destination, but its work keeps none, so
+  // invocation and dispatch workers stay free of provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });
@@ -462,7 +397,7 @@ async function processConversationWorkInContext(
       getChatConfig().conversationWorkSoftYieldAfterMs);
   let attemptMessageIds: string[] = [];
   let attemptSelectedMessageIds = new Set<string>();
-  let attemptStartMessageIds = new Set<string>();
+  let attemptStartInterruptIds = new Set<string>();
   let failedWithoutProgress = false;
   let leaseLost = false;
   const markLeaseLost = (): void => {
@@ -488,17 +423,17 @@ async function processConversationWorkInContext(
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
       handle: async (messages) => {
-        // Pending work that was not selected when the attempt started belongs
-        // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain. A `deferred`
-        // drain scopes the messages itself.
+        // Interrupts that were pending but not selected when the attempt
+        // started belong to a later actor-scoped attempt. Selected, newly
+        // arrived, and newly steered interrupts remain eligible for this
+        // attempt's drain. A `deferred` drain scopes the messages itself.
         const candidates = drainOptions?.deferred
           ? messages
           : messages.filter(
               (message) =>
                 message.delivery === "interrupt" &&
                 (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-                  !attemptStartMessageIds.has(message.inboundMessageId)),
+                  !attemptStartInterruptIds.has(message.inboundMessageId)),
             );
         if (candidates.length === 0) {
           return [];
@@ -565,6 +500,7 @@ async function processConversationWorkInContext(
   try {
     let hasRun = false;
     let resumeIfStopped = false;
+    /* oxlint-disable no-await-in-loop -- Each slice reads the work state that the slice before it left. */
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -593,8 +529,10 @@ async function processConversationWorkInContext(
       if (!runId) {
         throw new Error(`Conversation run is missing for ${conversationId}`);
       }
-      attemptStartMessageIds = new Set(
-        leasedWork.messages.map((message) => message.inboundMessageId),
+      attemptStartInterruptIds = new Set(
+        leasedWork.messages
+          .filter((message) => isAttemptInterrupt(message, leasedWork))
+          .map((message) => message.inboundMessageId),
       );
 
       if (hasRun && shouldYield()) {
@@ -654,6 +592,7 @@ async function processConversationWorkInContext(
         }),
         options,
         runId,
+        startedAtMs: now(options),
       });
       const workerContext: ConversationWorkerContext = {
         attempt: {
@@ -661,8 +600,9 @@ async function processConversationWorkInContext(
           conversationId,
           destination,
           drain,
-          isFinalAttempt: attemptMessages.some((message) =>
-            isFinalAttempt(message),
+          isFinalAttempt: isLastConversationAttempt(
+            leasedWork,
+            attemptMessages,
           ),
           messages: attemptMessages,
         },
@@ -670,6 +610,7 @@ async function processConversationWorkInContext(
         destination,
         shouldYield,
         stopSignal: stop.signal,
+        checkStop: stop.checkStored,
         checkIn,
       };
 
@@ -823,6 +764,7 @@ async function processConversationWorkInContext(
         break;
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     const completion = await completeConversationWork({
       conversationId,
@@ -831,6 +773,7 @@ async function processConversationWorkInContext(
       // A stop that raced an external pause must reach the paused Turn.
       resumeIfStopped,
       conversationStore: options.conversationStore,
+      getSlackAdapter: options.getSlackAdapter,
       nowMs: now(options),
       state: options.state,
     });
@@ -918,6 +861,7 @@ async function processConversationWorkInContext(
         const retry = failure
           ? failure.status
           : await recordConversationRetry({
+              beforeWorkStops: options.beforeWorkStops,
               conversationId,
               leaseToken: lease.leaseToken,
               conversationStore: options.conversationStore,

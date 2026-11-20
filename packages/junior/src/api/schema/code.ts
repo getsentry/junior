@@ -1,11 +1,16 @@
-import { z } from "zod";
-import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import {
+  codeChangeSizeSchema,
+  codeChangeStateSchema,
+} from "@sentry/junior-plugin-api";
 
 export const codeChangeSummarySchema = z
   .object({
     closed: z.number().int().nonnegative(),
     costUsd: z.number().nonnegative().optional(),
     created: z.number().int().nonnegative(),
+    /** Open changes with no activity for more than {@link IDLE_CHANGE_DAYS} days. */
+    idle: z.number().int().nonnegative(),
     medianCostUsd: z.number().nonnegative().optional(),
     medianMergeTimeMs: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
@@ -13,6 +18,9 @@ export const codeChangeSummarySchema = z
     open: z.number().int().nonnegative(),
   })
   .strict();
+
+/** Whole days without activity after which an open change counts as idle. */
+export const IDLE_CHANGE_DAYS = 7;
 
 /** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
 export const codeMetricBucketSchema = z
@@ -46,12 +54,21 @@ export const codeRepositorySummarySchema = z
 export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
+    /** Whether the code change is a draft. Readers ignore it unless open. */
+    draft: z.boolean(),
     id: z.string().uuid(),
+    /**
+     * Latest push, review, or comment by a person. Absent when the code
+     * plugin has seen no activity; readers fall back to `openedAt`.
+     */
+    lastActivityAt: z.string().optional(),
     mergedAt: z.string().optional(),
     number: z.number().int().positive(),
     openedAt: z.string(),
     provider: z.string().min(1),
     repository: z.string().min(1),
+    /** Lines and files changed. Unknown parts are absent. */
+    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().optional(),
     url: z.string().url().optional(),
@@ -72,8 +89,35 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
+/** A search of tracked code changes, for the composer `#` menu. */
+export const codeChangeSearchQuerySchema = z
+  .object({ q: z.string().trim().min(1).max(100) })
+  .strict();
+
+/** A tracked code change that a Message can link to. */
+export const mentionableCodeChangeSchema = z
+  .object({
+    draft: z.boolean(),
+    number: z.number().int(),
+    /** `owner/repo`. */
+    repository: z.string(),
+    state: codeChangeStateSchema,
+    title: z.string().nullable(),
+    url: z.string(),
+  })
+  .strict();
+
+export const codeChangeSearchReportSchema = z
+  .object({ changes: z.array(mentionableCodeChangeSchema) })
+  .strict();
+
 export const codeRepositoryParamsSchema = z
   .object({ repositoryId: z.string().uuid() })
+  .strict();
+
+/** Optional change state that limits the listed repository changes. */
+export const codeRepositoryQuerySchema = z
+  .object({ state: codeChangeStateSchema.optional() })
   .strict();
 
 /** Code activity, recent changes, and Workspaces for one repository. */
@@ -82,6 +126,14 @@ export const codeRepositoryReportSchema = z
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
+    /** Every code change in the repository by state, past the listed ones. */
+    changeCounts: z
+      .object({
+        closed: z.number().int().nonnegative(),
+        merged: z.number().int().nonnegative(),
+        open: z.number().int().nonnegative(),
+      })
+      .strict(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     repository: z
@@ -109,13 +161,26 @@ export const codePersonReportSchema = z
     activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
+    /** Set when `changes` is a full page: pass it as `cursor` for the next. */
+    nextCursor: z.string().optional(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),
     windowStart: z.string(),
   })
   .strict();
 
+/** Query for one page of a person's code changes. */
+export const personCodeQuerySchema = z
+  .object({
+    /** `nextCursor` from the previous page. */
+    cursor: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+
 export type CodeActivityDay = z.infer<typeof codeActivityDaySchema>;
+export type CodeChangeSearchReport = z.infer<
+  typeof codeChangeSearchReportSchema
+>;
 export type CodeChangeSummaryReport = z.infer<
   typeof codeChangeSummaryReportSchema
 >;
@@ -123,3 +188,4 @@ export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
 export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
 export type CodeRepositoryReport = z.infer<typeof codeRepositoryReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;
+export type MentionableCodeChange = z.infer<typeof mentionableCodeChangeSchema>;

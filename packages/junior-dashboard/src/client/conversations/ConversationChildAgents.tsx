@@ -1,21 +1,38 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, CircleAlert, LockKeyhole } from "lucide-react";
+import {
+  Archive,
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  CirclePause,
+  CircleX,
+  LockKeyhole,
+  type LucideIcon,
+} from "lucide-react";
+import { useContext, useState } from "react";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
 } from "@sentry/junior/api/schema";
 
-import { StatusChip, type StatusChipTone } from "../components/StatusChip";
-import {
-  formatConversationCostTotal,
-  formatRelativeTime,
-  formatRuntime,
-  formatTime,
-  formatUsageTotal,
-} from "../format";
-import { fetchDashboardJson } from "../http";
+import type { StatusChipTone } from "../components/StatusChip";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
+import { formatConversationCostTotal, formatUsageTotal } from "../format";
+import { revalidatedJsonQuery } from "../revalidation";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
+import { conversationPath } from "./conversationRoutes";
+import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import {
+  DetailsCard,
+  DetailsList,
+  DetailsRow,
+  DetailsRowLine,
+} from "./DetailsList";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { formatRuntime, formatTime } from "../time";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
@@ -23,6 +40,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   completed: "success",
   error: "danger",
   failed: "danger",
+  needs_input: "warning",
   paused: "info",
   running: "info",
 };
@@ -38,160 +56,239 @@ const errorToneClass: Partial<Record<StatusChipTone, string>> = {
 };
 
 /** Load the child agents of one Conversation with runtime status. */
-export function useConversationChildAgents(conversationId: string) {
+export function useConversationChildAgents(
+  conversationId: string,
+  enabled = true,
+) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationChildAgentsReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
-        signal,
-      ),
-    queryKey: ["conversation", conversationId, "agents"],
+    enabled,
+    queryFn: revalidatedJsonQuery(
+      conversationChildAgentsReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
+    ),
+    queryKey: conversationSideReadQueryKey(conversationId, "agents"),
     retry: false,
   });
 }
 
 /**
- * Show the child agents of one Conversation with runtime status. A row opens
- * that child's transcript.
+ * List the Threads of one Conversation. Each row opens the Thread page.
+ * Archived Threads stay hidden until the reader asks for them.
  */
-export function ConversationChildAgents(props: {
-  conversationId: string;
-  onOpenAgent(target: SubagentTranscriptTarget): void;
+export function ConversationThreads(props: {
+  threads: readonly ConversationChildAgent[];
 }) {
-  const query = useConversationChildAgents(props.conversationId);
-
-  if (query.isPending) {
-    return (
-      <p className="m-0 text-sm text-dashboard-text-muted" role="status">
-        Loading subagents…
-      </p>
-    );
-  }
-  if (query.error) {
-    return (
-      <p className="m-0 text-sm text-red-300/80">
-        Could not load subagents from this Conversation.
-      </p>
-    );
-  }
-  if (query.data.agents.length === 0) {
-    return (
-      <div className="grid justify-items-center gap-2 py-10 text-center text-dashboard-text-muted">
-        <Bot aria-hidden="true" className="size-5 opacity-60" />
-        <p className="m-0 text-sm">No subagents were started.</p>
-      </div>
-    );
-  }
-
+  const feedThreads = useContext(FeedThreads);
+  const { action, items: threads } = useShowArchived(props.threads);
   return (
-    <ol aria-label="Subagents" className="m-0 grid list-none gap-2 p-0">
-      {query.data.agents.map((agent) => (
-        <li key={agent.conversationId}>
-          <ChildAgentRow agent={agent} onOpen={props.onOpenAgent} />
-        </li>
-      ))}
-    </ol>
+    <DetailsCard
+      action={action}
+      count={threads.length}
+      label="Threads"
+      title="Threads"
+    >
+      {threads.length > 0 ? (
+        <DetailsList
+          itemKey={(thread) => thread.conversationId}
+          items={threads}
+          renderItem={(thread) => (
+            <ChildAgentRow
+              agent={thread}
+              // The report title is the invocation title, so the Thread's
+              // own title wins. Archived Threads are not in the feed.
+              title={feedThreads.get(thread.conversationId)?.displayTitle}
+              to={conversationPath(thread.conversationId)}
+            />
+          )}
+        />
+      ) : (
+        <p className="m-0">Every Thread is archived.</p>
+      )}
+    </DetailsCard>
   );
 }
 
 /**
- * Show who ran, what it was asked to do, and what it cost. The row text is the
- * accessible name, so status, title, task, and error stay audible.
+ * List the Tasks of one Conversation. Tasks are background work, so the list
+ * stays short, and a row opens the Task transcript beside this page.
+ */
+export function ConversationTasks(props: {
+  onOpenTask(target: ConversationDrawerTarget): void;
+  tasks: readonly ConversationChildAgent[];
+}) {
+  const { action, items: tasks } = useShowArchived(props.tasks);
+  return (
+    <DetailsCard
+      action={action}
+      count={tasks.length}
+      label="Tasks"
+      title="Tasks"
+    >
+      {tasks.length > 0 ? (
+        <DetailsList
+          itemKey={(task) => task.conversationId}
+          items={tasks}
+          renderItem={(task) => (
+            <ChildAgentRow
+              agent={task}
+              onOpen={() =>
+                props.onOpenTask({
+                  conversationId: task.conversationId,
+                  ...(task.redacted
+                    ? undefined
+                    : {
+                        ...(task.name ? { agentName: task.name } : undefined),
+                        label: task.title ?? task.name,
+                      }),
+                  status: task.status,
+                })
+              }
+            />
+          )}
+        />
+      ) : (
+        <p className="m-0">Every Task is archived.</p>
+      )}
+    </DetailsCard>
+  );
+}
+
+/** Hide archived children until the reader asks for them. */
+function useShowArchived(children: readonly ConversationChildAgent[]) {
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = children.filter((child) => child.archivedAt).length;
+  return {
+    action:
+      archivedCount > 0 ? (
+        <Button
+          className="rounded-md px-1.5 py-0.5 text-xs"
+          onClick={() => setShowArchived((value) => !value)}
+          variant="ghost"
+          size="bare"
+        >
+          {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+        </Button>
+      ) : null,
+    items: showArchived
+      ? children
+      : children.filter((child) => !child.archivedAt),
+  };
+}
+
+const statusIcons: Partial<Record<string, LucideIcon>> = {
+  active: CircleDot,
+  blocked: CircleAlert,
+  completed: CircleCheck,
+  error: CircleX,
+  failed: CircleX,
+  paused: CirclePause,
+};
+
+const statusIconToneClass: Record<StatusChipTone, string> = {
+  accent: "text-violet-300",
+  danger: "text-rose-300",
+  info: "text-cyan-300",
+  neutral: "text-dashboard-text-faint",
+  success: "text-emerald-300",
+  warning: "text-amber-300",
+};
+
+/** Mark a child agent status with one icon and an audible label. */
+function ChildAgentStatusIcon(props: { archived: boolean; status: string }) {
+  const Icon = props.archived
+    ? Archive
+    : props.status === "running"
+      ? Spinner
+      : (statusIcons[props.status] ?? Circle);
+  return (
+    <>
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          "size-3.5",
+          props.archived
+            ? "text-dashboard-text-faint"
+            : statusIconToneClass[subagentStatusTone(props.status)],
+        )}
+      />
+      <span className="sr-only">
+        {props.archived ? "archived" : props.status}
+      </span>
+    </>
+  );
+}
+
+/**
+ * Show one child agent as a dense row: status, title, and run time first,
+ * then agent name and cost. The row text is the accessible name, so status,
+ * title, and error stay audible. A Thread row links to its page; a Task row
+ * opens its transcript.
  */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
-  onOpen(target: SubagentTranscriptTarget): void;
+  onOpen?(): void;
+  /** The Conversation's own title, when known. It wins over the report title. */
+  title?: string | undefined;
+  to?: string;
 }) {
   const { agent } = props;
   const tone = subagentStatusTone(agent.status);
   const task = agent.task?.trim();
-  const headline = agent.title ?? task;
-  // A title is often a short form of the task. Skip the task when it adds nothing.
-  const detail = agent.title && task && task !== agent.title ? task : undefined;
-  const runtime = formatRuntime(agent.cumulativeDurationMs);
-  // Totals include this subagent's own subagents. Say so, so the row does not
-  // read as the work of this subagent alone.
+  const headline = props.title ?? agent.title ?? task;
+  const kindLabel = agent.kind === "thread" ? "Thread" : "Task";
+  const name = agent.redacted
+    ? `Private ${kindLabel.toLowerCase()}`
+    : agent.name;
+  // Totals include this child's own children. Say so, so the row does not
+  // read as the work of this child alone.
   const nested = agent.childAgentTotals?.count;
-  const stats = [
+  const meta = [
+    headline ? name : "",
     formatUsageTotal(agent.cumulativeUsage),
     formatConversationCostTotal(agent.cumulativeUsage, agent.auxiliaryCosts),
-    runtime ? `${runtime} runtime` : "",
-    nested
-      ? `incl. ${nested} nested ${nested === 1 ? "subagent" : "subagents"}`
-      : "",
+    nested ? `+${nested} nested` : "",
   ].filter(Boolean);
 
   return (
-    <button
-      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={() =>
-        props.onOpen({
-          conversationId: agent.conversationId,
-          ...(agent.redacted
-            ? undefined
-            : {
-                ...(agent.name ? { agentName: agent.name } : undefined),
-                label: agent.title ?? agent.name,
-              }),
-          status: agent.status,
-        })
+    <DetailsRow
+      icon={
+        <ChildAgentStatusIcon
+          archived={Boolean(agent.archivedAt)}
+          status={agent.status}
+        />
       }
-      type="button"
+      meta={formatRuntime(agent.cumulativeDurationMs)}
+      onClick={props.onOpen}
+      title={headline ?? name ?? kindLabel}
+      to={props.to}
+      tooltip={[
+        task && task !== headline ? task : "",
+        `Updated ${formatTime(agent.updatedAt, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })}`,
+      ]
+        .filter(Boolean)
+        .join("\n")}
     >
-      <span className="flex min-w-0 items-center gap-2 text-xs">
-        {agent.redacted ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-dashboard-text-muted">
+      {meta.length > 0 || agent.redacted ? (
+        <DetailsRowLine className="flex items-center gap-1.5">
+          {agent.redacted ? (
             <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
-            Private subagent
-          </span>
-        ) : (
-          <span className="min-w-0 truncate font-medium text-dashboard-text-muted">
-            {agent.name ?? "subagent"}
-          </span>
-        )}
-        <StatusChip className="ml-auto shrink-0" size="compact" tone={tone}>
-          {agent.status}
-        </StatusChip>
-        <time
-          className="shrink-0 text-dashboard-text-faint"
-          dateTime={agent.updatedAt}
-          title={`Updated ${formatTime(agent.updatedAt, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}`}
-        >
-          {formatRelativeTime(agent.updatedAt)}
-        </time>
-      </span>
-      {headline ? (
-        <span className="line-clamp-2 break-words text-sm font-semibold leading-snug text-dashboard-text">
-          {headline}
-        </span>
-      ) : null}
-      {detail ? (
-        <span className="line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
-          {detail}
-        </span>
+          ) : null}
+          <span className="min-w-0 truncate">{meta.join(" · ")}</span>
+        </DetailsRowLine>
       ) : null}
       {agent.error ? (
-        <span
+        <DetailsRowLine
           className={cn(
-            "flex min-w-0 items-start gap-1.5 text-xs leading-relaxed",
-            errorToneClass[tone] ?? "text-dashboard-text-muted",
+            "line-clamp-2 whitespace-pre-wrap break-words",
+            errorToneClass[tone],
           )}
         >
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
-          <span className="line-clamp-3 min-w-0 whitespace-pre-wrap break-words">
-            {agent.error}
-          </span>
-        </span>
+          {agent.error}
+        </DetailsRowLine>
       ) : null}
-      {stats.length > 0 ? (
-        <span className="block text-xs tabular-nums text-dashboard-text-muted">
-          {stats.join(" · ")}
-        </span>
-      ) : null}
-    </button>
+    </DetailsRow>
   );
 }

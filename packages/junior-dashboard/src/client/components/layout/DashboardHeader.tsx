@@ -1,70 +1,85 @@
-import { ArrowLeft, Menu, X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { ArrowLeft, Menu, Search, X } from "lucide-react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
 import {
-  acquireBodyScrollLock,
-  releaseBodyScrollLock,
-} from "../../bodyScrollLock";
+  COMMAND_PALETTE_LABEL,
+  COMMAND_PALETTE_SHORTCUT,
+} from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Kbd } from "../ui/kbd";
+import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
+import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
-  MobileHeaderLiveSlot,
+  MobileHeaderTagsSlot,
   MobileSecondaryNavigationSlot,
+  useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
+import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 
 export type DashboardHeaderNavItem = {
+  /** Shown beside the label when it is above zero. */
+  count?: number | undefined;
   key: string;
   label: string;
   to: string;
 };
 
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type='hidden'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
+const mobileBackClass =
+  "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
 
-/** Render the primary dashboard shell header and optional mobile nav sheet. */
+function NavCount(props: { count?: number | undefined }) {
+  if (!props.count) return null;
+  return (
+    <Badge className="ml-1.5 py-0.5" variant="highlight">
+      {props.count.toLocaleString("en-US")}
+    </Badge>
+  );
+}
+
+/**
+ * Render the shell header: the mobile bar and navigation sheet, and the
+ * desktop top bar when `desktopTopBar` is set. Otherwise desktop uses
+ * `NavRail`.
+ */
 export function DashboardHeader(props: {
-  compact?: boolean;
+  /** Show the desktop top bar instead of the nav sidebar. */
+  desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
-  mobileBackTo?: string;
+  mobileBackTo?: string | undefined;
   mobileNavigationOpen: boolean;
-  mobileTitle?: string;
+  mobileTitle?: string | undefined;
   /** Quiet signed-in strip pinned above the sheet version footer. */
-  mobileIdentity?: ReactNode;
+  mobileIdentity?: ReactNode | undefined;
   /** Plain account destinations inside the mobile navigation sheet. */
-  mobileProfile?: ReactNode;
+  mobileProfile?: ReactNode | undefined;
   /** Vertical spend callout pinned above every mobile sheet destination. */
-  mobileSpend?: ReactNode;
+  mobileSpend?: ReactNode | undefined;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
-  /** Compact desktop header control. */
-  profile?: ReactNode;
-  version?: string;
+  /** Open the command palette. */
+  onSearch(): void;
+  /** Spend and account control at the right of the desktop top bar. */
+  profile?: ReactNode | undefined;
+  version?: string | undefined;
   workspaceActive: boolean;
 }) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const openButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
-  // Conversation chrome is path-driven. Undefined title keeps the loading
+  // Conversation chrome is path-driven, or set by a registered back for a
+  // Conversation that has no route yet. Undefined title keeps the loading
   // fallback; explicit empty string means no title (create compose).
-  const conversationMode = Boolean(props.mobileBackTo);
-  const mobileTitle =
-    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
+  const mobileBack = useMobileHeaderBack();
+  const conversationMode = Boolean(props.mobileBackTo || mobileBack);
+  const title = props.mobileTitle ?? mobileBack?.title;
+  const mobileTitle = title === undefined ? "Conversation" : title.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
@@ -89,80 +104,96 @@ export function DashboardHeader(props: {
     if (!props.mobileNavigationOpen) return;
 
     // md:hidden only hides the sheet; clear open state so locks do not stick.
-    const mobile = window.matchMedia("(max-width: 767px)");
+    const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
     const closeWhenDesktop = () => {
       if (!mobile.matches) onOpenChangeRef.current(false);
     };
     closeWhenDesktop();
     mobile.addEventListener("change", closeWhenDesktop);
-
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : (openButtonRef.current ?? undefined);
-    acquireBodyScrollLock();
-    const focusFrame = requestAnimationFrame(() => {
-      sheetRef.current
-        ?.querySelector<HTMLElement>("[data-mobile-nav-close]")
-        ?.focus();
-    });
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const sheet = sheetRef.current;
-      const focusable = Array.from(
-        sheet?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      ).filter(
-        (element) =>
-          element.tabIndex >= 0 && element.getClientRects().length > 0,
-      );
-      const first = focusable.at(0);
-      const last = focusable.at(-1);
-      if (!sheet || !first || !last) {
-        event.preventDefault();
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !sheet.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (
-        !event.shiftKey &&
-        (active === last || !sheet.contains(active))
-      ) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      mobile.removeEventListener("change", closeWhenDesktop);
-      window.removeEventListener("keydown", onKeyDown);
-      releaseBodyScrollLock();
-      const previousFocus = previousFocusRef.current;
-      previousFocusRef.current = undefined;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
+    return () => mobile.removeEventListener("change", closeWhenDesktop);
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg">
-      <div
-        className={cn(
-          props.compact ? "w-full min-w-0" : dashboardContainerClass,
-          "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
-          props.profile
-            ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
-            : "md:grid-cols-[auto_minmax(0,1fr)]",
-          props.compact ? "md:px-7 md:py-3" : "md:px-8",
-        )}
-      >
-        {conversationMode && props.mobileBackTo ? (
+    <header
+      className={cn(
+        "relative bg-dashboard-bg",
+        !props.desktopTopBar && "md:hidden",
+      )}
+    >
+      {/* Equal side tracks center the command palette trigger in the window,
+          like an editor's title bar. When the nav needs more room, the
+          trigger shrinks instead of covering it. Below lg the nav can be
+          wider than the window, so it scrolls and the trigger is an icon.
+          Unmount, not hide, so a switch to the sidebar also closes the top
+          bar's popovers. */}
+      {props.desktopTopBar ? (
+        <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
+          <div className="flex items-center gap-5 max-lg:min-w-0">
+            <Link
+              aria-label={`${getDashboardAgentName()} home`}
+              className="flex items-center text-inherit no-underline"
+              to="/"
+            >
+              <JuniorLogo />
+            </Link>
+            <nav
+              aria-label="Primary"
+              className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
+            >
+              <Link
+                aria-current={props.workspaceActive ? "page" : undefined}
+                className={navLinkClass({ isActive: props.workspaceActive })}
+                to="/"
+              >
+                Conversations
+              </Link>
+              {props.navItems.map((item) => (
+                <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                  {item.label}
+                  <NavCount count={item.count} />
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+          <Button
+            variant="outline"
+            aria-keyshortcuts="Meta+K Control+K"
+            className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+            onClick={props.onSearch}
+          >
+            <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
+              <Search aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate max-lg:sr-only">
+                {COMMAND_PALETTE_LABEL}…
+              </span>
+            </span>
+            <Kbd className="text-xs max-xl:hidden" variant="plain">
+              {COMMAND_PALETTE_SHORTCUT}
+            </Kbd>
+          </Button>
+          <div className="flex items-center gap-3 justify-self-end">
+            {props.profile}
+          </div>
+        </div>
+      ) : null}
+      <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
+        {conversationMode && mobileBack ? (
+          <button
+            aria-label={mobileBack.label}
+            className={cn(
+              mobileBackClass,
+              "cursor-pointer border-0 bg-transparent disabled:cursor-default",
+            )}
+            disabled={!mobileBack.onClick}
+            onClick={mobileBack.onClick}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
+          </button>
+        ) : conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className={mobileBackClass}
             to={props.mobileBackTo}
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
@@ -173,9 +204,8 @@ export function DashboardHeader(props: {
             aria-expanded={props.mobileNavigationOpen}
             aria-hidden={props.mobileNavigationOpen || undefined}
             aria-label="Open navigation"
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
             onClick={() => props.onMobileNavigationOpenChange(true)}
-            ref={openButtonRef}
             tabIndex={props.mobileNavigationOpen ? -1 : undefined}
             type="button"
           >
@@ -183,71 +213,33 @@ export function DashboardHeader(props: {
           </button>
         )}
         {conversationMode ? (
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
             {mobileTitle ? (
               <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
                 {mobileTitle}
               </h1>
             ) : null}
-            <MobileHeaderLiveSlot />
           </div>
         ) : null}
         <Link
           aria-label={`${getDashboardAgentName()} home`}
           className={cn(
-            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
+            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
           to="/"
         >
-          <span className="truncate font-sans text-sm font-semibold md:hidden">
+          <span className="truncate font-sans text-sm font-semibold">
             {getDashboardAgentName()}
           </span>
-          <span className="hidden md:block">
-            <JuniorLogo />
-          </span>
         </Link>
-        <nav
-          aria-label="Primary"
-          className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start"
-        >
-          <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
-            to="/"
-          >
-            Conversations
-          </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
         {conversationMode ? <MobileHeaderActionsSlot /> : null}
-        {props.profile ? (
-          <div className="col-start-3 hidden justify-self-end md:block">
-            {props.profile}
-          </div>
-        ) : null}
+        {conversationMode ? <MobileHeaderTagsSlot /> : null}
       </div>
       {props.mobileNavigationOpen ? (
-        <div
-          aria-label="Navigation"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex flex-col bg-dashboard-bg-elevated md:hidden"
-          id="mobile-navigation"
-          onClick={(event) => {
-            // Close on route taps and sheet actions such as Log out.
-            if (
-              event.target instanceof Element &&
-              event.target.closest("a[href], [data-mobile-nav-dismiss]")
-            ) {
-              onOpenChangeRef.current(false);
-            }
-          }}
-          ref={sheetRef}
-          role="dialog"
+        <MobileNavigationSheet
+          closeRef={closeRef}
+          onClose={() => onOpenChangeRef.current(false)}
         >
           <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
@@ -257,15 +249,13 @@ export function DashboardHeader(props: {
             >
               {getDashboardAgentName()}
             </Link>
-            <button
+            <SheetClose
               aria-label="Close navigation"
               className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
-              data-mobile-nav-close
-              onClick={() => props.onMobileNavigationOpenChange(false)}
-              type="button"
+              ref={closeRef}
             >
               <X aria-hidden="true" size={20} strokeWidth={2} />
-            </button>
+            </SheetClose>
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
@@ -273,6 +263,16 @@ export function DashboardHeader(props: {
                 <div className="mb-3">{props.mobileSpend}</div>
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
+                <Button
+                  variant="ghost"
+                  className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
+                  data-mobile-nav-dismiss=""
+                  onClick={props.onSearch}
+                  size="menu"
+                >
+                  <Search aria-hidden="true" className="size-4" />
+                  {COMMAND_PALETTE_LABEL}
+                </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
@@ -289,6 +289,7 @@ export function DashboardHeader(props: {
                     to={item.to}
                   >
                     {item.label}
+                    <NavCount count={item.count} />
                   </NavLink>
                 ))}
               </nav>
@@ -314,8 +315,40 @@ export function DashboardHeader(props: {
               </div>
             ) : null}
           </div>
-        </div>
+        </MobileNavigationSheet>
       ) : null}
     </header>
+  );
+}
+
+/** Show the mobile navigation in a full-screen shared sheet. */
+function MobileNavigationSheet(props: {
+  children: ReactNode;
+  closeRef: RefObject<HTMLButtonElement | null>;
+  onClose(): void;
+}) {
+  const sheet = useSheet(props.onClose, props.closeRef);
+  return (
+    <Sheet {...sheet.rootProps}>
+      <SheetContent
+        {...sheet.contentProps}
+        aria-label="Navigation"
+        className="inset-0 gap-0 bg-dashboard-bg-elevated outline-none data-[side=left]:w-full data-[side=left]:border-r-0 data-[side=left]:sm:max-w-none md:hidden"
+        id="mobile-navigation"
+        onClick={(event) => {
+          // Close on route taps and sheet actions such as Log out.
+          if (
+            event.target instanceof Element &&
+            event.target.closest("a[href], [data-mobile-nav-dismiss]")
+          ) {
+            props.onClose();
+          }
+        }}
+        showCloseButton={false}
+        side="left"
+      >
+        {props.children}
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -12,19 +12,16 @@ describe("experimental features", () => {
   it("defaults experimental features off", () => {
     setExperimentalFeatures(undefined);
     expect(isExperimentalFeatureEnabled("passive-routing")).toBe(false);
-    expect(isExperimentalFeatureEnabled("subagents")).toBe(false);
   });
 
   it("enables features from createApp-style config", () => {
-    setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    setExperimentalFeatures({ "passive-routing": true });
     expect(isExperimentalFeatureEnabled("passive-routing")).toBe(true);
-    expect(isExperimentalFeatureEnabled("subagents")).toBe(true);
   });
 
   it("treats explicit false as disabled", () => {
-    setExperimentalFeatures({ "passive-routing": false, subagents: false });
+    setExperimentalFeatures({ "passive-routing": false });
     expect(isExperimentalFeatureEnabled("passive-routing")).toBe(false);
-    expect(isExperimentalFeatureEnabled("subagents")).toBe(false);
   });
 
   it("rejects unknown experimental feature keys from app config", () => {

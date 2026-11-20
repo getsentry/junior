@@ -22,8 +22,7 @@ describe("OAuth private Slack delivery", () => {
       {
         authorizationUrl,
         label: "Connect to Hex",
-        completionText:
-          "Once you've authorized, Junior will continue automatically.",
+        completionText: "Once you've authorized, I'll continue automatically.",
       },
       {
         channelId: TEST_CHANNEL_ID,

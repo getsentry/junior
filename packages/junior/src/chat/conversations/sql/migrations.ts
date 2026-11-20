@@ -6,6 +6,8 @@ import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
+// A schema without the core Drizzle journal must upgrade through this release
+// first. Keep this guard.
 const CORE_MIGRATION_BRIDGE_VERSION = "0.107.1";
 const MIGRATIONS_TABLE = "__drizzle_junior_core";
 
@@ -98,7 +100,7 @@ function assertSupportedMigrationState(state: CoreMigrationState): void {
     return;
   }
   throw new Error(
-    `Existing Junior SQL tables have no core Drizzle migration history. Stop old Junior workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this Junior version and rerun \`junior upgrade\` before restarting workers.`,
+    `Existing SQL tables have no core Drizzle migration history. Stop old workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this version and rerun \`junior upgrade\` before restarting workers.`,
   );
 }
 

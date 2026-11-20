@@ -27,11 +27,12 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
@@ -209,8 +210,8 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const previousBaseUrl = process.env["JUNIOR_BASE_URL"];
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
     let oauthCallback:
       | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
@@ -231,6 +232,7 @@ describe("local agent runner", () => {
             arguments: {
               provider: EVAL_MCP_AUTH_PROVIDER,
               query: "budget echo",
+              intent: "look up the budget",
             },
           },
           { type: "text", text: "Eval Auth is connected." },
@@ -333,9 +335,9 @@ describe("local agent runner", () => {
       await oauthCallback?.close();
       await pluginApp.cleanup();
       if (previousBaseUrl === undefined) {
-        delete process.env.JUNIOR_BASE_URL;
+        delete process.env["JUNIOR_BASE_URL"];
       } else {
-        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+        process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
       }
     }
   });
@@ -351,7 +353,9 @@ describe("local agent runner", () => {
       { conversationId: conversationId!, message: "react only" },
       {
         agentRunner: createModelAgentRunnerForRun(() =>
-          createModelStream([{ type: "text", text: NO_REPLY_MARKER }]),
+          createModelStream([
+            { type: "toolCall", name: "noReply", arguments: {} },
+          ]),
         ),
         deliverReply,
       },
@@ -383,8 +387,10 @@ describe("local agent runner", () => {
       alias: "model-failure",
       cwd: "/tmp/local-agent-runner-model-failure",
     });
+    // Pi retries most transient failures with real backoff. Pi does not retry
+    // this text, and Junior still gives it transient-failure copy.
     const rawError =
-      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
+      "bad gateway: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
@@ -410,6 +416,24 @@ describe("local agent runner", () => {
     });
     expect(JSON.stringify(lifecycle)).not.toContain("raw-error-sentinel");
     expect(JSON.stringify(lifecycle)).not.toContain("provider.invalid");
+
+    // The next turn gets a note that this one failed, without the raw error.
+    await getTurnLifecycle().start({
+      conversationId: conversationId!,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["next-message"],
+      surface: "internal",
+      turnId: "next-turn",
+    });
+    const notes = await loadTurnConversationNotes({
+      conversationId: conversationId!,
+      turnId: "next-turn",
+    });
+    expect(notes).toEqual([
+      expect.stringContaining("Your previous turn failed before it finished."),
+    ]);
+    expect(notes[0]).toMatch(/event_id=[a-f0-9]{32}/);
+    expect(notes[0]).not.toContain("raw-error-sentinel");
   });
 
   it("classifies a thrown agent run without persisting exception details", async () => {
@@ -628,14 +652,15 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[1]?.instruction.context).toContain("first question");
-    expect(agentRuns[1]?.instruction.context).toContain(
-      "reply to first question",
-    );
+    // Agent history carries the first exchange, so thread context omits it.
+    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    expect(secondHistory).toContain("first question");
+    expect(secondHistory).toContain("reply to first question");
+    expect(agentRuns[1]?.instruction.context).toBeUndefined();
 
     const state = await getPersistedThreadState(conversationId!);
-    expect(state.conversation).not.toHaveProperty("stats");
-    expect(state.conversation).not.toHaveProperty("backfill");
+    expect(state["conversation"]).not.toHaveProperty("stats");
+    expect(state["conversation"]).not.toHaveProperty("backfill");
     const conversation = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation,
@@ -888,5 +913,24 @@ describe("local agent runner", () => {
       failureCode: "delivery_failed",
     });
     expect(JSON.stringify(lifecycle)).not.toContain(rawDeliveryError);
+
+    // The next turn learns that the person never saw the lost reply.
+    await getTurnLifecycle().start({
+      conversationId: conversationId!,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["next-message"],
+      surface: "internal",
+      turnId: "next-turn",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: conversationId!,
+        turnId: "next-turn",
+      }),
+    ).toEqual([
+      expect.stringContaining(
+        "Your reply was not delivered, so the person did not see it.",
+      ),
+    ]);
   });
 });

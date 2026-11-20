@@ -1,26 +1,35 @@
 import path from "node:path";
+import { withSentryConfig as withSentryNitroConfig } from "@sentry/nitro";
+import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
-  copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
+  resolveDashboardPublicAssetsDir,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  getDeploymentServiceVersion,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -29,6 +38,49 @@ import {
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
+
+type SentryNitroConfig = Parameters<typeof withSentryNitroConfig>[0];
+type SentryNitroOptions = NonNullable<
+  Parameters<typeof withSentryNitroConfig>[1]
+>;
+
+/**
+ * Sentry's Nitro config wrapper: source map upload and Nitro request hooks.
+ * Junior pins `@sentry/nitro` to the same version as its `@sentry/node`. The
+ * SDK keeps one client for each version, so this lets the Nitro hooks use the
+ * client that `initSentry()` creates. Apps import it from here, not from
+ * `@sentry/nitro`.
+ *
+ * The build release defaults to the release that `initSentry()` reports, so
+ * the uploaded source maps and the runtime events use the same release.
+ */
+export function withSentryConfig(
+  config: SentryNitroConfig,
+  options: SentryNitroOptions = {},
+): SentryNitroConfig {
+  return withSentryNitroConfig(bundleSentryNitroRuntime(config), {
+    ...options,
+    release: { name: getDeploymentServiceVersion(), ...options.release },
+  });
+}
+
+// `@sentry/nitro` adds its runtime plugin from `node_modules`, and since
+// 11.11.0 that plugin imports the virtual module `#nitro/virtual/tasks`.
+// `nitro dev` keeps `node_modules` files external, so Node loads the plugin
+// and fails with ERR_PACKAGE_IMPORT_NOT_DEFINED. Production builds already
+// bundle it. TODO: Remove when `@sentry/nitro` marks its runtime noExternal.
+const SENTRY_NITRO_RUNTIME =
+  /[/\\]@sentry[/\\]nitro[/\\]build[/\\]esm[/\\]runtime[/\\]/;
+
+function bundleSentryNitroRuntime(
+  config: SentryNitroConfig,
+): SentryNitroConfig {
+  if (config.noExternals === true) return config;
+  return {
+    ...config,
+    noExternals: [...(config.noExternals || []), SENTRY_NITRO_RUNTIME],
+  };
+}
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
@@ -68,6 +120,10 @@ type RollupLikeConfig = {
 
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const VERCEL_QUEUE_TRIGGER_TYPE = "queue/v2beta";
+// Code Mode loads `quickjs.wasm` and its worker file from the installed
+// packages at run time. A trailing `*` tells Nitro to keep these packages
+// external and copy each whole package into the server output.
+const CODEMODE_TRACE_DEPS = ["@earendil-works/pi-codemode*", "quickjs-wasi*"];
 
 function isPluginModuleReference(
   value: JuniorNitroPluginSource | undefined,
@@ -116,35 +172,6 @@ function runtimeModuleForResolvedPluginModule(
   };
 }
 
-/**
- * Prevent import-in-the-middle and require-in-the-middle from being
- * externalized so Rolldown bundles them inline.
- *
- * @sentry/node (via @opentelemetry/instrumentation) statically imports these
- * packages. Nitro already lists them in nf3's NonBundleablePackages, which
- * means it externalizes them and relies on traceNodeModules to copy the
- * package directories into the Vercel function output. In practice that trace
- * step fails to materialize the packages at runtime, causing an
- * ERR_MODULE_NOT_FOUND startup crash.
- *
- * Adding them to noExternals overrides the NonBundleablePackages default and
- * forces Rolldown to bundle their CJS code inline. The trade-off is that
- * Node.js ESM loader hooks (hook.mjs) are not active, which limits OTEL
- * auto-instrumentation of modules loaded after initialization. That is an
- * acceptable cost compared to a fatal startup failure.
- */
-function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
-  const existing = Array.isArray(nitro.options.noExternals)
-    ? nitro.options.noExternals
-    : [];
-  const additions = ["import-in-the-middle", "require-in-the-middle"].filter(
-    (pkg) => !existing.includes(pkg),
-  );
-  if (additions.length > 0) {
-    nitro.options.noExternals = [...existing, ...additions];
-  }
-}
-
 function configureVercelDeployment(
   nitro: Nitro,
   options: JuniorNitroOptions,
@@ -178,86 +205,72 @@ function configureVercelDeployment(
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
     });
   }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_AUTO_ARCHIVE_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+      schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+    });
+  }
 
   nitro.options.vercel.functions ??= {};
   nitro.options.vercel.functions.maxDuration = defaultMaxDuration;
 
   nitro.options.vercel.functionRules ??= {};
-  const existingRule =
-    nitro.options.vercel.functionRules[
-      JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE
-    ] ?? {};
-  const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
-    ? existingRule.experimentalTriggers
-    : [];
-  const otherTriggers = existingTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
-  );
-
-  nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
-    {
+  const functionRules = nitro.options.vercel.functionRules;
+  // Each queue topic pushes to one callback route. Keep the other triggers of
+  // that route.
+  const addQueueTrigger = (route: string, topic: string) => {
+    const existingRule = functionRules[route] ?? {};
+    const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
+      ? existingRule.experimentalTriggers
+      : [];
+    functionRules[route] = {
       ...existingRule,
       maxDuration: defaultMaxDuration,
       experimentalTriggers: [
-        ...otherTriggers,
-        {
-          type: VERCEL_QUEUE_TRIGGER_TYPE,
-          topic: queueTopic,
-        },
+        ...existingTriggers.filter(
+          (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+        ),
+        { type: VERCEL_QUEUE_TRIGGER_TYPE, topic },
       ],
     };
-
-  const existingPluginTaskRule =
-    nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] ?? {};
-  const existingPluginTaskTriggers = Array.isArray(
-    existingPluginTaskRule.experimentalTriggers,
-  )
-    ? existingPluginTaskRule.experimentalTriggers
-    : [];
-  const otherPluginTaskTriggers = existingPluginTaskTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
-  );
-
-  nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] = {
-    ...existingPluginTaskRule,
-    maxDuration: defaultMaxDuration,
-    experimentalTriggers: [
-      ...otherPluginTaskTriggers,
-      {
-        type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: PLUGIN_TASK_QUEUE_TOPIC,
-      },
-    ],
   };
-
-  const existingSnapshotJobRule =
-    nitro.options.vercel.functionRules[
-      JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
-    ] ?? {};
-  const existingSnapshotJobTriggers = Array.isArray(
-    existingSnapshotJobRule.experimentalTriggers,
-  )
-    ? existingSnapshotJobRule.experimentalTriggers
-    : [];
-  const otherSnapshotJobTriggers = existingSnapshotJobTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  addQueueTrigger(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, queueTopic);
+  addQueueTrigger(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, PLUGIN_TASK_QUEUE_TOPIC);
+  addQueueTrigger(
+    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+    WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
   );
+  addQueueTrigger(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, CACHE_WARMUP_QUEUE_TOPIC);
 
-  nitro.options.vercel.functionRules[
-    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
-  ] = {
-    ...existingSnapshotJobRule,
-    maxDuration: defaultMaxDuration,
-    experimentalTriggers: [
-      ...otherSnapshotJobTriggers,
-      {
-        type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
-      },
-    ],
-  };
+  addQueueTrigger(
+    JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+    BACKGROUND_COMPACTION_QUEUE_TOPIC,
+  );
 
   return defaultMaxDuration;
+}
+
+// Apps route `/**` to `./server.ts`, and Nitro also detects `server.ts` as
+// its server entry. With both, a 404 from the app runs the app again with the
+// same Request, whose body the first run may already have read.
+function dropRoutedServerEntry(nitro: Nitro): void {
+  const serverEntry = nitro.options.serverEntry;
+  if (!serverEntry) {
+    return;
+  }
+  const routed = Object.values(nitro.options.routes).some(
+    (route) =>
+      (typeof route === "string" ? route : route.handler) ===
+      serverEntry.handler,
+  );
+  if (routed) {
+    nitro.options.serverEntry = false;
+  }
 }
 
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
@@ -275,9 +288,25 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           nitro,
           options,
         );
-        bundleOpenTelemetryLoaderHooks(nitro);
 
+        dropRoutedServerEntry(nitro);
         applyRolldownTreeshakeWorkaround(nitro);
+        if (dashboardEnabled(options.dashboard)) {
+          // Nitro resolves configured public assets before modules run, so
+          // this entry must already have its final shape. The dashboard
+          // package serves the same files from `/_junior/dashboard/assets/*`
+          // when no static file matches.
+          nitro.options.publicAssets.push({
+            baseURL: "/_junior/dashboard/assets",
+            dir: resolveDashboardPublicAssetsDir(cwd),
+            fallthrough: false,
+            maxAge: 31_536_000,
+          });
+        }
+        nitro.options.traceDeps = [
+          ...(nitro.options.traceDeps ?? []),
+          ...CODEMODE_TRACE_DEPS,
+        ];
         const pluginSource = options.plugins;
         const pluginModule = isPluginModuleReference(pluginSource)
           ? resolvePluginModule(cwd, pluginSource)
@@ -324,9 +353,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
-          if (dashboardEnabled(options.dashboard)) {
-            copyDashboardAssets(cwd, nitro.options.output.serverDir);
-          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,
@@ -337,6 +363,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.hooks.hook("rollup:before", (_nitro, config) => {
           const buildConfig = config as RollupLikeConfig;
           buildConfig.plugins ??= [];
+          buildConfig.plugins.push(sentryOrchestrionPlugin());
           buildConfig.plugins.push({
             name: "junior:copy-build-content",
             async writeBundle() {

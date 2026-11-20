@@ -1,6 +1,7 @@
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { z } from "zod";
+import * as z from "zod";
+import { startSpan } from "@/chat/sentry";
 import { apiErrorSchema } from "./schema/common";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" } as const;
@@ -15,13 +16,44 @@ function noStoreInit(init?: ResponseInit): ResponseInit {
   return { ...init, headers };
 }
 
+/** A JSON body and the span attributes that describe it. */
+export interface SerializedResponse {
+  attributes?: Record<string, number>;
+  body: string;
+}
+
 /** Serialize a REST response only after it satisfies its declared schema. */
 export function jsonResponse<TSchema extends z.ZodType>(
   schema: TSchema,
   value: z.input<TSchema>,
   init?: ResponseInit,
+  serialize: (parsed: z.output<TSchema>) => SerializedResponse = (parsed) => ({
+    body: JSON.stringify(parsed),
+  }),
 ): Response {
-  return Response.json(schema.parse(value), noStoreInit(init));
+  // Validation and serialization run after the last query. Large reports
+  // spend real time here, and without this span it is a gap at the end of
+  // the request trace.
+  return startSpan({ name: "Write API response", op: "serialize" }, (span) => {
+    const startedAt = performance.now();
+    const parsed = schema.parse(value);
+    const parsedAt = performance.now();
+    const { attributes, body } = serialize(parsed);
+    span.setAttributes({
+      ...attributes,
+      "app.api.response.chars": body.length,
+      "app.api.response.json_stringify_ms": Math.round(
+        performance.now() - parsedAt,
+      ),
+      "app.api.response.schema_parse_ms": Math.round(parsedAt - startedAt),
+    });
+    const responseInit = noStoreInit(init);
+    const headers = new Headers(responseInit.headers);
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+    return new Response(body, { ...responseInit, headers });
+  });
 }
 
 /** Return an empty personalized API response with no-store caching. */

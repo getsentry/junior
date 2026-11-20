@@ -1,5 +1,5 @@
 import { and, eq, lte, sql } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   githubIssueStateReasonSchema,

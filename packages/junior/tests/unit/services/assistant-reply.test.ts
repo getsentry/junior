@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { decideReply } from "@/chat/services/assistant-reply";
 
 function assistant(text: string, withToolCall = false): AssistantMessage {
@@ -44,20 +43,17 @@ describe("assistant reply", () => {
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
-  it("suppresses trailing no-reply text and tool-call messages", () => {
-    expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
+  it("suppresses a legacy marker reply and tool-call messages", () => {
+    expect(decideReply(assistant("[[NO_REPLY]]"))).toEqual({
       kind: "suppress",
     });
-    expect(
-      decideReply(assistant(`staying silent.\n${NO_REPLY_MARKER}`)),
-    ).toEqual({ kind: "suppress" });
-    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
+    expect(decideReply(assistant(" [[QUIET]]\n"))).toEqual({
       kind: "suppress",
     });
-    const mention = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
-    expect(decideReply(assistant(mention))).toEqual({
+    const trailing = "Done. [[NO_REPLY]]";
+    expect(decideReply(assistant(trailing))).toEqual({
       kind: "deliver",
-      text: mention,
+      text: trailing,
     });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",

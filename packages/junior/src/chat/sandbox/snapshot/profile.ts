@@ -9,6 +9,7 @@ import {
   GLOBAL_RUNTIME_DEPENDENCIES,
   GLOBAL_RUNTIME_POSTINSTALL,
 } from "@/chat/sandbox/runtime-dependencies";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 
 const VERSION = 1;
 const DEFAULT_FLOATING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -68,7 +69,7 @@ function mergeDependencies(
 }
 
 function floatingMaxAgeMs(): number {
-  const raw = process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
+  const raw = process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
   if (!raw?.trim()) {
     return DEFAULT_FLOATING_MAX_AGE_MS;
   }
@@ -106,17 +107,27 @@ function workspaceRecipe(workspace: Workspace) {
 
 /** Build the complete profile that selects one reusable sandbox snapshot. */
 export function create(runtime: string, workspace?: Workspace): Profile | null {
-  const dependencies = mergeDependencies([
-    ...GLOBAL_RUNTIME_DEPENDENCIES,
-    ...pluginCatalogRuntime.getRuntimeDependencies(),
-  ]);
-  const pluginPostinstall = pluginCatalogRuntime.getRuntimePostinstall();
-  const postinstall = [...GLOBAL_RUNTIME_POSTINSTALL, ...pluginPostinstall];
+  const declared = {
+    dependencies: mergeDependencies([
+      ...GLOBAL_RUNTIME_DEPENDENCIES,
+      ...pluginCatalogRuntime.getRuntimeDependencies(),
+    ]),
+    postinstall: [
+      ...GLOBAL_RUNTIME_POSTINSTALL,
+      ...pluginCatalogRuntime.getRuntimePostinstall(),
+    ],
+  };
+  const { dependencies, postinstall } =
+    getSandboxProvider().selectSnapshotRuntime?.(declared) ?? declared;
+  const pluginPostinstall = postinstall.filter(
+    (command) => !GLOBAL_RUNTIME_POSTINSTALL.includes(command),
+  );
   if (dependencies.length === 0 && postinstall.length === 0 && !workspace) {
     return null;
   }
 
-  const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
+  const rebuildEpoch =
+    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"]?.trim() ?? "";
   // Plugin postinstall commands may fetch mutable artifacts, so profiles
   // containing them expire on the same schedule as floating npm selectors.
   const floating =

@@ -1,39 +1,78 @@
+import type { Page } from "@playwright/test";
+import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
+import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, mobile, screenshot } from "./screenshot";
+import {
+  mockDashboardApis,
+  routeConversationVersion,
+  withRequestedMailbox,
+} from "./harness";
 
-test("inspects all reporting events and searches full event data", async ({
-  page,
-  dashboard,
-}) => {
-  const conversationId = "slack:CQA123:1770003600.000200";
+test.use({ locale: "en-US", timezoneId: "America/New_York" });
+
+const conversationId = "slack:CQA123:1770003600.000200";
+
+/** Read the mock Conversation report, then open its transcript. */
+async function openConversation(page: Page, baseURL: string) {
   const response = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
   const report = await response.json();
   await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
+  return report;
+}
+
+/** Open the Event log and the details of the first assistant message. */
+async function openEventDetails(page: Page) {
+  await chooseTranscriptView(page, "Event log");
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  const entry = log.getByRole("button", {
+    name: "Event 3: assistant_message",
+    exact: true,
+  });
+  await entry.click();
+  const panel = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
+  ).toBeVisible();
+  return { entry, log, panel };
+}
+
+test("reveals a closed tool result in transcript search", async ({
+  page,
+  dashboard,
+}) => {
+  await openConversation(page, dashboard.baseURL);
   const transcript = page.getByLabel("Conversation transcript", {
     exact: true,
   });
-  const toolSummary = transcript
-    .locator("summary")
-    .filter({ hasText: "webSearch" });
+  const toolRow = transcript.getByRole("button", { name: /^webSearch/ });
   const activity = transcript
-    .locator("details")
+    .locator('[data-slot="collapsible"]')
     .filter({
-      has: page.locator("summary").filter({ hasText: "webSearch" }),
+      has: page.getByRole("button", {
+        includeHidden: true,
+        name: /^webSearch/,
+      }),
     })
     .first();
-  await activity.locator(":scope > summary").click();
-  await toolSummary.focus();
+  await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
+  await toolRow.focus();
   await page.keyboard.press("Enter");
   const toolResult = transcript
     .locator("pre")
     .filter({ hasText: "payments-v42 deploy notes" });
   await expect(toolResult).toBeVisible();
-  await toolSummary.click();
+  await expect(toolRow).toHaveAttribute("aria-expanded", "true");
+  await toolRow.click();
   await expect(toolResult).toBeHidden();
+  await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
   // Search must still reveal a result that the reader has closed.
   await page.getByRole("button", { name: "Search transcript" }).click();
@@ -43,10 +82,16 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+});
 
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+test("inspects all reporting events and steps through event details", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
-  const entries = log.getByRole("button");
+  const entries = log.getByRole("button", { name: /^Event \d+:/ });
   await expect(entries).toHaveCount(report.events.length);
   expect(
     await entries.evaluateAll((buttons) =>
@@ -64,38 +109,224 @@ test("inspects all reporting events and searches full event data", async ({
   await screenshot(page, "conversation-event-log");
 
   const entry = log.getByRole("button", {
-    name: "Event 3: turn_routed",
+    name: "Event 3: assistant_message",
     exact: true,
   });
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const conversationDetails = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(conversationDetails).toBeVisible();
   await entry.focus();
   await page.keyboard.press("Enter");
-  const panel = page.getByRole("dialog", { name: "turn_routed", exact: true });
-  await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
+  await expect(conversationDetails).toBeHidden();
+  await expect(entry).toBeFocused();
+  const panel = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(panel.getByText("Call usage", { exact: true })).toBeVisible();
   // The open entry is in the URL, so a reader can share a link to it.
   await expect(page).toHaveURL(/[?&]event=3(&|$)/);
-  await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("openai/gpt-5.6-sol", { exact: true }),
+  ).toBeVisible();
   await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(panel.locator("summary")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(close).toBeFocused();
+  // The log stays interactive while the selected event is open.
+  const otherEntry = log.getByRole("button", {
+    name: "Event 1: turn_lifecycle",
+    exact: true,
+  });
+  // Keyboard selection follows the filtered rows and keeps details open.
+  const eventSearch = log.getByRole("searchbox", { name: "Search events" });
+  await eventSearch.fill("turn_lifecycle");
+  await otherEntry.focus();
+  await otherEntry.press("ArrowDown");
+  const laterEntry = log.getByRole("button", {
+    name: "Event 8: turn_lifecycle",
+    exact: true,
+  });
+  await expect(laterEntry).toBeFocused();
+  await expect(laterEntry).toHaveAttribute("aria-expanded", "true");
+  await expect(otherEntry).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
+  await laterEntry.press("ArrowDown");
+  await expect(laterEntry).toBeFocused();
+  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
+  // The step buttons follow the same filtered rows.
+  await expect(
+    panel.getByRole("button", { name: "Next event" }),
+  ).toBeDisabled();
+  await panel.getByRole("button", { name: "Previous event" }).click();
+  await expect(page).toHaveURL(/[?&]event=1(&|$)/);
+  await laterEntry.press("ArrowUp");
+  await expect(otherEntry).toBeFocused();
+  await eventSearch.fill("");
+  await expect(
+    panel.getByRole("heading", { name: "turn_lifecycle", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/[?&]event=1(&|$)/);
+  await entry.click();
+  await expect(
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
+  ).toBeVisible();
+  // Conversation details were open before the event, so they come back.
+  await close.click();
+  await expect(conversationDetails).toBeVisible();
+  await expect(entry).toBeFocused();
+  await entry.click();
+  await expect(conversationDetails).toBeHidden();
   await screenshot(page, "conversation-event-details");
-  await panel.getByText("Raw JSON", { exact: true }).click();
-  await expect(panel.locator("pre")).toHaveText(
-    JSON.stringify(
-      report.events.find((event: { seq: number }) => event.seq === 3),
-      null,
-      2,
-    ),
+});
+
+test("switches event times between UTC and local time and copies raw JSON", async ({
+  context,
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log, panel } = await openEventDetails(page);
+  const close = panel.getByRole("button", { name: "Close event details" });
+  const otherEntry = log.getByRole("button", {
+    name: "Event 1: turn_lifecycle",
+    exact: true,
+  });
+  const localTime = log.getByRole("button", {
+    name: "Use local time",
+    exact: true,
+  });
+  await expect(localTime).toHaveAttribute("aria-pressed", "false");
+  await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
+  await localTime.click();
+  await expect(localTime).toHaveAttribute("aria-pressed", "true");
+  await expect(localTime).toHaveText("ET");
+  await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
+  await expect(panel.locator("header time")).toContainText("07:54:09");
+  await page.reload();
+  await expect(localTime).toHaveAttribute("aria-pressed", "true");
+  await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
+  const secondTab = await context.newPage();
+  await mockDashboardApis(secondTab);
+  await secondTab.goto(page.url());
+  const secondToggle = secondTab.getByRole("button", {
+    name: "Use local time",
+    exact: true,
+  });
+  await expect(secondToggle).toHaveAttribute("aria-pressed", "true");
+  await secondToggle.click();
+  await expect(localTime).toHaveAttribute("aria-pressed", "false");
+  await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
+  // UTC mode reads like local mode. The header leaves out milliseconds, so
+  // it fits beside the actions. The tooltip and ISO value keep them.
+  await expect(panel.locator("header time")).toHaveText(
+    "Aug 7, 2026, 11:54:09 UTC",
   );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "title",
+    "Aug 7, 2026, 11:54:09.000 UTC",
+  );
+  await expect(panel.locator("header time")).toHaveAttribute(
+    "datetime",
+    report.events.find((event: { seq: number }) => event.seq === 3).createdAt,
+  );
+  await secondTab.close();
+  await page.bringToFront();
+  await localTime.click();
+  await expect(panel.locator("header time")).toContainText("07:54:09");
+  await panel.getByText("Raw JSON", { exact: true }).click();
+  const rawJson = JSON.stringify(
+    report.events.find((event: { seq: number }) => event.seq === 3),
+    null,
+    2,
+  );
+  await expect(panel.locator("pre")).toHaveText(rawJson);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: dashboard.baseURL,
+  });
+  await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
+  const copied = panel.getByRole("button", { name: "Copied", exact: true });
+  await expect(copied).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    rawJson,
+  );
+  // A denied write must not keep the previous success state or block retry.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: () =>
+        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
+    });
+  });
+  await copied.click();
+  const failedCopy = panel.getByRole("button", {
+    name: "Copy failed",
+    exact: true,
+  });
+  await expect(failedCopy).toBeVisible();
+  await page.evaluate(() =>
+    Reflect.deleteProperty(navigator.clipboard, "writeText"),
+  );
+  await failedCopy.click();
+  await expect(copied).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    rawJson,
+  );
+  await otherEntry.click();
+  await entry.click();
+  await expect(panel.locator("pre")).toBeHidden();
+  await close.click();
+  await expect(panel).toBeHidden();
+  await expect(entry).toBeFocused();
+
+  // Escape also closes details while focus stays in the interactive log.
+  await entry.click();
+  await expect(panel).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
+});
+
+test("keeps the selected event in a mobile sheet and searches full event data", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log } = await openEventDetails(page);
+  const entries = log.getByRole("button", { name: /^Event \d+:/ });
+  // A resize keeps the selected event in a dismissable mobile sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  // The sheet title names the event, so find the sheet by its label.
+  const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
+  await expect(
+    sheet.getByRole("heading", { name: "assistant_message", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Close", exact: true }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-event-details-mobile");
+  // The sheet covers the log, so it steps through the rows itself.
+  const nextSeq =
+    report.events[
+      report.events.findIndex((event: { seq: number }) => event.seq === 3) + 1
+    ];
+  await sheet.getByRole("button", { name: "Next event" }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]event=${nextSeq.seq}(&|$)`));
+  await expect(
+    sheet.getByRole("heading", { name: nextSeq.data.type, exact: true }),
+  ).toBeVisible();
+  await sheet.getByRole("button", { name: "Previous event" }).click();
+  await expect(page).toHaveURL(/[?&]event=3(&|$)/);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(entry).toBeFocused();
+  await page.setViewportSize({ width: 1600, height: 900 });
   await expect(page).not.toHaveURL(/[?&]event=/);
 
-  const search = page.getByPlaceholder("Search transcript…");
+  const search = page.getByPlaceholder("Search events…");
   await search.fill("memory-checkout-runbook");
   await expect(entries).toHaveCount(1);
   await expect(entries).toHaveAttribute("aria-label", "Event 2: turn_context");
@@ -103,7 +334,8 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(log.getByText("No events match your search.")).toBeVisible();
   await search.fill("");
   await expect(entries).toHaveCount(report.events.length);
-  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  // The title in the Event log breadcrumb leads back to the Conversation.
+  await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
   await expect(
     page.getByText(
@@ -111,7 +343,14 @@ test("inspects all reporting events and searches full event data", async ({
       { exact: true },
     ),
   ).toBeVisible();
+});
 
+test("forks from the transcript and the event log with retry-safe requests", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const log = page.getByRole("region", { name: "Conversation event log" });
   // Both views fork and send the first message with retry-safe requests.
   const forkAction = page
     .getByRole("button", { name: "Fork after this message" })
@@ -125,8 +364,13 @@ test("inspects all reporting events and searches full event data", async ({
     forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
   ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
-  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await expect(
+    forkDialog.getByRole("textbox", { name: "Message" }),
+  ).toBeFocused();
+  await forkDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(forkDialog).toBeHidden();
+  await expect(forkAction).toBeFocused();
+  await chooseTranscriptView(page, "Event log");
   const reply = report.events.findLast(
     (event: { data: { type: string; role?: string } }) =>
       event.data.type === "message" && event.data.role === "assistant",
@@ -135,7 +379,7 @@ test("inspects all reporting events and searches full event data", async ({
     .getByRole("button", { name: `Event ${reply.seq}: message`, exact: true })
     .click();
   await page
-    .getByRole("dialog", { name: "message", exact: true })
+    .getByRole("complementary", { name: "Event details", exact: true })
     .getByRole("button", { name: "Fork after this message" })
     .click();
   const requests: Array<{ messageId: string; idempotencyKey: string }> = [];
@@ -169,30 +413,19 @@ test("inspects all reporting events and searches full event data", async ({
     },
   );
   await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}`,
+    `**/api/conversations/${encodeURIComponent(forkId)}*`,
     (route) =>
       route.fulfill({
-        json: {
+        json: withRequestedMailbox(route, {
           ...report,
           conversationId: forkId,
           forkedFromConversationId: conversationId,
           forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
-          status: "completed",
+          status: "done",
           forks: [],
-        },
-      }),
-  );
-  const pendingResponse = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-  );
-  const pending = await pendingResponse.json();
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
-    (route) =>
-      route.fulfill({
-        json: { ...pending, conversationId: forkId, messages: [] },
+        }),
       }),
   );
   await forkDialog
@@ -243,16 +476,16 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toBeVisible();
   await expect(page.getByText("Released the package.")).toBeVisible();
 
-  const loadEarlier = page.getByRole("button", {
-    name: "Load earlier events",
-  });
-  await expect(loadEarlier).toBeVisible();
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  // The rich transcript loads earlier events as the reader nears its top.
+  // Its link cards are taller than the viewport, so scroll up to load them
+  // and back down to the latest reply.
+  await page.getByText("Released the package.").hover();
+  await page.mouse.wheel(0, -20_000);
   await expect(
-    page.getByText("Show earlier events", { exact: true }),
-  ).toBeVisible();
-  await loadEarlier.click();
-  await expect(loadEarlier).toHaveCount(0);
+    page.getByRole("button", { name: "Load earlier events" }),
+  ).toHaveCount(0);
+  await page.mouse.wheel(0, 20_000);
+  await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
     log.getByRole("button", { name: "Event 2: tool_calls", exact: true }),
@@ -263,16 +496,130 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(log.getByText(/Released the package/)).toBeVisible();
 
   // A link to an event before the first page loads earlier history to open it.
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}?event=2`,
   );
-  const linked = page.getByRole("dialog", { name: "tool_calls", exact: true });
+  const linked = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
   await expect(linked).toBeVisible();
+  const linkedEntry = page
+    .getByRole("region", { name: "Conversation event log" })
+    .getByRole("button", { name: "Event 2: tool_calls", exact: true });
+  await expect(linkedEntry).toBeAttached();
+  // Closing a linked event must not open the default Conversation panel.
+  await linked.getByRole("button", { name: "Close event details" }).click();
+  await expect(linked).toBeHidden();
   await expect(
-    page
-      .getByRole("region", { name: "Conversation event log" })
-      .getByRole("button", { name: "Event 2: tool_calls", exact: true }),
-  ).toBeAttached();
+    page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    }),
+  ).toBeHidden();
+  await expect(linkedEntry).toBeFocused();
+  await linkedEntry.click();
+  await expect(linked).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .click();
+  await expect(linked).toBeHidden();
+  await expect(page).not.toHaveURL(/[?&]event=/);
+});
+
+test("mounts only the event log rows near the viewport", async ({
+  page,
+  dashboard,
+}) => {
+  // The rich transcript renders all 2,000 events before the event log opens.
+  test.setTimeout(60_000);
+  await page.setViewportSize(desktop);
+  const conversationId = "slack:CQA456:1770021600.000600";
+  const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+  const response = await page.request.get(`${dashboard.baseURL}${api}`);
+  const report = await response.json();
+  const startedAt = Date.parse(report.startedAt);
+  report.events = Array.from({ length: 2000 }, (_, index) => ({
+    seq: index + 1,
+    createdAt: new Date(startedAt + index * 1000).toISOString(),
+    data: {
+      type: "message",
+      messageId: `message-${index + 1}`,
+      role: index % 2 ? "assistant" : "user",
+      text: `Event log row ${index + 1}.`,
+    },
+  }));
+  delete report.previousCursor;
+  await page.route(`**${api}*`, (route) =>
+    route.fulfill({ json: withRequestedMailbox(route, report) }),
+  );
+  // A link reads the page around its event. Here that page holds them all.
+  await page.route(`**${api}/events?*`, (route) =>
+    route.fulfill({
+      json: {
+        eventHistory: report.eventHistory,
+        events: report.events,
+        generatedAt: report.generatedAt,
+      },
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}${api.replace("/api", "")}`);
+  await chooseTranscriptView(page, "Event log");
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  const entry = (seq: number) =>
+    log.getByRole("button", { name: `Event ${seq}: message`, exact: true });
+  const mounted = log.locator("[data-event-seq]");
+  await expect(log.getByRole("status")).toHaveText("2000 loaded events");
+  await expect(entry(2000)).toBeInViewport();
+  expect(await mounted.count()).toBeLessThan(80);
+
+  await page
+    .locator("[data-chat-scroll]")
+    .evaluate((root) => root.scrollTo({ top: 0 }));
+  await expect(entry(1)).toBeInViewport();
+  await expect(entry(2000)).not.toBeAttached();
+  expect(await mounted.count()).toBeLessThan(80);
+
+  // Arrow keys move past the end of the mounted range and mount the rows
+  // they reach. The row that holds the reader's place can stay mounted
+  // further down, so find the first gap from the top.
+  const seqs = await mounted.evaluateAll((rows) =>
+    rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+  );
+  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
+  expect(target).toBeGreaterThan(1);
+  await expect(entry(target)).not.toBeAttached();
+  await entry(1).focus();
+  for (let seq = 2; seq <= target; seq++) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(entry(target)).toBeFocused();
+  await expect(entry(target)).toBeInViewport();
+  await expect(entry(target)).toHaveAttribute("aria-expanded", "true");
+
+  // A link to a far event mounts and reveals its row.
+  await page.goto(`${dashboard.baseURL}${api.replace("/api", "")}?event=1000`);
+  const details = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
+  await expect(entry(1000)).toBeInViewport();
+  await expect(entry(1000)).toHaveAttribute("aria-expanded", "true");
+  expect(await mounted.count()).toBeLessThan(80);
+  await details.getByRole("button", { name: "Close event details" }).click();
+  await expect(details).toBeHidden();
+  // Move the pointer off the toolbar, so no tooltip covers the capture.
+  await entry(1000).hover();
+  await screenshot(page, "conversation-event-log-virtual");
+
+  // Search reads every loaded event, not only the mounted rows.
+  await expect(entry(1234)).not.toBeAttached();
+  await log.getByRole("searchbox", { name: "Search events" }).fill("row 1234.");
+  await expect(log.getByRole("status")).toHaveText("1 of 2000 loaded events");
+  await expect(entry(1234)).toBeInViewport();
 });
 
 for (const width of [1440, 390]) {
@@ -300,7 +647,15 @@ for (const width of [1440, 390]) {
       createdAt: report.lastSeenAt,
       data: { type: "message_handled", messageId: "message-39" },
     });
-    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    // The tree token moves with each event, as `detail_version` does.
+    const conversationVersion = () => String(report.events.length);
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({
+        headers: { [CONVERSATION_VERSION_HEADER]: conversationVersion() },
+        json: withRequestedMailbox(route, report),
+      }),
+    );
+    await routeConversationVersion(page, conversationVersion);
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
@@ -312,10 +667,8 @@ for (const width of [1440, 390]) {
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
 
-    for (const view of ["Event log", "Conversation"]) {
-      if (width < 768)
-        await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("button", { name: view, exact: true }).click();
+    for (const view of ["Event log", "Conversation"] as const) {
+      await chooseTranscriptView(page, view);
       const first =
         view === "Event log"
           ? page.getByRole("button", { name: "Event 0: message", exact: true })
@@ -329,7 +682,12 @@ for (const width of [1440, 390]) {
       ).toBeHidden();
     }
     // A later poll can wake an idle conversation while the reader is above the tail.
-    report.status = "completed";
+    // Rows far below the reader do not mount, so the taller transcript shows
+    // that a poll brought the event.
+    const scrollHeight = () =>
+      scroll.evaluate((element) => element.scrollHeight);
+    const heightBeforeIdle = await scrollHeight();
+    report.status = "done";
     report.events.push({
       seq: 41,
       createdAt: report.lastSeenAt,
@@ -340,13 +698,14 @@ for (const width of [1440, 390]) {
         text: "Idle update",
       },
     });
-    await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
-      timeout: 15_000,
-    });
+    await expect
+      .poll(scrollHeight, { timeout: 15_000 })
+      .toBeGreaterThan(heightBeforeIdle);
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
-    report.status = "active";
+    report.status = "working";
+    report.turnActive = true;
     report.events.push({
       seq: 42,
       createdAt: report.lastSeenAt,
@@ -358,15 +717,14 @@ for (const width of [1440, 390]) {
       },
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
-    await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
-    // New activity must not move a reader who scrolled into history, on either
-    // mobile or desktop. Following resumes only when the reader requests it.
-    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     const jump = page.getByRole("button", {
       name: "Jump to latest update",
       exact: true,
     });
-    await expect(jump).toBeVisible();
+    await expect(jump).toBeVisible({ timeout: 15_000 });
+    // New activity must not move a reader who scrolled into history, on either
+    // mobile or desktop. Following resumes only when the reader requests it.
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     await jump.click();
     await expect(liveUpdate).toBeInViewport();
     await expect(jump).toBeHidden();
@@ -387,3 +745,164 @@ for (const width of [1440, 390]) {
     await expect(jump).toBeHidden();
   });
 }
+
+for (const view of [desktop, mobile]) {
+  test(`docks a tall question above the message box (${view.name})`, async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(view);
+    const conversationId = "slack:CQA123:1770003600.000200";
+    const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const response = await page.request.get(`${dashboard.baseURL}${api}`);
+    const report = await response.json();
+    const mailbox = await (
+      await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
+    ).json();
+    const item = {
+      addedByConversationId: conversationId,
+      rootConversationId: conversationId,
+      assignedToEveryone: false,
+      assignees: [
+        {
+          displayName: "Dashboard User",
+          email: "dev@example.com",
+          userId: "u-dev",
+        },
+      ],
+      body: "The rollout plan has three open decisions.",
+      canAct: true,
+      canTake: false,
+      conversationIds: [conversationId],
+      createdAt: report.startedAt,
+      id: "item-tall",
+      kind: "action",
+      request: {
+        question: "How should the payments-v42 rollout go?",
+        fields: ["Region", "Window", "Owner"].map((label) => ({
+          id: label.toLowerCase(),
+          kind: "choice",
+          label,
+          options: ["First", "Second", "Third", "Fourth"].map((option) => ({
+            description: `${option} ${label.toLowerCase()} option for the rollout.`,
+            label: `${option} ${label.toLowerCase()}`,
+          })),
+        })),
+      },
+      status: "open",
+      title: "Plan the payments-v42 rollout",
+      updatedAt: report.startedAt,
+      visibility: "public",
+    };
+    let dismissed = false;
+    const current = () =>
+      dismissed
+        ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
+        : item;
+    await page.route(`**/api/review-items/${item.id}`, (route) =>
+      route.fulfill({ json: current() }),
+    );
+    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      dismissed = true;
+      return route.fulfill({ json: current() });
+    });
+    // The Conversation also lists the open item above the message box.
+    await page.route(`**/api/review-items?*`, (route) =>
+      route.fulfill({ json: { items: dismissed ? [] : [item] } }),
+    );
+    report.events = [
+      ...Array.from({ length: 20 }, (_, seq) => ({
+        seq,
+        createdAt: report.startedAt,
+        data: {
+          type: "message",
+          messageId: `message-${seq}`,
+          role: "user",
+          text: `Message ${seq}`,
+        },
+      })),
+      {
+        seq: 20,
+        createdAt: report.lastSeenAt,
+        data: {
+          type: "tool_calls",
+          calls: [
+            {
+              input: { kind: "action", title: item.title },
+              name: "addReviewItem",
+              output: JSON.stringify({ item: { id: item.id } }),
+              status: "completed",
+              toolCallId: "review-1",
+            },
+          ],
+        },
+      },
+    ];
+    // Junior asked and ended its Turn, so it waits for the answer.
+    report.status = "needs_input";
+    await page.route(`**${api}*`, (route) =>
+      route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
+    );
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+
+    // The form scrolls inside the dock, so its title and question stay in
+    // view, and the message box and queued messages stay below it.
+    const question = page.getByRole("region", {
+      name: `Question: ${item.title}`,
+    });
+    await expect(
+      question.getByRole("radiogroup", { name: "Owner" }),
+    ).toBeAttached();
+    await expect(
+      question.getByRole("heading", { name: item.title }),
+    ).toBeInViewport();
+    const composer = page.getByLabel("Continue this conversation");
+    const queue = page.getByRole("button", { name: /queued messages/ });
+    await expect(composer).toBeInViewport();
+    await expect(queue).toBeVisible();
+    const record = page.getByRole("region", { name: `Asked ${item.title}` });
+    await expect(record).toContainText("Waiting on you");
+    await screenshot(page, "conversation-question-form", {
+      view: view.name,
+    });
+
+    // Esc dismisses the question, and its record says so.
+    await question.getByRole("heading", { name: item.title }).click();
+    await page.keyboard.press("Escape");
+    await expect(question).toHaveCount(0);
+    await expect(record).toContainText("Dismissed");
+    await screenshot(page, "conversation-question-dismissed", {
+      view: view.name,
+    });
+  });
+}
+
+test("opens the event log from the sidebar row menu", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
+  const row = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Closed issue summary/ });
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  await row.click({ button: "right" });
+  // The viewer is not a participant, so the menu disables changes.
+  await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(row).toHaveAttribute("aria-current", "page");
+  await expect(log).toBeVisible();
+
+  // The page is open already, so the row menu switches its view.
+  await page.getByTitle("Back to conversation").click();
+  await expect(log).toBeHidden();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(log).toBeVisible();
+  // That switch adds no history entry, so Back leaves the conversation.
+  await page.goBack();
+  await expect(row).not.toHaveAttribute("aria-current", "page");
+  await expect(log).toBeHidden();
+});

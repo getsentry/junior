@@ -1,7 +1,9 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
+import * as z from "zod";
+import { codeChangeSizeSchema } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
+  type GitHubPullRequestAction,
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
@@ -14,12 +16,16 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
+    /** When omitted, the stored draft state does not change. */
+    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
     pullRequestId: z.string().min(1),
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
+    /** Written to Junior's code index only, not to the GitHub row. */
+    size: codeChangeSizeSchema.optional(),
     state: githubPullRequestStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
@@ -68,6 +74,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
       : undefined),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
@@ -150,7 +157,7 @@ function conversationIdsForPullRequests(
   ];
 }
 
-/** Return candidate conversations that have an associated unmerged pull request. */
+/** Return candidate conversations that have an associated open pull request. */
 export async function listGitHubUnfinishedWork(
   db: GitHubDb,
   conversationIds: string[],
@@ -165,14 +172,19 @@ export async function listGitHubUnfinishedWork(
     .from(juniorGitHubPullRequests)
     .where(
       and(
-        ne(juniorGitHubPullRequests.state, "merged"),
+        eq(juniorGitHubPullRequests.state, "open"),
         sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
       ),
     );
   return conversationIdsForPullRequests(rows, conversationIds);
 }
 
-/** Return the latest merge time for each candidate conversation. */
+/**
+ * Return the latest merge or close time for each candidate conversation.
+ * A closed pull request is finished even when it did not merge. A
+ * conversation with an open pull request is still unfinished; the caller
+ * combines this with `listGitHubUnfinishedWork`.
+ */
 export async function listGitHubFinishedWork(
   db: GitHubDb,
   conversationIds: string[],
@@ -184,25 +196,27 @@ export async function listGitHubFinishedWork(
   );
   const rows = await db
     .select({
+      closedAt: juniorGitHubPullRequests.closedAt,
       conversationIds: juniorGitHubPullRequests.conversationIds,
       mergedAt: juniorGitHubPullRequests.mergedAt,
     })
     .from(juniorGitHubPullRequests)
     .where(
       and(
-        eq(juniorGitHubPullRequests.state, "merged"),
+        ne(juniorGitHubPullRequests.state, "open"),
         sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
       ),
     );
   const candidates = new Set(conversationIds);
   const finishedAtById = new Map<string, Date>();
   for (const row of rows) {
-    if (!row.mergedAt) continue;
+    const finishedAt = row.mergedAt ?? row.closedAt;
+    if (!finishedAt) continue;
     for (const conversationId of row.conversationIds) {
       if (!candidates.has(conversationId)) continue;
       const current = finishedAtById.get(conversationId);
-      if (!current || row.mergedAt > current) {
-        finishedAtById.set(conversationId, row.mergedAt);
+      if (!current || finishedAt > current) {
+        finishedAtById.set(conversationId, finishedAt);
       }
     }
   }
@@ -212,6 +226,35 @@ export async function listGitHubFinishedWork(
       return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
     }),
   );
+}
+
+/**
+ * Return the open Junior pull requests whose last lifecycle change is
+ * before `before`, oldest first. The daily reconcile checks these against
+ * GitHub.
+ */
+export async function listGitHubStaleOpenPullRequests(
+  db: GitHubDb,
+  before: Date,
+): Promise<
+  Array<{
+    draft: boolean;
+    number: number;
+    repositoryFullName: string;
+    repositoryId: string;
+  }>
+> {
+  const t = juniorGitHubPullRequests;
+  return await db
+    .select({
+      draft: t.draft,
+      number: t.number,
+      repositoryFullName: t.repositoryFullName,
+      repositoryId: t.repositoryId,
+    })
+    .from(t)
+    .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
+    .orderBy(t.updatedAt);
 }
 
 /** Return candidate conversations linked to any Junior-owned pull request. */
@@ -231,6 +274,19 @@ export async function listGitHubAssignedWork(
       sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
     );
   return conversationIdsForPullRequests(rows, conversationIds);
+}
+
+/** Return the conversations linked to one Junior-owned pull request. */
+export async function readGitHubPullRequestConversationIds(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<string[]> {
+  const [row] = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId))
+    .limit(1);
+  return row?.conversationIds ?? [];
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */
@@ -268,33 +324,130 @@ export async function recordGitHubPullRequestLinkedIssues(
   input: GitHubPullRequestLinkedIssuesInput,
 ): Promise<boolean> {
   const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const inserted = await Promise.all(
-    association.linkedIssues.map((issue) =>
+  const list = (values: Array<string | number>) =>
+    sql.join(
+      values.map((value) => sql`${value}`),
+      sql`, `,
+    );
+  // One insert for every issue. It inserts nothing when the PR row is gone.
+  const issues = sql`unnest(
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.repositoryFullName))}]::text[],
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.number))}]::integer[]
+  ) AS issue(repository_full_name, number)`;
+  const inserted = await db
+    .insert(juniorGitHubPullRequestIssues)
+    .select(
       db
-        .insert(juniorGitHubPullRequestIssues)
-        .select(
-          db
-            .select({
-              pullRequestId: juniorGitHubPullRequests.pullRequestId,
-              issueRepositoryFullName:
-                sql<string>`lower(${issue.repositoryFullName})`.as(
-                  "issue_repository_full_name",
-                ),
-              issueNumber: sql<number>`${issue.number}`.as("issue_number"),
-            })
-            .from(juniorGitHubPullRequests)
-            .where(
-              eq(
-                juniorGitHubPullRequests.pullRequestId,
-                association.pullRequestId,
-              ),
+        .select({
+          pullRequestId: juniorGitHubPullRequests.pullRequestId,
+          issueRepositoryFullName:
+            sql<string>`lower(issue.repository_full_name)`.as(
+              "issue_repository_full_name",
             ),
-        )
-        .onConflictDoNothing()
-        .returning({
-          issueNumber: juniorGitHubPullRequestIssues.issueNumber,
-        }),
-    ),
+          issueNumber: sql<number>`issue.number`.as("issue_number"),
+        })
+        .from(juniorGitHubPullRequests)
+        .crossJoin(issues)
+        .where(
+          eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
+        ),
+    )
+    .onConflictDoNothing()
+    .returning({ issueNumber: juniorGitHubPullRequestIssues.issueNumber });
+  return inserted.length > 0;
+}
+
+/** Match one pull request row by repository name, in any case, and number. */
+export function pullRequestRow(target: {
+  number: number;
+  repositoryFullName: string;
+}) {
+  return and(
+    sql`lower(${juniorGitHubPullRequests.repositoryFullName}) = ${target.repositoryFullName.toLowerCase()}`,
+    eq(juniorGitHubPullRequests.number, target.number),
   );
-  return inserted.some((rows) => rows.length > 0);
+}
+
+/**
+ * Ask to check the next action of a Junior pull request, and claim the check
+ * when no other webhook runs one. A claim older than `staleMs` is free.
+ * Return the claim and the saved action, or undefined when another webhook
+ * runs the check or Junior does not own the pull request. The webhook that
+ * runs the check sees the new request in `releaseGitHubPullRequestReadySync`.
+ */
+export async function claimGitHubPullRequestReadySync(
+  db: GitHubDb,
+  target: { number: number; repositoryFullName: string },
+  options: { now: Date; staleMs: number },
+): Promise<
+  | {
+      action: GitHubPullRequestAction | undefined;
+      id: number;
+      requests: number;
+    }
+  | undefined
+> {
+  const t = juniorGitHubPullRequests;
+  const staleBefore = new Date(options.now.getTime() - options.staleMs);
+  const free = sql`(${t.readySyncId} is null or ${t.readySyncAt} < ${staleBefore.toISOString()}::timestamptz)`;
+  const [row] = await db
+    .update(t)
+    .set({
+      readySyncRequests: sql`${t.readySyncRequests} + 1`,
+      // Each request has its own number, so it is the id of the claim.
+      readySyncId: sql`case when ${free} then ${t.readySyncRequests} + 1 else ${t.readySyncId} end`,
+      readySyncAt: sql`case when ${free} then ${options.now.toISOString()}::timestamptz else ${t.readySyncAt} end`,
+    })
+    .where(pullRequestRow(target))
+    .returning({
+      action: t.nextAction,
+      id: t.readySyncId,
+      requests: t.readySyncRequests,
+    });
+  if (!row || row.id !== row.requests) return undefined;
+  return {
+    action: row.action ?? undefined,
+    id: row.id,
+    requests: row.requests,
+  };
+}
+
+/** Save the next action of a Junior pull request. */
+export async function setGitHubPullRequestNextAction(
+  db: GitHubDb,
+  target: {
+    action: GitHubPullRequestAction | undefined;
+    number: number;
+    repositoryFullName: string;
+  },
+): Promise<void> {
+  await db
+    .update(juniorGitHubPullRequests)
+    .set({ nextAction: target.action ?? null })
+    .where(pullRequestRow(target));
+}
+
+/**
+ * End a claimed check. When a webhook asked again during the check, keep the
+ * claim and return the new request count, so the caller checks once more.
+ * Return undefined when the claim ended or another webhook took it.
+ */
+export async function releaseGitHubPullRequestReadySync(
+  db: GitHubDb,
+  target: { number: number; repositoryFullName: string },
+  claim: { id: number; requests: number },
+): Promise<number | undefined> {
+  const t = juniorGitHubPullRequests;
+  const claimed = and(pullRequestRow(target), eq(t.readySyncId, claim.id));
+  const released = await db
+    .update(t)
+    .set({ readySyncAt: null, readySyncId: null })
+    .where(and(claimed, eq(t.readySyncRequests, claim.requests)))
+    .returning({ number: t.number });
+  if (released.length > 0) return undefined;
+  const [row] = await db
+    .select({ requests: t.readySyncRequests })
+    .from(t)
+    .where(claimed);
+  return row?.requests;
 }

@@ -1,8 +1,23 @@
+import type { Page } from "@playwright/test";
+import { withRequestedMailbox } from "./harness";
+import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
+
+async function openActiveConversation(page: Page, baseURL: string) {
+  await page.goto(
+    `${baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Investigate checkout latency",
+      exact: true,
+    }),
+  ).toBeVisible();
+}
 
 test("records loaded conversation views", async ({ page, dashboard }) => {
   let releaseFeed: (() => void) | undefined;
@@ -14,7 +29,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Loading conversations")).toBeAttached();
+  await expect(page.getByText("Loading your conversations")).toBeAttached();
   await expect(page.getByText("No conversations match this view.")).toHaveCount(
     0,
   );
@@ -25,87 +40,179 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversations");
 
   const composer = page.getByLabel("Start a conversation");
-  await composer.focus();
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
+  // A running Conversation polls every 2 seconds, so a slow load would
+  // count a poll. Measure a finished one, which does not poll its detail.
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(
+        `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+        { waitUntil: "networkidle" },
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: "Deployment investigation failed",
+          exact: true,
+        }),
+      ).toBeVisible();
+    },
+    { requests: 9, serialRounds: 2 },
   );
-  await expect(
-    page.getByRole("heading", {
-      name: "Investigate checkout latency",
-      exact: true,
-    }),
-  ).toBeVisible();
+});
+
+test("keeps the conversation list choice and width after a reload", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
+  const conversationList = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const hideList = page.getByRole("button", { name: "Hide conversation list" });
+  await expect(conversationList).toBeVisible();
+  await expect(hideList).toHaveAttribute("aria-expanded", "true");
+  await hideList.click();
+  await expect(conversationList).toBeHidden();
+  const showList = page.getByRole("button", { name: "Show conversation list" });
+  await expect(showList).toHaveAttribute("aria-expanded", "false");
+  await expect(showList).toBeFocused();
+
+  await page.reload();
+  await expect(showList).toBeVisible();
+  await expect(conversationList).toBeHidden();
+  await showList.press("Enter");
+  await expect(conversationList).toBeVisible();
+  await expect(hideList).toBeFocused();
+
+  await page.reload();
+  await expect(hideList).toBeVisible();
+  await expect(conversationList).toBeVisible();
+
+  const resizeList = page.getByRole("separator", {
+    name: "Resize conversation list",
+  });
+  const listSize = async () =>
+    Number(await resizeList.getAttribute("aria-valuenow"));
+  const startSize = await listSize();
+  await resizeList.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(listSize).toBeGreaterThan(startSize);
+  const resizedSize = await listSize();
+  await page.reload();
+  await expect(conversationList).toBeVisible();
+  // The saved width rounds to whole pixels.
+  await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+});
+
+test("keeps the details panel width and usage after a reload", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
+
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
+  const resizeDetails = page.getByRole("separator", {
+    name: "Resize details panel",
+  });
+  // The separator reports the transcript share, which grows as details shrink.
+  const transcriptSize = async () =>
+    Number(await resizeDetails.getAttribute("aria-valuenow"));
+  const startTranscriptSize = await transcriptSize();
+  await resizeDetails.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(transcriptSize).toBeGreaterThan(startTranscriptSize);
+  const resizedTranscriptSize = await transcriptSize();
+  // Details stay open after a reload because the reader opened them.
+  await page.reload();
+  await expect(details).toBeVisible();
+  // The saved width rounds to whole pixels.
+  await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
+  const usage = details.getByRole("button", { name: /^Usage/ });
+  const modelBreakdown = details.getByRole("table", { name: "Model" });
+  await expect(usage).toHaveAttribute("aria-expanded", "false");
+  await expect(modelBreakdown).toBeHidden();
+  await usage.click();
+  await expect(modelBreakdown).toBeVisible();
+  await usage.click();
+  await expect(modelBreakdown).toBeHidden();
+});
+
+test("turn context takes the details panel and gives it back", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
   await contextAction.focus();
   await page.keyboard.press("Enter");
-  const contextPanel = page.getByRole("dialog", {
+  const contextPanel = page.getByRole("complementary", {
     name: "Turn context",
     exact: true,
   });
   await expect(
     contextPanel.getByRole("heading", { name: "Recalled memories" }),
   ).toBeVisible();
-  const closeContext = contextPanel.getByRole("button", {
-    name: "Close turn context",
-    exact: true,
-  });
-  await expect(closeContext).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(contextPanel.locator("summary").last()).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeContext).toBeFocused();
+  await expect(details).toBeHidden();
+  await expect(contextAction).toHaveAttribute("aria-expanded", "true");
+  await expect(contextAction).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
   await expect(contextAction).toBeFocused();
-  await page.setViewportSize({ width: 390, height: 844 });
+  // A mouse open must not leave the tooltip open to take the first Escape.
+  await contextAction.hover();
+  await expect(
+    page.getByText("View turn context", { exact: true }),
+  ).toBeVisible();
   await contextAction.click();
   await expect(contextPanel).toBeVisible();
-  await contextPanel
-    .getByRole("button", { name: "Close turn context", exact: true })
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextAction.click();
+  await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
+  await details
+    .getByRole("button", { name: "Close conversation details", exact: true })
     .click();
-  await expect(contextAction).toBeFocused();
-  await screenshot(page, "conversation-detail");
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
-  );
+  await expect(details).toBeHidden();
+  // Small screens show the same panel as a sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await contextAction.click();
+  const contextSheet = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
   await expect(
-    page.getByRole("heading", {
-      name: "Dashboard QA edge cases",
-      exact: true,
-    }),
+    contextSheet.getByRole("heading", { name: "Recalled memories" }),
   ).toBeVisible();
-  const inputImage = page.getByRole("img", { name: "input-chart.png" });
-  await inputImage.scrollIntoViewIfNeeded();
-  await expect(inputImage).toBeVisible();
-  await inputImage.click();
-  await expect(
-    page.getByRole("dialog", { name: "input-chart.png" }),
-  ).toBeVisible();
-  await page
-    .getByRole("dialog", { name: "input-chart.png" })
+  await contextSheet
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  const image = page
-    .locator('a[href*="/attachments/qa-chart-png"]')
-    .filter({ has: page.locator('img[alt="chart.png"]') })
-    .filter({ hasNot: page.locator("dialog") })
-    .first();
-  await image.waitFor({ state: "visible" });
-  await image.evaluate((element) =>
-    element.scrollIntoView({ block: "center", inline: "nearest" }),
-  );
-  await screenshot(page, "conversation-attachment");
-
-  await image.click();
-  await expect(page.locator("dialog[open]")).toBeVisible();
-  await screenshot(page, "conversation-attachment-modal");
+  await expect(contextSheet).toBeHidden();
+  await expect(contextAction).toBeFocused();
+  await screenshot(page, "conversation-detail");
 });
 
 test("reuses the fresh conversation feed after window focus", async ({
@@ -127,10 +234,16 @@ test("reuses the fresh conversation feed after window focus", async ({
     await route.fallback();
   });
 
-  await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(dashboard.baseURL);
+      await expect(
+        page.getByRole("navigation", { name: "Your conversations" }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 1 },
+  );
   expect(requests).toBe(1);
 
   // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
@@ -151,6 +264,39 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   expect(await extraFeedFetch).toBe(false);
   expect(requests).toBe(1);
+});
+
+test("loads more conversations as the list scrolls and retries a failed page", async ({
+  page,
+  dashboard,
+}) => {
+  let failNextPage = true;
+  await page.route("**/api/conversations?*cursor=*", async (route) => {
+    if (failNextPage) {
+      failNextPage = false;
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(dashboard.baseURL);
+  const list = page.getByRole("navigation", { name: "Your conversations" });
+  const firstRow = list
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .first();
+  const lastRow = list.getByRole("link", { name: /SDK changelog summary 64/ });
+  await expect(firstRow).toBeVisible();
+  await expect(lastRow).toHaveCount(0);
+
+  // A failed page keeps the loaded rows and waits for Retry.
+  await list.getByRole("link").last().scrollIntoViewIfNeeded();
+  await expect(page.getByText("Could not load more.")).toBeVisible();
+  await expect(firstRow).toBeAttached();
+
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(lastRow.first()).toBeAttached();
+  await expect(page.getByText("Could not load more.")).toHaveCount(0);
 });
 
 test("keeps cached conversation and draft available through reconnect", async ({
@@ -182,11 +328,13 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(
     page.getByText("You’re offline. Drafts stay on this device."),
   ).toBeHidden();
-  await expect(composer).toHaveValue("Keep this draft through reconnect");
+  await expect(composer).toHaveText("Keep this draft through reconnect", {
+    useInnerText: true,
+  });
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
-test("shows the repo name for one annotation scope on mobile", async ({
+test("shows the repo name on linked work tags on mobile", async ({
   page,
   dashboard,
 }) => {
@@ -197,149 +345,10 @@ test("shows the repo name for one annotation scope on mobile", async ({
     has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
+  // Mobile shows the first linked work tag.
   await expect(
-    conversation.getByText("payments", { exact: true }),
+    conversation.getByText("payments", { exact: true }).first(),
   ).toBeVisible();
-});
-
-test("opens a conversation in the built dashboard", async ({
-  context,
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-
-  await page.goto(dashboard.baseURL);
-
-  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle("Junior");
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
-  const privateConversation = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
-  await expect(
-    privateConversation.getByLabel("Private conversation"),
-  ).toBeVisible();
-  const publicConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
-  });
-  await expect(
-    publicConversation.getByLabel("Private conversation"),
-  ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
-  );
-  await expect(
-    page.getByRole("heading", { name: "Checkout latency triage" }),
-  ).toBeVisible();
-  await expect(page).toHaveTitle("Checkout latency triage - Junior");
-  await expect(page.getByRole("note")).toContainText("Public conversation");
-  await expect(page.getByRole("note")).toContainText("Public");
-
-  const costMetric = page
-    .getByRole("main")
-    .locator('span[tabindex="0"]')
-    .filter({ hasText: /^\$0\.03$/ });
-  await expect(costMetric).toHaveCount(1);
-  await costMetric.focus();
-  // Scope past sidebar linked-work tooltips that can stay open on the selected row.
-  const costTooltip = page.getByRole("tooltip").filter({ hasText: /\$/ });
-  await expect(costTooltip).toBeVisible();
-  const tooltipId = await costTooltip.getAttribute("id");
-  expect(tooltipId).toBeTruthy();
-  await expect(costMetric).toHaveAttribute("aria-describedby", tooltipId!);
-  await page.keyboard.press("Escape");
-  await expect(costTooltip).toBeHidden();
-
-  await expect(
-    page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
-  ).toBeVisible();
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: dashboard.baseURL,
-  });
-  const conversationUrl = page.url();
-
-  const detailsButton = page.getByRole("button", {
-    name: "Conversation details",
-  });
-  await detailsButton.click();
-  const details = page.getByRole("dialog", { name: "Checkout latency triage" });
-  await expect(
-    details.getByRole("heading", { name: "Summary", exact: true }),
-  ).toBeVisible();
-  await expect(
-    details.getByRole("link", { name: /getsentry\/payments#77/ }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
-  await screenshot(page, "conversation-share-details");
-  // Clipboard denial must show a failure and allow another attempt.
-  await page.evaluate(() => {
-    Object.defineProperty(navigator.clipboard, "writeText", {
-      configurable: true,
-      value: () =>
-        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
-    });
-  });
-  await details.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(details.getByRole("status")).toContainText(
-    "Could not copy the link",
-  );
-  await page.evaluate(() =>
-    Reflect.deleteProperty(navigator.clipboard, "writeText"),
-  );
-  await details.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(
-    details.getByRole("button", { name: "Link copied" }),
-  ).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    conversationUrl,
-  );
-
-  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
-  const memoriesTab = details.getByRole("tab", { name: "Memories" });
-  await detailsTab.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(memoriesTab).toBeFocused();
-  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
-  await expect(
-    details.getByRole("tabpanel", { name: "Memories" }),
-  ).toContainText("Use pnpm for repository commands.");
-  await page.keyboard.press("Home");
-  await expect(detailsTab).toBeFocused();
-  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Escape");
-  await expect(details).toBeHidden();
-  await expect(detailsButton).toBeFocused();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await screenshot(page, "conversation-share-menu", { view: "mobile" });
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    conversationUrl,
-  );
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
-  await page.setViewportSize({ width: 1600, height: 900 });
-
-  // The full durable Brief stays available after the transcript expires.
-  await page.getByText("Facts, links & keywords", { exact: true }).click();
-  await expect(
-    page.getByText("PAYMENTS-42 contained 418 events."),
-  ).toBeVisible();
-
-  await expect(
-    page.getByRole("link", { name: "Conversations" }),
-  ).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
-  );
-  await expect(page.getByRole("note")).toContainText("Private conversation");
-  await expect(page.getByRole("note")).toContainText("Private");
 });
 
 test("collapses long pending message stacks", async ({ page, dashboard }) => {
@@ -351,11 +360,19 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
   await expect(
+    pending.getByRole("button", { name: "7 queued messages", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeHidden();
+
+  await page.setViewportSize({ height: 1050, width: 1600 });
+  await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeVisible();
   await expect(
     pending.getByText(
-      "Keep the reply in Junior. I will paste the dashboard link next.",
+      "Keep the reply here. I will paste the dashboard link next.",
     ),
   ).toBeVisible();
   const expand = pending.getByRole("button", {
@@ -363,14 +380,14 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 
   await expand.click();
   await expect(
     pending.getByRole("button", { name: "Show fewer queued messages" }),
   ).toHaveAttribute("aria-expanded", "true");
-  await expect(pending.getByText("Third queued message.")).toBeVisible();
   await expect(pending.getByText("Fifth queued message.")).toBeVisible();
+  await expect(pending.getByText("Seventh queued message.")).toBeVisible();
 
   await pending
     .getByRole("button", { name: "Show fewer queued messages" })
@@ -378,7 +395,7 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   await expect(
     pending.getByRole("button", { name: "3 more queued messages" }),
   ).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 });
 
 test("scrolls long conversation and transcript panes independently", async ({
@@ -391,11 +408,13 @@ test("scrolls long conversation and transcript panes independently", async ({
     conversationId: `long-${index}`,
     cumulativeDurationMs: 1_000 + index,
     displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     isParticipant: true,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   }));
 
@@ -425,9 +444,9 @@ test("scrolls long conversation and transcript panes independently", async ({
       });
     },
   );
-  await page.route("**/api/conversations/long-0", async (route) => {
+  await page.route("**/api/conversations/long-0*", async (route) => {
     await route.fulfill({
-      json: {
+      json: withRequestedMailbox(route, {
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
@@ -445,7 +464,7 @@ test("scrolls long conversation and transcript panes independently", async ({
           },
           seq: index,
         })),
-      },
+      }),
     });
   });
 
@@ -455,8 +474,10 @@ test("scrolls long conversation and transcript panes independently", async ({
   ).toBeVisible();
 
   const conversationList = page
-    .getByRole("navigation", { name: "Your conversations" })
-    .locator("..");
+    .locator('[data-slot="scroll-area-viewport"]')
+    .filter({
+      has: page.getByRole("navigation", { name: "Your conversations" }),
+    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
@@ -502,30 +523,59 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("groups the signed-in profile and session actions in the header", async ({
+test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 1150 });
   await page.goto(dashboard.baseURL);
 
-  const trigger = page.getByRole("button", {
+  const topBarTrigger = page.getByRole("button", {
+    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(topBarTrigger).toBeVisible();
+  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const rail = page.locator('[data-slot="sidebar"]').filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
+  });
+  const trigger = rail.getByRole("button", {
     name: "Open profile menu for Dashboard User",
+    exact: true,
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.46");
-  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
+  await expect(popover).toContainText("7d $0.46");
+  await expect(popover).toContainText("30d $0.46");
   await expect(
-    popover.getByRole("link", { name: "My profile" }),
+    popover.getByRole("menuitem", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "API tokens" }),
-  ).toHaveAttribute("href", "/settings/api-tokens");
-  await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+    popover.getByRole("menuitem", { name: "Settings", exact: true }),
+  ).toHaveAttribute("href", "/settings");
+  // Low-traffic pages live here instead of the primary nav.
+  await expect(
+    popover.getByRole("menuitem", { name: "Code", exact: true }),
+  ).toHaveAttribute("href", "/code");
+  await expect(
+    popover.getByRole("menuitem", { name: "System", exact: true }),
+  ).toHaveAttribute("href", "/system");
+  await expect(
+    rail
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^(Code|System)$/ }),
+  ).toHaveCount(0);
+  await expect(
+    popover.getByRole("menuitem", { name: "Log out" }),
+  ).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
@@ -537,8 +587,28 @@ test("groups the signed-in profile and session actions in the header", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
-  await page.getByRole("button", { name: "Log out" }).click();
-  await signOutRequest;
+  await page.getByRole("menuitem", { name: "Log out" }).click();
+  // Better Auth returns 415 for a sign-out body without a JSON content type.
+  expect((await signOutRequest).headers()["content-type"]).toBe(
+    "application/json",
+  );
+});
+
+test.describe("keeps a hover-opened profile menu open on click", () => {
+  test.use({ controlTimers: true });
+
+  test("after the hover pause", async ({ page, dashboard }) => {
+    await page.goto(dashboard.baseURL);
+    const trigger = page.getByRole("button", {
+      name: /^(Open|Close) profile menu for Dashboard User/,
+    });
+    await trigger.hover();
+    await expect(page.locator("#profile-popover")).toBeVisible();
+    // Pass Base UI's 500ms window that keeps a hover-opened popover open.
+    await page.clock.fastForward(600);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
 });
 
 test("inspects and copies a child agent transcript", async ({
@@ -557,32 +627,44 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagent rows show in the main view, outside collapsed activity groups.
+  // The Tasks of a Turn sit under its reply, one chip each with its status.
   const planner = page.getByRole("button", {
-    name: "Open planner transcript",
+    name: "Open Review the dashboard plan transcript (completed)",
   });
   const reviewer = page.getByRole("button", {
-    name: "Open reviewer transcript",
+    name: "Open reviewer transcript (blocked)",
   });
-  await expect(planner).toContainText("Review the dashboard plan");
-  await expect(reviewer).toContainText("blocked");
+  await expect(planner).toBeVisible();
+  await expect(reviewer).toBeVisible();
+  // The chip already shows the result, so its Event row does not render.
+  await expect(
+    page.getByText('Child agent "reviewer" is blocked.'),
+  ).toBeHidden();
   await screenshot(page, "conversation-child-agents");
 
-  // The Details drawer lists child agents with the runtime status.
-  await page.getByRole("button", { name: "Conversation details" }).click();
-  const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
-  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
-  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
-  await subagentsTab.click();
-  const subagents = details.getByRole("list", { name: "Subagents" });
-  await expect(subagents.getByRole("listitem")).toHaveCount(2);
-  await expect(subagents.getByRole("listitem").first()).toContainText(
+  // Details lists Tasks with the runtime status.
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(
+    details.getByRole("heading", { name: "Tasks 2", exact: true }),
+  ).toBeVisible();
+  const tasks = details.getByRole("region", { name: "Tasks" });
+  await expect(tasks.getByRole("listitem")).toHaveCount(2);
+  await expect(tasks.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
-  await screenshot(page, "conversation-subagents-tab");
-  // A row opens the same child transcript drawer as the transcript row.
-  await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
-  await expect(details).toBeHidden();
+  await screenshot(page, "conversation-subagents");
+  // A row opens the same Task transcript drawer as the transcript row.
+  await tasks
+    .getByRole("button", {
+      name: /^blocked Review the open dashboard pull requests/,
+    })
+    .click();
   const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
   await expect(
     reviewerDrawer.getByText("blocked", { exact: true }),
@@ -595,6 +677,8 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.keyboard.press("Escape");
   await expect(reviewerDrawer).toBeHidden();
+  // The docked panel stays open beside the drawer.
+  await expect(details).toBeVisible();
 
   await planner.click();
 
@@ -622,13 +706,37 @@ test("inspects and copies a child agent transcript", async ({
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
-  // Child Conversations cannot be forked, so their replies offer no action.
+  // Child Conversations cannot be forked, so their replies offer only copy.
   await expect(
     drawer.getByText("Review complete; no blocking issues found."),
   ).toBeVisible();
   await expect(
     drawer.getByRole("button", { name: "Fork after this message" }),
   ).toHaveCount(0);
+  const reply = drawer
+    .getByRole("article")
+    .filter({ hasText: "Review complete; no blocking issues found." });
+  await reply.hover();
+  await reply.getByRole("button", { name: "Copy message" }).click();
+  await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Review complete; no blocking issues found.",
+  );
+
+  // The shortcut searches the drawer's transcript, not the page behind it.
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(
+    drawer.getByRole("searchbox", { name: "Search transcript" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(1);
+  // Escape closes only the search, not the drawer.
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(0);
+  await expect(drawer).toBeVisible();
 
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
@@ -637,7 +745,7 @@ test("inspects and copies a child agent transcript", async ({
   });
   await entry.click();
   const eventDetails = page.getByRole("dialog", {
-    name: "message",
+    name: "Event details",
     exact: true,
   });
   await expect(
@@ -647,14 +755,133 @@ test("inspects and copies a child agent transcript", async ({
   await expect(eventDetails).toBeHidden();
   await expect(drawer).toBeVisible();
   await expect(entry).toBeFocused();
+  // A resize mounts the details sheet below the drawer without taking focus.
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
+  await expect(
+    page.locator('[data-dashboard-modal][aria-label="Conversation details"]'),
+  ).toBeAttached();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(entry).toBeFocused();
+
+  // A child uses its root's pin, so its own page cannot pin, even for a
+  // participant of the root. The QA root has none, so mark the viewer as one.
+  const childDetailPath = `/api/conversations/${encodeURIComponent(childConversationId)}`;
+  await page.route(
+    (url) => url.pathname === childDetailPath,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), isParticipant: true },
+        response,
+      });
+    },
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Pin", exact: true }),
+  ).toBeDisabled();
 });
 
-test("shows the agent tree of a child agent conversation", async ({
+test("rates a Junior Reply once, with time to change it", async ({
   page,
   dashboard,
 }) => {
+  const feedback: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  const open = () =>
+    page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+  const transcript = page.getByLabel("Conversation transcript");
+  const good = transcript.getByRole("button", { name: "Good reply" });
+  const bad = transcript.getByRole("button", { name: "Bad reply" });
+
+  // Good waits before it sends. The reader can clear it or switch to Bad,
+  // and a mistaken Bad can switch back to Good.
+  await page.clock.install();
+  await open();
+  await good.hover();
+  await good.click();
+  await good.click();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await bad.click();
+  const why = page.getByRole("dialog", { name: "What went wrong?" });
+  await expect(why).toBeVisible();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await expect(why).toHaveCount(0);
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  expect(feedback).toHaveLength(0);
+  await page.clock.runFor(5000);
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await expect.poll(() => feedback.length).toBe(1);
+  expect(feedback[0]).toMatchObject({
+    contexts: {
+      feedback: {
+        contact_email: "dev@example.com",
+        message: "Good reply",
+        name: "Dashboard User",
+      },
+    },
+  });
+
+  // Leaving the Conversation sends a pending Good at once.
+  await open();
+  await good.hover();
+  await good.click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
+  await expect.poll(() => feedback.length).toBe(2);
+  await open();
+
+  // Bad asks for an optional comment. Escape sends nothing.
+  await bad.hover();
+  await bad.click();
+  await expect(why.getByRole("textbox", { name: "Comment" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(why).toHaveCount(0);
+  await expect(bad).toHaveAttribute("aria-pressed", "false");
+  await bad.click();
+  await why
+    .getByRole("textbox", { name: "Comment" })
+    .fill("It read the wrong repo");
+  await why.getByRole("button", { name: "Send" }).click();
+  await expect(bad).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeFocused();
+  await expect(good).toHaveCount(0);
+  await expect.poll(() => feedback.length).toBe(3);
+  expect(feedback[2]).toMatchObject({
+    contexts: { feedback: { message: "Bad reply: It read the wrong repo" } },
+    tags: { "app.reply.rating": "bad" },
+  });
+});
+
+test("shows the breadcrumb of a Task page", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
   );
@@ -662,14 +889,17 @@ test("shows the agent tree of a child agent conversation", async ({
   await expect(
     page.getByRole("heading", { name: "Review the dashboard plan" }),
   ).toBeVisible();
-  const tree = page.getByRole("navigation", { name: "Agent tree" });
+  // A Task page keeps its agent label as its title.
+  const tree = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(
     tree.getByRole("link", { name: "Dashboard QA edge cases" }),
   ).toHaveAttribute(
     "href",
     `/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
-  await expect(tree).not.toContainText("Review the dashboard plan");
+  await expect(
+    tree.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Review complete; no blocking issues found."),
   ).toBeVisible();
@@ -680,300 +910,6 @@ test("shows the agent tree of a child agent conversation", async ({
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Agent tree" }),
+    page.getByRole("navigation", { name: "Breadcrumb" }),
   ).toHaveCount(0);
-});
-
-test("finds an old archived conversation by title and restores it", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(dashboard.baseURL);
-  // The landing view keeps a hidden mobile sidebar mounted alongside the
-  // visible desktop one; scope to the desktop (first) instance throughout.
-  const conversationLink = page
-    .getByRole("link", {
-      name: /Archived restore target/,
-    })
-    .first();
-  await expect(conversationLink).toHaveCount(0);
-
-  await page
-    .getByLabel("Search your conversations")
-    .first()
-    .fill("archived restore");
-  await expect(conversationLink).toBeVisible();
-  await conversationLink.hover();
-  const restoreRequest = page.waitForRequest(
-    (request) =>
-      request.method() === "PATCH" && request.url().endsWith("/archive"),
-  );
-  await page
-    .getByRole("button", { name: "Restore Archived restore target" })
-    .first()
-    .click();
-  expect((await restoreRequest).postDataJSON()).toMatchObject({
-    archived: false,
-  });
-
-  await page.getByLabel("Search your conversations").first().fill("");
-  await expect(conversationLink).toBeVisible();
-});
-
-test("archives and restores a conversation from the sidebar", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-  let archived = false;
-  await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
-    const response = await route.fetch();
-    const feed = await response.json();
-    await route.fulfill({
-      response,
-      json: {
-        ...feed,
-        conversations: feed.conversations.filter(
-          (conversation: { displayTitle: string }) =>
-            !archived ||
-            conversation.displayTitle !== "Dashboard QA edge cases",
-        ),
-      },
-    });
-  });
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    const request = route.request().postDataJSON();
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    archived = request.archived;
-    await route.fulfill({
-      json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
-    });
-  });
-  await page.goto(dashboard.baseURL);
-  const selectedConversation = page.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await selectedConversation.click();
-  await expect(
-    page.getByRole("heading", { name: "Investigate checkout latency" }),
-  ).toBeVisible();
-
-  const conversationLink = page.getByRole("link", {
-    name: /Dashboard QA edge cases/,
-  });
-  const archiveButton = page.getByRole("button", {
-    name: "Archive Dashboard QA edge cases",
-  });
-  await conversationLink.hover();
-
-  const currentUrl = page.url();
-  const archiveRequestPromise = page.waitForRequest(
-    (request) =>
-      request.method() === "PATCH" && request.url().endsWith("/archive"),
-  );
-  await archiveButton.click();
-  await expect(conversationLink).toHaveCount(0);
-  const archiveRequest = await archiveRequestPromise;
-  expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
-  expect(page.url()).toBe(currentUrl);
-
-  const undoNotice = page.getByRole("status").filter({
-    hasText: "Conversation archived",
-  });
-  await expect(undoNotice).toBeVisible();
-  await expect(undoNotice).toContainText("Dashboard QA edge cases");
-
-  // Undo immediately so the 6s expiry cannot race this path. Dedicated clock
-  // tests cover expiry; keep this test on archive/restore behavior only.
-  const restoreRequestPromise = page.waitForRequest(
-    (request) =>
-      request.method() === "PATCH" && request.url().endsWith("/archive"),
-  );
-  await page
-    .getByRole("button", {
-      name: "Undo archive for Dashboard QA edge cases",
-    })
-    .click();
-  await expect(conversationLink).toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: "Undo archive for Dashboard QA edge cases",
-    }),
-  ).toHaveText("Restoring…");
-  const restoreRequest = await restoreRequestPromise;
-  expect(restoreRequest.postDataJSON()).toMatchObject({ archived: false });
-  await expect(undoNotice).toHaveCount(0);
-  await expect(conversationLink).toBeVisible();
-  expect(page.url()).toBe(currentUrl);
-});
-
-test.describe("expires the archive undo notice", () => {
-  test.use({ controlTimers: true });
-  test("expires the archive undo notice", async ({ page, dashboard }) => {
-    await page.route("**/api/conversations/*/archive", async (route) => {
-      await route.fulfill({
-        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
-      });
-    });
-    await page.goto(dashboard.baseURL);
-
-    const conversationLink = page.getByRole("link", {
-      name: /Dashboard QA edge cases/,
-    });
-    await conversationLink.hover();
-    await page
-      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-      .click();
-
-    const undo = page.getByRole("button", {
-      name: "Undo archive for Dashboard QA edge cases",
-    });
-    await expect(undo).toBeVisible();
-    await page.clock.fastForward(5_000);
-    await expect(undo).toBeVisible();
-    await page.clock.fastForward(1_000);
-    await expect(undo).toHaveCount(0);
-  });
-});
-
-test.describe("resets the archive undo timer when archiving another conversation", () => {
-  test.use({ controlTimers: true });
-  test("resets the archive undo timer when archiving another conversation", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.route("**/api/conversations/*/archive", async (route) => {
-      await route.fulfill({
-        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
-      });
-    });
-    await page.goto(dashboard.baseURL);
-
-    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
-    await page
-      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-      .click();
-    const firstUndo = page.getByRole("button", {
-      name: "Undo archive for Dashboard QA edge cases",
-    });
-    await expect(firstUndo).toBeVisible();
-
-    // Burn most of the first notice's timer, then archive a second conversation.
-    await page.clock.fastForward(5_000);
-    await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
-    await page
-      .getByRole("button", { name: "Archive Checkout latency triage" })
-      .click();
-
-    const secondUndo = page.getByRole("button", {
-      name: "Undo archive for Checkout latency triage",
-    });
-    await expect(secondUndo).toBeVisible();
-    await expect(firstUndo).toHaveCount(0);
-
-    // A reused first-notice timer would dismiss here; a reset timer must remain.
-    await page.clock.fastForward(2_000);
-    await expect(secondUndo).toBeVisible();
-    await page.clock.fastForward(4_000);
-    await expect(secondUndo).toHaveCount(0);
-  });
-});
-
-test("shows archive failures after the row returns", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-  let archiveRequests = 0;
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    archiveRequests += 1;
-    if (archiveRequests === 1) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await route.fulfill({
-        json: { error: "Archive failed" },
-        status: 500,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
-    });
-  });
-  await page.goto(dashboard.baseURL);
-
-  const conversationLink = page.getByRole("link", {
-    name: /Dashboard QA edge cases/,
-  });
-  await conversationLink.hover();
-  await page
-    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-    .click();
-
-  await expect(conversationLink).toBeVisible();
-  const archiveError = page.getByRole("alert").filter({
-    hasText: "Could not archive",
-  });
-  await expect(archiveError).toBeVisible();
-  await expect(archiveError).toContainText("Dashboard QA edge cases");
-
-  await page
-    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-    .click();
-  await expect(
-    page.getByRole("button", {
-      name: "Undo archive for Dashboard QA edge cases",
-    }),
-  ).toBeVisible();
-  await expect(archiveError).toHaveCount(0);
-});
-
-test("keeps undo available when another archive fails", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-  let archiveRequests = 0;
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    archiveRequests += 1;
-    if (archiveRequests === 1) {
-      await route.fulfill({
-        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
-      });
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await route.fulfill({
-      json: { error: "Archive failed" },
-      status: 500,
-    });
-  });
-  await page.goto(dashboard.baseURL);
-
-  const firstConversation = page.getByRole("link", {
-    name: /Dashboard QA edge cases/,
-  });
-  await firstConversation.hover();
-  await page
-    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-    .click();
-  const undo = page.getByRole("button", {
-    name: "Undo archive for Dashboard QA edge cases",
-  });
-  await expect(undo).toBeVisible();
-
-  const secondConversation = page.getByRole("link", {
-    name: /Checkout latency triage/,
-  });
-  await secondConversation.hover();
-  await page
-    .getByRole("button", { name: "Archive Checkout latency triage" })
-    .click();
-
-  const archiveError = page.getByRole("alert").filter({
-    hasText: "Could not archive",
-  });
-  await expect(archiveError).toBeVisible();
-  await expect(archiveError).toContainText("Checkout latency triage");
-  await expect(undo).toBeVisible();
 });

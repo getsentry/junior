@@ -28,16 +28,6 @@ export default app;
   );
 }
 
-function writeInstrumentFile(targetDir: string): void {
-  fs.writeFileSync(
-    path.join(targetDir, "instrument.mjs"),
-    `import { initSentry } from "@sentry/junior/instrumentation";
-
-initSentry();
-`,
-  );
-}
-
 function writePluginsFile(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "plugins.ts"),
@@ -55,9 +45,8 @@ export const plugins = defineJuniorPlugins([
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    `import { withSentryConfig } from "@sentry/nitro";
-import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+    `import { defineConfig } from "nitro";
+import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";
 
 const config = defineConfig({
   preset: "vercel",
@@ -86,7 +75,7 @@ function writeTsConfig(targetDir: string): void {
     `${JSON.stringify(
       {
         extends: "nitro/tsconfig",
-        compilerOptions: {},
+        compilerOptions: { noUncheckedIndexedAccess: true },
       },
       null,
       2,
@@ -100,8 +89,14 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
+# pnpm fails the install when a dependency has an unreviewed build script.
+# These are the @sentry/junior runtime dependencies that have one.
 allowBuilds:
-  "@sentry/cli": true
+  "@google/genai": true
+  "@mongodb-js/zstd": true
+  esbuild: true
+  node-liblzma: false
+  protobufjs: true
 `,
   );
 }
@@ -131,15 +126,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install
       - run: pnpm check
+      - run: pnpm typecheck
+      # Snapshot warmup needs Vercel OIDC, so the Vercel deploy build runs it.
       - run: pnpm build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
 `,
   );
 }
@@ -172,25 +169,23 @@ export async function runInit(
     version: "0.1.0",
     private: true,
     type: "module",
+    packageManager: "pnpm@12.18.0",
+    engines: { node: "24.x" },
     scripts: {
-      dev: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+      dev: "nitro dev",
       check: "junior check",
       build: "junior snapshot create && nitro build",
-      preview: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+      preview: "nitro preview",
       typecheck: "tsc --noEmit",
     },
     dependencies: {
-      "@opentelemetry/api": "1.9.1",
-      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      "@sentry/nitro": "10.65.0",
-      hono: "^4.12.27",
+      hono: "^4.13.11",
     },
     devDependencies: {
-      "@types/node": "^25.9.1",
-      "cross-env": "^10.1.0",
+      "@types/node": "^24.19.2",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^7.0.2",
@@ -239,16 +234,15 @@ export async function runInit(
     `SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
 JUNIOR_SECRET=
+JUNIOR_ENCRYPTION_KEYS=
+JUNIOR_ENCRYPTION_KEY_ID=
 JUNIOR_BOT_NAME=
-JUNIOR_SLASH_COMMAND=
-JUNIOR_CROSS_ACTOR_MID_RUN_MODE=
 AI_MODEL=
 AI_FAST_MODEL=
 AI_GUARDIAN_MODEL=
-AI_HANDOFF_MODEL=
-AI_MODEL_PROFILES=
 AI_MEMORY_MODEL=
 AI_EMBEDDING_MODEL=
+AI_RERANKING_MODEL=
 AI_VISION_MODEL=
 AI_WEB_SEARCH_MODEL=
 DATABASE_URL=
@@ -267,7 +261,6 @@ SENTRY_AUTH_TOKEN=
   );
 
   writeServerEntry(target);
-  writeInstrumentFile(target);
   writePluginsFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);

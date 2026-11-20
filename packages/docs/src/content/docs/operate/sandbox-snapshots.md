@@ -15,9 +15,9 @@ Junior plugins can declare sandbox runtime dependencies such as npm CLIs, system
 
 ## When snapshots are used
 
-Snapshots are used when loaded plugins declare runtime dependencies or runtime postinstall commands, or when a Workspace prepares repository contents. If the dependency profile is empty and no Workspace is selected, Junior creates a base sandbox without snapshot warmup.
+On Vercel, every sandbox starts from a snapshot. The profile always includes Junior's core tools, plus the runtime dependencies and postinstall commands of loaded plugins. A Workspace adds its repository contents.
 
-The common deploy path runs snapshot warmup during build:
+The scaffolded build runs snapshot warmup on every deploy. You do not run it by hand:
 
 ```json title="package.json"
 {
@@ -33,7 +33,7 @@ Junior computes the snapshot profile from its global baseline and loaded plugin 
 
 | Input                | Source                                                                |
 | -------------------- | --------------------------------------------------------------------- |
-| Runtime              | Junior sandbox runtime, currently `node22`.                           |
+| Runtime              | Junior sandbox runtime, currently `node24`.                           |
 | npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
@@ -46,11 +46,11 @@ Any change to those inputs produces a new profile hash and a new snapshot.
 
 Junior stores install-wide Workspace recipes and their repositories in SQL. The agent reads this configuration when it lists a Workspace, resumes an active Workspace, or starts a switch.
 
-Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
+Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, optional vCPU count, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
 
 Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch starts that build in the background and returns `building` with a temporary subscription for ready and failed events. Call `switchWorkspace` again after the ready event. Later switches reuse the snapshot until its floating profile becomes stale.
 
-After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames preserve it because the Workspace name is not part of the snapshot profile.
+After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames and vCPU changes preserve it because the Workspace name and size are not part of the snapshot profile.
 
 Provider plugins prepare repositories through Junior's host egress proxy. Junior removes the credential route before it runs the setup script and captures the snapshot. Real provider credentials do not enter the Sandbox or the captured snapshot.
 
@@ -71,6 +71,8 @@ The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLO
 
 Snapshot builds use `SANDBOX_VCPUS` because `junior snapshot create` runs before app initialization. Set it when dependency installation needs more CPU or memory than the Vercel Sandbox default. Runtime sandboxes should normally use `createApp({ sandbox: { vcpus } })`. Each vCPU provides 2 GB of memory, so a value of `4` creates an 8 GB sandbox.
 
+A Workspace recipe can set its own vCPU count. Junior uses that value for the Workspace snapshot build and for each sandbox that starts from the Workspace snapshot. It takes precedence over the app setting and `SANDBOX_VCPUS`. Use it when one Workspace, such as a large monorepo, needs more memory than the others. For example, `8` gives that Workspace 16 GB. The dashboard Workspaces page shows the default Sandbox size and the size of each Workspace.
+
 Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
 
 ## Failure behavior
@@ -88,13 +90,7 @@ Check these first:
 
 ## Verify
 
-Run snapshot warmup directly:
-
-```bash
-pnpm exec junior snapshot create
-```
-
-Confirm the final line includes `Sandbox snapshot create complete` and that dependency counts match the enabled plugins.
+Open the build log of the latest deploy. Confirm the snapshot line includes `Sandbox snapshot create complete` and that dependency counts match the enabled plugins.
 
 ## Next step
 

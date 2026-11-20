@@ -6,6 +6,7 @@ import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, type juniorDestinations } from "@/db/schema";
 import type { ProviderConversationBinding } from "./bindings";
+import { nextDetailVersion } from "./detail-version";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
 
@@ -120,6 +121,41 @@ export function visibilityFromLocationRow(
   return undefined;
 }
 
+/**
+ * Give a root Conversation with no Location its first one, in the caller's
+ * SQL scope. The Location row becomes the Conversation Destination, so
+ * visibility then comes from that channel. Returns false when the
+ * Conversation already has a Location.
+ */
+export async function setFirstConversationLocation(
+  executor: JuniorSqlDatabase,
+  args: {
+    channelName?: string;
+    conversationId: string;
+    location: Location;
+  },
+): Promise<boolean> {
+  const location = locationSchema.parse(args.location);
+  const rows = await executor
+    .db()
+    .update(juniorConversations)
+    .set({
+      location,
+      destinationId: location.id,
+      ...(args.channelName ? { channelName: args.channelName } : undefined),
+      detailVersion: nextDetailVersion,
+    })
+    .where(
+      and(
+        eq(juniorConversations.conversationId, args.conversationId),
+        isNull(juniorConversations.parentConversationId),
+        isNull(juniorConversations.location),
+      ),
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  return rows.length > 0;
+}
+
 /** Store a channel-level Location's first bound post as its thread. */
 export async function startLocationThread(
   executor: JuniorSqlDatabase,
@@ -131,6 +167,7 @@ export async function startLocationThread(
     .update(juniorConversations)
     .set({
       location: sql`${location} || jsonb_build_object('threadTs', ${binding.providerConversationId}::text)`,
+      detailVersion: nextDetailVersion,
     })
     .where(
       and(

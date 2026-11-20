@@ -7,13 +7,10 @@ import {
 } from "node:crypto";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
-import {
-  fenceLock,
-  MUTATION_LOCK_TTL_MS,
-  withLock,
-  type AcpState,
-} from "./state";
+import * as z from "zod";
+import { resolvePublicOrigin } from "@/api/public-origin";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import type { AcpState } from "./state";
 import {
   ACP_STATE_TTL_MS,
   bindAcpConnectionUser,
@@ -56,11 +53,14 @@ export type AcpAuthorizationCompletion =
 
 export const ACP_AUTH_METHOD_ID = "junior";
 
-export const ACP_AUTH_METHOD = {
-  id: ACP_AUTH_METHOD_ID,
-  name: "Sign in to Junior",
-  description: "Sign in with the Google account allowed by this Junior app.",
-} satisfies acp.AuthMethod;
+/** Describe browser sign-in with the configured bot name. */
+export function acpAuthMethod(agentName: string): acp.AuthMethod {
+  return {
+    id: ACP_AUTH_METHOD_ID,
+    name: `Sign in to ${agentName}`,
+    description: "Sign in with the Google account that this app allows.",
+  };
+}
 
 function authorizationKey(transactionId: string): string {
   return `junior:acp:v1:authorization:${transactionId}`;
@@ -145,25 +145,13 @@ export function hasAcpConnectionCredential(
 
 /** Resolve a trusted browser origin, with request fallback only on loopback. */
 function authorizationBaseURL(request: Request, configured?: string): URL {
-  const value = configured?.trim();
-  let origin: string;
-  if (value) {
-    origin = /^https?:\/\//.test(value) ? value : `https://${value}`;
-  } else {
-    const requestURL = new URL(request.url);
-    const hostname = requestURL.hostname.replace(/^\[|\]$/g, "");
-    if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
-      throw acp.RequestError.internalError(
-        undefined,
-        "Junior ACP sign-in requires a configured public base URL",
-      );
-    }
-    origin = requestURL.origin;
+  const url = resolvePublicOrigin(request, configured);
+  if (!url) {
+    throw acp.RequestError.internalError(
+      undefined,
+      "ACP sign-in requires a configured public base URL",
+    );
   }
-  const url = new URL(origin);
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
   return url;
 }
 
@@ -252,7 +240,7 @@ function resultMessage(requestId: acp.JsonRpcId): acp.AnyResponse {
 
 function cancelledMessage(
   requestId: acp.JsonRpcId,
-  message = "Junior sign-in was cancelled",
+  message = "Sign-in was cancelled",
 ): acp.AnyResponse {
   return {
     jsonrpc: "2.0",
@@ -266,7 +254,8 @@ function cancelledMessage(
 
 /** Start browser authorization for one ACP authenticate request. */
 export async function beginAcpAuthorization(args: {
-  baseURL?: string;
+  agentName: string;
+  baseURL?: string | undefined;
   connectionId: string;
   credentialHash: string;
   request: Request;
@@ -291,7 +280,7 @@ export async function beginAcpAuthorization(args: {
         if (pending?.connectionId === args.connectionId) {
           throw acp.RequestError.invalidRequest(
             undefined,
-            "Junior sign-in is already in progress",
+            "Sign-in is already in progress",
           );
         }
         await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
@@ -336,7 +325,7 @@ export async function beginAcpAuthorization(args: {
   url.pathname = `/_junior/acp/auth/${transactionId}`;
   const params = {
     mode: "url",
-    message: `Sign in to Junior in your browser. Enter verification code ${userCode}.`,
+    message: `Sign in to ${args.agentName} in your browser. Enter verification code ${userCode}.`,
     elicitationId: transactionId,
     requestId: args.requestId,
     url: url.toString(),
@@ -394,7 +383,7 @@ export async function completeAcpAuthorization(args: {
           authorization,
           response: cancelledMessage(
             authorization.requestId,
-            "Junior sign-in request expired",
+            "Sign-in request expired",
           ),
           state: args.state,
         });
@@ -421,7 +410,7 @@ export async function completeAcpAuthorization(args: {
           authorization,
           response: cancelledMessage(
             authorization.requestId,
-            "Junior sign-in could not bind this connection",
+            "Sign-in could not bind this connection",
           ),
           state: args.state,
         });
@@ -536,7 +525,7 @@ export async function expireAcpAuthorization(args: {
         authorization,
         response: cancelledMessage(
           authorization.requestId,
-          "Junior sign-in request expired",
+          "Sign-in request expired",
         ),
         state: args.state,
       });

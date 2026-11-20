@@ -1,5 +1,5 @@
 import { actorSchema, sourceSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
@@ -13,8 +13,18 @@ export const MEMORY_SUBJECT_TYPES = [
 export const MEMORY_SOURCE_PLATFORMS = ["slack", "local", "web"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 /** Things that can happen to a stored memory and feed future recall weights. */
-export const MEMORY_SIGNALS = ["duplicate"] as const;
-export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
+/** `contradicted` and `superseded` record why a memory was retired. */
+export const MEMORY_SIGNALS = [
+  "duplicate",
+  "contradicted",
+  "superseded",
+] as const;
+/**
+ * Vector sizes the embeddings table can store, so one table can hold vectors
+ * from an old and a new model while a model change is in progress. Only 1024
+ * has an HNSW index.
+ */
+export const MEMORY_EMBEDDING_DIMENSIONS = [1024, 1536] as const;
 
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];

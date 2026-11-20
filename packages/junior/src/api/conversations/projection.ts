@@ -6,10 +6,12 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { executionIsActive } from "@/chat/conversations/sql/status";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
 } from "@/chat/conversations/store";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
 import type {
   ActorIdentity,
@@ -25,16 +27,20 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 type ConversationProjectionSource = Pick<
   StoredConversation,
   | "actor"
+  | "archivedAtMs"
   | "channelName"
   | "conversationId"
   | "createdAtMs"
-  | "execution"
+  | "kind"
   | "lastActivityAtMs"
   | "location"
+  | "parentConversationId"
   | "source"
   | "title"
   | "updatedAtMs"
->;
+> & {
+  execution: Pick<StoredConversation["execution"], "status" | "updatedAtMs">;
+};
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -53,6 +59,7 @@ function privateConversationLabel(
 function surfaceFromConversationId(
   conversationId: string,
 ): ConversationSurface {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   if (parseSlackThreadId(conversationId)) return "slack";
   if (conversationId.startsWith("scheduler:")) return "scheduler";
   if (conversationId.startsWith("api:")) return "api";
@@ -69,7 +76,7 @@ function surfaceFromSource(
     source === "web" ||
     source === "scheduler"
   ) {
-    // Dashboard web conversations share the product api surface label.
+    // Dashboard Conversations share the product api surface label.
     return source === "web" ? "api" : source;
   }
   return surfaceFromConversationId(conversationId);
@@ -116,25 +123,15 @@ function actorIdentityReport(
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
-function statusFromConversation(
-  conversation: ConversationProjectionSource,
-): ConversationReportStatus {
-  if (conversation.execution.status === "idle") {
-    return "completed";
-  }
-  if (conversation.execution.status === "failed") {
-    return "failed";
-  }
-  return "active";
-}
-
 function titleFromConversation(args: {
-  automationTitle?: string;
+  automationTitle?: string | undefined;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
+  firstHumanMessageText?: string | undefined;
   surface: ConversationSurface;
-  visibility?: SlackConversationVisibility;
+  visibility?: SlackConversationVisibility | undefined;
 }): string {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName = args.conversation.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
@@ -157,7 +154,11 @@ function titleFromConversation(args: {
     // Dispatched runs, such as automation runs, are not internal machinery.
     (args.conversation.source === "plugin"
       ? "Automation run"
-      : surfaceFallbackLabel(args.surface))
+      : // Read-time fallback while title generation runs. Nothing is stored.
+        fallbackShortTitle(
+          args.firstHumanMessageText ?? "",
+          surfaceFallbackLabel(args.surface),
+        ))
   );
 }
 
@@ -167,6 +168,7 @@ function channelNameFromConversation(
   visibility?: SlackConversationVisibility,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return undefined;
@@ -187,6 +189,7 @@ function channelNameRedactedFromConversation(
   canViewPrivateContent: boolean,
 ): boolean {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return false;
@@ -212,17 +215,22 @@ export function conversationEventHistory(args: {
 
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
-  access?: ConversationAccess;
-  archivedAtMs?: number;
+  access?: ConversationAccess | undefined;
   /** Name of the Automation that started this conversation, when known. */
-  automationTitle?: string;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
+  automationTitle?: string | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
   childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
+  /** First human message text, used as the title until one is stored. */
+  firstHumanMessageText?: string | undefined;
   locationId?: string;
+  pinnedAtMs?: number | undefined;
+  pinPosition?: number;
+  /** The status that `conversationStatusSql` read with the row. */
+  status: ConversationReportStatus;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
-  usage?: ConversationUsage;
+  usage?: ConversationUsage | undefined;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
   const canViewPrivateContent = args.access?.canViewPrivateContent ?? false;
@@ -243,6 +251,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
       : undefined),
   });
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,
@@ -253,6 +262,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
+  const { status } = args;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -260,9 +270,14 @@ export function conversationSummaryFromStoredConversation(args: {
       automationTitle: args.automationTitle,
       canViewPrivateContent,
       conversation,
+      firstHumanMessageText: args.firstHumanMessageText,
       surface,
       visibility,
     }),
+    kind: conversation.kind,
+    ...(conversation.parentConversationId
+      ? { parentConversationId: conversation.parentConversationId }
+      : undefined),
     isParticipant: args.access?.isParticipant ?? false,
     ...(visibility ? { visibility } : undefined),
     lastProgressAt: new Date(
@@ -270,7 +285,8 @@ export function conversationSummaryFromStoredConversation(args: {
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation),
+    status,
+    turnActive: executionIsActive(conversation.execution.status),
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }
@@ -282,9 +298,16 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
-      args.archivedAtMs === undefined
+      conversation.archivedAtMs === undefined
         ? null
-        : new Date(args.archivedAtMs).toISOString(),
+        : new Date(conversation.archivedAtMs).toISOString(),
+    pinnedAt:
+      args.pinnedAtMs === undefined
+        ? null
+        : new Date(args.pinnedAtMs).toISOString(),
+    ...(args.pinPosition === undefined
+      ? undefined
+      : { pinPosition: args.pinPosition }),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

@@ -18,24 +18,26 @@ related:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                                          |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                                                  |
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                              |
-| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                                                     |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting. The database needs pgvector.                                                                        |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
+| `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
-| `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
-| `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                           |
-| `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
-| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
-| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
-| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
+| `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
+| `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
+| `JUNIOR_BOT_NAME`                           | No          | Name Junior uses for itself. Defaults to `junior`. `createApp({ botName })` overrides it. Set it to the Slack bot username.                                                 |
+| `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `high`.                                                                                |
+| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and classification passes. Defaults to `openai/gpt-6-luna`.                                                                              |
 | `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
-| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
-| `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
-| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
-| `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
+| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
+| `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
+| `AI_VISION_MODEL`                           | No          | Image summary model for thread history and a text-only `AI_MODEL`. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                     |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
+| `AI_TRANSCRIPTION_MODEL`                    | No          | Model for the `transcribeAudio` tool. Defaults to `elevenlabs/scribe-v2`. It must accept an ElevenLabs `sourceUrl`, and the storage must be internet-reachable.             |
+| `AI_REFUSAL_FALLBACK_MODEL`                 | No          | Model that continues an agent Turn when `AI_MODEL` refuses it, for example after a provider safety block. Unset by default: a refusal ends the Turn.                        |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
 | `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
@@ -45,6 +47,15 @@ related:
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
 | `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
+| `JUNIOR_ATTACHMENT_STORAGE_PROVIDER`        | No          | Object storage for attachments and public artifacts: `vercel-blob`, `s3`, or `memory`. Defaults to `vercel-blob`. Use `memory` only for tests.                              |
+| `JUNIOR_S3_ENDPOINT`                        | Conditional | Base URL of an S3-compatible API, such as `http://localhost:7070`. Required when the provider is `s3`.                                                                      |
+| `JUNIOR_S3_BUCKET`                          | Conditional | Private bucket for attachment objects. Required when the provider is `s3`.                                                                                                  |
+| `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
+| `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
+| `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
+| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
+| `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
+| `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
@@ -52,18 +63,27 @@ It supplies `BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
 `BLOB_READ_WRITE_TOKEN` for local development, CI, non-Vercel hosts, or as a
 fallback. See [Deploy to Vercel](/start-here/deploy-to-vercel/#configure-attachment-storage).
 
+Set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=s3` to store attachments in an
+S3-compatible service instead of Vercel Blob. Junior uses path-style URLs, such
+as `<endpoint>/<bucket>/<key>`. Keep the bucket private. Junior serves public
+artifacts through its own route. Attachments stored with one provider are not
+visible after you change to another provider.
+
+`JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
+Junior loses them when the process stops, and each process has its own copy.
+Do not use it for a deployed app.
+
+`JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
+Redis. Local development then needs no Vercel Queues access. The app only
+sends jobs. One separate worker process runs them. `pnpm dev` starts that
+process, and the worker logs `queue.bullmq.worker.started` with its
+concurrency for each queue topic. Because the worker is a separate process,
+state must be in Redis, not memory. Install the optional `bullmq` and `redis` packages to use
+it. Junior loads them only when this provider is selected, so they never enter a
+deployed bundle. Give the queue its own Redis URL. If two dev servers share one
+Redis, each one can take the other's jobs.
+
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
-
-`JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
-for its own turn. Set it to `steer` to preserve collaborative steering across
-actors. In `follow_up` mode, a user can start one message with `!!` to steer the
-active turn explicitly.
-
-Model profile names are durable conversation bindings. Each later turn resolves
-the stored name through current configuration; the exact model ID recorded when
-an epoch opens is audit evidence, not a runtime pin. Changing a mapping retargets
-existing conversations, while removing or renaming a referenced profile makes
-those conversations fail until that name is configured again.
 
 Guardian action review sends the configured Guardian model a bounded review request with
 hook-adjusted semantic input (starting from validated tool arguments and
@@ -80,6 +100,25 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 ```
 
 Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value.
+
+## Encryption keys
+
+Junior encrypts stored provider credentials with AES-256-GCM. The keys are separate from `JUNIOR_SECRET`, so you can rotate them on their own schedule. Each stored value records the id of the key that encrypted it.
+
+Generate a key and give it an id, such as the month you made it:
+
+```bash
+node -e "console.log('2026-11:' + require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Set the result as `JUNIOR_ENCRYPTION_KEYS`. With one key, `JUNIOR_ENCRYPTION_KEY_ID` is optional. Junior does not start when a key is not 32 bytes, an id repeats, or `JUNIOR_ENCRYPTION_KEY_ID` is not in the list.
+
+To rotate a key:
+
+1. Add the new key to `JUNIOR_ENCRYPTION_KEYS`. Keep `JUNIOR_ENCRYPTION_KEY_ID` on the old id, and deploy. All instances can now read values that the new key encrypts.
+2. Set `JUNIOR_ENCRYPTION_KEY_ID` to the new id, and deploy. New values use the new key. Junior saves a credential again with the new key when it reads or refreshes it.
+3. Keep the old key for at least 30 days.
+4. Remove the old key. Credentials that Junior did not use in that period read as missing, and users must connect them again.
 
 ## Dashboard auth
 
@@ -100,9 +139,20 @@ Dashboard auth requires at least one [allowed domain](#allowed-domains). Set the
 
 For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to replace conversation API responses with sample fixtures.
 
+## Push notifications
+
+Set both keys to turn on Web Push notifications for dashboard replies.
+See [Dashboard](/operate/dashboard/#configure-push-notifications).
+
+| Variable                      | Required    | Purpose                                                                                                                                 |
+| ----------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Conditional | VAPID public key. Required for push notifications.                                                                                      |
+| `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Conditional | VAPID private key. Required for push notifications.                                                                                     |
+| `JUNIOR_WEB_PUSH_SUBJECT`     | No          | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
+
 ## Build-time snapshot warmup
 
-If your build command runs `junior snapshot create`:
+The scaffolded build runs `junior snapshot create` on every deploy, so:
 
 - `REDIS_URL` must be available during build.
 - `VERCEL_OIDC_TOKEN` must be available during build (via Vercel OIDC settings).
@@ -139,8 +189,27 @@ const app = await createApp({
 });
 ```
 
-This option costs one default-model call per completed Turn. The example app and
+This option costs one fast-model call per completed Turn. The example app and
 `junior chat` enable it.
+
+## Event embeddings
+
+`searchConversationEvents` matches the words of a query in Conversation
+history. After each completed Turn, Junior stores the search words of up to
+2,000 events that have none, so word searches in long Conversations stay fast.
+This needs no provider call and is always on.
+
+To also match by meaning, enable event embeddings:
+
+```ts
+const app = await createApp({
+  eventEmbeddings: { enabled: true },
+});
+```
+
+After each completed Turn, Junior embeds up to 256 of the newest events that
+have no embedding, with the model in `AI_EMBEDDING_MODEL`. This costs one
+embedding call per 32 events. `junior chat` enables it.
 
 ## Experimental features
 
@@ -158,25 +227,32 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent, messageAgent, listAgents, and stopAgent for
-    // durable child agent work. Child agents get messageAgent, listAgents,
-    // and reportBlocked.
-    // Incomplete; keep off unless you are testing the #879 runtime.
-    subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
     "operator-tools": true,
+    // Per-user customization text, edited on the dashboard Settings page or
+    // with the updateUserCustomization tool. Junior adds it to each Turn of
+    // that user as <user-customization>.
+    "user-customization": true,
   },
 });
 ```
 
-`junior chat` enables experimental `subagents` automatically because it is the
-local createApp-equivalent entrypoint and already wires the child-worker path.
+Child agents are always on: every app gives the model `spawnAgent`,
+`messageAgent`, `listAgents`, `stopAgent`, and `archiveAgent`.
+`experimental.subagents` was removed; remove it from your config, because
+Junior rejects unknown experimental keys.
 
-By default, only the root Conversation can start child agents. Set
-`limits.maxAgentDepth` to let child agents start their own child agents. For
-example, `1` lets a child agent start child agents, and those cannot start more.
+A child agent is a Task by default: only its parent gives it work. The model
+can start a Thread instead, a child agent that people can open and message
+directly. A parent can have at most 8 child agents with open work, Tasks and
+Threads alike. The model can archive a finished Thread with `archiveAgent`.
+
+By default, a child agent of the root Conversation can start its own child
+agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
+many levels of child agents can start their own. `0` lets only the root
+Conversation start child agents.
 
 Each event automation can start at most 10 runs in a rolling minute. Set
 `limits.eventAutomationRunLimit.maxRuns` to change the count. Set
@@ -229,7 +305,9 @@ export default await createApp({
 - **Slack:** Junior starts work from a mention or DM only when the email of the
   author's Slack profile is on an allowed domain. Slack verifies that email.
   Junior drops other messages and does not reply. Passive thread replies, slash
-  commands, and Slack actions are not checked yet.
+  commands, and Slack actions are not checked yet. Bots have no profile email.
+  To let a bot start work, add its Slack user ID to
+  `slack.allowedBotUserIds`.
 - **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
   allowed domain. Junior checks the verified `hd` claim of the Google ID token,
   not the email. With one domain, Junior also sends it to Google as the `hd`
@@ -261,43 +339,85 @@ const app = await createApp({
 });
 ```
 
-## Profiles
+## Models
 
-Without overrides, Junior uses GPT-6 Luna High for `standard` and Claude Opus 5.5 High for `handoff`. Keep these shared defaults unless the app needs different behavior.
+Without overrides, Junior runs every agent Turn on Claude Opus 5.5 with high reasoning. Keep this default unless the app needs different behavior.
 
-To override them, pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
+To override it, pass `modelId` to `createApp()`, or set `AI_MODEL`. Set `AI_REASONING_LEVEL` to change the reasoning level. Pass auxiliary model ids on the same `createApp()` options object. App config overrides the model env settings.
 
 ```ts
 const app = await createApp({
-  defaultProfile: "standard",
-  profiles: {
-    standard: {
-      modelId: "xai/grok-4.5",
-      description:
-        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
-    },
-    coding: {
-      modelId: "openai/gpt-5.6-sol",
-      description:
-        "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
-      reasoningLevel: "high",
-    },
-  },
+  modelId: "anthropic/claude-opus-5.5",
   decisionModelId: "typesafe-ai/jev",
   fastModelId: "openai/gpt-6-luna",
   guardianModelId: "openai/gpt-6-luna",
   embeddingModelId: "openai/text-embedding-3-small",
+  rerankingModelId: "voyage/rerank-2.5-lite",
   webSearchModelId: "openai/gpt-6-luna",
-  imageGenerationModelId: "google/gemini-3-pro-image",
+  imageGenerationModelId: "openai/gpt-image-2",
+  transcriptionModelId: "elevenlabs/scribe-v2",
   visionModelId: "openai/gpt-5.6-sol",
 });
 ```
 
-Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
-
-Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
-
 The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+
+## Prompt cache warming
+
+A model's prompt cache expires a fixed time after the last read. When a person
+replies after that time, the next turn writes the full history to the cache
+again. Junior keeps the cache of an idle Conversation warm when a warmup is
+likely to cost less than that write.
+
+- Junior warms only models whose cache has a fixed TTL that a read refreshes:
+  `anthropic/` and `alibaba/` models (5 minutes) and `openai/` models (30
+  minutes). The model's cache write must cost more than a cache read, and the
+  cached prefix must be at least 50K tokens. It does not warm models that use a thinking budget, because the
+  budget adds output tokens to each warmup.
+- When a turn ends, Junior stores the last model request in the `StateAdapter`.
+  Junior deletes it when the first model request of the next turn starts, when
+  warmups stop, or after 55 minutes.
+- A delayed queue message sends the same request with a one-token output limit
+  before the cache expires. Junior sends the next warmup only while the chance
+  that the person replies soon is high enough to pay for it. Junior compares
+  plans of one or more warmups in a row, so it also warms when the person
+  usually replies a few TTLs later. The needed chance is the same for each
+  warmup. Only replies in the first 55 minutes count, so for a 30-minute cache
+  the chance is a low estimate.
+- Junior learns that chance from the reply gaps of idle periods. A period with
+  no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
+  Turns that a person started and Turns that an event or automation started,
+  and for the first, second to third, and later Turns of a Conversation. This
+  applies to the gaps of each Conversation too. Until Junior has recorded 20
+  gaps for a group, it sends no warmups for that group.
+- On the first heartbeat with warming on, Junior fills each empty group
+  from the stored Turns of the last 30 days. It uses the same rules as the
+  gaps that it records after a turn. It reads the newest Conversations first
+  for up to 60 seconds, and keeps the gaps that it found in that time. After
+  30 days, it does this again for each group that is empty.
+- While a tool runs, the running agent warms the cache with the same cost
+  model. The chance comes from recorded tool waits: the time from a model
+  request that ended with tool calls to the next request. Junior records only
+  waits of 2 minutes or more, because shorter waits do not change a decision.
+  When the run ends while a tool runs, the wait counts as no return. Until it
+  has recorded 20 waits, it sends no tool wait warmups. Warmups stop when
+  the next request starts or the run ends.
+- A warmup that misses the cache ends warming for its idle period and sends a
+  Sentry warning. When 10 of the last 20 warmups of a provider miss or fail,
+  Junior stops warming for that provider for 24 hours and sends a Sentry error.
+  A failure that the provider says to retry, such as an overload, stops only
+  its own idle period and does not count.
+- `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
+  requests and drops warmups that are already in the queue. The default is
+  `true`.
+- While warming is on, Junior sends model requests with the short cache
+  retention, so `PI_CACHE_RETENTION` does not change it. With
+  `JUNIOR_CACHE_WARMING_ENABLED=false`, Pi's retention applies again.
+
+Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
+`junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
+cost of the Conversation. The `app.cache_warming.trigger` log attribute is
+`idle` or `tool_wait`.
 
 ## Install-wide config defaults
 
@@ -331,7 +451,7 @@ const app = await createApp({
 });
 ```
 
-The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+The app setting takes precedence over `SANDBOX_VCPUS`. A Workspace recipe vCPU count takes precedence over both for sandboxes of that Workspace. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
 
 Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 

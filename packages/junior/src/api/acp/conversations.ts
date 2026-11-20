@@ -6,10 +6,10 @@ import {
   conversationTurnIdForMessage,
   appendAndEnqueueWebMessage,
   recordWebConversationActivity,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
-import { stopConversationTurn } from "@/chat/conversations/stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
@@ -72,17 +72,10 @@ export type AcpConversations = {
 };
 
 interface ConversationOptions {
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   eventStore: ConversationEventStore;
   queue: ConversationWorkQueue;
   state: StateAdapter;
-}
-
-function actorFromUser(user: User) {
-  return webActorFromEmail(
-    user.email,
-    user.displayName ? { fullName: user.displayName } : undefined,
-  );
 }
 
 async function hasConversationAccess(
@@ -147,7 +140,7 @@ export function createAcpConversations(
       if (!(await hasConversationAccess(conversationId, user))) {
         return "not_found";
       }
-      const stopped = await stopConversationTurn({
+      const stopped = await stopConversation({
         conversationId,
         conversationStore: options.conversationStore,
         queue: options.queue,
@@ -165,7 +158,7 @@ export function createAcpConversations(
 
     async create({ conversationId, user }) {
       await recordWebConversationActivity({
-        actor: actorFromUser(user),
+        actor: webActorFromUser(user),
         conversationId,
         conversationStore: options.conversationStore,
         nowMs: Date.now(),
@@ -190,7 +183,7 @@ export function createAcpConversations(
       }
       const result = await appendAndEnqueueWebMessage(
         {
-          actor: actorFromUser(user),
+          actor: webActorFromUser(user),
           conversationId,
           idempotencyKey,
           message: text,

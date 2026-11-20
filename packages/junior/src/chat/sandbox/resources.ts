@@ -5,7 +5,7 @@ export interface SandboxResourceConfig {
 let configuredResources: { vcpus: number } | undefined;
 
 function resourcesFromEnv(): { vcpus: number } | undefined {
-  const value = process.env.SANDBOX_VCPUS?.trim();
+  const value = process.env["SANDBOX_VCPUS"]?.trim();
   if (!value || !/^\d+$/.test(value)) {
     return undefined;
   }
@@ -37,7 +37,13 @@ export function setSandboxResourceConfig(
   return previous;
 }
 
-/** Resolve app-level sandbox sizing, falling back to the legacy environment setting. */
-export function getSandboxResources(): { vcpus: number } | undefined {
+/**
+ * Resolve sandbox sizing. A Workspace vCPU setting wins over the app setting,
+ * which wins over the legacy environment setting.
+ */
+export function getSandboxResources(workspace?: {
+  vcpus: number | null;
+}): { vcpus: number } | undefined {
+  if (workspace?.vcpus) return { vcpus: workspace.vcpus };
   return configuredResources ?? resourcesFromEnv();
 }

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
+import { readJuniorSecret } from "@/chat/secrets";
 
 const CURSOR_CONTEXT = "junior-conversation-report-cursor";
 
@@ -7,6 +8,8 @@ const conversationCursorPayloadSchema = z
   .object({
     conversationId: z.string().min(1),
     seq: z.number().int().min(-1),
+    /** Transcript version of the detail that issued an `appendCursor`. */
+    transcript: z.string().min(1).optional(),
     version: z.literal(1),
   })
   .strict();
@@ -16,7 +19,7 @@ type ConversationCursorPayload = z.infer<
 >;
 
 function cursorSecret(): string {
-  const secret = process.env.JUNIOR_SECRET?.trim();
+  const secret = readJuniorSecret();
   if (!secret) {
     throw new Error("Cannot sign conversation cursor without JUNIOR_SECRET");
   }
@@ -45,7 +48,7 @@ export function encodeConversationCursor(
 export function decodeConversationCursor(args: {
   conversationId: string;
   cursor: string;
-}): { seq: number } | undefined {
+}): { seq: number; transcript?: string } | undefined {
   const [encoded, actualSignature, extra] = args.cursor.split(".");
   if (!encoded || !actualSignature || extra !== undefined) return undefined;
   const expected = Buffer.from(signature(encoded));
@@ -61,7 +64,10 @@ export function decodeConversationCursor(args: {
     if (parsed.conversationId !== args.conversationId) {
       return undefined;
     }
-    return { seq: parsed.seq };
+    return {
+      seq: parsed.seq,
+      ...(parsed.transcript ? { transcript: parsed.transcript } : undefined),
+    };
   } catch {
     return undefined;
   }

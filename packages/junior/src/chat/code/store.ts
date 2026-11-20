@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   codeChangeInputSchema,
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
+import { setSpanAttributes } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 
@@ -14,6 +15,14 @@ export async function recordCodeChange(
   input: CodeChangeInput,
 ): Promise<void> {
   const change = codeChangeInputSchema.parse(input);
+  // Each provider event records the change again. These ids count distinct
+  // code changes.
+  setSpanAttributes({
+    "vcs.change.id": String(change.number),
+    "vcs.change.state": change.state,
+    "vcs.provider.name": provider,
+    "vcs.repository.url.full": change.repository.url,
+  });
   const repositories = await db
     .insert(juniorCodeRepositories)
     .values({
@@ -58,7 +67,10 @@ export async function recordCodeChange(
     change.conversationIds.map((conversationId) => sql`${conversationId}`),
     sql`, `,
   );
+  const { additions, changedFiles, deletions } = change.size ?? {};
   const values = {
+    ...(additions !== undefined ? { additions } : undefined),
+    ...(changedFiles !== undefined ? { changedFiles } : undefined),
     closedAt: change.closedAt ?? null,
     conversationIds:
       change.conversationIds.length > 0
@@ -71,6 +83,8 @@ export async function recordCodeChange(
             ORDER BY value
           )`
         : juniorCodeChanges.conversationIds,
+    ...(deletions !== undefined ? { deletions } : undefined),
+    ...(change.draft !== undefined ? { draft: change.draft } : undefined),
     mergedAt: change.mergedAt ?? null,
     number: change.number,
     openedAt: change.openedAt,
@@ -94,6 +108,36 @@ export async function recordCodeChange(
       set: values,
       where: lte(juniorCodeChanges.updatedAt, change.updatedAt),
     });
+}
+
+/** Move a code change's last activity forward. Older activity is a no-op. */
+export async function recordCodeChangeActivity(
+  db: JuniorDatabase,
+  provider: string,
+  input: { at: Date; number: number; repositoryProviderId: string },
+): Promise<void> {
+  const repository = db
+    .select({ id: juniorCodeRepositories.id })
+    .from(juniorCodeRepositories)
+    .where(
+      and(
+        eq(juniorCodeRepositories.provider, provider),
+        eq(juniorCodeRepositories.providerId, input.repositoryProviderId),
+      ),
+    );
+  await db
+    .update(juniorCodeChanges)
+    .set({
+      // GREATEST skips NULL, so the first activity sets the value.
+      lastActivityAt: sql`GREATEST(${juniorCodeChanges.lastActivityAt}, ${input.at.toISOString()}::timestamptz)`,
+    })
+    .where(
+      and(
+        eq(juniorCodeChanges.provider, provider),
+        inArray(juniorCodeChanges.repositoryId, repository),
+        eq(juniorCodeChanges.number, input.number),
+      ),
+    );
 }
 
 /** Add conversation links to an existing code change. */

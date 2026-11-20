@@ -2,23 +2,22 @@ import { memo, useMemo } from "react";
 import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
-import {
-  formatElapsedDuration,
-  formatMessageTimestamp,
-  formatPayloadSize,
-  stringifyPartValue,
-} from "../format";
+import { formatPayloadSize, stringifyPartValue } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
 import { ShimmerText } from "../components/ShimmerText";
+import { ReviewItemAskRow } from "../inbox/ReviewItemChangeRow";
+import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { formatElapsedDuration, formatMessageTimestamp } from "../time";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {
+  conversationId: string;
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(
@@ -64,6 +63,18 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
     </ToolFrame>
   );
 
+  // A question that Junior asked shows as its one-line record. The tool call
+  // shows only when the viewer cannot read the item.
+  const reviewItemId = reviewItemIdFromToolCall(props.part);
+  if (reviewItemId) {
+    return (
+      <ReviewItemAskRow
+        conversationId={props.conversationId}
+        fallback={frame}
+        itemId={reviewItemId}
+      />
+    );
+  }
   return <div className="min-w-0">{frame}</div>;
 });
 
@@ -96,7 +107,7 @@ function ToolSignature(props: {
         <HighlightText text={props.name} />
       </ShimmerText>
       {props.preview && !searchActive ? (
-        <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-open:hidden">
+        <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-aria-expanded/trace-collapsible-trigger:hidden">
           (<HighlightText text={props.preview} />)
         </code>
       ) : null}

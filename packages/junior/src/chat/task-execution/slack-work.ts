@@ -1,4 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
+import type { AgentDurability } from "@/chat/agent/types";
 import {
   Message,
   ThreadImpl,
@@ -7,9 +8,9 @@ import {
   type SerializedThread,
   type StateAdapter,
 } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { logException } from "@/chat/logging";
+import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -26,7 +27,6 @@ import {
 } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -39,19 +39,34 @@ import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import {
+  bindMessageAuthorIdentityId,
+  ensureSlackMessageActorIdentity,
+  getMessageAuthorIdentityId,
+} from "@/chat/services/message-actor-identity";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
+import { getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
+import { getChatConfig } from "@/chat/config";
+import { turnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 import {
-  botConfig,
-  getChatConfig,
-  type CrossActorMidRunMode,
-} from "@/chat/config";
+  canJoinTurn,
+  canShareTurn,
+} from "@/chat/task-execution/attempt-selection";
+import type { TurnRecord } from "@/chat/task-execution/checkpoint";
+import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
+import { mapBounded } from "@/chat/fan-out";
+
+// Slack authors that one backfill looks up at once.
+const SLACK_AUTHOR_LOOKUP_CONCURRENCY = 5;
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -92,12 +107,12 @@ function hasValidMdastBase(
   const allowed = new Set(["data", "position", "type", ...fields]);
   return (
     Object.keys(node).every((key) => allowed.has(key)) &&
-    (node.data === undefined ||
-      (typeof node.data === "object" &&
-        node.data !== null &&
-        !Array.isArray(node.data))) &&
-    (node.position === undefined ||
-      mdastPositionSchema.safeParse(node.position).success)
+    (node["data"] === undefined ||
+      (typeof node["data"] === "object" &&
+        node["data"] !== null &&
+        !Array.isArray(node["data"]))) &&
+    (node["position"] === undefined ||
+      mdastPositionSchema.safeParse(node["position"]).success)
   );
 }
 
@@ -136,8 +151,8 @@ function hasMdastChildren(
   allowedTypes?: ReadonlySet<string>,
 ): boolean {
   return (
-    Array.isArray(node.children) &&
-    node.children.every(
+    Array.isArray(node["children"]) &&
+    node["children"].every(
       (child) =>
         isFormattedContentNode(child) &&
         (!allowedTypes ||
@@ -155,7 +170,7 @@ function isFormattedContentNode(value: unknown): boolean {
     return false;
   }
   const node = value as Record<string, unknown>;
-  switch (node.type) {
+  switch (node["type"]) {
     case "break":
     case "thematicBreak":
       return hasValidMdastBase(node, []);
@@ -164,14 +179,14 @@ function isFormattedContentNode(value: unknown): boolean {
     case "text":
     case "yaml":
       return (
-        hasValidMdastBase(node, ["value"]) && typeof node.value === "string"
+        hasValidMdastBase(node, ["value"]) && typeof node["value"] === "string"
       );
     case "code":
       return (
         hasValidMdastBase(node, ["lang", "meta", "value"]) &&
-        typeof node.value === "string" &&
-        isOptionalNullableString(node.lang) &&
-        isOptionalNullableString(node.meta)
+        typeof node["value"] === "string" &&
+        isOptionalNullableString(node["lang"]) &&
+        isOptionalNullableString(node["meta"])
       );
     case "delete":
     case "emphasis":
@@ -196,35 +211,35 @@ function isFormattedContentNode(value: unknown): boolean {
       return (
         hasValidMdastBase(node, ["children", "depth"]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        Number.isInteger(node.depth) &&
-        Number(node.depth) >= 1 &&
-        Number(node.depth) <= 6
+        Number.isInteger(node["depth"]) &&
+        Number(node["depth"]) >= 1 &&
+        Number(node["depth"]) <= 6
       );
     case "list":
       return (
         hasValidMdastBase(node, ["children", "ordered", "spread", "start"]) &&
         hasMdastChildren(node, mdastListItemTypes) &&
-        isOptionalNullableBoolean(node.ordered) &&
-        isOptionalNullableBoolean(node.spread) &&
-        (node.start === undefined ||
-          node.start === null ||
-          (typeof node.start === "number" && Number.isFinite(node.start)))
+        isOptionalNullableBoolean(node["ordered"]) &&
+        isOptionalNullableBoolean(node["spread"]) &&
+        (node["start"] === undefined ||
+          node["start"] === null ||
+          (typeof node["start"] === "number" && Number.isFinite(node["start"])))
       );
     case "listItem":
       return (
         hasValidMdastBase(node, ["checked", "children", "spread"]) &&
         hasMdastChildren(node, mdastBlockOrDefinitionTypes) &&
-        isOptionalNullableBoolean(node.checked) &&
-        isOptionalNullableBoolean(node.spread)
+        isOptionalNullableBoolean(node["checked"]) &&
+        isOptionalNullableBoolean(node["spread"])
       );
     case "table":
       return (
         hasValidMdastBase(node, ["align", "children"]) &&
         hasMdastChildren(node, mdastTableRowTypes) &&
-        (node.align === undefined ||
-          node.align === null ||
-          (Array.isArray(node.align) &&
-            node.align.every(
+        (node["align"] === undefined ||
+          node["align"] === null ||
+          (Array.isArray(node["align"]) &&
+            node["align"].every(
               (align) =>
                 align === null ||
                 align === "center" ||
@@ -235,30 +250,30 @@ function isFormattedContentNode(value: unknown): boolean {
     case "definition":
       return (
         hasValidMdastBase(node, ["identifier", "label", "title", "url"]) &&
-        typeof node.identifier === "string" &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.label) &&
-        isOptionalNullableString(node.title)
+        typeof node["identifier"] === "string" &&
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["label"]) &&
+        isOptionalNullableString(node["title"])
       );
     case "footnoteDefinition":
       return (
         hasValidMdastBase(node, ["children", "identifier", "label"]) &&
         hasMdastChildren(node, mdastBlockOrDefinitionTypes) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label)
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"])
       );
     case "footnoteReference":
       return (
         hasValidMdastBase(node, ["identifier", "label"]) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label)
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"])
       );
     case "image":
       return (
         hasValidMdastBase(node, ["alt", "title", "url"]) &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.alt) &&
-        isOptionalNullableString(node.title)
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["alt"]) &&
+        isOptionalNullableString(node["title"])
       );
     case "imageReference":
       return (
@@ -268,19 +283,19 @@ function isFormattedContentNode(value: unknown): boolean {
           "label",
           "referenceType",
         ]) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.alt) &&
-        isOptionalNullableString(node.label) &&
-        (node.referenceType === "collapsed" ||
-          node.referenceType === "full" ||
-          node.referenceType === "shortcut")
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["alt"]) &&
+        isOptionalNullableString(node["label"]) &&
+        (node["referenceType"] === "collapsed" ||
+          node["referenceType"] === "full" ||
+          node["referenceType"] === "shortcut")
       );
     case "link":
       return (
         hasValidMdastBase(node, ["children", "title", "url"]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.title)
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["title"])
       );
     case "linkReference":
       return (
@@ -291,11 +306,11 @@ function isFormattedContentNode(value: unknown): boolean {
           "referenceType",
         ]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label) &&
-        (node.referenceType === "collapsed" ||
-          node.referenceType === "full" ||
-          node.referenceType === "shortcut")
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"]) &&
+        (node["referenceType"] === "collapsed" ||
+          node["referenceType"] === "full" ||
+          node["referenceType"] === "shortcut")
       );
     default:
       return false;
@@ -309,7 +324,7 @@ const formattedContentSchema = z.custom<SerializedMessage["formatted"]>(
     }
     const root = value as Record<string, unknown>;
     return (
-      root.type === "root" &&
+      root["type"] === "root" &&
       hasValidMdastBase(root, ["children"]) &&
       hasMdastChildren(root)
     );
@@ -445,18 +460,20 @@ interface SlackInboxTurnRuntime {
 }
 
 export interface CreateSlackConversationWorkerOptions {
-  crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
-  lookupSlackUser?: (
-    teamId: string,
-    userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean },
+    options: {
+      checkIn: () => Promise<boolean>;
+      drainSteeringMessages: (
+        turn: TurnRecord,
+      ) => NonNullable<AgentDurability["drainSteeringMessages"]>;
+      shouldYield: () => boolean;
+      stopSignal?: AbortSignal | undefined;
+    },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }
 
 function requireSlackAuthorId(message: Message): string {
@@ -485,14 +502,14 @@ export async function clearSlackPendingReactions(args: {
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
-  for (const record of args.messages) {
-    if (record.source !== "slack") continue;
+  const clear = async (record: InboundMessage) => {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
-      if (!metadata || metadata.route !== "mention") continue;
+      if (!metadata || metadata.route !== "mention") return;
       const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       const target = parseSlackThreadId(metadata.thread.id);
-      if (!timestamp || !target) continue;
+      if (!timestamp || !target) return;
       await runWithSlackInstallation({
         adapter: args.getSlackAdapter(),
         installation: metadata.installation ?? {},
@@ -511,7 +528,11 @@ export async function clearSlackPendingReactions(args: {
         "messaging.message.id": record.inboundMessageId,
       });
     }
-  }
+  };
+  await mapBounded(
+    args.messages.filter((record) => record.source === "slack"),
+    clear,
+  );
 }
 
 function compareInboundMessages(
@@ -552,14 +573,12 @@ function restoreMessage(args: {
     args.adapter.rehydrateAttachment(attachment),
   );
   rehydrateAttachmentFetchers(message);
+  bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
+  bindMessageReviewItemChange(message, args.record.input.reviewItemChange);
   return message;
 }
 
 async function bindSlackActorIdentities(args: {
-  lookupSlackUser: (
-    teamId: string,
-    userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
   messages: Message[];
   teamId: string;
 }): Promise<void> {
@@ -569,19 +588,30 @@ async function bindSlackActorIdentities(args: {
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
 
-  await Promise.all(
-    [...byAuthorId].map(async ([authorId, messages]) => {
-      const profile = await args.lookupSlackUser(args.teamId, authorId);
-      await Promise.all(
-        messages.map((message) =>
-          ensureSlackMessageActorIdentity(
-            message,
-            args.teamId,
-            async () => profile,
-          ),
+  await mapBounded(
+    [...byAuthorId],
+    async ([authorId, messages]) => {
+      const profile = await lookupSlackUser(args.teamId, authorId);
+      await mapBounded(messages, (message) =>
+        ensureSlackMessageActorIdentity(
+          message,
+          args.teamId,
+          async () => profile,
         ),
       );
-    }),
+      if (profile && messages.some(getMessageAuthorIdentityId)) {
+        // Ingress resolved the Identity without a profile lookup. Save the
+        // profile names on it. Message writes never saved the email.
+        await resolveActorIdentityId(
+          getSqlExecutor(),
+          createSlackActor(args.teamId, authorId, {
+            fullName: profile.fullName,
+            userName: profile.userName,
+          }),
+        );
+      }
+    },
+    SLACK_AUTHOR_LOOKUP_CONCURRENCY,
   );
 }
 
@@ -633,17 +663,20 @@ function getPendingRecords(
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
-  const crossActorMidRunMode =
-    options.crossActorMidRunMode ?? botConfig.crossActorMidRunMode;
   return async (context) => {
     const adapter = options.getSlackAdapter();
-    const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
     const state = getConnectedState(options.state);
     await state.connect();
 
     const records = getPendingRecords({
       execution: { pendingMessages: [...context.attempt.messages] },
     });
+    // A Slack interruption that cannot join the active Turn makes the Turn
+    // yield at its next safe boundary. The next Run selects the interruption
+    // and supersedes the Turn before it starts its own.
+    let yieldForSlackInterrupt = false;
+    const shouldYield = (): boolean =>
+      yieldForSlackInterrupt || context.shouldYield();
     if (records.length === 0) {
       const destination = requireSlackDestination(
         context.destination,
@@ -656,7 +689,21 @@ export function createSlackConversationWorker(
           state,
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
-              shouldYield: context.shouldYield,
+              // A resumed Run takes no steering. Input that can join its Turn
+              // waits for the Run to end.
+              drainSteeringMessages: (turn) => async () => {
+                await context.attempt.drain(async (pendingRecords) => {
+                  yieldForSlackInterrupt ||= pendingRecords.some(
+                    (record) =>
+                      record.source === "slack" && !canJoinTurn(turn, record),
+                  );
+                  return [];
+                });
+                return [];
+              },
+              shouldYield,
+              checkIn: context.checkIn,
+              stopSignal: context.stopSignal?.(),
             });
           },
         });
@@ -664,13 +711,17 @@ export function createSlackConversationWorker(
         if (isCooperativeTurnYieldError(error)) {
           return { status: "yielded" } satisfies ConversationWorkerResult;
         }
+        if (isTurnInputCommitLostError(error)) {
+          return { status: "lost_lease" } satisfies ConversationWorkerResult;
+        }
         throw error;
       }
       return { status: "completed" };
     }
 
     const latestRecord = records[records.length - 1];
-    if (!latestRecord) {
+    const telemetry = turnInputTelemetry(records);
+    if (!latestRecord || !telemetry) {
       return { status: "completed" };
     }
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
@@ -683,6 +734,10 @@ export function createSlackConversationWorker(
     if (!(await context.checkIn())) {
       return { status: "lost_lease" };
     }
+    await supersedeTurnForInput({
+      conversationId: context.conversationId,
+      message: latestRecord,
+    });
 
     const turnResult = await runWithSlackInstallation({
       adapter,
@@ -700,7 +755,6 @@ export function createSlackConversationWorker(
           }),
         );
         await bindSlackActorIdentities({
-          lookupSlackUser: actorLookup,
           messages,
           teamId: destination.teamId,
         });
@@ -721,7 +775,6 @@ export function createSlackConversationWorker(
           skipped,
           totalSinceLastHandler: messages.length,
         };
-        const activeAuthorId = requireSlackAuthorId(latestMessage);
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -736,29 +789,30 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit interruptions enter the active turn. Deferred work
-        // stays pending for a normal turn.
+        // Only explicit Slack interruptions that can join the active Turn
+        // enter it. Deferred work and steered messages from other sources,
+        // such as the dashboard, stay pending for their own Turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
           ) => Promise<readonly string[]>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const candidates = pendingRecords
-              .map((record) => ({
-                inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({
-                  adapter,
-                  record,
-                }),
-              }))
-              .filter(
-                (candidate) =>
-                  crossActorMidRunMode === "steer" ||
-                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
-                  hasSteeringOverride(candidate.message.text),
-              );
-            return candidates.length > 0 ? await accept(candidates) : [];
+            const slackRecords = pendingRecords.filter(
+              (record) => record.source === "slack",
+            );
+            const steering = slackRecords.filter((record) =>
+              canShareTurn(latestRecord, record),
+            );
+            yieldForSlackInterrupt ||= steering.length < slackRecords.length;
+            return steering.length > 0
+              ? await accept(
+                  steering.map((record) => ({
+                    inboundMessageId: record.inboundMessageId,
+                    message: restoreMessage({ adapter, record }),
+                  })),
+                )
+              : [];
           });
         };
         try {
@@ -770,14 +824,10 @@ export function createSlackConversationWorker(
               drainSteeringMessages,
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
-              shouldYield: context.shouldYield,
+              shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
-              subscribeThread: async () =>
-                await subscribeSlackThreadForMessage({
-                  messageCreatedAtMs: latestRecord.createdAtMs,
-                  state,
-                  thread,
-                }),
+              telemetry,
             });
           } else {
             await options.runtime.handleSubscribedMessage(
@@ -790,8 +840,10 @@ export function createSlackConversationWorker(
                 drainSteeringMessages,
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
-                shouldYield: context.shouldYield,
+                shouldYield,
+                checkIn: context.checkIn,
                 stopSignal: context.stopSignal?.(),
+                telemetry,
               },
             );
           }
@@ -822,16 +874,32 @@ export function createSlackConversationWorker(
   };
 }
 
-/** Serialize a Slack message into the generic durable conversation mailbox. */
+/** Return the mailbox id of one Slack message or event in a Conversation. */
+export function slackInboundMessageId(args: {
+  conversationId: string;
+  installation?: SlackInstallationContext | undefined;
+  slackId: string;
+}): string {
+  return [
+    "slack",
+    args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
+    args.conversationId,
+    args.slackId,
+  ].join(":");
+}
+
+/** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {
   const authorId = requireSlackAuthorId(args.message);
+  const authorIdentityId = getMessageAuthorIdentityId(args.message);
   const destination = createSlackDestination({
     channelId: args.thread.channelId,
     teamId: args.installation?.teamId,
@@ -843,12 +911,11 @@ export function buildSlackInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     destination,
-    inboundMessageId: [
-      "slack",
-      args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
-      args.conversationId,
-      args.message.id,
-    ].join(":"),
+    inboundMessageId: slackInboundMessageId({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      slackId: args.message.id,
+    }),
     delivery:
       args.message.isMention || hasInterruptOverride ? "interrupt" : "defer",
     source: "slack",
@@ -857,7 +924,11 @@ export function buildSlackInboundMessage(args: {
     input: {
       text: args.message.text || " ",
       authorId,
+      ...(authorIdentityId ? { authorIdentityId } : undefined),
       attachments: args.message.attachments,
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
+        : undefined),
       metadata: {
         platform: "slack",
         route: args.route,
@@ -866,5 +937,6 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
+    traceContext: getActiveTraceContext(),
   };
 }

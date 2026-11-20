@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetDeploymentTool } from "../src/tools/get-deployment";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
+import { describe, expect, it } from "vitest";
+import { gitHubGetDeploymentTool } from "../src/tools/get-deployment";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const COMMIT_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -9,16 +10,11 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetDeploymentTool, ctx) };
 }
 
 describe("getDeployment", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns deployment metadata, its latest status, and a subscription hint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([
       {
         body: [
@@ -49,29 +45,34 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA.toUpperCase(),
+          commit_sha: COMMIT_SHA.toUpperCase(),
           environment: "Production",
           repo: "GetSentry/Junior-Prod",
         },
         { toolCallId: "get-deployment" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA,
+      commit_sha: COMMIT_SHA,
       deployment: {
         creator: null,
         environment: "Production",
         id: 5_634_510_476,
-        latestStatus: {
+        latest_status: {
           creator: null,
           description: null,
-          environmentUrl: null,
-          logUrl: null,
+          environment_url: null,
+          log_url: null,
           state: "failure",
         },
       },
       subscribable: {
         identifier: `deployment-source:getsentry/junior-prod:production:${COMMIT_SHA}`,
-        suggestedEvents: [
+        match: {
+          repo: "getsentry/junior-prod",
+          commit_sha: COMMIT_SHA,
+          environment: "production",
+        },
+        suggested_events: [
           "deployment.succeeded",
           "deployment.failed",
           "deployment.error",
@@ -95,13 +96,12 @@ describe("getDeployment", () => {
   });
 
   it("returns a subscribable source before GitHub creates the deployment", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: [] }]);
 
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Preview",
           repo: "getsentry/junior-prod",
         },
@@ -117,13 +117,12 @@ describe("getDeployment", () => {
   });
 
   it("watches every environment for a commit when environment is omitted", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: [] }]);
 
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           repo: "GetSentry/Junior-Prod",
         },
         { toolCallId: "watch-commit-deployments" },
@@ -148,7 +147,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Production",
           repo: "getsentry/missing",
         },
@@ -174,7 +173,7 @@ describe("getDeployment", () => {
       { body: { message: "Request was spammed" }, status: 422 },
     ]);
     const input = {
-      commitSha: COMMIT_SHA,
+      commit_sha: COMMIT_SHA,
       environment: "Production",
       repo: "getsentry/junior-prod",
     };
@@ -214,7 +213,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Production",
           repo: "getsentry/junior-prod",
         },

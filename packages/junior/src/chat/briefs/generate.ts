@@ -1,4 +1,6 @@
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
+import { mentionsTag, renderTag } from "@sentry/junior-plugin-api";
 import {
   briefOutcomeStatusSchema,
   conversationBriefSchema,
@@ -15,9 +17,9 @@ const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 
 const SIZE_CAPS = {
-  small: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
-  medium: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
-  large: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+  small: { decisions: 3, facts: 5, keywords: 5 },
+  medium: { decisions: 8, facts: 10, keywords: 8 },
+  large: { decisions: 20, facts: 15, keywords: 12 },
 } as const;
 
 type BriefSizeClass = keyof typeof SIZE_CAPS;
@@ -39,14 +41,6 @@ const modelBriefSchema = z
           text: z.string().trim().min(1),
           by: z.string().trim().min(1).nullable(),
           kind: z.enum(["stated", "confirmed", "assumed"]),
-        })
-        .strict(),
-    ),
-    openDecisions: z.array(
-      z
-        .object({
-          text: z.string().trim().min(1),
-          owner: z.string().trim().min(1).nullable(),
         })
         .strict(),
     ),
@@ -74,7 +68,6 @@ type BriefCompleteObject = (request: {
   prompt: string;
   schema: ZodTypeAny;
   system: string;
-  temperature: number;
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /** Evidence-check diagnostics, rendered by the local replay CLI. */
@@ -99,9 +92,11 @@ export type GeneratedBrief = {
 };
 
 export type GenerateBriefArgs = {
+  /** The configured bot name. Decisions the assistant made store it in `by`. */
+  assistantName: string;
   completeObject: BriefCompleteObject;
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   prompt: string;
   throughIndex: number;
 };
@@ -136,14 +131,38 @@ function uniqueStrings(values: string[], limit: number): string[] {
   return [...unique];
 }
 
-const RUNTIME_MARKER_PATTERN =
-  /\[\[NO_REPLY\]\]|<\/?(?:active-asks|analysis-error|available-skills|brief-input|compaction|current-instruction|image-attachment|omitted-image-attachments|pi-history|plugin-contribution|resolved-or-replaced-asks|runtime-turn-context|thread-compactions|thread-context|turn-context)\b/i;
+// Runtime tags that must not leak into a Brief. Older history holds some
+// that the runtime no longer writes.
+const RUNTIME_MARKER_TAGS = [
+  "active-asks",
+  "analysis-error",
+  "available-skills",
+  "brief-input",
+  "compaction",
+  "current-instruction",
+  "image-attachment",
+  "omitted-image-attachments",
+  "pi-history",
+  "plugin-contribution",
+  "resolved-or-replaced-asks",
+  "runtime-turn-context",
+  "thread-compactions",
+  "thread-context",
+  "turn-context",
+];
 
 function hasRuntimeMarker(value: string): boolean {
-  return RUNTIME_MARKER_PATTERN.test(value);
+  return (
+    value.includes("[[NO_REPLY]]") || mentionsTag(value, RUNTIME_MARKER_TAGS)
+  );
 }
 
+// The prompt asks for this key, not the configured name, so the prompt stays
+// the same for every install.
+const ASSISTANT_ATTRIBUTION = "assistant";
+
 function normalizeModelBrief(args: {
+  assistantName: string;
   caps: BriefSizeCaps;
   links: BriefLink[];
   model: ModelBrief;
@@ -163,7 +182,9 @@ function normalizeModelBrief(args: {
       participant.name,
     ]),
   );
-  participantNames.set("junior", "Junior");
+  // A previous Brief stores the configured name, and the model can copy it.
+  participantNames.set(args.assistantName.toLowerCase(), args.assistantName);
+  participantNames.set(ASSISTANT_ATTRIBUTION, args.assistantName);
   const attribution = (
     value: string | null | undefined,
   ): string | undefined => {
@@ -179,11 +200,11 @@ function normalizeModelBrief(args: {
     }
     let by = attribution(decision.by);
     let kind = decision.kind;
-    if (by === "Junior" && kind !== "assumed") {
-      // Junior cannot state or confirm a decision for a human.
+    if (by === args.assistantName && kind !== "assumed") {
+      // The assistant cannot state or confirm a decision for a human.
       kind = "assumed";
       coercedDecisionKinds += 1;
-    } else if (by && by !== "Junior" && kind === "assumed") {
+    } else if (by && by !== args.assistantName && kind === "assumed") {
       // A human named on an assumed decision is not evidence of acceptance.
       by = undefined;
       coercedDecisionKinds += 1;
@@ -193,19 +214,6 @@ function normalizeModelBrief(args: {
         text: truncate(decision.text, 400),
         ...(by ? { by } : undefined),
         kind,
-      },
-    ];
-  });
-  const openDecisions = args.model.openDecisions.flatMap((decision) => {
-    if (hasRuntimeMarker(decision.text)) {
-      droppedRuntimeMarkerCount += 1;
-      return [];
-    }
-    const owner = attribution(decision.owner);
-    return [
-      {
-        text: truncate(decision.text, 400),
-        ...(owner ? { owner } : undefined),
       },
     ];
   });
@@ -226,7 +234,6 @@ function normalizeModelBrief(args: {
         text: truncateSentence(args.model.outcome.text, 600),
       },
       decisions: decisions.slice(0, args.caps.decisions),
-      openDecisions: openDecisions.slice(0, args.caps.openDecisions),
       facts: uniqueStrings(facts, args.caps.facts),
       links: args.links,
       keywords: uniqueStrings(
@@ -309,7 +316,7 @@ function promptInput(args: {
   caps: BriefSizeCaps;
   entries: BriefEntry[];
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   record: ConversationBrief["record"];
   sizeClass: BriefSizeClass;
 }): string {
@@ -362,9 +369,7 @@ function promptInput(args: {
   }
 
   return [
-    "<brief-input>",
-    text,
-    "</brief-input>",
+    renderTag("brief-input", {}, [text]),
     "Return the next Brief as structured data.",
   ].join("\n");
 }
@@ -451,7 +456,7 @@ function buildEvidenceLinks(args: {
   entries: BriefEntry[];
   input: BriefInput;
   model: ModelBrief;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
 }): {
   droppedUrls: BriefEvidenceCheck["droppedUrls"];
   keptUrlCount: number;
@@ -528,25 +533,26 @@ function hasMergedEvidence(input: BriefInput): boolean {
 /** Build the text indexed for a Brief without adding transcript content. */
 function buildBriefSearchText(
   brief: ConversationBrief,
-  title?: string,
+  input: BriefInput,
 ): string {
-  return [
-    title,
+  const values = [
+    input.title,
     brief.summary,
     brief.intent,
     brief.outcome.text,
     ...brief.decisions.map((decision) => decision.text),
-    ...brief.openDecisions.map((decision) => decision.text),
     ...brief.facts,
     ...brief.keywords,
     ...brief.links.map((link) => link.label),
+    // Stored links stop at MAX_LINKS. Index every linked object so a later
+    // Conversation still finds an issue that a long run of PRs pushed out.
+    ...deterministicLinks(input).map((link) => link.label),
     ...brief.record.participants.map((participant) => participant.name),
     ...brief.record.codeChanges.map(
       (change) => `${change.repository}#${change.number} ${change.state}`,
     ),
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join("\n");
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return [...new Set(values)].join("\n");
 }
 
 /** Generate one bounded Brief and attach only deterministic evidence links. */
@@ -573,7 +579,6 @@ export async function generateBrief(
     }),
     schema: modelBriefSchema,
     system: args.prompt,
-    temperature: 0,
   });
   const model = modelBriefSchema.parse(result.object);
   const { droppedUrls, keptUrlCount, links } = buildEvidenceLinks({
@@ -582,7 +587,13 @@ export async function generateBrief(
     model,
     previous: args.previous,
   });
-  const normalized = normalizeModelBrief({ caps, links, model, record });
+  const normalized = normalizeModelBrief({
+    assistantName: args.assistantName,
+    caps,
+    links,
+    model,
+    record,
+  });
   const mergedClaim = /\bmerged\b/i.test(
     `${normalized.brief.summary}\n${normalized.brief.outcome.text}`,
   );
@@ -603,7 +614,7 @@ export async function generateBrief(
         mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
       resourceCount: input.resources.length,
     },
-    searchText: buildBriefSearchText(normalized.brief, input.title),
+    searchText: buildBriefSearchText(normalized.brief, input),
     throughIndex: args.throughIndex,
   };
 }

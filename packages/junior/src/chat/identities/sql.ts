@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
+import { clearCachedUser } from "./user-cache";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -22,7 +25,7 @@ function tenantId(value: string | undefined): string {
 async function upsertUser(
   executor: JuniorSqlDatabase,
   args: {
-    displayName?: string;
+    displayName?: string | undefined;
     email: string;
     emailNormalized: string;
     nowMs: number;
@@ -136,7 +139,7 @@ async function upsertIdentityRecord(
       email: email ?? null,
       emailNormalized: emailNormalized ?? null,
       emailVerified: Boolean(identity.emailVerified && emailNormalized),
-      avatarUrl: null,
+      avatarUrl: identity.avatarUrl ?? null,
       metadata: identity.metadata ?? null,
       createdAt: dateFromMs(nowMs),
       updatedAt: dateFromMs(nowMs),
@@ -159,7 +162,11 @@ async function upsertIdentityRecord(
         email: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.email}, excluded.email) when excluded.email_verified then excluded.email else coalesce(${juniorIdentities.email}, excluded.email) end`,
         emailNormalized: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) when excluded.email_verified then excluded.email_normalized else coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) end`,
         emailVerified: sql`${juniorIdentities.emailVerified} OR excluded.email_verified`,
-        avatarUrl: sql`coalesce(${juniorIdentities.avatarUrl}, excluded.avatar_url)`,
+        // The provider's latest photo wins. Without one, keep the saved photo.
+        avatarUrl:
+          identity.avatarUrl === undefined
+            ? sql`${juniorIdentities.avatarUrl}`
+            : sql`excluded.avatar_url`,
         metadata: sql`coalesce(${juniorIdentities.metadata}, excluded.metadata_json)`,
         updatedAt: sql`excluded.updated_at`,
       },
@@ -179,6 +186,22 @@ async function upsertIdentityRecord(
       throw new Error("Identity conflicts with linked user");
     }
     throw new Error("Identity upsert returned no row");
+  }
+  const previousUserId = existing?.userId;
+  await Promise.all([
+    row.userId ? clearCachedUser(row.userId) : undefined,
+    previousUserId && previousUserId !== row.userId
+      ? clearCachedUser(previousUserId)
+      : undefined,
+  ]);
+  // Check every write that may have set the User, not only a known existing
+  // row: a concurrent first write can create the Identity and its roots
+  // between the read above and this upsert.
+  if (!existing?.userId && row.userId && identity.kind === "user") {
+    await recordStartedConversationParticipants(executor, {
+      identityId: row.id,
+      userId: row.userId,
+    });
   }
   return {
     id: row.id,
@@ -215,6 +238,32 @@ export async function saveUserTimezone(
         sql`${juniorUsers.timezone} is distinct from ${timezone}`,
       ),
     );
+}
+
+/** Return the Slack user most recently linked to a Junior user. */
+export async function linkedSlackUser(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<{ teamId: string; userId: string } | undefined> {
+  const rows = await db
+    .select({
+      teamId: juniorIdentities.providerTenantId,
+      slackUserId: juniorIdentities.providerSubjectId,
+    })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+      ),
+    )
+    .orderBy(desc(juniorIdentities.updatedAt))
+    .limit(1);
+  const row = rows[0];
+  return row?.teamId
+    ? { teamId: row.teamId, userId: row.slackUserId }
+    : undefined;
 }
 
 /** Persist one provider identity observation and link verified emails to users. */
@@ -263,6 +312,110 @@ export async function findUserByVerifiedEmails(
     .where(inArray(juniorUsers.primaryEmailNormalized, Array.from(normalized)))
     .limit(2);
   return rows.length === 1 ? rows[0] : undefined;
+}
+
+const linkedSlackIdentity = alias(juniorIdentities, "linked_slack_identity");
+
+/** One Slack user in the bot workspace and the User behind it. */
+export interface LinkedSlackUser {
+  slackUserId: string;
+  user: { displayName?: string; email: string; id: string };
+}
+
+const linkedSlackUserColumns = {
+  displayName: juniorUsers.displayName,
+  email: juniorUsers.primaryEmail,
+  slackUserId: linkedSlackIdentity.providerSubjectId,
+  userId: juniorUsers.id,
+};
+
+function singleLinkedSlackUser(
+  rows: {
+    displayName: string | null;
+    email: string;
+    slackUserId: string;
+    userId: string;
+  }[],
+): LinkedSlackUser | undefined {
+  const [row] = rows;
+  if (rows.length !== 1 || !row) return undefined;
+  return {
+    slackUserId: row.slackUserId,
+    user: {
+      id: row.userId,
+      email: row.email,
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    },
+  };
+}
+
+/**
+ * Find the one Slack user in a workspace who is linked to an exact provider
+ * Identity, and the User behind both.
+ *
+ * Only the provider account id from an account-linking flow matches. Handles,
+ * emails, and display names never match. Return undefined when no Slack user
+ * or more than one Slack user matches.
+ */
+export async function findLinkedSlackUser(
+  executor: JuniorSqlDatabase,
+  args: { provider: string; providerSubjectId: string; slackTeamId: string },
+): Promise<LinkedSlackUser | undefined> {
+  const rows = await executor
+    .db()
+    .select(linkedSlackUserColumns)
+    .from(juniorIdentities)
+    // The join needs a user on both sides, so unlinked identities drop out.
+    .innerJoin(
+      linkedSlackIdentity,
+      and(
+        eq(linkedSlackIdentity.userId, juniorIdentities.userId),
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, args.slackTeamId),
+      ),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, args.provider),
+        eq(juniorIdentities.providerTenantId, ""),
+        eq(juniorIdentities.providerSubjectId, args.providerSubjectId),
+      ),
+    )
+    .limit(2);
+  return singleLinkedSlackUser(rows);
+}
+
+/**
+ * Find the one Slack user in a workspace whose User has this primary email.
+ *
+ * The caller must have verified that the person sent from this address.
+ * Return undefined when no Slack user or more than one Slack user matches.
+ */
+export async function findSlackUserByPrimaryEmail(
+  executor: JuniorSqlDatabase,
+  args: { normalizedEmail: string; slackTeamId: string },
+): Promise<LinkedSlackUser | undefined> {
+  const rows = await executor
+    .db()
+    .select(linkedSlackUserColumns)
+    .from(juniorUsers)
+    .innerJoin(
+      linkedSlackIdentity,
+      eq(linkedSlackIdentity.userId, juniorUsers.id),
+    )
+    .where(
+      and(
+        eq(juniorUsers.primaryEmailNormalized, args.normalizedEmail),
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, args.slackTeamId),
+      ),
+    )
+    .limit(2);
+  return singleLinkedSlackUser(rows);
 }
 
 /** Remove one exact provider identity owned by a workspace Slack user. */
@@ -314,17 +467,24 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+  await clearCachedUser(userId);
 }
 
 /**
  * Save one Google sign-in. Link the Google identity to the user of its
- * verified email, and set its sign-in time.
+ * verified email, and set its sign-in time. Return the previous sign-in
+ * time, if any.
  */
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
-  account: { displayName?: string; email: string; subject: string },
+  account: {
+    avatarUrl?: string | undefined;
+    displayName?: string | undefined;
+    email: string;
+    subject: string;
+  },
   nowMs: number = Date.now(),
-): Promise<StoredIdentity> {
+): Promise<number | undefined> {
   const stored = await upsertIdentity(
     executor,
     {
@@ -334,13 +494,21 @@ export async function recordGoogleSignIn(
       email: account.email,
       emailVerified: true,
       displayName: account.displayName,
+      // Each sign-in has the current photo, so a missing photo clears it.
+      avatarUrl: account.avatarUrl ?? null,
     },
     nowMs,
   );
+  const [previous] = await executor
+    .db()
+    .select({ signedInAt: juniorIdentities.signedInAt })
+    .from(juniorIdentities)
+    .where(eq(juniorIdentities.id, stored.id))
+    .limit(1);
   await executor
     .db()
     .update(juniorIdentities)
     .set({ signedInAt: dateFromMs(nowMs) })
     .where(eq(juniorIdentities.id, stored.id));
-  return stored;
+  return previous?.signedInAt?.getTime();
 }

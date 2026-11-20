@@ -146,7 +146,7 @@ export function conversationsHistoryPage(
 
 export function conversationsRepliesPage(
   input: {
-    messages?: Array<Record<string, unknown>>;
+    messages?: Array<Record<string, unknown>> | undefined;
     nextCursor?: string;
     threadTs?: string;
   } = {},
@@ -299,6 +299,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   } = {},
 ): {
   ok: true;
@@ -311,6 +312,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   };
 } {
   const fileId = input.fileId ?? TEST_FILE_ID;
@@ -328,6 +330,7 @@ export function filesInfoOk(
       ...(input.name ? { name: input.name } : undefined),
       filetype: input.filetype ?? "quip",
       mimetype: input.mimetype ?? "text/plain",
+      ...(input.size !== undefined ? { size: input.size } : undefined),
     },
   });
 }
@@ -414,6 +417,19 @@ export function conversationsJoinOk(
   });
 }
 
+export function conversationsMembersPage(
+  input: { members?: string[]; nextCursor?: string } = {},
+): {
+  ok: true;
+  members: string[];
+  response_metadata: { next_cursor: string };
+} {
+  return slackOk({
+    members: input.members ?? [],
+    response_metadata: { next_cursor: input.nextCursor ?? "" },
+  });
+}
+
 export function conversationsListPage(
   input: {
     channels?: Array<{
@@ -447,20 +463,56 @@ export function conversationsListPage(
   });
 }
 
+/**
+ * Model https://docs.slack.dev/reference/methods/dnd.info/ for a bot token.
+ * Slack returns 1 for both timestamps when Do Not Disturb is off.
+ */
+export function dndInfoOk(window?: { startMs: number; endMs: number }) {
+  return slackOk({
+    dnd_enabled: window !== undefined,
+    next_dnd_start_ts: window ? Math.floor(window.startMs / 1000) : 1,
+    next_dnd_end_ts: window ? Math.floor(window.endMs / 1000) : 1,
+  });
+}
+
+/** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
+export function botsInfoOk(
+  input: {
+    botId?: string | undefined;
+    deleted?: boolean;
+    userId?: string;
+  } = {},
+): { ok: true; bot: Record<string, unknown> } {
+  return slackOk({
+    bot: {
+      id: input.botId ?? "B0TEST",
+      app_id: "A0TEST",
+      name: "test-bot",
+      deleted: input.deleted ?? false,
+      updated: 1700000000,
+      ...(input.userId ? { user_id: input.userId } : undefined),
+    },
+  });
+}
+
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {
-    userId?: string;
+    userId?: string | undefined;
     userName?: string;
     realName?: string;
     displayName?: string;
     title?: string;
-    email?: string;
+    email?: string | undefined;
     statusText?: string;
     statusEmoji?: string;
     isBot?: boolean;
     deleted?: boolean;
+    /** A multi-channel guest. */
+    isRestricted?: boolean;
     tz?: string;
+    /** Whether the person set their own photo instead of Slack's default. */
+    isCustomImage?: boolean;
     fields?: Record<string, { value?: string; alt?: string; label?: string }>;
   } = {},
 ): {
@@ -475,6 +527,8 @@ export function usersInfoOk(
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,
       is_bot: input.isBot ?? false,
+      is_restricted: input.isRestricted ?? false,
+      is_ultra_restricted: false,
       tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",
@@ -484,6 +538,7 @@ export function usersInfoOk(
         status_text: input.statusText ?? "",
         status_emoji: input.statusEmoji ?? "",
         image_512: `https://avatars.slack-edge.com/${input.userId ?? TEST_USER_ID}_512.png`,
+        is_custom_image: input.isCustomImage ?? false,
         ...(input.fields ? { fields: input.fields } : undefined),
       },
     },

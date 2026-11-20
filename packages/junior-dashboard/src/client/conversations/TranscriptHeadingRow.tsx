@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
+import { MessageActions } from "../components/ui/message";
 import { cn } from "../styles";
 
-/** Align transcript labels and metadata as one centered heading row. */
+/** Align transcript labels and metadata as one centered heading row. Spans keep it valid inside a row button. */
 export function TranscriptHeadingRow(props: {
   className?: string;
   left: ReactNode;
@@ -14,31 +15,31 @@ export function TranscriptHeadingRow(props: {
     props.right !== undefined && props.right !== null && props.right !== false;
 
   return (
-    <div
+    <span
       className={cn(
         "flex min-w-0 items-start justify-between gap-2 md:items-center md:gap-3",
         props.className,
       )}
     >
-      <div
+      <span
         className={cn(
           "flex min-w-0 items-center gap-2 overflow-hidden",
           props.leftClassName,
         )}
       >
         {props.left}
-      </div>
+      </span>
       {hasRight ? (
-        <div
+        <span
           className={cn(
             "min-w-0 max-w-[60%] shrink text-right md:max-w-none md:shrink-0",
             props.rightClassName,
           )}
         >
           {props.right}
-        </div>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -51,9 +52,9 @@ export function TranscriptMessageHeading(props: {
     <div className="flex min-h-6 min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
       {props.children}
       {props.action ? (
-        <div className="flex h-6 shrink-0 items-center self-center [@media(hover:hover)_and_(pointer:fine)_and_(not_(any-pointer:coarse))]:opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+        <MessageActions className="h-6 shrink-0 self-center">
           {props.action}
-        </div>
+        </MessageActions>
       ) : null}
     </div>
   );

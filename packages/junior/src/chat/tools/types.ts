@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
   EventAutomationSource,
@@ -24,36 +25,12 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type {
-  ModelProfile,
-  ModelProfileConfig,
-} from "@/chat/model-profile";
-import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
+import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-
-interface HandoffProfile {
-  description?: string;
-  name: ModelProfile;
-}
-
-export interface SpawnAgentProfileControl {
-  activeProfile: () => ModelProfile;
-  defaultProfile: ModelProfile;
-  profiles: Readonly<Record<string, ModelProfileConfig>>;
-}
-
-interface HandoffControl {
-  activeProfile: HandoffProfile;
-  /** Non-empty list of other configured profiles. */
-  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
-  execute: (
-    profile: ModelProfile,
-    options: { signal?: AbortSignal; toolCallId: string },
-  ) => Promise<void>;
-}
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -62,14 +39,13 @@ export interface ImageGenerateToolDeps {
 export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
-    max_chars?: number;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
 export interface WebSearchToolDeps {
   execute?: (input: {
     query: string;
-    max_results?: number;
+    max_results?: number | undefined;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
@@ -83,29 +59,26 @@ export interface ToolHooks {
    * Materialize generated files and return sandbox paths that exist before the
    * generating tool reports success.
    */
-  writeGeneratedArtifacts?: (
+  writeGeneratedFiles?: (
     files: FileUpload[],
-  ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
+  ) => GeneratedFileRef[] | Promise<GeneratedFileRef[]>;
   onSkillLoaded?: (skill: Skill) => void | Promise<void>;
-  toolOverrides?: {
-    imageGenerate?: ImageGenerateToolDeps;
-    viewImage?: ViewImageToolDeps;
-    webFetch?: WebFetchToolDeps;
-    webSearch?: WebSearchToolDeps;
-  };
+  toolOverrides?:
+    | {
+        imageGenerate?: ImageGenerateToolDeps;
+        viewImage?: ViewImageToolDeps;
+        webFetch?: WebFetchToolDeps;
+        webSearch?: WebSearchToolDeps;
+      }
+    | undefined;
 }
 
 interface BaseToolRuntimeContext {
-  attachmentStorage?: AttachmentStorage;
-  /** Present only for Scheduled automation and Event automation runs. */
-  automation?: {
-    /** True when a successful run sends a message to stored Destinations. */
-    sendsMessage: boolean;
-  };
-  handoff?: HandoffControl;
+  attachmentStorage?: AttachmentStorage | undefined;
+  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
-  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
@@ -113,7 +86,17 @@ interface BaseToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId: string;
-  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  /** Turn that runs this tool call. */
+  turnId?: string;
+  /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
+  turnTools: TurnBehavior["tools"];
+  /**
+   * Tools that the Turn lists, from its Prompt mode. A Thread lists the tools
+   * of every sender, and the ones that `turnTools` does not allow are
+   * disabled. Omitted means `turnTools`.
+   */
+  listedTools?: TurnBehavior["tools"];
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */
   location?: Location;
@@ -122,15 +105,15 @@ interface BaseToolRuntimeContext {
   /** Legacy Location identity used by memory and plugin contexts. */
   locationId?: string;
   /** Stored Conversation visibility used by tools. */
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy?: ConversationPrivacy | undefined;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
 
-  actor?: Actor;
-  resolveActorIdentity?: () => Promise<
-    { identity: Identity; user?: User } | undefined
-  >;
+  actor?: Actor | undefined;
+  resolveActorIdentity?:
+    | (() => Promise<{ identity: Identity; user?: User } | undefined>)
+    | undefined;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */
@@ -150,23 +133,23 @@ interface BaseToolRuntimeContext {
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
   destination: SlackDestination;
-  actor?: SlackActor;
+  actor?: SlackActor | undefined;
   source: SlackSource;
-  slackActionToken?: SlackActionToken;
+  slackActionToken?: SlackActionToken | undefined;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  actor?: LocalActor;
+  actor?: LocalActor | undefined;
   source: LocalSource;
-  slackActionToken?: never;
+  slackActionToken?: never | undefined;
 }
 
 interface WebToolRuntimeContext extends BaseToolRuntimeContext {
   destination: Destination;
-  actor?: WebActor;
+  actor?: WebActor | undefined;
   source: WebSource;
-  slackActionToken?: never;
+  slackActionToken?: never | undefined;
 }
 
 export type ToolRuntimeContext =
@@ -175,14 +158,14 @@ export type ToolRuntimeContext =
   | WebToolRuntimeContext
   | (BaseToolRuntimeContext & {
       destination: Destination;
-      actor?: Actor;
+      actor?: Actor | undefined;
       source:
         | AgentInvocationSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
         | ScheduledAutomationSource;
-      slackActionToken?: never;
+      slackActionToken?: never | undefined;
     });
 
 export interface ToolState {

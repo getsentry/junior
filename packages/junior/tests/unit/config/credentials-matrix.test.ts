@@ -43,7 +43,7 @@ describe("getVercelSandboxCredentials decision matrix", () => {
       setOrDelete("VERCEL_PROJECT_ID", projectId);
       vi.resetModules();
       const { getVercelSandboxCredentials } =
-        await import("@/chat/sandbox/credentials");
+        await import("@/chat/sandbox/vercel/credentials");
       expect(getVercelSandboxCredentials()).toEqual(expected);
     },
   );

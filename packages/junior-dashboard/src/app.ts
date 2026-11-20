@@ -1,16 +1,29 @@
 import { objectIconImages } from "./object-icon-images";
 import { Hono, type Context, type Next } from "hono";
+import { routePath } from "hono/route";
 import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  REVALIDATED_READ_PATHS,
+  revalidateContent,
+  readViewerAvatarUrl,
+  DEFAULT_USER_SETTINGS,
+  readUserSettings,
   resolveViewerUser,
+  updateUserSettings,
   updateViewerDisplayName,
+  type UserSettings,
   type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
-import { initSentry } from "@sentry/junior/instrumentation";
+import {
+  getBrowserSentryConfig,
+  initSentry,
+  nameRequestRoute,
+  routeNameMiddleware,
+} from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
 import { revalidateConversation } from "./conversation-cache";
@@ -20,9 +33,13 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
 import {
+  dashboardBootstrapSchema,
   dashboardConfigSchema,
   dashboardIdentitySchema,
   dashboardProfileUpdateSchema,
+  type DashboardBootstrap,
+  type DashboardConfig,
+  type DashboardIdentity,
 } from "./api/schema";
 import {
   dashboardBearerSession,
@@ -34,31 +51,42 @@ import {
   type DashboardSession,
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
-import { resetMockConversationArchiveState } from "./mock-reporting/fixtures";
+import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
+import { resetMockReadPositions } from "./mock-reporting/read-positions";
+import { resetMockPlan } from "./mock-reporting/plan";
+import { resetMockWatches } from "./mock-reporting/watches";
+import { resetMockReviewItems } from "./mock-reporting/review-items";
+import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
-  DASHBOARD_CLIENT_PATH,
   DASHBOARD_INSTALL_ICON_PATH,
   DASHBOARD_MANIFEST_PATH,
   dashboardPagePaths,
   readDashboardAvatarHeader,
-  readDashboardClient,
-  readDashboardClientChunk,
   renderDashboard,
   renderFavicon,
   renderForbiddenPage,
   renderInstallIcon,
   renderManifest,
 } from "./shell";
+import {
+  DASHBOARD_ASSETS_PATH,
+  dashboardPublicAssetResponse,
+} from "./public-assets";
+import {
+  DASHBOARD_SERVICE_WORKER_PATH,
+  renderServiceWorker,
+} from "./service-worker";
 import { normalizeDashboardPath, resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
-/** Process-local display names for mock reporting only. */
+/** Process-local profile settings for mock reporting only. */
 const mockDisplayNamesByEmail = new Map<string, string>();
+const mockUserSettingsByEmail = new Map<string, UserSettings>();
 
 /**
  * Clear process-local mock reporting state so tests sharing a worker do not
@@ -69,18 +97,24 @@ const mockDisplayNamesByEmail = new Map<string, string>();
  */
 export function resetMockDashboardState(): void {
   mockDisplayNamesByEmail.clear();
-  resetMockConversationArchiveState();
+  resetMockConversationViewerState();
+  mockUserSettingsByEmail.clear();
+  resetMockReadPositions();
+  resetMockPlan();
+  resetMockReviewItems();
+  resetMockSends();
+  resetMockWatches();
 }
 
 export interface JuniorDashboardOptions {
-  agentName?: string;
+  /** The configured bot name. Core passes `botConfig.userName`. */
+  agentName: string;
   basePath?: string;
   baseURL?: string;
   authPath?: string;
   authRequired?: boolean;
   auth?: DashboardAuth;
-  componentGallery?: boolean;
-  mockConversations?: boolean;
+  mockConversations?: boolean | undefined;
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
@@ -101,7 +135,7 @@ type Variables = JuniorApiVariables & { authSession: DashboardSession };
 
 function hasSentryConversationLinks(): boolean {
   return Boolean(
-    process.env.SENTRY_DSN?.trim() && process.env.SENTRY_ORG_SLUG?.trim(),
+    process.env["SENTRY_DSN"]?.trim() && process.env["SENTRY_ORG_SLUG"]?.trim(),
   );
 }
 
@@ -127,11 +161,6 @@ function resolveDashboardOptions(
 ): DashboardRuntimeOptions {
   return {
     ...options,
-    authRequired:
-      options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
-    componentGallery:
-      options.componentGallery ??
-      readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
     mockConversations:
       options.mockConversations ??
       readEnvFlag("JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"),
@@ -142,12 +171,8 @@ function isJsonRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-function isDashboardPagePath(
-  pathname: string,
-  basePath: string,
-  options: { componentGallery?: boolean } = {},
-): boolean {
-  for (const { nested, path } of dashboardPagePaths(basePath, options)) {
+function isDashboardPagePath(pathname: string, basePath: string): boolean {
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
     if (pathname === path || (nested && pathname.startsWith(`${path}/`))) {
       return true;
     }
@@ -158,7 +183,6 @@ function isDashboardPagePath(
 
 interface DashboardReturnPathOptions {
   authenticatedRoutes?: readonly AuthenticatedRoute[];
-  componentGallery?: boolean;
 }
 
 function dashboardReturnPath(
@@ -167,7 +191,7 @@ function dashboardReturnPath(
   options: DashboardReturnPathOptions = {},
 ): string | undefined {
   if (
-    !isDashboardPagePath(url.pathname, basePath, options) &&
+    !isDashboardPagePath(url.pathname, basePath) &&
     !isAuthPath(url.pathname, options.authenticatedRoutes ?? [])
   ) {
     return undefined;
@@ -190,7 +214,7 @@ function requestedReturnPath(
   const returnUrl = new URL(next, url.origin);
   if (
     returnUrl.origin !== url.origin ||
-    (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
+    (!isDashboardPagePath(returnUrl.pathname, basePath) &&
       !isAuthPath(returnUrl.pathname, options.authenticatedRoutes ?? []))
   ) {
     return undefined;
@@ -260,6 +284,25 @@ function callbackUrl(
   return url.toString();
 }
 
+/**
+ * Restart sign-in with the same return path when the Google callback fails,
+ * for example on a stale OAuth state cookie. Without it, Better Auth sends
+ * the person to `/` and the page is lost.
+ */
+function signInRetryUrl(
+  request: Request,
+  basePath: string,
+  options: DashboardReturnPathOptions = {},
+): string {
+  const url = new URL(request.url);
+  const returnPath = requestedReturnPath(url, basePath, options);
+  url.search = "";
+  if (returnPath) {
+    url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
+  }
+  return url.toString();
+}
+
 function unauthorized(
   request: Request,
   basePath: string,
@@ -311,11 +354,6 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
-function dashboardTimeZone(): string | undefined {
-  return process.env.JUNIOR_TIMEZONE || undefined;
-}
-
 function pluginRoutePrefix(pluginName: string): string {
   return `/api/plugins/${pluginName}`;
 }
@@ -356,7 +394,7 @@ export function createDashboardApp(
 ): Hono<{ Variables: Variables }> {
   const options = resolveDashboardOptions(rawOptions);
 
-  if (process.env.SENTRY_DSN?.trim()) {
+  if (process.env["SENTRY_DSN"]?.trim()) {
     initSentry();
   }
 
@@ -369,27 +407,28 @@ export function createDashboardApp(
     DEFAULT_AUTH_PATH,
   );
   const allowedDomains = normalizeValues(options.allowedDomains);
-  const agentName = options.agentName?.trim() || "Junior";
+  const agentName = options.agentName;
 
   const authRequired = options.authRequired !== false;
-  const configuredBaseURL = options.baseURL ?? process.env.JUNIOR_BASE_URL;
+  const configuredBaseURL = options.baseURL ?? process.env["JUNIOR_BASE_URL"];
   let canonicalBaseURL: string | undefined;
   if (authRequired && (configuredBaseURL || !options.auth)) {
     canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });
   }
 
   if (authRequired && allowedDomains.length === 0) {
-    throw new Error("Junior dashboard auth requires allowedDomains");
+    throw new Error("Dashboard auth requires allowedDomains");
   }
 
   // Core owns the Google sign-in session.
   const auth = options.auth;
   if (authRequired && !auth) {
-    throw new Error("Junior dashboard auth requires the core sign-in session");
+    throw new Error("Dashboard auth requires the core sign-in session");
   }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
-  app.use("*", async (c, next) => {
+  app.use("*", routeNameMiddleware());
+  app.use("*", async function dashboardVersionHeader(c, next) {
     await next();
     c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
   });
@@ -399,7 +438,6 @@ export function createDashboardApp(
     if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
     const returnUrl = callbackUrl(c.req.raw, basePath, {
       authenticatedRoutes,
-      componentGallery: options.componentGallery,
     });
     if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
@@ -408,7 +446,11 @@ export function createDashboardApp(
     if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
-    return auth.signInWithGoogle(c.req.raw, returnUrl);
+    return auth.signInWithGoogle(
+      c.req.raw,
+      returnUrl,
+      signInRetryUrl(c.req.raw, basePath, { authenticatedRoutes }),
+    );
   });
 
   if (auth) {
@@ -433,14 +475,40 @@ export function createDashboardApp(
       },
     });
   });
+  // Content-hashed browser files are public: the same files ship in the npm
+  // package, and Nitro serves them as static assets without auth.
+  app.get(`${DASHBOARD_ASSETS_PATH}/*`, (c) =>
+    dashboardPublicAssetResponse(
+      c.req.path.slice(DASHBOARD_ASSETS_PATH.length + 1),
+    ),
+  );
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
+  app.get(DASHBOARD_SERVICE_WORKER_PATH, () =>
+    renderServiceWorker(basePath, agentName),
+  );
+
+  /** Resolve the Junior user for a verified dashboard session. */
+  const resolveSessionViewer = async (session: DashboardSession) => {
+    const email = verifiedDashboardSessionEmail(session);
+    if (!email) {
+      throw new Error("Authenticated dashboard session has no verified email");
+    }
+    // Mock reporting stays local and does not require durable user rows.
+    const viewer = options.mockConversations
+      ? mockViewerFromSession(session)
+      : await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error("Authenticated dashboard user could not be resolved");
+    }
+    return viewer;
+  };
 
   /**
    * Require dashboard auth for every later route; login, Better Auth callbacks,
-   * favicon, install manifest, and install icon are the only registration-order
-   * bypasses.
+   * favicon, install manifest, install icon, and the static service worker are
+   * the only registration-order bypasses.
    */
   const requireAuth = async (
     c: Context<{ Variables: Variables }>,
@@ -456,13 +524,7 @@ export function createDashboardApp(
       const session = localAuthBypassSession();
       c.set("authSession", session);
       if (pathname.startsWith("/api/") || appRoute) {
-        const viewer = options.mockConversations
-          ? mockViewerFromSession(session)
-          : await resolveViewerUser(LOCAL_VIEWER_EMAIL);
-        if (!viewer) {
-          throw new Error("Local dashboard viewer could not be resolved");
-        }
-        c.set("viewer", viewer);
+        c.set("viewer", await resolveSessionViewer(session));
       }
       await next();
       return;
@@ -471,7 +533,6 @@ export function createDashboardApp(
     if (!auth) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         authenticatedRoutes,
-        componentGallery: options.componentGallery,
       });
     }
     const browserSession = await auth.getSession(c.req.raw);
@@ -491,7 +552,6 @@ export function createDashboardApp(
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         authenticatedRoutes,
-        componentGallery: options.componentGallery,
       });
     }
     if (!dashboardSessionIsAuthorized(session, allowedDomains)) {
@@ -499,29 +559,25 @@ export function createDashboardApp(
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
-    // Resolve the canonical user only for authenticated API requests.
+    // Resolve the canonical user only for authenticated API requests. Page
+    // routes resolve it themselves for the embedded core data.
     if (pathname.startsWith("/api/") || appRoute) {
-      const email = verifiedDashboardSessionEmail(sanitizedSession);
-      if (!email) {
-        throw new Error(
-          "Authenticated dashboard session has no verified email",
-        );
-      }
-      // Mock reporting stays local and does not require durable user rows.
-      const viewer = options.mockConversations
-        ? mockViewerFromSession(sanitizedSession)
-        : await resolveViewerUser(email);
-      if (!viewer) {
-        throw new Error("Authenticated dashboard user could not be resolved");
-      }
-      c.set("viewer", viewer);
+      c.set("viewer", await resolveSessionViewer(sanitizedSession));
     }
     await next();
     return undefined;
   };
 
   app.use("*", requireAuth);
-  app.use("/api/conversations/:conversationId", revalidateConversation);
+  // Core detail reads set a version token before they build the report. Mock
+  // reporting has no stored version, so it revalidates on content instead.
+  // Mock reads skip the core routes and their `revalidateContent`.
+  if (options.mockConversations) {
+    for (const path of ["/api/conversations", ...REVALIDATED_READ_PATHS]) {
+      app.use(path, revalidateContent);
+    }
+    app.use("/api/conversations/:conversationId", revalidateConversation);
+  }
 
   for (const route of authenticatedRoutes) {
     const handler = (c: Context<{ Variables: Variables }>) => {
@@ -543,18 +599,38 @@ export function createDashboardApp(
     }
   }
 
-  for (const { nested, path } of dashboardPagePaths(basePath, {
-    componentGallery: options.componentGallery,
-  })) {
-    app.get(path, () => renderDashboard(basePath, agentName));
+  const readPageBootstrap = async (
+    session: DashboardSession,
+  ): Promise<DashboardBootstrap | undefined> => {
+    // The embedded core data only saves the client a round trip. Without it,
+    // the client reads /api/me itself, and that request reports the failure.
+    try {
+      return dashboardBootstrapSchema.parse({
+        config: dashboardConfig(),
+        me: await dashboardIdentity(
+          session,
+          await resolveSessionViewer(session),
+        ),
+      });
+    } catch {
+      return undefined;
+    }
+  };
+  const renderPage = async (c: Context<{ Variables: Variables }>) =>
+    renderDashboard(basePath, agentName, {
+      bootstrap: await readPageBootstrap(c.get("authSession")),
+      sentry: getBrowserSentryConfig(),
+    });
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
+    app.get(path, renderPage);
     if (nested) {
-      app.get(`${path}/*`, () => renderDashboard(basePath, agentName));
+      app.get(`${path}/*`, renderPage);
     }
   }
   for (const route of options.pluginRoutes ?? []) {
     const prefix = pluginRoutePrefix(route.pluginName);
-    const handler = (c: Context<{ Variables: Variables }>) =>
-      route.app.fetch(
+    const handler = async (c: Context<{ Variables: Variables }>) => {
+      const response = await route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),
         pluginApiRouteRequestContextSchema.parse(
           pluginRouteContext(
@@ -564,6 +640,11 @@ export function createDashboardApp(
           ),
         ),
       );
+      // A plugin Hono app names the request span after its own route when it
+      // returns. Restore the dashboard route for the spans that end after it.
+      nameRequestRoute(c.req.method, routePath(c));
+      return response;
+    };
     app.all(prefix, handler);
     app.all(`${prefix}/*`, handler);
   }
@@ -574,30 +655,54 @@ export function createDashboardApp(
     "/",
     createJuniorApi({ conversationWorkQueue: options.conversationWorkQueue }),
   );
-  app.get("/api/config", () => {
-    return jsonResponse(dashboardConfigSchema, {
-      allowedDomainCount: allowedDomains.length,
-      authRequired,
-      authPath,
-      basePath,
-      componentGallery: options.componentGallery === true,
-      sentryConversationLinks: hasSentryConversationLinks(),
-      timeZone: dashboardTimeZone(),
-      version: JUNIOR_VERSION,
-    });
+  const dashboardConfig = (): DashboardConfig => ({
+    allowedDomainCount: allowedDomains.length,
+    authRequired,
+    authPath,
+    basePath,
+    sentryConversationLinks: hasSentryConversationLinks(),
+    version: JUNIOR_VERSION,
   });
-  app.get("/api/me", (c) => {
-    const session = c.get("authSession");
-    const viewer = c.get("viewer");
-    return jsonResponse(dashboardIdentitySchema, {
+  app.get("/api/config", () =>
+    jsonResponse(dashboardConfigSchema, dashboardConfig()),
+  );
+  // Mock reporting has no SQL identities, so it has no profile photos.
+  const viewerAvatarUrl = async (userId: string | undefined) =>
+    userId && !options.mockConversations
+      ? await readViewerAvatarUrl(userId)
+      : undefined;
+  async function readViewerSettings(viewer: {
+    email: string;
+    id: string;
+  }): Promise<UserSettings> {
+    return (
+      (options.mockConversations
+        ? mockUserSettingsByEmail.get(viewer.email)
+        : await readUserSettings(viewer.id)) ?? DEFAULT_USER_SETTINGS
+    );
+  }
+  async function dashboardIdentity(
+    session: DashboardSession,
+    viewer: Variables["viewer"],
+  ): Promise<DashboardIdentity> {
+    const avatarUrl = await viewerAvatarUrl(viewer?.id);
+    return {
+      ...(viewer ? await readViewerSettings(viewer) : undefined),
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: viewer?.isAdmin === true,
         name: viewer?.displayName ?? session.user.name,
       },
-    });
-  });
+    };
+  }
+  app.get("/api/me", async (c) =>
+    jsonResponse(
+      dashboardIdentitySchema,
+      await dashboardIdentity(c.get("authSession"), c.get("viewer")),
+    ),
+  );
   app.patch("/api/me", async (c) => {
     let body: unknown;
     try {
@@ -626,22 +731,34 @@ export function createDashboardApp(
       );
     }
     const session = c.get("authSession");
+    const { displayName, ...settings } = parsed.data;
+    // Parsed bodies omit settings the request did not send.
+    const changesSettings = Object.keys(settings).length > 0;
     // Mock reporting keeps profile edits process-local and out of SQL.
     if (options.mockConversations) {
-      mockDisplayNamesByEmail.set(viewer.email, parsed.data.displayName);
+      if (displayName !== undefined) {
+        mockDisplayNamesByEmail.set(viewer.email, displayName);
+      }
+      if (changesSettings) {
+        mockUserSettingsByEmail.set(viewer.email, {
+          ...(await readViewerSettings(viewer)),
+          ...settings,
+        });
+      }
       return jsonResponse(dashboardIdentitySchema, {
+        ...(await readViewerSettings(viewer)),
         user: {
           email: session.user.email,
           emailVerified: session.user.emailVerified,
           isAdmin: viewer.isAdmin === true,
-          name: parsed.data.displayName,
+          name: mockDisplayNamesByEmail.get(viewer.email) ?? viewer.displayName,
         },
       });
     }
-    const updated = await updateViewerDisplayName(
-      viewer.id,
-      parsed.data.displayName,
-    );
+    const updated =
+      displayName === undefined
+        ? viewer
+        : await updateViewerDisplayName(viewer.id, displayName);
     if (!updated) {
       return jsonResponse(
         apiErrorSchema,
@@ -649,31 +766,25 @@ export function createDashboardApp(
         { status: 404 },
       );
     }
+    const avatarUrl = await viewerAvatarUrl(updated.id);
+    const savedSettings = changesSettings
+      ? await updateUserSettings(viewer.id, settings)
+      : await readUserSettings(viewer.id);
+    if (!savedSettings) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "User not found." },
+        { status: 404 },
+      );
+    }
     return jsonResponse(dashboardIdentitySchema, {
+      ...savedSettings,
       user: {
+        ...(avatarUrl ? { avatarUrl } : undefined),
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         isAdmin: updated.isAdmin === true,
-        name: updated.displayName,
-      },
-    });
-  });
-  app.get(DASHBOARD_CLIENT_PATH, () => {
-    return new Response(readDashboardClient(), {
-      headers: {
-        "cache-control": "no-store",
-        "content-type": "application/javascript; charset=utf-8",
-      },
-    });
-  });
-  app.get("/_junior/dashboard/chunks/:file", (c) => {
-    const chunk = readDashboardClientChunk(c.req.param("file"));
-    if (!chunk) return c.notFound();
-    return new Response(chunk, {
-      headers: {
-        "cache-control": "private, max-age=31536000, immutable",
-        "content-type": "application/javascript; charset=utf-8",
-        "x-content-type-options": "nosniff",
+        name: updated.displayName ?? session.user.name,
       },
     });
   });

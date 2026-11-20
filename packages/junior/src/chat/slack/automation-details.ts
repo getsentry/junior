@@ -1,5 +1,7 @@
+import { automationCardStatus } from "@/chat/automations/result";
+import { automationTaskText } from "@/chat/automations/task";
 import type { SlackEvent } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { readViewerAutomationSummary } from "@/chat/automations/read";
 import {
@@ -9,9 +11,11 @@ import {
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import {
   slackEntitySchema,
+  slackExternalRefIdSchema,
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
+import { eventTriggerFiltersText } from "@sentry/junior-plugin-api";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
@@ -44,45 +48,61 @@ function renderAutomationDetails(
   const url = getDashboardTaskLink(automation.id);
   if (!url) return undefined;
 
-  const status =
-    automation.kind === "scheduled"
-      ? automation.status
-      : automation.triggerAvailable
-        ? "ready"
-        : "unavailable";
+  const { status, warning } = automationCardStatus({
+    status: automation.status,
+    statusReason: automation.statusReason,
+    triggerProblems:
+      automation.kind === "event" ? automation.trigger.problems : undefined,
+  });
   // Item entities use custom_fields only. Do not add task-specific fields.
-  const fields: DetailField[] = [
-    textField("status", "Status", status),
-    {
-      ...textField("description", "Instruction", automation.instruction),
+  const fields: DetailField[] = [textField("status", "Status", status)];
+  const { task } = automation;
+  if (task.kind === "skill")
+    fields.push(textField("skill", "Skill", task.skill));
+  // A skill can run without context, and Slack rejects an empty field.
+  const text = automationTaskText(task);
+  if (text) {
+    fields.push({
+      ...textField(
+        "description",
+        task.kind === "skill" ? "Context" : "Instruction",
+        text,
+      ),
       format: "markdown",
       long: true,
-    },
-  ];
+    });
+  }
   if (automation.kind === "scheduled") {
     fields.push(
       { ...textField("trigger", "Schedule", automation.schedule), long: true },
       dateField("next_run", "Next run", automation.nextRunAt, "None"),
     );
   } else {
+    const { trigger } = automation;
     fields.push(
       textField("source", "Source", automation.source),
       { ...textField("resource", "Resource", automation.resource), long: true },
       {
-        ...textField("events", "Events", automation.events.join(", ")),
+        ...textField("events", "Events", trigger.events.join(", ")),
+        long: true,
+      },
+      {
+        ...textField(
+          "filters",
+          "Filters",
+          trigger.filters.length > 0
+            ? eventTriggerFiltersText(trigger.filters)
+            : "No filters. Runs on every selected event.",
+        ),
         long: true,
       },
     );
-    if (!automation.triggerAvailable) {
-      fields.push({
-        ...textField(
-          "warning",
-          "Needs attention",
-          "Trigger unavailable. This automation cannot receive events.",
-        ),
-        long: true,
-      });
-    }
+  }
+  if (warning) {
+    fields.push({
+      ...textField("warning", "Needs attention", warning),
+      long: true,
+    });
   }
   const lastRun = dateField(
     "last_run",
@@ -134,7 +154,7 @@ const detailsEventSchema = z.object({
   trigger_id: z.string().min(1),
   user: z.string().min(1),
   external_ref: z.object({
-    id: z.string().min(1),
+    id: slackExternalRefIdSchema,
     type: z.literal("automation"),
   }),
 }) satisfies z.ZodType<
@@ -151,7 +171,7 @@ export async function presentSlackAutomationDetails(
 ): Promise<void> {
   const parsed = detailsEventSchema.safeParse(event);
   const client = getSlackClient();
-  const triggerId = event.trigger_id;
+  const triggerId = event["trigger_id"];
   if (typeof triggerId !== "string" || !triggerId) return;
 
   if (!parsed.success || !teamId) {

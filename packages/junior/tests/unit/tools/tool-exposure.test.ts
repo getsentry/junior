@@ -4,7 +4,7 @@ import { planToolExposure } from "@/chat/tool-exposure";
 import { tool } from "@/chat/tools/definition";
 
 describe("planToolExposure", () => {
-  it("separates native-visible, catalog-executable, and excluded tools", () => {
+  it("separates model, catalog, and script tools", () => {
     const directDefault = tool({
       description: "Direct by default",
       inputSchema: Type.Object({}),
@@ -20,8 +20,13 @@ describe("planToolExposure", () => {
       inputSchema: Type.Object({}),
     });
     const modelOnly = tool({
-      description: "Reserved model-only exposure",
+      description: "Model only",
       exposure: "modelOnly",
+      inputSchema: Type.Object({}),
+    });
+    const codemode = tool({
+      description: "Code Mode only",
+      exposure: "codemode",
       inputSchema: Type.Object({}),
     });
     const hidden = tool({
@@ -32,6 +37,7 @@ describe("planToolExposure", () => {
 
     expect(
       planToolExposure({
+        codemode,
         deferred,
         directDefault,
         directExplicit,
@@ -47,10 +53,13 @@ describe("planToolExposure", () => {
       directTools: {
         directDefault,
         directExplicit,
-      },
-      excludedTools: {
-        hidden,
         modelOnly,
+      },
+      scriptTools: {
+        codemode,
+        deferred,
+        directDefault,
+        directExplicit,
       },
     });
   });

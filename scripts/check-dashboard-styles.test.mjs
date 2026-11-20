@@ -8,7 +8,9 @@ import {
   findComposerSafeAreaBottomPadding,
   findDashboardUtilityAssertions,
   findNeutralSurfaceLiterals,
+  findNewUiEllipsis,
   findNonstandardNeutralTextColors,
+  findPxBreakpoints,
   findUndersizedHardcodedFontSizes,
   findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
@@ -156,6 +158,32 @@ test("reports classic 100vh and allows dvh", () => {
   );
 });
 
+test("reports px breakpoints and allows rem", () => {
+  assert.deepEqual(
+    findPxBreakpoints([
+      {
+        path: "src/media.ts",
+        contents: [
+          'const a = "(min-width: 1280px)";',
+          'const b = "(width >= 768px) and (hover: hover)";',
+          'const c = "(900px <= width)";',
+          'const d = "hidden min-[900px]:block @max-[448px]/chat:hidden";',
+          'const ok = "(min-width: 80rem) and (width >= 48rem)";',
+          'const okClass = "min-w-[320px] max-h-[8px] h-[8px] @min-[62rem]/chat:flex";',
+          'const okStyle = "width: 24px; max-width: 720px";',
+          "// (min-width: 1280px) in a comment",
+        ].join("\n"),
+      },
+    ]),
+    [
+      'src/media.ts:1: const a = "(min-width: 1280px)";',
+      'src/media.ts:2: const b = "(width >= 768px) and (hover: hover)";',
+      'src/media.ts:3: const c = "(900px <= width)";',
+      'src/media.ts:4: const d = "hidden min-[900px]:block @max-[448px]/chat:hidden";',
+    ],
+  );
+});
+
 test("reports additive safe-area padding and allows max()", () => {
   assert.deepEqual(
     findAdditiveSafeAreaPadding([
@@ -198,5 +226,31 @@ test("reports composer footers that reintroduce bottom safe-area math", () => {
     [
       'src/client/conversations/ConversationPage.tsx:1: const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
     ],
+  );
+});
+
+test("reports ellipsis truncation in the new UI only", () => {
+  const contents = [
+    '<span className="min-w-0 truncate">',
+    '<span className="md:truncate">',
+    '<p className="text-ellipsis">',
+    "{data.truncated ? <Notice /> : null}",
+    "// A long title truncates here.",
+  ].join("\n");
+  assert.deepEqual(
+    findNewUiEllipsis([
+      { path: "src/client/shell/Row.tsx", contents },
+      { path: "src/client/classic/Row.tsx", contents },
+      { path: "src/client/inbox/ReviewItemCard.tsx", contents },
+      { path: "src/client/shell/inbox/ReviewItemCard.tsx", contents },
+    ]),
+    [
+      "src/client/shell/Row.tsx",
+      "src/client/shell/inbox/ReviewItemCard.tsx",
+    ].flatMap((path) => [
+      `${path}:1: <span className="min-w-0 truncate">`,
+      `${path}:2: <span className="md:truncate">`,
+      `${path}:3: <p className="text-ellipsis">`,
+    ]),
   );
 });

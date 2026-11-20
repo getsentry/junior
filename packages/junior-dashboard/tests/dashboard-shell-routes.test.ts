@@ -1,22 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApp } from "../src/app";
 import type { DashboardSession } from "../src/auth";
-import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import { readDashboardClientManifest } from "../src/public-assets";
+import {
+  auth,
+  embeddedBootstrap,
+  resetDashboardEnv,
+} from "./dashboard-test-helpers";
 
-const { resolveViewerUser } = vi.hoisted(() => ({
-  resolveViewerUser: vi.fn(async (email: string) => ({
-    email,
-    id: `user:${email}`,
-    identities: [] as [],
-  })),
-}));
+const { readUserSettings, readViewerAvatarUrl, resolveViewerUser } = vi.hoisted(
+  () => ({
+    readUserSettings: vi.fn(async (_userId: string) => ({
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 6,
+      experimentalUi: false,
+    })),
+    readViewerAvatarUrl: vi.fn(
+      async (): Promise<string | undefined> => undefined,
+    ),
+    resolveViewerUser: vi.fn(async (email: string) => ({
+      email,
+      id: `user:${email}`,
+      identities: [] as [],
+    })),
+  }),
+);
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  readUserSettings,
+  readViewerAvatarUrl,
   resolveViewerUser,
 }));
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
@@ -50,7 +68,26 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<title>Junior</title>");
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
-    expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
+    const client = readDashboardClientManifest();
+    const classic = client.shells.classic;
+    expect(html).toContain(`src="/_junior/dashboard/assets/${classic.entry}"`);
+    for (const file of classic.imports) {
+      expect(html).toContain(
+        `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
+      );
+    }
+    expect(html).not.toContain(client.shells.inbox.entry);
+    expect(html).toContain(
+      `<link rel="stylesheet" href="/_junior/dashboard/assets/${client.stylesheet}" />`,
+    );
+    expect(client.fonts.length).toBeGreaterThan(0);
+    for (const file of client.fonts) {
+      expect(html).toContain(
+        `<link rel="preload" href="/_junior/dashboard/assets/${file}" as="font" type="font/woff2" crossorigin />`,
+      );
+    }
+    expect(html).not.toContain("<style>");
+    expect(html).not.toContain("fonts.googleapis.com");
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
@@ -58,6 +95,91 @@ describe("dashboard shell routes", () => {
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
     expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
+  });
+
+  it("loads only the new UI shell for a viewer who turned it on", async () => {
+    readUserSettings.mockResolvedValueOnce({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
+      experimentalUi: true,
+    });
+    const app = dashboard({
+      user: { email: "person@sentry.io", emailVerified: true },
+    });
+
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+
+    const { classic, inbox } = readDashboardClientManifest().shells;
+    expect(html).toContain(`src="/_junior/dashboard/assets/${inbox.entry}"`);
+    for (const file of inbox.imports) {
+      expect(html).toContain(
+        `<link rel="modulepreload" href="/_junior/dashboard/assets/${file}" />`,
+      );
+    }
+    expect(html).not.toContain(classic.entry);
+    expect(embeddedBootstrap(html)).toMatchObject({
+      me: { experimentalUi: true },
+    });
+  });
+
+  it("embeds the same core data that /api/me and /api/config return", async () => {
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/me/avatar");
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Person",
+      },
+    });
+
+    const page = await app.fetch(new Request("http://localhost/conversations"));
+    const me = await app.fetch(new Request("http://localhost/api/me"));
+    const config = await app.fetch(new Request("http://localhost/api/config"));
+
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(embeddedBootstrap(await page.text())).toEqual({
+      config: await config.json(),
+      me: await me.json(),
+    });
+  });
+
+  it("escapes viewer text in the embedded core data", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "</script><script>alert(1)</script>",
+      },
+    });
+
+    const html = await (
+      await app.fetch(new Request("http://localhost/"))
+    ).text();
+
+    expect(html).not.toContain("</script><script>alert(1)");
+    expect(embeddedBootstrap(html)).toMatchObject({
+      me: { user: { name: "</script><script>alert(1)</script>" } },
+    });
+  });
+
+  it("renders the shell without core data when the viewer read fails", async () => {
+    resolveViewerUser.mockRejectedValueOnce(new Error("database unavailable"));
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+      },
+    });
+
+    const response = await app.fetch(new Request("http://localhost/"));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Loading Junior");
+    expect(html).not.toContain("__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {
@@ -141,24 +263,52 @@ describe("dashboard shell routes", () => {
     }
   });
 
-  it("serves the dashboard client bundle without browser caching", async () => {
-    const app = dashboard({
-      user: {
-        email: "person@sentry.io",
-        emailVerified: true,
-      },
-    });
+  it("serves content-hashed browser files without auth and caches them for a year", async () => {
+    const app = dashboard(null);
+    const assetResponse = (file: string) =>
+      app.fetch(
+        new Request(`http://localhost/_junior/dashboard/assets/${file}`),
+      );
 
-    const response = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
+    const client = await assetResponse(
+      readDashboardClientManifest().shells.classic.entry,
     );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("content-type")).toContain(
+    expect(client.status).toBe(200);
+    expect(client.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(client.headers.get("content-type")).toContain(
       "application/javascript",
     );
-    expect(await response.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const clientScript = await client.text();
+    expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+    const chunk = clientScript.match(/["']\.\/(chunks\/[^"']+\.js)["']/)?.[1];
+    expect(chunk).toBeDefined();
+    const chunkResponse = await assetResponse(chunk!);
+    expect(chunkResponse.status).toBe(200);
+    expect(chunkResponse.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    const { fonts, stylesheet } = readDashboardClientManifest();
+    const styles = await assetResponse(stylesheet);
+    expect(styles.status).toBe(200);
+    expect(styles.headers.get("content-type")).toContain("text/css");
+    const font = await assetResponse(fonts[0]!);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(await styles.text()).toContain(
+      `url("/_junior/dashboard/assets/${fonts[0]}")`,
+    );
+
+    // A cached 404 would break an older deployment's files after a rollback.
+    for (const file of [
+      "client-AAAAAAAA.js",
+      "chunks/missing-AAAAAAAA.js",
+      "client.js",
+    ]) {
+      const missing = await assetResponse(file);
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("cache-control")).toBe("no-store");
+    }
   });
 
   it("serves the official dashboard avatar with revalidation", async () => {
@@ -260,6 +410,28 @@ describe("dashboard shell routes", () => {
     });
   });
 
+  it("serves the notification service worker for the dashboard scope without auth", async () => {
+    const app = createDashboardApp({
+      agentName: "Junior",
+      allowedDomains: ["sentry.io"],
+      auth: auth(null),
+      basePath: "/ops",
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/sw.js"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/javascript; charset=utf-8",
+    );
+    expect(response.headers.get("service-worker-allowed")).toBe("/ops");
+    const source = await response.text();
+    expect(source).toContain('addEventListener("push"');
+    expect(source).not.toContain('addEventListener("fetch"');
+  });
+
   it("serves the install icon without auth", async () => {
     const app = dashboard(null);
 
@@ -275,26 +447,6 @@ describe("dashboard shell routes", () => {
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
   });
 
-  it("serves the component gallery only when enabled", async () => {
-    const disabled = createDashboardApp({ authRequired: false });
-    const enabled = createDashboardApp({
-      authRequired: false,
-      componentGallery: true,
-    });
-
-    expect(
-      (await disabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(404);
-    expect(
-      (await enabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(200);
-    expect(
-      await (
-        await enabled.fetch(new Request("http://localhost/api/config"))
-      ).json(),
-    ).toMatchObject({ componentGallery: true });
-  });
-
   it("renders a browser-readable forbidden page for denied dashboard routes", async () => {
     const app = dashboard({
       user: {
@@ -308,7 +460,9 @@ describe("dashboard shell routes", () => {
     expect(response.status).toBe(403);
     expect(response.headers.get("content-type")).toContain("text/html");
     const html = await response.text();
-    expect(html).toContain("<style>");
+    expect(html).toContain(
+      `<link rel="stylesheet" href="/_junior/dashboard/assets/${readDashboardClientManifest().stylesheet}" />`,
+    );
     expect(html).toContain("Access denied");
   });
 });

@@ -77,8 +77,9 @@ After scaffolding:
 
 1. Run `cd my-bot && pnpm install`.
 2. Fill in the required values from `.env.example`, including `DATABASE_URL`.
-3. Run `pnpm dev`.
-4. Check `http://localhost:3000/health`.
+3. Run `pnpm exec junior upgrade` to apply the schema to your local database.
+4. Run `pnpm dev`.
+5. Check `http://localhost:3000/health`.
 
 For the complete setup flow, continue with [Quickstart](/start-here/quickstart/).
 

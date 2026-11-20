@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -21,6 +21,7 @@ export type LoadSkillResult = {
   location?: string;
   path_resolution?: string;
   instructions?: string;
+  loadable_skills?: string[];
 } & Record<string, unknown>;
 
 function toLoadedSkill(
@@ -46,7 +47,9 @@ function toLoadedSkill(
     ...(metadata?.pluginProvider
       ? { pluginProvider: metadata.pluginProvider }
       : undefined),
-    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : undefined),
+    ...(metadata?.allowedTools
+      ? { allowedTools: metadata.allowedTools }
+      : undefined),
     body: result.instructions,
   };
 }
@@ -85,11 +88,15 @@ async function loadSkillFromHost(
   };
 }
 
-/** Create the tool that loads skill instructions for the current turn. */
+/**
+ * Create the tool that loads skill instructions for the current turn.
+ *
+ * @runBuilt loadSkill
+ */
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
-    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+    onSkillLoaded?: ((skill: Skill) => void | Promise<void>) | undefined;
   },
 ) {
   return zodTool({
@@ -105,7 +112,7 @@ export function createLoadSkillTool(
       skill_name: z
         .string()
         .min(1)
-        .describe("Skill name to load, without the leading slash."),
+        .describe("Skill name to load, without the leading `$`."),
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ skill_name }) => {
@@ -114,7 +121,22 @@ export function createLoadSkillTool(
       if (loadedSkill) {
         await options?.onSkillLoaded?.(loadedSkill);
       }
-      return result;
+      // `availableSkills` holds the manual-only skills that this skill
+      // references, but `<available-skills>` leaves them out, so name them
+      // here.
+      const references =
+        availableSkills.find((skill) => skill.name === result.skill_name)
+          ?.references ?? [];
+      const loadable = references.filter(
+        (name) =>
+          name !== result.skill_name &&
+          availableSkills.some(
+            (skill) => skill.name === name && skill.disableModelInvocation,
+          ),
+      );
+      return loadable.length > 0
+        ? { ...result, loadable_skills: loadable }
+        : result;
     },
   });
 }

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { processWorkspaceSnapshotJob } from "@/chat/sandbox/snapshot/job-runner";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -17,11 +17,11 @@ const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 const LIVE_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
-  if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
+  if (process.env["VERCEL_OIDC_TOKEN"]?.trim()) return true;
   return Boolean(
-    process.env.VERCEL_TOKEN?.trim() &&
-    process.env.VERCEL_TEAM_ID?.trim() &&
-    process.env.VERCEL_PROJECT_ID?.trim(),
+    process.env["VERCEL_TOKEN"]?.trim() &&
+    process.env["VERCEL_TEAM_ID"]?.trim() &&
+    process.env["VERCEL_PROJECT_ID"]?.trim(),
   );
 }
 
@@ -54,7 +54,9 @@ describe.skipIf(!sandboxCredentialsReady())(
 
     afterEach(async () => {
       try {
-        await deleteWorkspaceSnapshotBuilders(builderNames.splice(0));
+        await getSandboxProvider().deleteWorkspaceSnapshotBuilders(
+          builderNames.splice(0),
+        );
       } finally {
         await disconnectStateAdapter();
       }

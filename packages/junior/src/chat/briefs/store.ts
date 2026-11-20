@@ -1,8 +1,14 @@
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq, lte, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
+import { microUsdToUsd, usdToMicroUsd } from "@/db/micro-usd";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
-import { conversationBriefSchema, type ConversationBrief } from "./schema";
+import {
+  conversationBriefSchema,
+  parseStoredBrief,
+  type ConversationBrief,
+} from "./schema";
 
 export type ConversationBriefVersion = {
   conversationId: string;
@@ -26,10 +32,12 @@ function briefVersionFromRow(
     version: row.version,
     turnId: row.turnId,
     throughSeq: row.throughSeq,
-    content: conversationBriefSchema.parse(row.content),
+    content: parseStoredBrief(row.content),
     searchText: row.searchText,
     modelId: row.modelId,
-    ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
+    ...(row.costMicroUsd !== null
+      ? { costUsd: microUsdToUsd(row.costMicroUsd) }
+      : undefined),
     createdAt: row.createdAt,
   };
 }
@@ -91,17 +99,21 @@ export async function appendConversationBrief(
       .from(juniorConversationBriefs)
       .where(eq(juniorConversationBriefs.conversationId, input.conversationId));
     const version = (versions[0]?.version ?? 0) + 1;
+    const content = conversationBriefSchema.parse(input.content);
     const inserted = await tx
+      .with(conversationDetailTouch(tx, [input.conversationId]))
       .insert(juniorConversationBriefs)
       .values({
         conversationId: input.conversationId,
         version,
         turnId: input.turnId,
         throughSeq: input.throughSeq,
-        content: conversationBriefSchema.parse(input.content),
+        content,
+        outcomeStatus: content.outcome.status,
         searchText: input.searchText,
         modelId: input.modelId,
-        costUsd: input.costUsd ?? null,
+        costMicroUsd:
+          input.costUsd === undefined ? null : usdToMicroUsd(input.costUsd),
       })
       .onConflictDoNothing({
         target: [
@@ -146,6 +158,29 @@ export async function readLatestConversationBrief(
     .select()
     .from(juniorConversationBriefs)
     .where(eq(juniorConversationBriefs.conversationId, conversationId))
+    .orderBy(desc(juniorConversationBriefs.version))
+    .limit(1);
+  return rows[0] ? briefVersionFromRow(rows[0]) : undefined;
+}
+
+/**
+ * Read the newest Brief version that covers no event after `seq`. That is the
+ * Brief as a reader saw it when they stopped at `seq`.
+ */
+export async function readConversationBriefThrough(
+  db: JuniorDatabase,
+  conversationId: string,
+  seq: number,
+): Promise<ConversationBriefVersion | undefined> {
+  const rows = await db
+    .select()
+    .from(juniorConversationBriefs)
+    .where(
+      and(
+        eq(juniorConversationBriefs.conversationId, conversationId),
+        lte(juniorConversationBriefs.throughSeq, seq),
+      ),
+    )
     .orderBy(desc(juniorConversationBriefs.version))
     .limit(1);
   return rows[0] ? briefVersionFromRow(rows[0]) : undefined;

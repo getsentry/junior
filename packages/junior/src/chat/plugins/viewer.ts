@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   identitySchema,
   userSchema,
@@ -8,12 +8,29 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { findActorIdentityId } from "@/chat/identities/actor";
+import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import {
+  clearCachedUser,
+  readCachedUserByEmail,
+} from "@/chat/identities/user-cache";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
 
-type IdentityRow = typeof juniorIdentities.$inferSelect;
-type UserRow = typeof juniorUsers.$inferSelect;
+type IdentityRow = Pick<
+  typeof juniorIdentities.$inferSelect,
+  | "displayName"
+  | "handle"
+  | "id"
+  | "provider"
+  | "providerSubjectId"
+  | "providerTenantId"
+>;
+type UserRow = Pick<
+  typeof juniorUsers.$inferSelect,
+  "displayName" | "id" | "isAdmin" | "primaryEmail"
+>;
 
 function identityFromRow(row: IdentityRow): Identity {
   return identitySchema.parse({
@@ -46,6 +63,10 @@ async function readUserById(
       asc(juniorIdentities.providerTenantId),
       asc(juniorIdentities.providerSubjectId),
     );
+  return userFromRows(userRow, identityRows);
+}
+
+function userFromRows(userRow: UserRow, identityRows: IdentityRow[]): User {
   return userSchema.parse({
     email: userRow.primaryEmail,
     id: userRow.id,
@@ -55,6 +76,15 @@ async function readUserById(
   });
 }
 
+// Every signed-in request reads its viewer, so this read uses the cache.
+async function readUserByNormalizedEmail(
+  db: JuniorDatabase,
+  normalizedEmail: string,
+): Promise<User | undefined> {
+  const cached = await readCachedUserByEmail(db, normalizedEmail);
+  return cached ? userFromRows(cached.user, cached.identities) : undefined;
+}
+
 /** Resolve or create the canonical user for one verified viewer email. */
 export async function resolveViewerUserFromSql(
   db: JuniorDatabase,
@@ -62,6 +92,10 @@ export async function resolveViewerUserFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
+  // Every authenticated request resolves its viewer. Read first, so a known
+  // user costs a cache read instead of an insert attempt and two reads.
+  const existing = await readUserByNormalizedEmail(db, normalizedEmail);
+  if (existing) return existing;
   const now = new Date();
   const rows = await db
     .insert(juniorUsers)
@@ -101,14 +135,7 @@ export async function findUserByEmailFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
-  const userRow = (
-    await db
-      .select()
-      .from(juniorUsers)
-      .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
-      .limit(1)
-  )[0];
-  return userRow ? await readUserById(db, userRow) : undefined;
+  return await readUserByNormalizedEmail(db, normalizedEmail);
 }
 
 /** Read one existing canonical user by verified email without creating a row. */
@@ -129,8 +156,16 @@ export async function updateViewerDisplayNameFromSql(
     .set({ displayName, updatedAt: new Date() })
     .where(eq(juniorUsers.id, userId))
     .returning();
+  await clearCachedUser(userId);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
+}
+
+/** Read the photo path of one canonical user: Slack, then Google. */
+export async function readViewerAvatarUrl(
+  userId: string,
+): Promise<string | undefined> {
+  return (await readUserAvatarUrls(getDb(), [userId])).get(userId);
 }
 
 /** Update one canonical user's display name. */
@@ -161,6 +196,7 @@ export async function setUserAdminFromSql(
     .set({ isAdmin, updatedAt: new Date() })
     .where(eq(juniorUsers.id, user.id))
     .returning();
+  await clearCachedUser(user.id);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
 }
@@ -174,7 +210,31 @@ export async function listAdminUsersFromSql(
     .from(juniorUsers)
     .where(eq(juniorUsers.isAdmin, true))
     .orderBy(asc(juniorUsers.primaryEmailNormalized));
-  return await Promise.all(rows.map((row) => readUserById(db, row)));
+  if (rows.length === 0) return [];
+  // One identity read for every admin, in the order of `readUserById`.
+  const identityRows = await db
+    .select()
+    .from(juniorIdentities)
+    .where(
+      and(
+        inArray(
+          juniorIdentities.userId,
+          rows.map((row) => row.id),
+        ),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .orderBy(
+      asc(juniorIdentities.provider),
+      asc(juniorIdentities.providerTenantId),
+      asc(juniorIdentities.providerSubjectId),
+    );
+  return rows.map((row) =>
+    userFromRows(
+      row,
+      identityRows.filter((identity) => identity.userId === row.id),
+    ),
+  );
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */
@@ -182,8 +242,23 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  if (actor.platform === "system") return undefined;
-  const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
+  const identityId = await findActorIdentityId(db, actor);
+  // The read by id returns only user Identities, so system work has no viewer.
+  return identityId ? await readIdentityByIdFromSql(db, identityId) : undefined;
+}
+
+/** Resolve the stored identity and linked user for one runtime actor. */
+export async function readActorIdentity(
+  actor: Actor,
+): Promise<{ identity: Identity; user?: User } | undefined> {
+  return await readActorIdentityFromSql(getDb(), actor);
+}
+
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityByIdFromSql(
+  db: JuniorDatabase,
+  identityId: string,
+): Promise<{ identity: Identity; user?: User } | undefined> {
   const rows = await db
     .select({
       identity: juniorIdentities,
@@ -193,10 +268,8 @@ export async function readActorIdentityFromSql(
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
+        eq(juniorIdentities.id, identityId),
         eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, actor.platform),
-        eq(juniorIdentities.providerTenantId, providerTenantId),
-        eq(juniorIdentities.providerSubjectId, actor.userId),
       ),
     )
     .limit(1);
@@ -208,9 +281,9 @@ export async function readActorIdentityFromSql(
   };
 }
 
-/** Resolve the stored identity and linked user for one runtime actor. */
-export async function readActorIdentity(
-  actor: Actor,
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityById(
+  identityId: string,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  return await readActorIdentityFromSql(getDb(), actor);
+  return await readIdentityByIdFromSql(getDb(), identityId);
 }

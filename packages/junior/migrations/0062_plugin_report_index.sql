@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_plugin_report_idx" ON "junior_conversation_events" USING btree (("payload"->>'namespace'),("payload"->>'name'),"created_at") WHERE "junior_conversation_events"."type" = 'structured_event';

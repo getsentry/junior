@@ -1,8 +1,10 @@
-import { z } from "zod";
+import { agentEventKeys } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
+import { turnEvents } from "@/chat/events/store";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 const listedResourceWatchSchema = z
@@ -11,15 +13,22 @@ const listedResourceWatchSchema = z
     label: z.string().min(1),
     identifier: z.string().min(1),
     namespace: z.string().min(1),
-    resourceType: z.string().min(1),
+    resource_type: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    quiet_events: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe(
+        "Events that start no Turn. The next Turn gets each one as a Conversation note.",
+      ),
     match: z.record(z.string(), z.unknown()).optional(),
     intent: z.string().min(1),
-    expiresAtMs: z.number().finite(),
-    firesAtMs: z.number().finite().optional(),
-    childAgent: z
+    expires_at: z.string().datetime(),
+    fires_at: z.string().datetime().optional(),
+    child_agent: z
       .object({
-        conversationId: z.string().min(1),
+        conversation_id: z.string().min(1),
         name: z.string().min(1).optional(),
       })
       .strict()
@@ -33,24 +42,28 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
+export const listWatchesToolDefinition = zodToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  description:
+    "List active watches for the current conversation and for every child agent below it. A watch with child_agent belongs to that child agent; one without belongs to the current conversation.",
+  exposure: "deferred",
+  source: RESOURCE_WATCH_TOOL_SOURCE,
+  inputSchema: z.object({}).strict(),
+  outputSchema,
+});
+
 /**
  * Create the tool that lists the active watches this conversation owns: its
  * own and those of every child agent below it.
  */
 export function createListWatchesTool(context: ToolRuntimeContext) {
   return zodTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    description:
-      "List active watches for the current conversation and for every child agent below it. A watch with childAgent belongs to that child agent; one without belongs to the current conversation.",
-    exposure: "deferred",
-    source: RESOURCE_WATCH_TOOL_SOURCE,
-    inputSchema: z.object({}).strict(),
-    outputSchema,
+    ...listWatchesToolDefinition,
     async execute() {
       const owned = await listOwnedWatches(context.conversationId);
       const details = {
@@ -59,13 +72,27 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
           label: subscription.label,
           identifier: subscription.identifier,
           namespace: subscription.namespace,
-          resourceType: subscription.resourceType,
-          events: subscription.events,
-          ...(subscription.match ? { match: subscription.match } : undefined),
+          resource_type: subscription.resourceType,
+          events: turnEvents(subscription),
+          ...(subscription.quietEvents
+            ? { quiet_events: subscription.quietEvents }
+            : undefined),
+          ...(subscription.match
+            ? { match: agentEventKeys(subscription.match) }
+            : undefined),
           intent: subscription.intent,
-          expiresAtMs: subscription.expiresAtMs,
-          firesAtMs: subscription.firesAtMs,
-          ...(childAgent ? { childAgent } : undefined),
+          expires_at: new Date(subscription.expiresAtMs).toISOString(),
+          ...(subscription.firesAtMs !== undefined
+            ? { fires_at: new Date(subscription.firesAtMs).toISOString() }
+            : undefined),
+          ...(childAgent
+            ? {
+                child_agent: {
+                  conversation_id: childAgent.conversationId,
+                  ...(childAgent.name ? { name: childAgent.name } : undefined),
+                },
+              }
+            : undefined),
         })),
       };
       return {

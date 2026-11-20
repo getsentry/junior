@@ -1,10 +1,10 @@
 /**
- * Domains that may use Junior. Slack authors must have a Slack profile email
- * on one of them, and dashboard Google sign-ins must come from a Google
- * Workspace account whose `hd` claim is one of them. Slack and the dashboard
- * share one list.
+ * Read the domain list that may use Junior. Slack authors must have a Slack
+ * profile email on one of them, and dashboard Google sign-ins must come from
+ * a Google Workspace account whose `hd` claim is one of them. Slack and the
+ * dashboard share one list. `chat/identities/trust` decides who matches.
  */
-import { z } from "zod";
+import * as z from "zod";
 
 /** Read a list env var: a JSON string array or comma-separated values. */
 export function readEnvList(name: string): string[] | undefined {
@@ -48,18 +48,9 @@ export function assertNoLegacyAllowedDomains(
       "dashboard.allowedGoogleDomains was removed; set createApp({ allowedDomains }) instead",
     );
   }
-  if (process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS?.trim()) {
+  if (process.env["JUNIOR_DASHBOARD_GOOGLE_DOMAINS"]?.trim()) {
     throw new Error(
       "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
     );
   }
-}
-
-/** Return whether a verified domain may use Junior. An empty list allows all. */
-export function isAllowedDomain(
-  domain: string | undefined,
-  allowedDomains: readonly string[],
-): boolean {
-  if (allowedDomains.length === 0) return true;
-  return Boolean(domain && allowedDomains.includes(domain.toLowerCase()));
 }

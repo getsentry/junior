@@ -58,21 +58,23 @@ export interface McpAuthOrchestrationInput {
   abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
-  actorId?: string;
-  channelId?: string;
+  actorId?: string | undefined;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
-  toolChannelId?: string;
+  threadTs?: string | undefined;
+  toolChannelId?: string | undefined;
   userMessage: string;
-  pendingAuth?: ConversationPendingAuthState;
+  pendingAuth?: ConversationPendingAuthState | undefined;
   getConfiguration: () => Record<string, unknown>;
-  recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState | undefined,
-  ) => void | Promise<void>;
+  recordPendingAuth?:
+    | ((
+        pendingAuth: ConversationPendingAuthState | undefined,
+      ) => void | Promise<void>)
+    | undefined;
   /** When false, required auth hard-fails instead of pausing for an OAuth link. */
   interactiveAuthEnabled?: boolean;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 }
 
 export interface McpAuthOrchestration {
@@ -195,17 +197,21 @@ export function createMcpAuthOrchestration(
       );
     }
 
-    const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: input.pendingAuth,
-      kind: "mcp",
-      provider,
-      actorId,
-      sessionId,
-    });
+    // The callback deletes an authorization attempt when it finishes or expires,
+    // so reuse a recent link only while its attempt still exists.
     const reusedAuthSessionId =
-      reusingPendingLink && input.pendingAuth?.kind === "mcp"
+      input.pendingAuth?.kind === "mcp" &&
+      canReusePendingAuthLink({
+        pendingAuth: input.pendingAuth,
+        kind: "mcp",
+        provider,
+        actorId,
+        sessionId,
+      }) &&
+      (await getMcpAuthSession(input.pendingAuth.authSessionId))
         ? input.pendingAuth.authSessionId
         : undefined;
+    const reusingPendingLink = reusedAuthSessionId !== undefined;
     const activeAuthSessionId = reusedAuthSessionId ?? authSessionId;
     await patchMcpAuthSession(activeAuthSessionId, {
       configuration: { ...input.getConfiguration() },
@@ -236,8 +242,7 @@ export function createMcpAuthOrchestration(
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
         label: `Connect your ${providerLabel} account`,
-        completionText:
-          "Once you've authorized, Junior will continue automatically.",
+        completionText: "Once you've authorized, I'll continue automatically.",
       };
       const delivery = await deliverOAuthAuthorization(authorizationRequest, {
         authorization: input.authorization,

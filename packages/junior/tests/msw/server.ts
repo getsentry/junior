@@ -6,6 +6,7 @@ import {
 } from "./handlers/eval-mcp-auth";
 import { allowsLiveTestHttpHost } from "../../../junior-testing/src/http";
 import { githubApiHandlers } from "./handlers/github-api";
+import { mcpClientMetadataHandlers } from "./handlers/mcp-client-metadata";
 import { setupServer } from "msw/node";
 import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
@@ -26,7 +27,7 @@ export function enforceUnhandledExternalRequestFailure(request: Request): void {
   const url = new URL(request.url);
   if (
     allowsLiveTestHttpHost(url.hostname, {
-      juniorBaseUrl: process.env.JUNIOR_BASE_URL,
+      juniorBaseUrl: process.env["JUNIOR_BASE_URL"],
     }) &&
     !HOST_HTTP_FIXTURE_ALLOWLIST.has(url.hostname)
   ) {
@@ -44,4 +45,5 @@ export const mswServer = setupServer(
   ...evalMcpAuthHandlers,
   ...evalOAuthHandlers,
   ...githubApiHandlers,
+  ...mcpClientMetadataHandlers,
 );

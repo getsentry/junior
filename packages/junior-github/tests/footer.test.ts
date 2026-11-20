@@ -14,8 +14,8 @@ afterEach(() => {
 
 describe("GitHub conversation footer", () => {
   it("prefers the Junior dashboard when enabled", () => {
-    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
-    process.env.SENTRY_ORG_SLUG = "acme";
+    process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
+    process.env["SENTRY_ORG_SLUG"] = "acme";
 
     expect(
       appendGitHubFooter(
@@ -24,13 +24,13 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
-      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+      "[View Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
     );
   });
 
   it("uses only the Junior dashboard when Sentry is disabled", () => {
-    delete process.env.SENTRY_DSN;
-    delete process.env.SENTRY_ORG_SLUG;
+    delete process.env["SENTRY_DSN"];
+    delete process.env["SENTRY_ORG_SLUG"];
 
     expect(
       appendGitHubFooter(
@@ -39,22 +39,22 @@ describe("GitHub conversation footer", () => {
         "https://junior.example.com/conversations/slack%3AC123%3A1712345.0001",
       ),
     ).toContain(
-      "[View Junior Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001)",
+      "[View Session](https://junior.example.com/conversations/slack%3AC123%3A1712345.0001)",
     );
   });
 
   it("falls back to Sentry when the dashboard is disabled", () => {
-    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
-    process.env.SENTRY_ORG_SLUG = "acme";
+    process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
+    process.env["SENTRY_ORG_SLUG"] = "acme";
 
     expect(appendGitHubFooter("PR body", conversationId)).toContain(
-      "[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
+      "[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)",
     );
   });
 
   it("omits the footer when neither dashboard nor Sentry is enabled", () => {
-    delete process.env.SENTRY_DSN;
-    delete process.env.SENTRY_ORG_SLUG;
+    delete process.env["SENTRY_DSN"];
+    delete process.env["SENTRY_ORG_SLUG"];
 
     expect(appendGitHubFooter("PR body", conversationId)).toBe("PR body");
   });

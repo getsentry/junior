@@ -1,30 +1,41 @@
 import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../../components/StatusChip";
+import { OutboundLink } from "../../components/OutboundLink";
+import { IdleText } from "../../conversations/codeChangeIdle";
 
-function stateTone(state: CodeChangeSummaryReport["state"]) {
+// `draft` only means something while the change is open; a closed draft
+// shows as closed.
+function stateLabel(change: CodeChangeSummaryReport) {
+  return change.draft && change.state === "open" ? "draft" : change.state;
+}
+
+function stateTone(state: ReturnType<typeof stateLabel>) {
   if (state === "merged") return "success" as const;
   if (state === "open") return "info" as const;
   return "neutral" as const;
 }
 
-/** Show one code change with its title, repository reference, and state. */
+/**
+ * Show one code change with its title, repository reference, and state. An
+ * open change also shows the time since its last activity.
+ */
 export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
+  const state = stateLabel(change);
   return (
     <div className="flex min-w-0 items-center justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0">
       <div className="min-w-0">
         <div className="truncate font-display text-sm text-dashboard-text">
           {change.url ? (
-            <a
-              className="text-inherit no-underline hover:text-dashboard-accent-text"
+            // Truncate the title, not the link, so the outbound icon stays.
+            <OutboundLink
+              className="inline-flex max-w-full items-center text-inherit no-underline hover:text-dashboard-accent-text"
               href={change.url}
-              rel="noreferrer"
-              target="_blank"
             >
-              {title}
-            </a>
+              <span className="truncate">{title}</span>
+            </OutboundLink>
           ) : (
             title
           )}
@@ -33,9 +44,16 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
           {change.repository} #{change.number}
         </div>
       </div>
-      <StatusChip size="compact" tone={stateTone(change.state)}>
-        {change.state}
-      </StatusChip>
+      <div className="flex shrink-0 items-center gap-3">
+        {change.state === "open" ? (
+          <span className="font-mono text-xs text-dashboard-text-muted">
+            <IdleText change={change} nowMs={Date.now()} />
+          </span>
+        ) : null}
+        <StatusChip size="compact" tone={stateTone(state)}>
+          {state}
+        </StatusChip>
+      </div>
     </div>
   );
 }

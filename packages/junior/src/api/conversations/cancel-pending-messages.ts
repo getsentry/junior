@@ -7,7 +7,7 @@ import { throwApiError } from "../http";
 import type {
   CancelConversationPendingMessagesBody,
   CancelConversationPendingMessagesResponse,
-} from "../schema/conversation";
+} from "../schema/conversation-pending-messages";
 import { readConversationAccessFromSql } from "./access";
 
 /** Cancel accepted human-facing mailbox rows for one conversation participant. */

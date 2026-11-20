@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Duration, formatDuration } from "../../components/Duration";
+import { Duration } from "../../components/Duration";
 import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
 import { Link, useParams } from "react-router";
 import type {
@@ -26,6 +26,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
+import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
@@ -33,6 +34,8 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
+import { formatDuration } from "../../time";
+import { NAV_PAGES } from "../../navPages";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -42,7 +45,9 @@ function runtimeLabel(durationMs: number, conversations: number): string {
 /** Render one actor's profile and activity summary. */
 export function PersonProfilePage() {
   const params = useParams();
-  const email = params.email ? decodeURIComponent(params.email) : undefined;
+  const email = params["email"]
+    ? decodeURIComponent(params["email"])
+    : undefined;
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
   const codeQuery = useActorCodeData(email);
@@ -72,7 +77,7 @@ export function PersonProfilePage() {
 
 /** Present one actor's activity and dimensions. */
 export function Profile(props: {
-  code?: CodePersonReport;
+  code?: CodePersonReport | undefined;
   codeError?: boolean;
   codeLoading?: boolean;
   pluginReports?: PluginOperationalReport[];
@@ -92,7 +97,7 @@ export function Profile(props: {
     <div className="grid min-w-0 gap-5">
       <Link
         className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-        to="/system/people"
+        to={NAV_PAGES.people.to}
       >
         <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
         Back to people
@@ -111,8 +116,8 @@ export function Profile(props: {
         title={displayName}
       />
 
-      <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <SectionIntro id="profile-metrics-title" title="Usage over time" />
+      <section className="grid gap-4" aria-labelledby={anchorTitleId("usage")}>
+        <SectionIntro anchor="usage" title="Usage over time" />
         <SystemMetricCharts
           bucketUnit={timeRangeBucketUnit(range)}
           days={selectTimeSeries({

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "../src/events";
 
@@ -23,7 +24,7 @@ describe("memory conversation events", () => {
     ).toEqual(["preference", "private"]);
 
     expect(() =>
-      memoriesCapturedEvent.parse({
+      memoriesCapturedEventV2.parse({
         costUsd: 0.0042,
         memories: [
           {
@@ -40,10 +41,13 @@ describe("memory conversation events", () => {
 
   it("omits empty extraction results from transcript presentation", () => {
     expect(
-      memoriesCapturedEvent.renderEvent({
+      memoriesCapturedEventV2.renderEvent({
         costUsd: 0.0042,
         memories: [],
       }),
+    ).toBeUndefined();
+    expect(
+      memoriesCapturedEvent.renderEvent({ archived: [], memories: [] }),
     ).toBeUndefined();
   });
 
@@ -60,6 +64,7 @@ describe("memory conversation events", () => {
     const content = `Long memory ${"x".repeat(1_000)}`;
 
     const presentation = memoriesCapturedEvent.renderEvent({
+      archived: [],
       memories: [
         {
           content,
@@ -71,13 +76,14 @@ describe("memory conversation events", () => {
       ],
     });
 
-    expect(presentation?.title).toBe("1 memory captured");
+    expect(presentation?.title).toBe("Captured 1 memory");
     expect(presentation?.preview).toBeUndefined();
     expect(presentation?.details?.[0]?.title).toBe(content);
   });
 
   it("pluralizes captured memory counts", () => {
     const presentation = memoriesCapturedEvent.renderEvent({
+      archived: [],
       memories: [
         {
           content: "Use pnpm.",
@@ -96,6 +102,52 @@ describe("memory conversation events", () => {
       ],
     });
 
-    expect(presentation?.title).toBe("2 memories captured");
+    expect(presentation?.title).toBe("Captured 2 memories");
+  });
+
+  it("lists memories that the Turn retired after the captured ones", () => {
+    const presentation = memoriesCapturedEvent.renderEvent({
+      archived: [
+        {
+          content: "Uses skipOpenTelemetrySetup to skip OTel setup.",
+          id: "memory-old",
+          kind: "knowledge",
+          observedAtMs: 1,
+          reason: "contradicted",
+          scope: "public",
+          supersededById: "memory-new",
+        },
+      ],
+      memories: [
+        {
+          content: "Uses enableOpenTelemetrySetup to control OTel setup.",
+          id: "memory-new",
+          kind: "knowledge",
+          observedAtMs: 2,
+          scope: "public",
+        },
+      ],
+    });
+
+    expect(presentation?.title).toBe("Captured 1 memory, archived 1");
+    expect(presentation?.details?.[1]).toEqual({
+      metadata: ["knowledge", "contradicted"],
+      title: "Uses skipOpenTelemetrySetup to skip OTel setup.",
+    });
+    expect(
+      memoriesCapturedEvent.renderEvent({
+        archived: [
+          {
+            content: "Old fact.",
+            id: "memory-old",
+            kind: "knowledge",
+            observedAtMs: 1,
+            reason: "superseded",
+            scope: "public",
+          },
+        ],
+        memories: [],
+      })?.title,
+    ).toBe("Archived 1 memory");
   });
 });

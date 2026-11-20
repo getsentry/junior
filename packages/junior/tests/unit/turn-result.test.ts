@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
-
-const executionProfile = {
-  profile: "standard",
-  reasoningLevel: "medium" as const,
-  reason: "test",
-};
 
 describe("buildTurnResult", () => {
   it("requires a completed answer after a progress message and tool result", () => {
@@ -33,7 +26,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -69,7 +62,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -104,7 +97,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 1,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -136,7 +129,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -171,7 +164,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Updated answer.");
@@ -208,7 +201,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe(
@@ -245,7 +238,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -254,6 +247,32 @@ describe("buildTurnResult", () => {
       "Anthropic stream ended before message_stop",
     );
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
+  it("treats a provider refusal as a content policy block", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          rawStopReason: "refusal",
+          errorMessage: "Cyber safeguards flagged this message.",
+        },
+      ],
+      userInput: "Do the thing",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      reasoningLevel: "medium",
+    });
+
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.diagnostics.providerError).toMatchObject({
+      kind: "content_policy",
+      retryable: false,
+    });
   });
 
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
@@ -276,32 +295,10 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Handled it.");
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(true);
-  });
-
-  it("treats the no-reply marker as intentional silent completion", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: NO_REPLY_MARKER }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      executionProfile,
-    });
-
-    expect(reply.text).toBe("");
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
@@ -327,14 +324,43 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
     expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
-  it("keeps no-reply marker silent when side-effect tools also ran", () => {
+  it("posts nothing after a noReply call, even when text follows it", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "noReply",
+          isError: false,
+          content: [{ type: "text", text: "{}" }],
+          details: { note: "Checks still pending." },
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Checks are still pending." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "check suite passed",
+      toolCalls: ["noReply"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      reasoningLevel: "medium",
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.noReply).toEqual({ note: "Checks still pending." });
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
+  it("keeps a legacy marker reply silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -345,7 +371,7 @@ describe("buildTurnResult", () => {
         },
         {
           role: "assistant",
-          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          content: [{ type: "text", text: "[[NO_REPLY]]" }],
           stopReason: "stop",
         },
       ],
@@ -354,7 +380,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("");
@@ -384,7 +410,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 1,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
     });
 
     expect(reply.text).toBe("Here's the image.");
@@ -406,7 +432,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
-      executionProfile,
+      reasoningLevel: "medium",
       usage: {
         inputTokens: 321,
         outputTokens: 144,

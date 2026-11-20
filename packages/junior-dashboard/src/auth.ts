@@ -1,3 +1,4 @@
+import { isAllowedDomain, parseEmail } from "@sentry/junior/api";
 import { dashboardSessionSchema } from "./api/schema";
 import type { DashboardSession } from "./api/schema";
 
@@ -8,7 +9,11 @@ export type { DashboardSession };
 export interface DashboardAuth {
   handler(request: Request): Promise<Response>;
   getSession(request: Request): Promise<DashboardSession | null>;
-  signInWithGoogle(request: Request, callbackURL: string): Promise<Response>;
+  signInWithGoogle(
+    request: Request,
+    callbackURL: string,
+    errorCallbackURL: string,
+  ): Promise<Response>;
 }
 
 /** Read a personal bearer token from one dashboard API request. */
@@ -34,13 +39,11 @@ export function dashboardSessionIsAuthorized(
   session: DashboardSession,
   allowedDomains: string[],
 ): boolean {
-  const email = session.user.email.toLowerCase();
-  const separator = email.lastIndexOf("@");
-  const domain = separator > 0 ? email.slice(separator + 1) : undefined;
-  return Boolean(
-    session.user.emailVerified &&
-    domain !== undefined &&
-    allowedDomains.includes(domain),
+  const email = parseEmail(session.user.email);
+  return (
+    session.user.emailVerified === true &&
+    email !== undefined &&
+    isAllowedDomain(email.domain, { allowedDomains, ifNoDomains: "deny" })
   );
 }
 

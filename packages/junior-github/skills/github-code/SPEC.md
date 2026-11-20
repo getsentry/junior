@@ -10,9 +10,11 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Preserve unrelated work; reject destructive Git operations except `--force-with-lease` pushes to branches Junior pushed or the requester named.
 - Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
 - Install dependencies with the lockfile frozen mode before verification when needed.
-- Finish completed edits with a pushed PR unless the user opts out; default draft.
+- Finish every code change with a pushed PR, without asking, unless the user opts out or asked for investigation only. Open it as a draft unless the requester asks for a ready PR: opening a PR ready asks its code owners at once, and only the draft Watch checks the changed files against CODEOWNERS. An open scope question goes in the PR body, not in a stop. The Watch of a draft marks it ready when its required checks pass and no decision is open, so open decisions of a draft go in its PR body. A draft whose changed files have CODEOWNERS owners, or whose repo's root AGENTS.md asks for draft PRs or for a person to mark them ready, stays a draft unless the requester said to mark it ready, and Junior tells the requester that it waits for their review.
+- After each push to a branch with an open PR, check mergeability. Resolve conflicts without asking, by merging the PR base branch (usually the default branch). Never rebase for this, except in a stack: a stack merges only with a linear history, so stacked PRs restack with `gh stack`. GitHub sends no event for a new conflict, and conflicted PRs get no new checks. The plugin publishes `pull_request.merge_conflict` for a watched PR only when another webhook event arrives for it, and for a Junior PR only while people work on it and never for a draft, so the post-push check stays.
 - Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
 - Report exact validation and permission failures.
+- For 5xx, timeout, and connection failures, and for stalled or unexplained check failures, check GitHub status with `github_getStatus` (or the incidents on a `pull_request.checks.failed` event) before diagnosing. Report a matching incident as the likely cause; with no match, do not blame an outage.
 
 ## Runtime architecture
 
@@ -34,7 +36,7 @@ Should not trigger for issue-only ops, non-GitHub ticketing, product telemetry, 
 1. Run the repository skill validator.
 2. Confirm all referenced files exist.
 3. Confirm `SKILL.md` stays a router (workflow detail lives in references).
-4. Confirm code-edit completion defaults to a draft PR.
+4. Confirm code-edit completion always opens a PR, and an open scope question does not stop it.
 
 ## Maintenance
 

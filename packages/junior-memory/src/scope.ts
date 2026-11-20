@@ -18,28 +18,15 @@ export interface ResolvedMemorySubject {
   subjectType: Extract<MemorySubjectType, "user" | "conversation">;
 }
 
-/** Public memories are visible everywhere. */
+/**
+ * Memory is public only. Reads and writes use this scope. A migration deletes
+ * legacy private rows. Reads still filter by scope, so a private row that an
+ * older deploy writes during a rollout stays hidden.
+ */
 export const publicMemoryScope: ResolvedMemoryScope = {
   scope: "public",
   scopeKey: PUBLIC_SCOPE_KEY,
 };
-
-function privateMemoryScope(userId: string): ResolvedMemoryScope {
-  return { scope: "private", scopeKey: userId };
-}
-
-/** Set memory access from the Source. */
-export function deriveMemoryScope(
-  ctx: MemoryRuntimeContext,
-): ResolvedMemoryScope {
-  if ("visibility" in ctx.source && ctx.source.visibility === "public") {
-    return publicMemoryScope;
-  }
-  if (!ctx.userId) {
-    throw new Error("Private memory requires a User.");
-  }
-  return privateMemoryScope(ctx.userId);
-}
 
 /** Set what a memory is about. Access is set separately. */
 export function deriveMemorySubject(
@@ -62,14 +49,4 @@ export function deriveMemorySubject(
     subjectType,
     subjectKey,
   };
-}
-
-/** Return the memory scopes that the current User can access. */
-export function deriveVisibleMemoryScopes(
-  ctx: MemoryRuntimeContext,
-): ResolvedMemoryScope[] {
-  if (!ctx.userId) {
-    return [publicMemoryScope];
-  }
-  return [publicMemoryScope, privateMemoryScope(ctx.userId)];
 }

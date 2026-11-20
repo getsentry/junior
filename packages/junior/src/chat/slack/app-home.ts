@@ -12,7 +12,8 @@ import type {
   StoredProviderAccount,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
-import { getRuntimeMetadata } from "@/chat/config";
+import { botConfig, getRuntimeMetadata } from "@/chat/config";
+import { mapBounded } from "@/chat/fan-out";
 
 interface HomeView {
   type: "home";
@@ -107,15 +108,20 @@ export async function buildHomeView(
   const descriptionText = loadDescriptionText();
   const skillsSummaryText = await buildSkillsSummaryText();
   const providers = pluginCatalogRuntime.getProviders();
-  const connectedSections: SectionBlock[] = [];
-
-  for (const plugin of providers) {
+  const connections = await mapBounded(providers, async (plugin) => {
     const tokens = await readConnectedOAuthTokens(
       userId,
       plugin,
       userTokenStore,
     );
-    if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
+    const connected =
+      Boolean(tokens) || (await hasConnectedMcpAccount(userId, plugin));
+    return { connected, plugin, tokens };
+  });
+  const connectedSections: SectionBlock[] = [];
+
+  for (const { connected, plugin, tokens } of connections) {
+    if (!connected) continue;
 
     connectedSections.push({
       type: "section",
@@ -153,7 +159,7 @@ export async function buildHomeView(
         type: "header",
         text: {
           type: "plain_text",
-          text: "Junior",
+          text: botConfig.userName,
         },
       },
       {

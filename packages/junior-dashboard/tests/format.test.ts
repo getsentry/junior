@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NOW_MS } from "../src/mock-reporting/fixtures";
 import type {
   ConversationReportEvent,
   ConversationReportEventData,
@@ -17,29 +16,21 @@ import {
   formatCompactNumber,
   formatConversationDuration,
   formatCostTotal,
-  formatElapsedDuration,
   formatPayloadSize,
-  formatRelativeMessageTimestamp,
-  formatRuntime,
-  formatTime,
-  formatTranscriptTimestampDetails,
-  formatTranscriptDuration,
   formatUsageTotal,
-  parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
-  setDashboardTimeZone,
   summarizeMessages,
   summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
+  transcriptMessageActor,
 } from "../src/client/format";
-import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
   vi.useRealTimers();
-  setDashboardTimeZone("America/Los_Angeles");
+  vi.unstubAllEnvs();
 });
 
 function event(
@@ -59,6 +50,7 @@ function transcript(
 ): ConversationTranscript {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -69,7 +61,8 @@ function transcript(
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
     ...overrides,
   };
@@ -128,14 +121,6 @@ describe("dashboard conversation formatting", () => {
     });
   });
 
-  it("formats human-readable durations at increasing scales", () => {
-    expect(formatDuration(999)).toBe("999ms");
-    expect(formatDuration(3_500)).toBe("3.5s");
-    expect(formatDuration(2_700_000)).toBe("45m");
-    expect(formatDuration(839_497_000)).toBe("9d 17h");
-    expect(formatDuration(11_117_520_000)).toBe("4mo 8d");
-  });
-
   it("formats serialized payload sizes for transcript metadata", () => {
     expect(formatPayloadSize("hello")).toBe("5b");
     expect(formatPayloadSize({ ok: true })).toBe("11b");
@@ -144,51 +129,10 @@ describe("dashboard conversation formatting", () => {
     expect(formatPayloadSize(undefined)).toBeUndefined();
   });
 
-  it("formats cumulative conversation runtime", () => {
-    expect(formatRuntime(3_500)).toBe("3.5s");
-    expect(formatRuntime(0)).toBe("");
-    expect(formatTranscriptDuration({ cumulativeDurationMs: 7_000 })).toBe(
-      "7.0s",
-    );
-  });
-
-  it("formats elapsed transcript event durations", () => {
-    expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
-    expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
-    expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
-  });
-
-  it("formats old transcript timestamps relative to now", () => {
-    vi.useFakeTimers({ now: NOW_MS });
-    expect(formatRelativeMessageTimestamp(NOW_MS - 86_400_000)).toBe(
-      "yesterday",
-    );
-  });
-
-  it("formats canonical transcript timestamp details in local time and UTC", () => {
-    setDashboardTimeZone("America/Los_Angeles");
-    const details = formatTranscriptTimestampDetails(
-      Date.parse("2026-08-10T16:00:00.000Z"),
-    );
-    expect(details.local).toContain("9:00:00 AM");
-    expect(details.utc).toContain("4:00:00 PM");
-  });
-
-  it("formats absolute timestamps in the configured dashboard timezone", () => {
-    const value = "2026-08-10T16:00:00.000Z";
-    const options: Intl.DateTimeFormatOptions = {
-      dateStyle: "medium",
-      timeStyle: "short",
-    };
-    setDashboardTimeZone("UTC");
-    expect(formatTime(value, options)).toContain("4:00 PM");
-    setDashboardTimeZone("America/Los_Angeles");
-    expect(formatTime(value, options)).toContain("9:00 AM");
-  });
-
   it("formats conversation duration from cumulative execution time", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 7_000,
         displayTitle: "Conversation",
@@ -196,7 +140,8 @@ describe("dashboard conversation formatting", () => {
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "slack",
       },
     ]);
@@ -207,6 +152,7 @@ describe("dashboard conversation formatting", () => {
   it("omits conversation runtime when no execution time is recorded", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
@@ -214,12 +160,59 @@ describe("dashboard conversation formatting", () => {
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "slack",
       },
     ]);
 
     expect(formatConversationDuration(conversation!)).toBe("none");
+  });
+
+  it("reads each message author from the conversation authors", () => {
+    const owner = {
+      avatarUrl: "/api/people/avatars/identity-web?v=1",
+      email: "owner@example.com",
+      fullName: "Owner Person",
+    };
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "web",
+          role: "user",
+          text: "ship it",
+          actorIdentityId: "identity-web",
+          actorIdentity: { fullName: "Saved Name" },
+        }),
+      ],
+      {
+        actorIdentity: { fullName: "Alice" },
+        authors: { "identity-slack": owner, "identity-web": owner },
+      },
+    );
+
+    expect(summarizeMessages(conversation).items).toEqual([
+      { author: "Owner Person", bytes: 7 },
+    ]);
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentityId: "identity-slack",
+        parts: [],
+        role: "user",
+        sourceSeq: 1,
+      }),
+    ).toBe(owner);
+    // An author who is not in the Conversation yet keeps the saved identity.
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentity: { fullName: "New Person" },
+        actorIdentityId: "identity-new",
+        parts: [],
+        role: "user",
+        sourceSeq: 2,
+      }),
+    ).toEqual({ fullName: "New Person" });
   });
 
   it("summarizes visible canonical messages and structural tools", () => {
@@ -230,7 +223,9 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          // A web send carries an email, but the label is the name.
           actorIdentity: {
+            email: "taylor@example.com",
             fullName: "Taylor Chen",
             slackUserName: "taylor",
           },
@@ -250,6 +245,7 @@ describe("dashboard conversation formatting", () => {
           startedSeq: 2,
           startedAt: "2026-01-01T00:00:02.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           parentToolCallId: "search-1",
           status: "running",
@@ -272,7 +268,7 @@ describe("dashboard conversation formatting", () => {
     expect(summarizeMessages(conversation)).toEqual({
       items: [
         { author: "Taylor Chen", bytes: 10 },
-        { author: "Junior", bytes: 4 },
+        { author: "Assistant", bytes: 4 },
       ],
       total: 2,
     });
@@ -292,6 +288,26 @@ describe("dashboard conversation formatting", () => {
       }),
     ]);
     expect(summarizeTurns(conversation)).toBeUndefined();
+  });
+
+  it("labels agent invocation input without the conversation actor", () => {
+    // Alice started the child agent, but its parent agent wrote the input.
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
+          text: "audit",
+        }),
+      ],
+      { actorIdentity: { fullName: "Alice" } },
+    );
+    expect(summarizeMessages(conversation)).toEqual({
+      items: [{ author: "Parent agent", bytes: 5 }],
+      total: 1,
+    });
   });
 
   it("uses canonical detail metadata without carrying absent fields", () => {
@@ -314,18 +330,21 @@ describe("dashboard conversation formatting", () => {
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 0,
       isParticipant: false,
+      kind: "root" as const,
       lastProgressAt: "2026-06-01T10:05:00.000Z",
       startedAt: "2026-06-01T10:00:00.000Z",
-      status: "completed" as const,
+      status: "done" as const,
       surface: "slack" as const,
     };
     const [conversation] = buildConversations([
       {
+        turnActive: false,
         ...base,
         displayTitle: "Older",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
       },
       {
+        turnActive: false,
         ...base,
         displayTitle: "Newer",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
@@ -340,13 +359,16 @@ describe("dashboard conversation formatting", () => {
     );
     expect(
       conversationActorLabel({
+        kind: "root",
         id: "1",
         cumulativeDurationMs: 0,
         displayTitle: "x",
+        isParticipant: true,
         lastProgressAt: "x",
         lastSeenAt: "x",
         startedAt: "x",
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "slack",
         actorIdentity: { email: "alice@example.com" },
       }),
@@ -358,24 +380,5 @@ describe("dashboard conversation formatting", () => {
         channelNameRedacted: false,
       }),
     ).toBe("#proj-alpha (C1)");
-  });
-});
-
-describe("transcript blocks", () => {
-  it("keeps prose as markdown and preserves fenced languages", () => {
-    expect(
-      parseMarkdownBlocks("The function returns a const value.")[0],
-    ).toMatchObject({
-      fenced: false,
-      language: "markdown",
-    });
-    expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
-      fenced: true,
-      language: "json",
-    });
-    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
-      fenced: true,
-      language: "xml",
-    });
   });
 });

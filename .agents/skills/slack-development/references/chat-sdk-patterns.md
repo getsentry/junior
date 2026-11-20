@@ -24,7 +24,7 @@ Repository-specific policy:
 - "fetching details"
 - "drafting response"
 
-4. End with a complete final answer and clear failure handling.
+4. End with a complete final response and clear failure handling.
 
 ## Why this pattern
 

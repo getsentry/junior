@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversation_participants" ADD COLUMN "unsubscribed_at" timestamp with time zone;

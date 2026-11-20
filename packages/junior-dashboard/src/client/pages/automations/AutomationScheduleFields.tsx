@@ -6,22 +6,29 @@ import {
   automationSchedulePreviewSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
-import { Field } from "../../components/Field";
-import { Select } from "../../components/Select";
-import { TextInput } from "../../components/TextInput";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../../components/ui/field";
+import { NativeSelect } from "../../components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { post, DashboardApiError } from "../../http";
-import { cn } from "../../styles";
 import {
   scheduleDraft,
   weekdays,
   type AutomationScheduleDraft,
 } from "./automationDraft";
+import { formatTime } from "../../time";
 
 /** Edit calendar fields and preview the next run without saving. */
 export function AutomationScheduleFields(props: {
   automation: Extract<AutomationEdit, { kind: "scheduled" }>;
-  value?: AutomationScheduleDraft;
+  value?: AutomationScheduleDraft | undefined;
   onChange(value: AutomationScheduleDraft | undefined): void;
 }) {
   const value = props.value ?? scheduleDraft(props.automation);
@@ -64,8 +71,9 @@ export function AutomationScheduleFields(props: {
   return (
     <>
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-        <Field label="Repeat" htmlFor="schedule-frequency">
-          <Select
+        <Field>
+          <FieldLabel htmlFor="schedule-frequency">Repeat</FieldLabel>
+          <NativeSelect
             id="schedule-frequency"
             value={frequency}
             onChange={(e) => {
@@ -106,10 +114,11 @@ export function AutomationScheduleFields(props: {
             <option value="weekly">Every week</option>
             <option value="monthly">Every month</option>
             <option value="yearly">Every year</option>
-          </Select>
+          </NativeSelect>
         </Field>
-        <Field label="Time" htmlFor="schedule-time">
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="schedule-time">Time</FieldLabel>
+          <Input
             size="comfortable"
             id="schedule-time"
             type="time"
@@ -134,43 +143,35 @@ export function AutomationScheduleFields(props: {
       {value.kind === "recurring" ? (
         <>
           {value.frequency === "weekly" ? (
-            <fieldset>
-              <legend className="mb-2 text-sm font-semibold">On</legend>
-              <div className="grid grid-cols-7 gap-1.5">
+            <FieldSet className="gap-0">
+              <FieldLegend className="mb-2" variant="label">
+                On
+              </FieldLegend>
+              <ToggleGroup
+                className="grid grid-cols-7 gap-1.5"
+                multiple
+                onValueChange={(next) =>
+                  props.onChange({ ...value, weekdays: next })
+                }
+                value={value.weekdays ?? []}
+              >
                 {[...weekdays.slice(1), weekdays[0]].map((day) => (
-                  <button
-                    type="button"
+                  <ToggleGroupItem
                     key={day}
                     aria-label={day}
-                    aria-pressed={value.weekdays?.includes(day) ?? false}
-                    onClick={() =>
-                      props.onChange({
-                        ...value,
-                        weekdays: value.weekdays?.includes(day)
-                          ? value.weekdays.filter((d) => d !== day)
-                          : [...(value.weekdays ?? []), day],
-                      })
-                    }
-                    className={cn(
-                      "min-h-11 cursor-pointer rounded-md border px-1 text-xs font-medium capitalize focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:min-h-10 sm:text-sm",
-                      value.weekdays?.includes(day)
-                        ? "border-dashboard-focus/50 bg-dashboard-focus/10 text-dashboard-focus"
-                        : "border-dashboard-border-emphasis text-dashboard-text-muted hover:bg-dashboard-fill-hover",
-                    )}
+                    className="h-auto min-h-11 min-w-0 border-dashboard-border-emphasis px-1 capitalize data-pressed:border-dashboard-focus/50 data-pressed:bg-dashboard-focus/10 data-pressed:text-dashboard-focus sm:min-h-10 sm:text-sm"
+                    value={day}
                   >
                     {day.slice(0, 3)}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
-            </fieldset>
+              </ToggleGroup>
+            </FieldSet>
           ) : null}
           <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-            <Field
-              label="Interval"
-              htmlFor="schedule-interval"
-              help="Number of calendar periods between runs."
-            >
-              <TextInput
+            <Field>
+              <FieldLabel htmlFor="schedule-interval">Interval</FieldLabel>
+              <Input
                 size="comfortable"
                 id="schedule-interval"
                 type="number"
@@ -181,9 +182,13 @@ export function AutomationScheduleFields(props: {
                   props.onChange({ ...value, interval: e.target.valueAsNumber })
                 }
               />
+              <FieldDescription id="schedule-interval-help">
+                Number of calendar periods between runs.
+              </FieldDescription>
             </Field>
-            <Field label="Start date" htmlFor="schedule-start">
-              <TextInput
+            <Field>
+              <FieldLabel htmlFor="schedule-start">Start date</FieldLabel>
+              <Input
                 size="comfortable"
                 id="schedule-start"
                 type="date"
@@ -199,8 +204,9 @@ export function AutomationScheduleFields(props: {
           </div>
           {value.frequency === "monthly" || value.frequency === "yearly" ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Day of month" htmlFor="schedule-day">
-                <TextInput
+              <Field>
+                <FieldLabel htmlFor="schedule-day">Day of month</FieldLabel>
+                <Input
                   size="comfortable"
                   id="schedule-day"
                   type="number"
@@ -216,8 +222,9 @@ export function AutomationScheduleFields(props: {
                 />
               </Field>
               {value.frequency === "yearly" ? (
-                <Field label="Month" htmlFor="schedule-month">
-                  <Select
+                <Field>
+                  <FieldLabel htmlFor="schedule-month">Month</FieldLabel>
+                  <NativeSelect
                     id="schedule-month"
                     value={value.month ?? 1}
                     onChange={(e) =>
@@ -229,21 +236,22 @@ export function AutomationScheduleFields(props: {
                   >
                     {Array.from({ length: 12 }, (_, index) => (
                       <option key={index} value={index + 1}>
-                        {new Intl.DateTimeFormat("en", {
+                        {formatTime(Date.UTC(2026, index, 1), {
                           month: "long",
                           timeZone: "UTC",
-                        }).format(new Date(Date.UTC(2026, index, 1)))}
+                        })}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </Field>
               ) : null}
             </div>
           ) : null}
         </>
       ) : (
-        <Field label="Date" htmlFor="schedule-date">
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="schedule-date">Date</FieldLabel>
+          <Input
             size="comfortable"
             id="schedule-date"
             type="date"
@@ -257,12 +265,9 @@ export function AutomationScheduleFields(props: {
           />
         </Field>
       )}
-      <Field
-        label="Timezone"
-        htmlFor="schedule-timezone"
-        help="Use an IANA timezone. The schedule follows local time, including daylight saving time."
-      >
-        <TextInput
+      <Field>
+        <FieldLabel htmlFor="schedule-timezone">Timezone</FieldLabel>
+        <Input
           size="comfortable"
           id="schedule-timezone"
           list="automation-timezones"
@@ -276,6 +281,10 @@ export function AutomationScheduleFields(props: {
             <option key={zone}>{zone}</option>
           ))}
         </datalist>
+        <FieldDescription id="schedule-timezone-help">
+          Use an IANA timezone. The schedule follows local time, including
+          daylight saving time.
+        </FieldDescription>
       </Field>
       <div
         role="status"
@@ -293,7 +302,10 @@ export function AutomationScheduleFields(props: {
             <>
               <span className="text-rose-300">{issue}</span>
               {preview.error ? (
-                <Button onClick={() => void preview.refetch()}>
+                <Button
+                  variant="outline"
+                  onClick={() => void preview.refetch()}
+                >
                   Try again
                 </Button>
               ) : null}
@@ -301,7 +313,7 @@ export function AutomationScheduleFields(props: {
           ) : nextRun ? (
             <>
               Next run{" "}
-              {new Intl.DateTimeFormat(undefined, {
+              {formatTime(nextRun, {
                 year: "numeric",
                 month: "short",
                 day: "numeric",
@@ -311,7 +323,7 @@ export function AutomationScheduleFields(props: {
                 timeZone: props.value
                   ? (preview.data?.schedule.timezone ?? "UTC")
                   : props.automation.schedule.timezone,
-              }).format(nextRun)}
+              })}
             </>
           ) : (
             "No next run."
@@ -319,7 +331,11 @@ export function AutomationScheduleFields(props: {
         </div>
       </div>
       {props.value ? (
-        <Button className="w-fit" onClick={() => props.onChange(undefined)}>
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => props.onChange(undefined)}
+        >
           Keep saved schedule
         </Button>
       ) : null}

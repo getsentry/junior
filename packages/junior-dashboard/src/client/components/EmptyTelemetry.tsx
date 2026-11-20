@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 
+import { Empty, EmptyDescription } from "./ui/empty";
+
 /** Render the dashboard empty-state block with quiet warning context. */
 export function EmptyTelemetry(props: { children: ReactNode }) {
   return (
-    <div className="min-w-0 rounded-lg border border-dashboard-border-strong bg-dashboard-bg px-4 py-3 text-base leading-relaxed text-dashboard-text-muted">
-      {props.children}
-    </div>
+    <Empty>
+      <EmptyDescription>{props.children}</EmptyDescription>
+    </Empty>
   );
 }

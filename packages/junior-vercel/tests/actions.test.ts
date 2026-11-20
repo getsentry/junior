@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 
@@ -17,7 +18,9 @@ function fixture(...responses: Response[]) {
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   return {
     fetch,
-    tools: vercelPlugin().hooks!.tools!({ egress: { fetch } } as never),
+    tools: bindPluginTools(vercelPlugin().hooks!.tools!(), {
+      egress: { fetch },
+    } as never),
   };
 }
 
@@ -36,12 +39,12 @@ describe("Vercel actions", () => {
           target: target === "production" ? "production" : null,
         }),
       );
-      const result = await tools.deploymentCreate.execute?.(
+      const result = await tools["deploymentCreate"].execute?.(
         {
           project: "other-app",
           team: "another-team",
           ref: "feature/test",
-          commitSha: sha,
+          commit_sha: sha,
           target,
         },
         options,
@@ -74,8 +77,8 @@ describe("Vercel actions", () => {
             },
           },
         ],
-        deploymentId: deployment.id,
-        commitSha: sha,
+        deployment_id: deployment.id,
+        commit_sha: sha,
         url: "https://example.vercel.app",
       });
       expect(JSON.stringify(result)).not.toContain("secret");
@@ -90,21 +93,21 @@ describe("Vercel actions", () => {
       Response.json({ alias: "qa.example.com", deploymentId: "dpl_other" }),
     );
     await expect(
-      tools.deploymentInspect.execute?.(
+      tools["deploymentInspect"].execute?.(
         { deployment: deployment.id, team: "team_example" },
         options,
       ),
-    ).resolves.toMatchObject({ state: "READY", deploymentId: deployment.id });
+    ).resolves.toMatchObject({ state: "READY", deployment_id: deployment.id });
     await expect(
-      tools.aliasAssign.execute?.(
+      tools["aliasAssign"].execute?.(
         {
-          deploymentId: deployment.id,
+          deployment_id: deployment.id,
           alias: "qa.example.com",
           team: "team_example",
         },
         options,
       ),
-    ).resolves.toMatchObject({ matches: false, deploymentId: "dpl_other" });
+    ).resolves.toMatchObject({ matches: false, deployment_id: "dpl_other" });
     const assignment = fetch.mock.calls[1][0].request;
     expect(assignment.url).toBe(
       `https://api.vercel.com/v2/deployments/${deployment.id}/aliases?teamId=team_example`,
@@ -123,14 +126,14 @@ describe("Vercel actions", () => {
       new Response(null, { status: 204 }),
     );
     await expect(
-      tools.aliasInspect.execute?.({ alias: "www.example.com" }, options),
-    ).resolves.toMatchObject({ redirect: "example.com", deploymentId: null });
+      tools["aliasInspect"].execute?.({ alias: "www.example.com" }, options),
+    ).resolves.toMatchObject({ redirect: "example.com", deployment_id: null });
     await expect(
-      tools.deploymentDelete.execute?.(
-        { deploymentId: deployment.id, team: "team_other" },
+      tools["deploymentDelete"].execute?.(
+        { deployment_id: deployment.id, team: "team_other" },
         options,
       ),
-    ).resolves.toMatchObject({ deleted: true, deploymentId: deployment.id });
+    ).resolves.toMatchObject({ deleted: true, deployment_id: deployment.id });
     expect(fetch.mock.calls[1][0].request).toMatchObject({
       method: "DELETE",
       url: `https://api.vercel.com/v13/deployments/${deployment.id}?teamId=team_other`,
@@ -146,14 +149,17 @@ describe("Vercel actions", () => {
       }),
     );
     await expect(
-      tools.deploymentCreate.execute?.({ project: "other", ref: sha }, options),
+      tools["deploymentCreate"].execute?.(
+        { project: "other", ref: sha },
+        options,
+      ),
     ).rejects.toMatchObject({ name: "PluginToolInputError" });
     expect(fetch).toHaveBeenCalledTimes(1);
     const missing = fixture(
       new Response("private provider details", { status: 404 }),
     );
     await expect(
-      missing.tools.aliasInspect.execute?.(
+      missing.tools["aliasInspect"].execute?.(
         { alias: "missing.example.com" },
         options,
       ),
@@ -168,8 +174,8 @@ describe("Vercel actions", () => {
       new Response("private provider details", { status: 500 }),
     );
     await expect(
-      tools.deploymentDelete.execute?.(
-        { deploymentId: deployment.id },
+      tools["deploymentDelete"].execute?.(
+        { deployment_id: deployment.id },
         options,
       ),
     ).rejects.toThrow("vercel.deployment.delete failed with HTTP 500");

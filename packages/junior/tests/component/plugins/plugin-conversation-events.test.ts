@@ -6,7 +6,7 @@ import {
   type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { juniorConversations } from "@/db/schema";
@@ -112,7 +112,7 @@ describe("plugin conversation events", () => {
     ).toEqual({ icon: "activity", title: "Brief updated (v3)" });
   });
 
-  it("binds user prompt events to the current turn and deduplicates retries", async () => {
+  it("binds user prompt hooks to the current turn and model history, and deduplicates retries", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:prompt-event-${runId}`;
     const sessionId = `prompt-event-session:${runId}`;
@@ -129,6 +129,7 @@ describe("plugin conversation events", () => {
         return undefined;
       },
     });
+    let taskEvents: unknown;
     const plugin = defineJuniorPlugin({
       manifest: {
         name: "prompt-event-demo",
@@ -136,14 +137,36 @@ describe("plugin conversation events", () => {
         description: "Prompt event demo",
       },
       conversationEvents: [recallEvent],
+      tasks: {
+        processSession: {
+          async run(ctx) {
+            taskEvents = await ctx.turnEvents.list({
+              eventName: "memories_recalled",
+            });
+          },
+        },
+      },
       hooks: {
         async userPrompt(ctx) {
           if (!ctx.events) {
             throw new Error("User prompt event writer is missing");
           }
+          histories.push(await ctx.loadHistory?.());
           await ctx.events.emit(recallEvent({ costUsd: 0.0042, memories: [] }));
           return undefined;
         },
+      },
+    });
+    const histories: unknown[] = [];
+    const turnContext = (pluginName: string, createdAtMs = 1_000) => ({
+      createdAtMs,
+      data: {
+        type: "turn_context" as const,
+        turnId: `turn-${createdAtMs}`,
+        pluginName,
+        kind: "recall",
+        version: 1,
+        content: { memories: [`${pluginName} memory ${createdAtMs}`] },
       },
     });
     const { getPluginUserPromptContributions, setPlugins } =
@@ -151,6 +174,11 @@ describe("plugin conversation events", () => {
     const { getConversationEventStore } = await import("@/chat/db");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
+    const eventStore = getConversationEventStore();
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo"),
+      turnContext("other-plugin"),
+    ]);
     const request = {
       context: {
         conversationId,
@@ -162,10 +190,52 @@ describe("plugin conversation events", () => {
     };
 
     await getPluginUserPromptContributions(request);
+    await eventStore.replaceHistory(conversationId, {
+      createdAtMs: 2_000,
+      data: {
+        type: "compaction",
+        modelId: "test-model",
+        replacementHistory: [],
+      },
+    });
     await getPluginUserPromptContributions(request);
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo", 3_000),
+    ]);
+    // Another Turn of the same Conversation emits its own event.
+    await getPluginUserPromptContributions({
+      ...request,
+      turnId: `${sessionId}:next`,
+    });
 
-    const events =
-      await getConversationEventStore().loadHistory(conversationId);
+    // A hook reads only its own plugin's contexts, and a History replacement
+    // drops the earlier ones.
+    expect(histories).toEqual([
+      {
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory 1000"] },
+            loadedAtMs: 1_000,
+          },
+        ],
+      },
+      { startedAtMs: 2_000, contexts: [] },
+      // Only the context of the current History version comes back.
+      {
+        startedAtMs: 2_000,
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory 3000"] },
+            loadedAtMs: 3_000,
+          },
+        ],
+      },
+    ]);
+    const events = await eventStore.loadHistory(conversationId);
     expect(
       events.filter((event) => event.data.type === "structured_event"),
     ).toEqual([
@@ -178,6 +248,24 @@ describe("plugin conversation events", () => {
           turnId: sessionId,
           content: { costUsd: 0.0042, memories: [] },
         },
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ turnId: `${sessionId}:next` }),
+      }),
+    ]);
+
+    // A task reads only the events of the Turn that it processes.
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    await processPluginTask({
+      name: "processSession",
+      params: { conversationId, sessionId },
+      plugin: "prompt-event-demo",
+    });
+    expect(taskEvents).toEqual([
+      expect.objectContaining({
+        content: { costUsd: 0.0042, memories: [] },
+        turnId: sessionId,
+        version: 1,
       }),
     ]);
   });
@@ -239,6 +327,38 @@ describe("plugin conversation events", () => {
       costUsd: 0.0042,
       date: new Date().toISOString().slice(0, 10),
       events: 1,
+    });
+
+    // Past days come from the cache, and the current day is read again.
+    const { getConversationEventStore } = await import("@/chat/db");
+    const costEvent = (createdAtMs: number) => ({
+      createdAtMs,
+      data: {
+        type: "structured_event" as const,
+        namespace: "event-cost-demo",
+        name: "session_processed",
+        version: 1,
+        content: { costUsd: 0.001 },
+      },
+    });
+    const threeDaysAgoMs = Date.now() - 3 * 24 * 60 * 60 * 1_000;
+    await getConversationEventStore().append(
+      conversationId,
+      [costEvent(threeDaysAgoMs), costEvent(Date.now())],
+      { activity: "preserve" },
+    );
+
+    await getPluginOperationalReports(Date.now());
+
+    expect(observedDays?.at(-4)).toEqual({
+      costUsd: 0,
+      date: new Date(threeDaysAgoMs).toISOString().slice(0, 10),
+      events: 0,
+    });
+    expect(observedDays?.at(-1)).toEqual({
+      costUsd: 0.0052,
+      date: new Date().toISOString().slice(0, 10),
+      events: 2,
     });
   });
 

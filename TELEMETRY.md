@@ -1,44 +1,162 @@
 # Telemetry
 
-## Goal
-
-Use this when investigating Junior production incidents. Start with a Slack
-thread/message, Sentry event, trace ID, event name, or model/tool symptom, then
-use the query recipes below to find the failing turn and next query.
-
-## Where To Query
-
-- Slack thread/footer: query Sentry Logs and Spans by
-  `gen_ai.conversation.id` or `messaging.message.conversation_id`, then run the
-  conversation recipes.
-- Sentry `event_id`: open the Sentry event, copy `trace_id`, then query the
-  trace and matching logs.
-- `trace_id` / `span_id`: open Sentry Traces/Spans first; use logs only to
-  inspect event names and exception fields around that trace.
-- Stable `event.name`: query Sentry Logs, then use the matching domain below for
-  the next pivot.
-- Tool/model symptom: query spans/logs by `gen_ai.tool.name`,
-  `gen_ai.request.model`, or `gen_ai.operation.name`.
+Stable telemetry names and the pivots for a Junior investigation.
+`policies/observability.md` owns the naming rules. The owner in the Domains
+table documents its attributes and how to read them. Paths are under
+`packages/junior/src/` unless they name a package.
 
 ## Investigation Pivots
 
-| Pivot                               | Meaning                       | Found In                  | First Query           |
-| ----------------------------------- | ----------------------------- | ------------------------- | --------------------- |
-| `event_id`                          | captured Sentry error         | failed Slack reply        | open event            |
-| `gen_ai.conversation.id`            | Slack thread/run conversation | Slack footer, logs, spans | query trace/logs      |
-| `trace_id`                          | end-to-end trace              | errors, logs, spans       | open trace            |
-| `span_id`                           | one span in a trace           | logs, spans               | inspect span          |
-| `messaging.message.conversation_id` | Slack thread                  | logs, spans               | thread logs           |
-| `messaging.message.id`              | Slack message timestamp       | logs, spans               | message logs          |
-| `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
-| `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
-| `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
-| `user.id`                           | accountable person            | logs, spans, errors       | person's actions      |
-| `app.task.id`                       | scheduled/event automation id | task lifecycle logs       | task timeline         |
-| `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
-| `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
+| Pivot                               | Meaning                      | Found in                    |
+| ----------------------------------- | ---------------------------- | --------------------------- |
+| `event_id`                          | captured Sentry error        | failure notice in Slack     |
+| `trace_id` / `span_id`              | one trace / one span         | errors, logs, spans         |
+| `gen_ai.conversation.id`            | Conversation                 | Slack footer, logs, spans   |
+| `app.conversation.root_id`          | root Conversation            | Turn logs and spans         |
+| `messaging.message.conversation_id` | Slack thread                 | logs, spans                 |
+| `messaging.message.id`              | Slack message ts or queue id | logs, spans                 |
+| `messaging.destination.name`        | Slack channel or queue topic | logs, spans                 |
+| `event.name`                        | one stable event structure   | logs                        |
+| `gen_ai.tool.name`                  | tool                         | `gen_ai.execute_tool` spans |
+| `gen_ai.request.model`              | model                        | `gen_ai.chat` spans         |
+| `gen_ai.response.id`                | AI Gateway generation id     | `gen_ai.chat` spans         |
+| `service.instance.id`               | one Junior process           | logs, spans                 |
+| `user.id`                           | accountable person           | logs, spans, errors         |
+| `app.credential.provider`           | auth provider                | auth logs                   |
+| `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
+| `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
+| `app.review_item.id`                | Review item                  | Inbox, delivery logs  |
+| `vcs.change.id`                     | Code change number           | code change record spans    |
+
+- `gen_ai.conversation.id` also names child agents. Count root Conversations
+  by `app.conversation.root_id`.
+- Each provider event records a Code change again. Count Code changes by
+  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
+  `open`, `closed`, or `merged`.
+- A fire Conversation uses `agent-dispatch:<dispatch_id>` as
+  `gen_ai.conversation.id`.
+- Production keeps only warnings and audit info events (`app.log.audit:true`),
+  so most diagnostic counts are span attributes.
+
+## Identity and Audit
+
+Runs, resumes, and the sandbox egress proxy bind the same identity
+attributes. Nested logs and spans inherit them.
+
+- `user.*`: the accountable person. For a system Actor, this is the owner of
+  delegated credentials, such as the Automation creator.
+- `app.actor.type` (`user` or `system`), `app.actor.id`: who acted.
+- `app.credential.allowed_when`, `app.task.id`: why delegated credentials were
+  allowed, and for which Automation.
+- `app.source.kind`, `app.task.id`, and `app.task.run.id` name the run Source.
+- Each egress decision logs one event with `app.egress.policy.decision`
+  (`allowed` or `denied`). A denial adds `app.sandbox.egress.policy.reason`.
+- `sandbox.egress.upstream.requested` (audit) is each forwarded request.
+  `app.credential.account` is `actor` (a person's OAuth token) or `app` (a
+  credential that Junior owns). Plugins add `app.<provider>.*` facts, such as
+  `app.github.repository`.
+- `mcp.tool_call.completed` (audit) is each successful MCP tool call.
+  `app.credential.account` is `service_account` or `actor`.
+
+## Domains
+
+| Symptom                              | Events and spans                                                                                     | Owner                                                           |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Webhook not routed                   | `webhook.*`, `slack.event.*`, span `slack.message.ingress`                                           | `chat/ingress/slack-webhook.ts`                                 |
+| Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                | `chat/task-execution/`                                          |
+| No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`        | `chat/providers/slack/`                                         |
+| Timeout, empty answer, bad reasoning | `agent.turn.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare`                     | `chat/agent/`                                                   |
+| Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
+| Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
+| Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
+| Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
+| Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
+| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
+| History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
+| History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
+| Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
+| Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
+| Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
+| Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
+| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                          | `chat/review-items/`                                            |
+| Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
+| Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
+| Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
+| Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
+| Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
+| Transcription failed or costly       | span `gen_ai.transcription`, `app.transcription.*`, `ai.transcription.failed`, `tool.transcript.write.failed` | `chat/pi/transcription.ts`, `chat/tools/transcribe-audio.ts`                                |
+| Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on `gen_ai.chat`                                    | `chat/pi/gateway-request-timing.ts`                             |
+| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on `gen_ai.chat`                                   | `chat/pi/request-prefix-attributes.ts`                          |
+| Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
+| Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
+| Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
+| Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
+| Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
+| Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
+| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
+| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                      | `chat/notifications/`                                           |
+| Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
+| Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
+| Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
+| Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+
+## Trace Shape
+
+- `slack.message.ingress` records sender, team, and `app.slack.membership`
+  before membership checks, never message text, names, or emails.
+- On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
+  `queue.process` starts a new trace.
+- `chat.turn` continues the trace of its oldest input and links to the
+  others and to `queue.process`. An Event Turn is a child of `queue.process`.
+- A Slack Turn queues its plugin tasks, so each `plugin.task` is in its own
+  trace. Find it by `gen_ai.conversation.id`.
+- For the sandbox cost of a Turn, add only the top-level `sandbox.*` spans
+  under its `chat.turn`.
+- A `db` span with `app.db.transport: http` ran over Neon's HTTP endpoint. One
+  without it ran on a WebSocket client. `db.query.text` keeps placeholders.
+- Server spans and errors keep no URL query strings, fragments, request
+  bodies, or credential headers. Sandbox egress paths show `<token>`.
+- `gen_ai.transcription` has the AI Gateway generation id in
+  `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
+  and no transcript text.
+
+## Response Size
+
+| Attribute                      | Span                                | Measures                                       | Set in                                           |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| `app.api.response.chars`       | `serialize` (`Write API response`)  | JSON body length in UTF-16 chars, uncompressed | `api/http.ts`                                    |
+| `app.dashboard.response.chars` | `deserialize` (`Read API response`) | the same, as the browser read it               | `packages/junior-dashboard/src/client/sentry.ts` |
+| `http.response.body.size`      | browser `http.client`               | body bytes on the wire, compressed             | `packages/junior-dashboard/src/client/sentry.ts` |
+
+- Vercel compresses responses at the edge, so only the browser sees the
+  compressed size.
+- `deserialize` spans exist only while a pageload or navigation is open.
+  Fetch spans get `http.response.body.size` at all times, polls included.
+  A fetch span without it got no resource timing entry before it ended.
+
+Largest dashboard API responses, by server route.
+
+```text
+dataset=spans query='span.op:serialize has:tags[app.api.response.chars,number]'
+fields=transaction,max(tags[app.api.response.chars,number]),p95(tags[app.api.response.chars,number]),count()
+sort=-max(tags[app.api.response.chars,number])
+```
+
+Compressed size in the browser. Use `tags[app.dashboard.response.chars,number]`
+on `span.op:deserialize` for the browser chars.
+
+```text
+dataset=spans query='span.op:http.client has:tags[http.response.body.size,number]'
+fields=url.full,max(tags[http.response.body.size,number]),p95(tags[http.response.body.size,number]),count()
+sort=-max(tags[http.response.body.size,number])
+```
 
 ## Query Recipes
+
+A numeric `app.*` attribute needs the `tags[<key>,number]` form in queries.
 
 Conversation timeline from a Slack thread, footer link, or conversation ID.
 
@@ -48,7 +166,7 @@ fields=timestamp,trace,span.op,span.description,span.duration,error.type
 sort=-timestamp
 ```
 
-Conversation log history from the same pivot.
+Conversation or trace log history. Use `trace_id:"<trace_id>"` for a trace.
 
 ```text
 dataset=logs query='gen_ai.conversation.id:"<conversation_id>"'
@@ -56,43 +174,19 @@ fields=timestamp,level,event.name,trace_id,span_id,error.type,exception.message
 sort=timestamp
 ```
 
-Trace log history after opening a Sentry event or trace.
-
-```text
-dataset=logs query='trace_id:"<trace_id>"'
-fields=timestamp,level,event.name,span_id,gen_ai.conversation.id,error.type,exception.message
-sort=timestamp
-```
-
 Recent failed or timed-out agent runs.
 
 ```text
 dataset=logs query='event.name:agent.turn.timed_out OR event.name:agent.turn.failed OR event.name:agent.turn.provider_error'
-fields=timestamp,event.name,trace_id,span_id,gen_ai.conversation.id,gen_ai.request.model,error.type
+fields=timestamp,event.name,trace_id,gen_ai.conversation.id,gen_ai.request.model,error.type
 sort=-timestamp
 ```
 
-Tool failures or slow tool calls.
+Tool failures or slow tool calls. Code Mode nested calls also match.
 
 ```text
 dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:"<tool_name>"'
-fields=timestamp,trace,span.description,span.duration,gen_ai.conversation.id,gen_ai.tool.call.result.size,error.type
-sort=-timestamp
-```
-
-Large tool results.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.call.result.size:>20000'
-fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.result.size,span.duration
-sort=-gen_ai.tool.call.result.size
-```
-
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
+fields=timestamp,trace,span.duration,gen_ai.conversation.id,gen_ai.tool.call.result.size,error.type
 sort=-timestamp
 ```
 
@@ -100,7 +194,7 @@ Slack delivery failures after the agent turn ran.
 
 ```text
 dataset=logs query='event.name:slack.thread.post.failed app.slack.error_code:*'
-fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,app.slack.reply_stage,app.slack.error_code,app.slack.api_error,exception.message
+fields=timestamp,gen_ai.conversation.id,messaging.destination.name,app.slack.reply_stage,app.slack.error_code,app.slack.api_error
 sort=-timestamp
 ```
 
@@ -108,276 +202,26 @@ Scheduled automation lifecycle by task id.
 
 ```text
 dataset=logs query='app.task.id:"<task_id>"'
-fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility,app.task.result_message_ts,messaging.destination.name
+fields=timestamp,event.name,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.status,messaging.destination.name
 sort=timestamp
 ```
 
-Scheduled automation fire path by channel.
+Provider egress decisions, with whose authority they used.
 
 ```text
-dataset=logs query='event.name:scheduled_automation.run.dispatched messaging.destination.name:"<channel_id>"'
-fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility
+dataset=logs query='has:app.egress.policy.decision'
+fields=timestamp,event.name,app.egress.policy.decision,app.sandbox.egress.policy.reason,user.id,app.actor.type,app.credential.account,app.source.kind,app.task.id,app.provider.name,http.request.method,server.address,url.path
 sort=-timestamp
 ```
-
-Recent scheduled-automation create/fire outcomes.
-
-```text
-dataset=logs query='event.name:scheduled_automation.create.completed OR event.name:scheduled_automation.run.claimed OR event.name:scheduled_automation.run.dispatched OR event.name:scheduled_automation.run.completed OR event.name:scheduled_automation.run.failed OR event.name:scheduled_automation.run.blocked OR event.name:scheduled_automation.run.skipped'
-fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.status,messaging.destination.name
-sort=-timestamp
-```
-
-Credentialed provider writes, with whose authority they used. Write-grant
-egress requests are audit events (`app.log.audit:true`), so Sentry keeps them
-in production. Other info events stay out of Sentry in production.
-
-```text
-dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
-fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when,app.task.id,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code
-sort=-timestamp
-```
-
-Auth, credential, and resume failures.
-
-```text
-dataset=logs query='app.credential.provider:"<provider>"'
-fields=timestamp,event.name,gen_ai.conversation.id,app.credential.provider,app.ai.retryable_reason,exception.message
-sort=-timestamp
-```
-
-## Identity
-
-Runs, resumes, and the sandbox egress proxy bind the same identity attributes.
-Nested logs and spans inherit them.
-
-- `user.id`, `user.name`, `user.email`, `user.full_name`: the accountable
-  person. For a user Actor, this is that user. For a system Actor, this is the
-  owner of delegated credentials, such as the Automation creator. It is empty
-  when a system run has no delegated credentials. Sentry also uses `user.id`
-  for its user features.
-- `app.actor.type`, `app.actor.id`: who acted. The type is `user` or `system`.
-- `app.credential.allowed_when`, `app.task.id`: why delegated credentials were
-  allowed, and for which Automation.
-
-Do not add app-specific keys under `user.*`. Put facts about the request in
-`app.*`.
-
-## Domains
-
-### Database Queries
-
-PostgreSQL queries that are slow, frequent, or failing.
-
-Spans: `db.query`
-
-Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
-`db.collection.name`, `db.query.summary`, `db.query.text`,
-`db.response.status_code`, `error.type`, `server.address`, `server.port`,
-`app.db.driver`
-
-`db.query.text` keeps parameter placeholders and never includes parameter values.
-All inline SQL literals use `?`. SQL comments are removed.
-Group by `db.query.text` to identify one query shape. Group by
-`db.query.summary` for a lower-cardinality operation and target view.
-
-### Webhook Ingress
-
-Slack or Vercel webhook delivery/routing failures.
-
-Events: `webhook.response.unsuccessful`, `webhook.handler.failed`,
-`slack.event.persist.failed`, `slack.event.routing.failed`,
-`slack.event.enqueue.failed`
-
-Spans: `http.server.request`, `slack.message.ingress`
-
-Attributes: `http.request.method`, `http.response.status_code`, `url.path`,
-`app.request.id`
-
-Signed Slack message and mention events get a `slack.message.ingress` span
-before membership checks. It carries conversation, channel, and message IDs,
-plus these fields:
-
-- `app.slack.user_id`, `app.slack.bot_id`: sender IDs from the event.
-- `app.slack.team_id`, `app.slack.enterprise_id`: installation envelope IDs.
-- `app.slack.user_team`, `app.slack.source_team`, `app.slack.event_team`:
-  separate Slack fields, not interchangeable membership evidence.
-- `app.slack.event_id`, `app.slack.event_type`, `app.slack.event_subtype`:
-  event correlation and kind.
-- `app.slack.is_ext_shared_channel`: envelope sharing flag, not membership.
-- `app.slack.membership`: `verified`, `unverified`, or `not_checked`.
-  `unverified` includes missing identity data, not just external authors.
-  `not_checked` includes ignored events and failures before the check completes.
-
-Identity fields record `missing` or `invalid` instead of absent or malformed
-values. They do not contain message text, names, emails, or raw payloads.
-A verified author does not imply the message was queued or received a reply.
-These attributes belong to ingress; do not expect them on later worker spans.
-
-```text
-dataset=spans query='span.op:slack.message.ingress gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,app.slack.user_id,app.slack.team_id,app.slack.user_team,app.slack.source_team,app.slack.event_team,app.slack.membership
-sort=timestamp
-```
-
-### Slack Delivery
-
-Slack accepted the request but no final reply appeared.
-
-Events: `agent.turn.started`, `agent.turn.completed`, `agent.turn.failed`,
-`slack.thread.post.failed`, `assistant.status.update.failed`,
-`slack.action.failed`, `slack.action.retrying`
-
-Spans: `chat.turn`, `chat.reply`, `chat.slash_command`,
-`chat.app_home_opened`, `chat.app_home_disconnect`
-
-Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
-`messaging.message.conversation_id`, `messaging.destination.name`,
-`app.slack.reply_stage`, `app.slack.error_code`, `app.slack.api_error`
-
-### Agent And Model
-
-The turn timed out, returned no useful answer, or used unexpected reasoning.
-
-Events: `agent.message.received`, `agent.message.generated`,
-`agent.turn.timed_out`,
-`agent.turn.provider_error`, `agent.turn.execution.failed`,
-`agent.turn.empty_output.retrying`,
-`agent.turn.empty_output.exhausted`, `agent.turn.automation_result.reminded`,
-`assistant.reply.generation.failed`,
-`guardian.action_review.retrying`, `guardian.action_review.exhausted`
-
-`guardian.action_review.exhausted` is a tool-boundary Sentry capture after three
-consecutive action-review denials. The agent still receives a normal tool
-rejection that says not to keep retrying.
-
-Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
-
-Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
-`gen_ai.response.finish_reasons`, `app.ai.outcome`, `app.automation.result`,
-`app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
-`gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
-`gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
-`app.ai.empty_output.attempt`, `app.ai.provider_error.kind`,
-`app.ai.provider_error.summary`, `app.ai.provider_error.retry_attempt`,
-`app.guardian.review_attempt`,
-`app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
-`app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
-`app.ai.cost.total_usd`
-
-### Tools, MCP, And Sandbox
-
-A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
-
-Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
-`mcp.tool_annotations.missing`, `plugin.tool_annotations.missing`,
-`mcp.tool_manager.close.failed`, `sandbox.boot.requested`,
-`sandbox.network_policy_restore.failed`
-
-Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
-`sandbox.snapshot.resolve`, `sandbox.sync_skills`, `bash`
-
-Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
-`gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
-`process.executable.name`, `process.exit.code`, `app.sandbox.source`,
-`app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
-`app.sandbox.search.parsed_records`,
-`app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
-`app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
-`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
-
-Sandbox egress events: `sandbox.egress.upstream.requested` is logged for every
-forwarded request outside production. In production, it is logged only for
-write grants, as an audit event. Attributes: `app.provider.name`,
-`app.grant.name`, `app.grant.access`, `app.log.audit`, and the identity
-attributes below. The proxy binds them from the signed credential token.
-
-### Scheduled automations
-
-A scheduled automation was created, claimed, dispatched, completed, or failed
-without an obvious Slack error.
-
-Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claimed`,
-`scheduled_automation.run.dispatched`, `scheduled_automation.run.completed`,
-`scheduled_automation.run.failed`, `scheduled_automation.run.blocked`,
-`scheduled_automation.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
-skips), `scheduled_automations.heartbeat.dispatched`,
-`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`,
-`automation.blocked_notice.failed` (the creator notice for a blocked
-Scheduled automation or Event automation did not send)
-
-Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateAutomation`; fire
-path `POST /api/internal/agent/continue` for the dispatch conversation
-
-Attributes: `app.task.id`, `app.task.type`, `app.task.status`,
-`app.task.schedule.kind`, `app.task.schedule.timezone`,
-`app.task.credential_mode`, `app.task.destination.channel_id`,
-`app.task.destination.team_id`, `app.task.destination.visibility`,
-`app.task.destination.audience`, `app.task.next_run_at`, `app.task.run.id`,
-`app.task.run.status`, `app.task.run.scheduled_for`,
-`app.task.result_message_ts`, `app.dispatch.id`,
-`messaging.destination.name`
-
-Pivot from create confirmation or Tasks page with `app.task.id`. From a fire
-conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
-`gen_ai.conversation.id`.
-
-### Auth And Resume
-
-A turn parked for auth, resumed late, or failed after callback.
-
-Events: `sandbox.egress.credential.needed`,
-`sandbox.egress.credential.unavailable`, `sandbox.egress.upstream_auth.rejected`,
-`sandbox.egress.upstream_auth.retrying`, `plugin.credential.rejected`,
-`subscribed_message.authorization.required`, `agent.continue.schedule.failed`,
-`agent.continue.lock.busy`, `agent.continue.lock.retrying`,
-`oauth.callback.resume.completed`, `oauth.callback.resume.busy`,
-`mcp.oauth_callback.failed`
-
-Spans: resumed `chat.turn`, `chat.reply`
-
-Attributes: `app.credential.provider`, `app.credential.delivery`,
-`app.ai.retryable_reason`, `app.ai.session_id`,
-`app.ai.resume_session_version`
-
-### Skills And Plugins
-
-A skill/tool is missing, plugin discovery failed, or capability activation looks wrong.
-
-Events: `startup.discovery.completed`, `plugin.loaded`,
-`skill.directory.read.failed`, `skill.frontmatter.invalid`,
-`skill.load.stat.failed`, `plugin.root.read.failed`
-
-Spans: active turn spans carry plugin/skill attributes
-
-Attributes: `app.skill.name`, `app.skill.count`, `app.plugin.name`,
-`app.plugin.count`, `app.plugin.has_mcp`, `app.capability.names`,
-`file.directory`, `app.file.skill_directory`
-
-### Attachments And Web Search
-
-Screenshots, file attachments, image context, or web search failed.
-
-Events: `attachment.resolution.failed`, `attachment.size_limit.skipped`,
-`image.attachment.processing.failed`, `conversation.image.context.hydrated`,
-`conversation.image.vision.failed`, `web.search.failed`
-
-Spans: model/tool spans around vision or search calls
-
-Attributes: `app.message.attachment_count`,
-`app.message.prompt_attachment_count`, `app.conversation_image.analyzed`,
-`app.web_search.query`, `app.web_search.retryable`, `app.web_search.timeout`,
-`file.name`, `file.size`, `app.file.id`, `app.file.mime_type`
 
 ## Configuration
 
-| Setting                     | Controls                 | Default                                    |
-| --------------------------- | ------------------------ | ------------------------------------------ |
-| `SENTRY_DSN`                | Sentry ingestion         | disabled                                   |
-| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`                 |
-| `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>` |
-| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` is set              |
-| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                        |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                      |
-| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                |
+| Setting                     | Controls                 | Default                                             |
+| --------------------------- | ------------------------ | --------------------------------------------------- |
+| `SENTRY_DSN`                | Sentry ingestion         | disabled                                            |
+| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`                          |
+| `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>`          |
+| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` or `SENTRY_SPOTLIGHT` is set |
+| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                                 |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                               |
+| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                         |

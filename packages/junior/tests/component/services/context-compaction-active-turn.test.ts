@@ -78,15 +78,15 @@ describe("active-turn context compaction", () => {
   it("includes provider output in measured context usage", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const completeText = vi.fn(
-      async () => ({ text: "Continue from the summary." }) as never,
-    );
+    const summarize = vi.fn(async () => ({
+      summary: "Continue from the summary.",
+    }));
 
     const result = await compactActiveContextIfNeeded(
       {
         conversationId: "conversation-provider-usage",
+        mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         piMessages: [
           user("Continue the task.", 1),
           assistantWithUsage("Work completed so far.", {
@@ -96,23 +96,23 @@ describe("active-turn context compaction", () => {
           }),
         ],
       },
-      { completeText },
+      summarize,
     );
 
     expect(result.compacted).toBe(true);
-    expect(completeText).toHaveBeenCalledOnce();
+    expect(summarize).toHaveBeenCalledOnce();
   });
 
   it("ignores trailing tool details outside model input", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const completeText = vi.fn();
+    const summarize = vi.fn();
 
     const result = await compactActiveContextIfNeeded(
       {
         conversationId: "conversation-tool-details",
+        mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         piMessages: [
           user("Inspect the tool result.", 1),
           assistantWithUsage("Reading the requested file.", {
@@ -130,11 +130,11 @@ describe("active-turn context compaction", () => {
           } as PiMessage,
         ],
       },
-      { completeText },
+      summarize,
     );
 
     expect(result).toEqual({ compacted: false, reason: "below_threshold" });
-    expect(completeText).not.toHaveBeenCalled();
+    expect(summarize).not.toHaveBeenCalled();
   });
 
   it("replaces oversized tool history with continuation state", async () => {
@@ -147,6 +147,28 @@ describe("active-turn context compaction", () => {
     await commitMessages({
       conversationId,
       messages: [user("Make the requested edit.", 1)],
+    });
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { changePlan } = await import("@/chat/plan/store");
+    const self = { conversationId };
+    const {
+      items: [edit, test],
+    } = await changePlan(getSqlExecutor(), {
+      conversationId,
+      nowMs: 1,
+      change: {
+        add: [
+          {
+            title: "Apply requested edit",
+            status: "in_progress",
+            assignee: self,
+          },
+          { title: "Run focused test", status: "pending", assignee: self },
+          { title: "Read the file", status: "done", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
     });
     const activeMessages = [
       user(
@@ -165,9 +187,10 @@ describe("active-turn context compaction", () => {
             id: "plan-active",
             name: "updatePlan",
             arguments: {
-              plan: [
-                { step: "Apply requested edit", status: "in_progress" },
-                { step: "Run focused test", status: "pending" },
+              add: [
+                { title: "Apply requested edit", status: "in_progress" },
+                { title: "Run focused test" },
+                { title: "Read the file", status: "done" },
               ],
             },
           },
@@ -194,8 +217,8 @@ describe("active-turn context compaction", () => {
     const result = await compactActiveContextIfNeeded(
       {
         conversationId,
+        mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         pendingMessages: [
           {
             message: user(
@@ -215,9 +238,7 @@ describe("active-turn context compaction", () => {
         ],
         piMessages: activeMessages,
       },
-      {
-        completeText: async () => ({ text: "No outstanding asks." }) as never,
-      },
+      async () => ({ summary: "No outstanding asks." }),
     );
 
     expect(result.compacted).toBe(true);
@@ -232,9 +253,17 @@ describe("active-turn context compaction", () => {
       "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
-    expect(textOf(result.piMessages![2]!)).toContain(
-      '<open-plan>\n[{"step":"Apply requested edit","status":"in_progress"},{"step":"Run focused test","status":"pending"}]\n</open-plan>',
+    // One snapshot of the open items replaces the plan in summarized history.
+    const summary = textOf(result.piMessages![2]!);
+    expect(summary.split("<plan>").length - 1).toBe(1);
+    expect(summary).toContain(
+      [
+        `- TODO-${edit!.id} (in_progress, assignee self): Apply requested edit`,
+        `- TODO-${test!.id} (pending, assignee self): Run focused test`,
+        "</plan>",
+      ].join("\n"),
     );
+    expect(summary).not.toContain("Read the file");
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<runtime-turn-context>",
     );
@@ -250,7 +279,6 @@ describe("active-turn context compaction", () => {
     const durable = await loadProjection({ conversationId });
     expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
-    expect(projection.modelProfile).toBe("standard");
     expect(projection.provenance[0]).toEqual({ authority: "context" });
     expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",
@@ -262,7 +290,6 @@ describe("active-turn context compaction", () => {
     ).find((event) => event.data.type === "compaction");
     expect(compactionEvent?.data).toMatchObject({
       type: "compaction",
-      modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       summary: "No outstanding asks.",
       details: {

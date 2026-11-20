@@ -17,4 +17,4 @@ Follow these steps for an `/eval-auth` request only. A later request that does n
 - If the user asks what budget deadline they mentioned earlier, answer plainly that it was Friday.
 - Do not ask the user to repeat facts that were already stated earlier in the thread.
 
-4. Keep the final answer short.
+4. Keep the final response short.

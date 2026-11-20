@@ -29,20 +29,20 @@ interface ProviderErrorOptions {
 interface ProviderErrorDetails {
   cause?: unknown;
   kind: ProviderErrorKind;
-  modelId?: string;
+  modelId?: string | undefined;
   retryable: boolean;
-  retryAfterMs?: number;
-  status?: number;
+  retryAfterMs?: number | undefined;
+  status?: number | undefined;
 }
 
 /** Structured failure produced at an AI provider boundary. */
 export class ProviderError extends Error {
   readonly code = "provider_error";
   readonly kind: ProviderErrorKind;
-  readonly modelId?: string;
+  readonly modelId?: string | undefined;
   readonly retryable: boolean;
-  readonly retryAfterMs?: number;
-  readonly status?: number;
+  readonly retryAfterMs?: number | undefined;
+  readonly status?: number | undefined;
 
   constructor(details: ProviderErrorDetails) {
     super(
@@ -145,7 +145,9 @@ function extractTransportKind(
 
   const providerError = error as ProviderErrorFields;
   const code =
-    typeof providerError.code === "string" ? providerError.code.toUpperCase() : undefined;
+    typeof providerError.code === "string"
+      ? providerError.code.toUpperCase()
+      : undefined;
   if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
   if (code && NETWORK_ERROR_CODES.has(code)) return "network";
   return extractTransportKind(providerError.cause, depth + 1);
@@ -155,7 +157,8 @@ function extractStatus(error: unknown, message: string): number | undefined {
   if (error instanceof Error) {
     const providerError = error as ProviderErrorFields;
     if (typeof providerError.status === "number") return providerError.status;
-    if (typeof providerError.statusCode === "number") return providerError.statusCode;
+    if (typeof providerError.statusCode === "number")
+      return providerError.statusCode;
   }
 
   const match = message.match(
@@ -248,6 +251,32 @@ export function createProviderError(
   });
 }
 
+// Anthropic ends a refused stream with stop reason `refusal` or `sensitive`,
+// for example when its cyber safeguards flag a message. Pi maps both to an
+// error and keeps the provider reason in `rawStopReason`.
+const REFUSAL_STOP_REASONS = new Set(["refusal", "sensitive"]);
+
+/** Return whether the provider refused to answer a Pi assistant message. */
+export function isProviderRefusal(message: {
+  rawStopReason?: string | undefined;
+}): boolean {
+  return (
+    message.rawStopReason !== undefined &&
+    REFUSAL_STOP_REASONS.has(message.rawStopReason)
+  );
+}
+
+/** Normalize a failed Pi assistant message. A provider refusal is a content policy block. */
+export function createAssistantProviderError(
+  message: { errorMessage?: string; rawStopReason?: string | undefined },
+  options: ProviderErrorOptions = {},
+): ProviderError {
+  return createProviderError(message.errorMessage ?? "", {
+    ...options,
+    ...(isProviderRefusal(message) ? { kind: "content_policy" } : undefined),
+  });
+}
+
 /** Return whether a provider-boundary error should be retried. */
 export function isProviderRetryError(error: unknown): error is ProviderError {
   return error instanceof ProviderError && error.retryable;
@@ -267,38 +296,37 @@ export function findProviderError(error: unknown): ProviderError | undefined {
   return undefined;
 }
 
+const TEMPORARY_PROVIDER_ERROR =
+  "The model provider had a temporary connection problem. Please try again.";
+
+const PROVIDER_ERROR_MESSAGES = {
+  capacity:
+    "The selected model is temporarily unavailable because it is at capacity. Please try again shortly.",
+  rate_limit: "The model is rate-limited. Please try again shortly.",
+  timeout: TEMPORARY_PROVIDER_ERROR,
+  network: TEMPORARY_PROVIDER_ERROR,
+  server: TEMPORARY_PROVIDER_ERROR,
+  auth: "The model provider rejected the configured credentials. This needs an administrator or configuration fix.",
+  permission:
+    "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.",
+  quota:
+    "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.",
+  content_policy:
+    "The model provider blocked this request under its content policy. Please revise the request and try again.",
+  invalid_request:
+    "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.",
+  invalid_response:
+    "The model provider returned an invalid response. Please try again.",
+  unknown: "The model provider returned an error. Please try again.",
+} satisfies Record<ProviderErrorKind, string>;
+
 /** Return stable, sanitized copy suitable for a terminal user response. */
 export function getProviderErrorUserMessage(error: ProviderError): string {
-  switch (error.kind) {
-    case "capacity":
-      return "The selected model is temporarily unavailable because it is at capacity. Please try again shortly.";
-    case "rate_limit": {
-      const seconds = error.retryAfterMs
-        ? Math.max(1, Math.ceil(error.retryAfterMs / 1_000))
-        : undefined;
-      return seconds
-        ? `The model is rate-limited. Please try again in about ${seconds} seconds.`
-        : "The model is rate-limited. Please try again shortly.";
-    }
-    case "timeout":
-    case "network":
-    case "server":
-      return "The model provider had a temporary connection problem. Please try again.";
-    case "auth":
-      return "The model provider rejected Junior's credentials. This needs an administrator or configuration fix.";
-    case "permission":
-      return "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.";
-    case "quota":
-      return "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.";
-    case "content_policy":
-      return "The model provider blocked this request under its content policy. Please revise the request and try again.";
-    case "invalid_request":
-      return "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.";
-    case "invalid_response":
-      return "The model provider returned an invalid response. Please try again.";
-    default:
-      return "The model provider returned an error. Please try again.";
+  if (error.kind === "rate_limit" && error.retryAfterMs) {
+    const seconds = Math.max(1, Math.ceil(error.retryAfterMs / 1_000));
+    return `The model is rate-limited. Please try again in about ${seconds} seconds.`;
   }
+  return PROVIDER_ERROR_MESSAGES[error.kind];
 }
 
 /** Return safe structured fields for terminal failure telemetry. */

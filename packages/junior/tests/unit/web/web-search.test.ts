@@ -3,6 +3,11 @@ import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
 vi.mock("ai", () => ({
   generateText: vi.fn(),
 }));
@@ -27,16 +32,28 @@ describe("createWebSearchTool", () => {
 
   beforeEach(() => {
     vi.mocked(createGatewayProvider).mockReturnValue(gatewayProvider as never);
-    vi.mocked(resolveGatewayCredential).mockResolvedValue(undefined);
+    vi.mocked(resolveGatewayCredential).mockResolvedValue({
+      mode: "none",
+      token: "unauthenticated",
+    });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    await closeDb();
   });
 
-  it("uses AI Gateway parallel search and maps tool results", async () => {
+  it("uses AI Gateway parallel search, maps tool results, and records the cost", async () => {
+    const conversationId = "local:test:web-search-cost";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local", conversationId },
+      conversationId,
+      nowMs: 1_000,
+      source: "internal",
+    });
     vi.mocked(generateText).mockResolvedValueOnce({
+      providerMetadata: { gateway: { cost: "0.0125" } },
       toolResults: [
         {
           type: "tool-result",
@@ -54,17 +71,21 @@ describe("createWebSearchTool", () => {
       ],
     } as never);
 
-    const tool = createWebSearchTool("anthropic/claude-sonnet-4.6");
+    const tool = createWebSearchTool("anthropic/claude-sonnet-4.6", {
+      conversationId,
+    });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
     const result = await tool.execute(
       { query: "vercel ai gateway", max_results: 2 },
-      {} as never,
+      {},
     );
 
-    expect(createGatewayProvider).toHaveBeenCalledWith({});
+    expect(createGatewayProvider).toHaveBeenCalledWith({
+      apiKey: "unauthenticated",
+    });
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
       mode: "agentic",
       maxResults: 2,
@@ -89,6 +110,17 @@ describe("createWebSearchTool", () => {
         },
       ],
     });
+    const events =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(events.map((event) => event.data)).toEqual([
+      {
+        type: "structured_event",
+        namespace: "junior",
+        name: "web_search",
+        version: 1,
+        content: { costUsd: 0.0125 },
+      },
+    ]);
   });
 
   it("passes the shared OIDC credential into the gateway provider", async () => {
@@ -100,12 +132,12 @@ describe("createWebSearchTool", () => {
       toolResults: [],
     } as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    await tool.execute({ query: "oidc query" }, {} as never);
+    await tool.execute({ query: "oidc query" }, {});
 
     expect(createGatewayProvider).toHaveBeenCalledWith({
       apiKey: "oidc-token",
@@ -117,14 +149,14 @@ describe("createWebSearchTool", () => {
       new Error('400 Invalid input: expected "function"'),
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(
-      tool.execute({ query: "test query" }, {} as never),
-    ).rejects.toThrow('400 Invalid input: expected "function"');
+    await expect(tool.execute({ query: "test query" }, {})).rejects.toThrow(
+      '400 Invalid input: expected "function"',
+    );
   });
 
   it("throws when search times out", async () => {
@@ -136,14 +168,12 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "test query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "test query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -167,14 +197,12 @@ describe("createWebSearchTool", () => {
       });
     }) as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "slow query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "slow query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -200,12 +228,12 @@ describe("createWebSearchTool", () => {
       return Promise.resolve({ toolResults: [] });
     }) as never);
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    await tool.execute({ query: "fast query" }, {} as never);
+    await tool.execute({ query: "fast query" }, {});
     expect(capturedSignal?.aborted).toBe(false);
   });
 
@@ -223,9 +251,9 @@ describe("createWebSearchTool", () => {
     globalThis.AbortController = class extends originalAC {
       constructor() {
         super();
-        return brokenController as AbortController;
+        return brokenController;
       }
-    } as typeof AbortController;
+    };
 
     vi.mocked(generateText).mockImplementation(
       () =>
@@ -234,14 +262,12 @@ describe("createWebSearchTool", () => {
         }) as never,
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    const pending = Promise.resolve(
-      tool.execute({ query: "boom query" }, {} as never),
-    );
+    const pending = Promise.resolve(tool.execute({ query: "boom query" }, {}));
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -263,12 +289,12 @@ describe("createWebSearchTool", () => {
       ),
     );
 
-    const tool = createWebSearchTool(defaultModelId);
+    const tool = createWebSearchTool(defaultModelId, { owner: "none" });
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test" }, {} as never)).rejects.toThrow(
+    await expect(tool.execute({ query: "test" }, {})).rejects.toThrow(
       "AI Gateway authentication failed: No authentication provided.",
     );
   });

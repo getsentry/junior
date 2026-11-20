@@ -1,23 +1,25 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { StateAdapter } from "chat";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
+  conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
   type ConversationPendingMessagesReport,
+  type ConversationReportStatus,
 } from "@/api/schema";
 import type { WebActor } from "@/chat/actor";
 import { executeAgentRun } from "@/chat/agent";
 import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
-  webActorFromEmail,
 } from "@/chat/conversations/web-input";
 import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -28,20 +30,29 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import {
+  resolveMailboxTurnWork,
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
   createSlackAdapterFixture,
   streamReplies,
   type ConversationWorkQueueTestAdapter,
 } from "./conversation-work";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { testViewer } from "./user";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /** Default verified web Actor for Conversation tests. */
 const WEB_TEST_EMAIL = "alice@example.com";
 export const webTestActor = {
   platform: "web" as const,
-  userId: webActorFromEmail(WEB_TEST_EMAIL).userId,
+  userId: testViewer(WEB_TEST_EMAIL).id,
   email: WEB_TEST_EMAIL,
   fullName: "Alice Example",
   userName: "alice",
@@ -64,8 +75,11 @@ export async function createConversationFixture(): Promise<ConversationFixture> 
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
   await state.connect();
+  // Sign in like the dashboard and ACP, so the web Actor id is the User id.
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected a web test viewer");
   return {
-    actor: webTestActor,
+    actor: { ...webTestActor, userId: viewer.id },
     conversationStore,
     queue,
     state,
@@ -101,7 +115,7 @@ export type ConversationWebHarness = {
   conversationStore: ConversationStore;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
-  setModelStream: (next: StreamFn) => void;
+  setModelStream: (next: AgentRequestStreamFn) => void;
   /** Create a new web root conversation and enqueue the first message. */
   start: (args: {
     idempotencyKey: string;
@@ -121,6 +135,8 @@ export type ConversationWebHarness = {
   ) => Promise<ConversationPendingMessagesReport>;
   /** Load durable assistant/user history for one conversation. */
   historyTexts: (conversationId: string) => Promise<string[]>;
+  /** Read the status that the dashboard API reports for one conversation. */
+  status: (conversationId: string) => Promise<ConversationReportStatus>;
 };
 
 /**
@@ -128,7 +144,9 @@ export type ConversationWebHarness = {
  * Fake only model generation at the agent Run boundary.
  */
 export async function createConversationWebHarness(
-  streamFn: StreamFn = streamReplies("Conversation request complete."),
+  streamFn: AgentRequestStreamFn = streamReplies(
+    "Conversation request complete.",
+  ),
 ): Promise<ConversationWebHarness> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
@@ -149,12 +167,16 @@ export async function createConversationWebHarness(
     // longer requires one for web input.
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
+    sendPluginTask: sendVercelPluginTask,
     state,
   });
-  const actor = webTestActor;
+  // Sign in like the dashboard and ACP, so the web Actor id is the User id.
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected a web test viewer");
+  const actor = { ...webTestActor, userId: viewer.id };
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(actor.email));
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
@@ -172,7 +194,7 @@ export async function createConversationWebHarness(
     conversationStore,
     queue,
     state,
-    setModelStream(next: StreamFn) {
+    setModelStream(next: AgentRequestStreamFn) {
       modelStream = next;
     },
     start: async ({ idempotencyKey, message }) => {
@@ -227,6 +249,17 @@ export async function createConversationWebHarness(
         await response.json(),
       );
     },
+    status: async (conversationId) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      );
+      if (response.status !== 200) {
+        throw new Error(
+          `conversation detail failed: ${response.status} ${await response.text()}`,
+        );
+      }
+      return conversationDetailReportSchema.parse(await response.json()).status;
+    },
     historyTexts: async (conversationId) => {
       const history =
         await getConversationEventStore().loadMessageHistory(conversationId);
@@ -238,5 +271,34 @@ export async function createConversationWebHarness(
         })
         .filter(Boolean);
     },
+  };
+}
+
+/** Return the texts of Messages that saved Events for a stopped Conversation. */
+export async function stoppedConversationMessageTexts(
+  conversationId: string,
+): Promise<string[]> {
+  const history =
+    await getConversationEventStore().loadMessageHistory(conversationId);
+  return projectConversationMessages(history)
+    .filter((message) => message.meta?.skippedReason === "stopped conversation")
+    .map((message) => message.text);
+}
+
+/** Run a mailbox Turn worker on the mailbox work of one queue message. */
+export function requireConversationTurn(
+  worker: (
+    context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
+  ) => Promise<ConversationWorkerResult>,
+) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const resolved = await resolveMailboxTurnWork(context);
+    if (!resolved) {
+      throw new Error("Expected Conversation mailbox work");
+    }
+    return await worker(context, resolved);
   };
 }

@@ -8,7 +8,7 @@ describe("non-interactive shell commands", () => {
   it("builds shell scripts with closed stdin and non-interactive env", () => {
     const script = buildNonInteractiveShellScript("echo ok", {
       env: { CUSTOM_TOKEN: "secret-value" },
-      pathPrefix: "/custom/bin:$PATH",
+      path: "/custom/bin:$PATH",
     });
 
     expect(script).toContain('export PATH="/custom/bin:$PATH"');
@@ -27,6 +27,27 @@ describe("non-interactive shell commands", () => {
     expect(script).toContain("export CUSTOM_TOKEN='secret-value'");
     expect(script).toContain("exec </dev/null");
     expect(script).toContain("echo ok");
+  });
+
+  it("adds command Git config before the runtime Git config", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const script = buildNonInteractiveShellScript(
+      "git config core.hooksPath && git config credential.helper; git config http.emptyAuth",
+      {
+        env: {
+          GIT_CONFIG_COUNT: "2",
+          GIT_CONFIG_KEY_0: "core.hooksPath",
+          GIT_CONFIG_VALUE_0: "/junior/git-hooks",
+          GIT_CONFIG_KEY_1: "credential.helper",
+          GIT_CONFIG_VALUE_1: "store",
+        },
+      },
+    );
+
+    const result = spawnSync("bash", ["-c", script]);
+
+    expect(result.stderr.toString()).toBe("");
+    expect(result.stdout.toString()).toBe("/junior/git-hooks\n\ntrue\n");
   });
 
   it("wraps argv commands in a non-interactive bash invocation", async () => {

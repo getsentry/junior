@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubSubmitPullRequestReviewTool } from "../src/tools/submit-pull-request-review";
+import { gitHubSubmitPullRequestReviewTool } from "../src/tools/submit-pull-request-review";
 
 function toolContext(response?: Response) {
   const fetch = vi.fn(
@@ -17,7 +18,9 @@ function toolContext(response?: Response) {
   );
   return {
     fetch,
-    tool: createGitHubSubmitPullRequestReviewTool({ fetch }),
+    tool: bindPluginTool(gitHubSubmitPullRequestReviewTool, {
+      egress: { fetch },
+    }),
   };
 }
 
@@ -29,7 +32,7 @@ describe("submitPullRequestReview", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           event: "COMMENT",
           body: "No findings.",
           comments: [
@@ -47,7 +50,11 @@ describe("submitPullRequestReview", () => {
       target: "submitPullRequestReview",
       repo: "getsentry/junior",
       number: 691,
-      reviewId: 42,
+      reply: {
+        text: "No findings.",
+        url: "https://github.com/getsentry/junior/pull/691#pullrequestreview-42",
+      },
+      review_id: 42,
       state: "COMMENTED",
       url: "https://github.com/getsentry/junior/pull/691#pullrequestreview-42",
     });
@@ -86,7 +93,7 @@ describe("submitPullRequestReview", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           event: "REQUEST_CHANGES",
           body: "Please fix this.",
         },

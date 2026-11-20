@@ -1,14 +1,10 @@
-import { Sandbox } from "@vercel/sandbox";
-import { z } from "zod";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import * as z from "zod";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { trace } from "@/chat/sandbox/snapshot/span";
-import {
-  createSandboxSession,
-  type SandboxSession,
-} from "@/chat/sandbox/workspace";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -133,17 +129,13 @@ async function build(
     },
     async () => {
       const startedAtMs = Date.now();
-      const sandboxCredentials = getVercelSandboxCredentials();
       const resources = getSandboxResources();
-      const sandbox = createSandboxSession(
-        await Sandbox.create({
-          timeout: timeoutMs,
-          runtime,
-          signal,
-          ...(sandboxCredentials ?? {}),
-          ...(resources ? { resources } : undefined),
-        }),
-      );
+      const sandbox = await getSandboxProvider().createSession({
+        timeoutMs,
+        runtime,
+        signal,
+        ...(resources ? { resources } : undefined),
+      });
 
       try {
         await install.dependencies(sandbox, value.dependencies, signal);
@@ -216,6 +208,7 @@ async function withBuildLock(
       await onWaitingForLock?.();
       const waitUntil =
         Date.now() + lockTtlMs + SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS;
+      /* oxlint-disable no-await-in-loop -- Poll the cache and the lock until one of them is ready. */
       while (Date.now() < waitUntil) {
         signal?.throwIfAborted();
         const cached = await getCachedSnapshot(profileHash);
@@ -248,6 +241,7 @@ async function withBuildLock(
 
         await sleep(500, signal);
       }
+      /* oxlint-enable no-await-in-loop */
 
       signal?.throwIfAborted();
       const cached = await getCachedSnapshot(profileHash);
@@ -276,8 +270,8 @@ function toResolveOutcome(
 }
 
 function getRebuildReason(params: {
-  forceRebuild?: boolean;
-  staleSnapshotId?: string;
+  forceRebuild?: boolean | undefined;
+  staleSnapshotId?: string | undefined;
   cached?: CachedSnapshot | null;
   shouldRebuildCached: boolean;
 }): RebuildReason | undefined {
@@ -300,9 +294,9 @@ export async function resolve(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
   onProgress?: (phase: ProgressPhase) => void | Promise<void>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   workspace?: Workspace;
-  prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
+  prepareWorkspace?: ((sandbox: SandboxSession) => Promise<void>) | undefined;
 }): Promise<Snapshot> {
   return await trace(
     "sandbox.snapshot.resolve",
@@ -422,19 +416,5 @@ export async function resolve(params: {
         ...(rebuildReason ? { rebuildReason } : undefined),
       };
     },
-  );
-}
-
-/** Identify provider errors that mean a referenced snapshot no longer exists. */
-export function isMissingError(error: unknown): boolean {
-  const searchable =
-    error instanceof Error
-      ? error.message.toLowerCase()
-      : String(error).toLowerCase();
-  return (
-    searchable.includes("snapshot") &&
-    (searchable.includes("not found") ||
-      searchable.includes("unknown") ||
-      searchable.includes("404"))
   );
 }

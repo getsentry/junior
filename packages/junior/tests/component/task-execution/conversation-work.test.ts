@@ -3,7 +3,6 @@ import type { StateAdapter } from "chat";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
@@ -26,16 +25,15 @@ import {
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
+  steerWebPendingMessages,
   stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import {
-  deleteConversationState,
-  recordConversationExecution,
-} from "@/chat/task-execution/state";
+import { deleteConversationState } from "@/chat/task-execution/state";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
+  type ConversationWorkerContext,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { closeDb } from "@/chat/db";
@@ -57,6 +55,7 @@ import {
   delayMutationLockUntil,
   inboundMessage,
   observeConversationMutationLock,
+  runTestHeartbeat,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 const OTHER_SLACK_DESTINATION = {
@@ -72,7 +71,10 @@ function failingMetadataStore(): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
@@ -88,7 +90,10 @@ function metadataEventsStore(events: string[]): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
@@ -99,7 +104,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
 }
 
 describe("conversation work execution", () => {
-  const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -109,9 +114,9 @@ describe("conversation work execution", () => {
     await closeDb();
     await disconnectStateAdapter();
     if (originalJuniorSecret === undefined) {
-      delete process.env.JUNIOR_SECRET;
+      delete process.env["JUNIOR_SECRET"];
     } else {
-      process.env.JUNIOR_SECRET = originalJuniorSecret;
+      process.env["JUNIOR_SECRET"] = originalJuniorSecret;
     }
     vi.useRealTimers();
   });
@@ -215,7 +220,7 @@ describe("conversation work execution", () => {
     const legacyMessage = {
       ...(inboundMessage("legacy") as Record<string, unknown>),
     };
-    delete legacyMessage.destination;
+    delete legacyMessage["destination"];
     const legacyWork = {
       schemaVersion: 2,
       conversationId: CONVERSATION_ID,
@@ -253,42 +258,13 @@ describe("conversation work execution", () => {
     const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
       execution: { pendingMessages: Array<Record<string, unknown>> };
     };
-    raw.execution.pendingMessages[0]!.delivery = "future-mode";
+    raw.execution.pendingMessages[0]!["delivery"] = "future-mode";
     await state.set(CONVERSATION_WORK_STATE_KEY, raw);
 
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(raw);
-  });
-
-  it("ignores legacy injected markers without blocking pending work", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await appendInboundMessage({
-      message: inboundMessage("injected"),
-      nowMs: 1_000,
-      state,
-    });
-    await appendInboundMessage({
-      message: inboundMessage("pending", {
-        createdAtMs: 2_000,
-        receivedAtMs: 2_100,
-      }),
-      nowMs: 2_100,
-      state,
-    });
-    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
-      execution: { pendingMessages: Array<Record<string, unknown>> };
-    };
-    raw.execution.pendingMessages[0]!.injectedAtMs = 1_500;
-    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
-
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
-    ).resolves.toMatchObject({
-      messages: [expect.objectContaining({ inboundMessageId: "pending" })],
-    });
   });
 
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
@@ -578,7 +554,7 @@ describe("conversation work execution", () => {
         inboundMessageIds: [pendingMessage.inboundMessageId],
         pendingCount: 1,
         pendingMessages: [{ ...pendingMessage, publishExternally: true }],
-        status: "idle",
+        status: "pending",
         updatedAtMs: 1_000,
       },
       lastActivityAtMs: 1_000,
@@ -605,6 +581,40 @@ describe("conversation work execution", () => {
     });
   });
 
+  it("rejects an idle execution that still has pending messages", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const pendingMessage = inboundMessage("m1");
+    const stored = {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: [pendingMessage.inboundMessageId],
+        pendingCount: 1,
+        pendingMessages: [{ ...pendingMessage, publishExternally: true }],
+        status: "idle",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, stored);
+
+    await expect(
+      recordConversationActivity({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: 2_000,
+        state,
+      }),
+    ).rejects.toThrow("idle cannot have pending messages");
+    await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
+      stored,
+    );
+  });
+
   it("keeps failed execution metadata when pending mailbox work remains", async () => {
     const state = getStateAdapter();
     await state.connect();
@@ -614,18 +624,13 @@ describe("conversation work execution", () => {
       state,
     });
 
-    await recordConversationExecution({
-      conversationId: CONVERSATION_ID,
-      createdAtMs: 1_000,
-      destination: SLACK_DESTINATION,
-      execution: {
-        status: "failed",
-        updatedAtMs: 2_000,
-      },
-      lastActivityAtMs: 2_000,
-      state,
-      updatedAtMs: 2_000,
-    });
+    // Seed the residue of a failed Run that still has mailbox work.
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { status: string; updatedAtMs: number };
+    };
+    raw.execution.status = "failed";
+    raw.execution.updatedAtMs = 2_000;
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
 
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
@@ -666,6 +671,142 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
+  });
+
+  it("keeps stored trace context and author Identity ids, and strips unknown trace keys through rewrites", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const traceContext = {
+      sentryTrace: "0123456789abcdef0123456789abcdef-0123456789abcdef-1",
+      baggage: "sentry-trace_id=0123456789abcdef0123456789abcdef",
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1", "m2", "m3"],
+        pendingCount: 3,
+        pendingMessages: [
+          { ...inboundMessage("m1"), publishExternally: true },
+          {
+            ...inboundMessage("m2", {
+              createdAtMs: 1_500,
+              input: {
+                text: "message m2",
+                authorId: "U123",
+                authorIdentityId: "identity-1",
+              },
+            }),
+            publishExternally: true,
+            traceContext,
+          },
+          {
+            ...inboundMessage("m3", { createdAtMs: 1_600 }),
+            publishExternally: true,
+            traceContext: { ...traceContext, futureKey: "value" },
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await appendInboundMessage({
+      message: inboundMessage("m4", { createdAtMs: 2_000 }),
+      nowMs: 2_000,
+      state,
+    });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages.map((message) => message.traceContext)).toEqual([
+      undefined,
+      traceContext,
+      traceContext,
+      undefined,
+    ]);
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: InboundMessage[] };
+    };
+    expect(
+      stored.execution.pendingMessages.map((message) => message.traceContext),
+    ).toEqual([undefined, traceContext, traceContext, undefined]);
+    expect(
+      work?.messages.map((message) => message.input.authorIdentityId),
+    ).toEqual([undefined, "identity-1", undefined, undefined]);
+    expect(
+      stored.execution.pendingMessages.map(
+        (message) => message.input.authorIdentityId,
+      ),
+    ).toEqual([undefined, "identity-1", undefined, undefined]);
+  });
+
+  it("drops malformed trace context and still processes the message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1", "m2"],
+        pendingCount: 2,
+        pendingMessages: [
+          {
+            ...inboundMessage("m1"),
+            publishExternally: true,
+            traceContext: { baggage: "sentry-trace_id=abc" },
+          },
+          {
+            ...inboundMessage("m2", { createdAtMs: 1_500 }),
+            publishExternally: true,
+            traceContext: "not-an-object",
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await appendInboundMessage({
+      message: inboundMessage("m3", { createdAtMs: 2_000 }),
+      nowMs: 2_000,
+      state,
+    });
+
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    for (const message of stored.execution.pendingMessages) {
+      expect(message).not.toHaveProperty("traceContext");
+    }
+
+    const attempted: string[] = [];
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          attempted.push(
+            ...context.attempt.messages.map(
+              (message) => message.inboundMessageId,
+            ),
+          );
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(attempted).toEqual(["m1", "m2", "m3"]);
   });
 
   it("appends destinationless work onto a provider conversation", async () => {
@@ -1378,12 +1519,14 @@ describe("conversation work execution", () => {
   it("stops conversation work after repeated lost-lease retries", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
+    const beforeWorkStops = vi.fn(async () => {});
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       currentNowMs = attempt * 1_000;
       await expect(
         processConversationWork(conversationQueueMessage(), {
+          beforeWorkStops,
           nowMs: () => currentNowMs,
           queue,
           run: async () => ({ status: "lost_lease" }),
@@ -1400,6 +1543,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(false);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
     expect(queue.sentRecords()).toHaveLength(4);
+    // The owner of the work ends what it owns, such as a dispatch.
+    expect(beforeWorkStops).toHaveBeenCalledOnce();
+    expect(beforeWorkStops).toHaveBeenCalledWith(CONVERSATION_ID, ["m1"]);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
@@ -1478,22 +1624,45 @@ describe("conversation work execution", () => {
       }),
       nowMs: 2_100,
     });
-    const drained: string[][] = [];
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        createdAtMs: 3_000,
+        delivery: "defer",
+        input: { authorId: "dashboard:reader", text: "steer me" },
+        receivedAtMs: 3_100,
+        source: "web",
+      }),
+      nowMs: 3_100,
+    });
+    // Each entry is the run number and the ids that run drained.
+    const drained: string[] = [];
+    let runs = 0;
+    const drain = (context: ConversationWorkerContext) =>
+      context.attempt.drain(async (messages) => {
+        const ids = messages.map((message) => message.inboundMessageId);
+        drained.push(`${runs}:${ids.join(",")}`);
+        return ids;
+      });
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.drain(async (messages) => {
-            drained.push(messages.map((message) => message.inboundMessageId));
-            return messages.map((message) => message.inboundMessageId);
+          runs += 1;
+          await drain(context);
+          // A queued message steered after the attempt started joins it.
+          await steerWebPendingMessages({
+            authorIds: ["dashboard:reader"],
+            conversationId: CONVERSATION_ID,
+            inboundMessageIds: ["m3"],
           });
+          await drain(context);
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(drained).toEqual([["m1"]]);
+    expect(drained).toEqual(["1:m1", "1:m3"]);
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -1503,6 +1672,77 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("gives each message with no known author its own attempt", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    for (const id of ["n1", "n2"]) {
+      await appendInboundMessage({
+        message: inboundMessage(id, { input: { text: id } }),
+        nowMs: 1_000,
+      });
+    }
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // Neither message can show that it has the other's Actor.
+    expect(attempts).toEqual([["n1"], ["n2"]]);
+  });
+
+  it("resumes a yielded Turn before a newly steered web message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const webMessage = (id: string, authorId: string) =>
+      inboundMessage(id, {
+        delivery: "defer",
+        input: { authorId, text: id },
+        source: "web",
+      });
+    await appendInboundMessage({
+      message: webMessage("a1", "dashboard:a"),
+      nowMs: 1_000,
+    });
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        await appendInboundMessage({
+          message: webMessage("b1", "dashboard:b"),
+        });
+        await steerWebPendingMessages({
+          authorIds: ["dashboard:b"],
+          conversationId: CONVERSATION_ID,
+          inboundMessageIds: ["b1"],
+        });
+        return { status: "yielded" };
+      },
+    });
+
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // A second Turn must not start while the first waits to resume.
+    expect(attempts).toEqual([["a1"], [], ["b1"]]);
   });
 
   it("does not rewrite mailbox state for an empty drain result", async () => {
@@ -1648,9 +1888,6 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
       "m2",
-    ]);
-    expect(state?.messages.map((message) => message.injectedAtMs)).toEqual([
-      undefined,
     ]);
   });
 
@@ -2151,6 +2388,37 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toHaveLength(1);
   });
 
+  it("prunes a failed conversation from the active index without a wake", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    // A failed Run that left its active index entry behind.
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: Record<string, unknown>;
+    };
+    raw.execution = {
+      ...raw.execution,
+      pendingCount: 0,
+      pendingMessages: [],
+      status: "failed",
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
+
+    await expect(
+      recoverConversationWork({ nowMs: 62_000, queue, state }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 0 });
+
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(listActiveConversationIds({ state })).resolves.not.toContain(
+      CONVERSATION_ID,
+    );
+  });
+
   it("uses fresh queue idempotency keys for repeated heartbeat recovery", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -2270,10 +2538,7 @@ describe("conversation work execution", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     try {
-      await runHeartbeat({
-        nowMs: 62_000,
-        conversationWorkQueue: queue,
-      });
+      await runTestHeartbeat(queue, 62_000);
     } finally {
       unregister();
     }
@@ -2535,7 +2800,7 @@ describe("conversation work execution", () => {
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
@@ -2573,7 +2838,7 @@ describe("conversation work execution", () => {
   });
 
   it("keeps queue signatures valid across default visibility redelivery", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
       conversationQueueMessage(),

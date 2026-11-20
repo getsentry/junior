@@ -6,6 +6,11 @@ function baseContext(
   overrides: Partial<AfterMcpToolHookContext> = {},
 ): AfterMcpToolHookContext {
   return {
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+    },
     db: {},
     log: {
       error() {},

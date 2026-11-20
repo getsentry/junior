@@ -6,10 +6,9 @@ import {
   type PluginToolOutput,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { vercelProjectIdSchema } from "../project.js";
 import { vercelDeploymentSubscribable } from "../events/deployment.js";
-import { vercelWebhookSecret } from "../webhooks/secret.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const targetSchema = z.enum(["preview", "production", "staging"]);
@@ -17,7 +16,7 @@ const nonEmptyStringSchema = z.string().trim().min(1);
 
 const inputSchema = z
   .object({
-    commitSha: commitShaSchema
+    commit_sha: commitShaSchema
       .describe(
         "Optional full 40-character Git commit SHA. Provide it to watch one deployment; omit it to watch every matching deployment for the project.",
       )
@@ -25,7 +24,7 @@ const inputSchema = z
     project: nonEmptyStringSchema.describe("Vercel project name or prj_ ID."),
     target: targetSchema
       .describe(
-        'Optional deployment target such as "production". Omit to watch every target for the project. Defaults to "production" when commitSha is set.',
+        'Optional deployment target such as "production". Omit to watch every target for the project. Defaults to "production" when commit_sha is set.',
       )
       .optional(),
     team: nonEmptyStringSchema
@@ -35,9 +34,9 @@ const inputSchema = z
   .strict();
 
 const deploymentSchema = z.object({
-  commitSha: commitShaSchema.nullable(),
-  deploymentTarget: targetSchema.nullable(),
-  projectId: vercelProjectIdSchema,
+  commit_sha: commitShaSchema.nullable(),
+  deployment_target: targetSchema.nullable(),
+  project_id: vercelProjectIdSchema,
   subscribable: subscribableResourceSchema.optional(),
 });
 
@@ -74,59 +73,57 @@ function projectLookupUrl(project: string, team?: string): string {
 }
 
 /** Resolve and return the resource identity for one Vercel deployment. */
-export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Resolve a Vercel project name or ID and describe a subscribable deployment resource. Omit commitSha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commitSha to watch one deployment; target defaults to production when omitted with commitSha. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const response = await ctx.egress.fetch({
-        operation: "vercel.project.get",
-        provider: "vercel",
-        request: new Request(projectLookupUrl(input.project, input.team)),
-      });
-      const parsed = await readJson(response);
-      if (!response.ok) {
-        const message = `Vercel project lookup failed with HTTP ${response.status}`;
-        // Missing project is model-repairable. Auth, rate limit, and 5xx stay system errors.
-        if (response.status === 404) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+export const vercelDeploymentTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Resolve a Vercel project name or ID and describe a subscribable deployment resource for one deployment or every deployment of the project. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: ToolRegistrationHookContext,
+  ): Promise<Result> {
+    const response = await ctx.egress.fetch({
+      operation: "vercel.project.get",
+      provider: "vercel",
+      request: new Request(projectLookupUrl(input.project, input.team)),
+    });
+    const parsed = await readJson(response);
+    if (!response.ok) {
+      const message = `Vercel project lookup failed with HTTP ${response.status}`;
+      // Missing project is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(message);
       }
-      const projectId = z
-        .object({ id: vercelProjectIdSchema })
-        .parse(parsed).id;
-      const commitSha = input.commitSha?.toLowerCase();
-      // Preserve the previous commit-watch default so one-shot SHA watches stay
-      // production-scoped unless the caller names another target.
-      const deploymentTarget =
-        input.target ?? (commitSha ? ("production" as const) : undefined);
-      const subscribable = ctx.events.canSubscribe
-        ? vercelDeploymentSubscribable({
-            commitSha,
-            projectId,
-            target: deploymentTarget,
-            webhookSecret: vercelWebhookSecret(),
-          })
-        : undefined;
-      const data: Deployment = {
-        commitSha: commitSha ?? null,
-        deploymentTarget: deploymentTarget ?? null,
-        projectId,
-        ...(subscribable ? { subscribable } : undefined),
-      };
-      return {
-        target: "deployment",
-        ...data,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const projectId = z.object({ id: vercelProjectIdSchema }).parse(parsed).id;
+    const commitSha = input.commit_sha?.toLowerCase();
+    // Preserve the previous commit-watch default so one-shot SHA watches stay
+    // production-scoped unless the caller names another target.
+    const deploymentTarget =
+      input.target ?? (commitSha ? ("production" as const) : undefined);
+    const subscribable = vercelDeploymentSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      commitSha,
+      projectId,
+      target: deploymentTarget,
+    });
+    const data: Deployment = {
+      commit_sha: commitSha ?? null,
+      deployment_target: deploymentTarget ?? null,
+      project_id: projectId,
+      ...(subscribable ? { subscribable } : undefined),
+    };
+    return {
+      target: "deployment",
+      ...data,
+    };
+  },
+});

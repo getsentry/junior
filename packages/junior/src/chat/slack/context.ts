@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { toOptionalString } from "@/chat/coerce";
 import {
   parseSlackChannelId,
@@ -98,13 +98,6 @@ export function parseSlackThreadId(
   return { channelId, threadTs };
 }
 
-/** Resolve the Slack channel ID from a `slack:<channel>:<ts>` thread identifier. */
-export function resolveSlackChannelIdFromThreadId(
-  threadId: string | undefined,
-): SlackChannelId | undefined {
-  return parseSlackThreadId(threadId)?.channelId;
-}
-
 /** Best-effort channel ID extraction from a raw Slack message payload. */
 export function resolveSlackChannelIdFromMessage(
   message: unknown,
@@ -125,9 +118,5 @@ export function resolveSlackChannelIdFromMessage(
       return rawChannel;
     }
   }
-
-  const threadId = toTrimmedSlackString(
-    (message as { threadId?: unknown }).threadId,
-  );
-  return resolveSlackChannelIdFromThreadId(threadId);
+  return undefined;
 }

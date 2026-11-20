@@ -1,4 +1,7 @@
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { isPushServiceHost } from "@/chat/notifications/push-endpoint";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { promoteHttpRouteName } from "@/chat/sentry-route-name";
 import { consumePrivateTraceResultMarker } from "@/chat/tool-support/private-trace-result";
 import type * as Sentry from "@/chat/sentry";
 
@@ -13,13 +16,9 @@ type RequestContainer = {
   query_string?: unknown;
   url?: string;
 };
-type SentryErrorEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSend"]>
+type SentrySpan = Parameters<
+  NonNullable<Sentry.NodeOptions["beforeSendSpan"]>
 >[0];
-type SentryTransactionEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSendTransaction"]>
->[0];
-type SentrySpan = Parameters<Parameters<typeof Sentry.withStreamedSpan>[0]>[0];
 type SentryLog = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSendLog"]>
 >[0];
@@ -36,27 +35,119 @@ const PAYLOAD_ATTRIBUTE_KEYS = new Set([
 const URL_ATTRIBUTE_KEYS = new Set([
   "http.target",
   "http.url",
+  // Fetch and HTTP breadcrumbs keep the request URL under `url`.
+  "url",
   "url.full",
   "url.path",
 ]);
-const OAUTH_CALLBACK_PATH = "/api/oauth/callback/";
-const LOCAL_CREDENTIAL_PATH = "/api/internal/local-oauth-credentials";
+const SLACK_FILE_HOST = "files.slack.com";
+// `initSentry` collects only allowlisted request headers. This also covers a
+// changed SDK default. `forwarded` carries a Vercel bearer in `sig=`, and
+// `vercel-forwarded-path` and `referer` repeat paths with their query strings.
 const SECRET_HEADER_NAMES = new Set([
+  "authorization",
+  "forwarded",
+  "referer",
+  "vercel-forwarded-path",
+  "x-hub-signature",
+  "x-hub-signature-256",
   "x-junior-local-credential-signature",
   "x-junior-sandbox-egress-token",
+  "x-slack-signature",
 ]);
+const SDK_REQUEST_HEADER_PREFIX = "http.request.header.";
 
-function stripQuery(value: string): string {
-  const queryIndex = value.indexOf("?");
-  return queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+// Span names such as `GET https://slack.com/api/users.info?user=U1` repeat the
+// request URL. Query spans use `?` placeholders, so only method-and-URL names
+// are rewritten.
+const SPAN_METHOD = /^[A-Z]+$/;
+
+/**
+ * Drop the query and fragment, hide the sandbox egress credential token, and
+ * keep only the host of a push endpoint.
+ */
+function scrubUrl(value: string): string {
+  const url = value.split(/[?#]/, 1)[0] ?? value;
+  const host = url.includes("://") ? urlHost(url) : undefined;
+  if (host && isPushServiceHost(host)) {
+    return `https://${host}`;
+  }
+  return redactSandboxEgressProxyPath(url);
+}
+
+function scrubSpanName(name: string): string {
+  const space = name.indexOf(" ");
+  if (space < 1) return name;
+  const method = name.slice(0, space);
+  const target = name.slice(space + 1);
+  const isUrl = ["https://", "http://", "/"].some((prefix) =>
+    target.startsWith(prefix),
+  );
+  if (!SPAN_METHOD.test(method) || !isUrl || /\s/.test(target)) return name;
+  return `${method} ${scrubUrl(target)}`;
 }
 
 function isSecretHeaderAttribute(key: string): boolean {
+  // Logs write header names with underscores, such as `x_slack_signature`.
+  const lowerKey = key.toLowerCase();
+  if (
+    lowerKey.startsWith(SDK_REQUEST_HEADER_PREFIX) &&
+    SECRET_HEADER_NAMES.has(
+      lowerKey.slice(SDK_REQUEST_HEADER_PREFIX.length).replaceAll("_", "-"),
+    )
+  ) {
+    return true;
+  }
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
   return (
     normalized.endsWith("xjuniorlocalcredentialsignature") ||
     normalized.endsWith("xjuniorsandboxegresstoken")
   );
+}
+
+function urlHost(value: string): string | undefined {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The URL path of a private Slack file names the workspace and file. The URL
+ * path of a push endpoint identifies one browser. Keep only their host.
+ */
+function isHostOnly(host: string): boolean {
+  return host === SLACK_FILE_HOST || isPushServiceHost(host);
+}
+
+function hostOnlyRequestHost(attributes: AttributeMap): string | undefined {
+  const address = attributes["server.address"];
+  if (typeof address === "string" && isHostOnly(address)) {
+    return address;
+  }
+  for (const key of URL_ATTRIBUTE_KEYS) {
+    const value = attributes[key];
+    const host = typeof value === "string" ? urlHost(value) : undefined;
+    if (host && isHostOnly(host)) {
+      return host;
+    }
+  }
+  return undefined;
+}
+
+function keepOnlyHost(attributes: AttributeMap, host: string): void {
+  for (const key of URL_ATTRIBUTE_KEYS) {
+    const value = attributes[key];
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (value.includes("://")) {
+      attributes[key] = `https://${host}`;
+    } else {
+      delete attributes[key];
+    }
+  }
 }
 
 function scrubSensitiveUrlAttributes(
@@ -65,28 +156,28 @@ function scrubSensitiveUrlAttributes(
   if (!attributes) {
     return;
   }
-  // Query strings are not useful enough in telemetry to justify retaining
-  // OAuth codes, signed state, or other caller-supplied secrets.
+  // Query strings and fragments are not useful enough in telemetry to justify
+  // retaining OAuth codes, signed state, or other caller-supplied secrets.
   delete attributes["url.query"];
+  delete attributes["url.fragment"];
+  // `initSentry` collects no bodies. This also covers a changed SDK default.
+  delete attributes["http.request.body.data"];
 
-  const hasLocalCredentialUrl = [...URL_ATTRIBUTE_KEYS].some((key) => {
-    const value = attributes[key];
-    return typeof value === "string" && value.includes(LOCAL_CREDENTIAL_PATH);
-  });
   for (const key of Object.keys(attributes)) {
-    if (
-      isSecretHeaderAttribute(key) ||
-      (hasLocalCredentialUrl && key === "http.request.body.data")
-    ) {
+    if (isSecretHeaderAttribute(key)) {
       delete attributes[key];
     }
   }
+  const hostOnly = hostOnlyRequestHost(attributes);
+  if (hostOnly) {
+    keepOnlyHost(attributes, hostOnly);
+    return;
+  }
   for (const key of URL_ATTRIBUTE_KEYS) {
     const value = attributes[key];
-    if (typeof value !== "string" || !value.includes(OAUTH_CALLBACK_PATH)) {
-      continue;
+    if (typeof value === "string") {
+      attributes[key] = scrubUrl(value);
     }
-    attributes[key] = stripQuery(value);
   }
 }
 
@@ -95,13 +186,11 @@ function scrubSensitiveRequest(request: RequestContainer | undefined): void {
     return;
   }
   const url = request.url;
-  if (url?.includes(OAUTH_CALLBACK_PATH)) {
-    request.url = stripQuery(url);
-    delete request.query_string;
+  if (url !== undefined) {
+    request.url = scrubUrl(url);
   }
-  if (url?.includes(LOCAL_CREDENTIAL_PATH)) {
-    delete request.data;
-  }
+  delete request.query_string;
+  delete request.data;
   if (!request.headers) {
     return;
   }
@@ -159,33 +248,21 @@ function scrubContainer(container: AttributeContainer | undefined): void {
   scrubSensitiveUrlAttributes(container.attributes);
 }
 
-/** Remove private conversation payloads and boundary secrets from error events. */
-export function scrubPrivateSentryEvent(
-  event: SentryErrorEvent,
-): SentryErrorEvent | null {
+/**
+ * Remove private conversation payloads and boundary secrets from error and
+ * user feedback events.
+ */
+export function scrubPrivateSentryEvent<T extends Sentry.Event>(event: T): T {
   const eventRecord = event as AttributeContainer;
   scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
-  scrubContainer(event.contexts?.trace as AttributeContainer);
+  scrubSensitiveRequest(event.request);
+  if (event.transaction) {
+    event.transaction = scrubSpanName(event.transaction);
+  }
+  scrubContainer(event.contexts?.trace);
 
   for (const breadcrumb of event.breadcrumbs ?? []) {
-    scrubContainer(breadcrumb as AttributeContainer);
-  }
-
-  return event;
-}
-
-/** Remove private conversation payloads and boundary secrets from transactions. */
-export function scrubPrivateSentryTransaction(
-  event: SentryTransactionEvent,
-): SentryTransactionEvent | null {
-  const eventRecord = event as AttributeContainer;
-  scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
-  scrubContainer(event.contexts?.trace as AttributeContainer);
-
-  for (const span of event.spans ?? []) {
-    scrubContainer(span);
+    scrubContainer(breadcrumb);
   }
 
   return event;
@@ -194,6 +271,13 @@ export function scrubPrivateSentryTransaction(
 /** Remove private conversation payloads and boundary secrets from streamed spans. */
 export function scrubPrivateSentrySpan(span: SentrySpan): SentrySpan {
   scrubContainer(span);
+  span.name = scrubSpanName(span.name);
+  // The SDK copies the raw segment name onto every span before this callback.
+  const segmentName = span.attributes?.["sentry.segment.name"];
+  if (span.attributes && typeof segmentName === "string") {
+    span.attributes["sentry.segment.name"] = scrubSpanName(segmentName);
+  }
+  promoteHttpRouteName(span);
   return span;
 }
 

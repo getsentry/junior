@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "detail_version" integer DEFAULT 0 NOT NULL;

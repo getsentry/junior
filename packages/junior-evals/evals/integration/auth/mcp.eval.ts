@@ -3,11 +3,11 @@ import { githubPlugin } from "@sentry/junior-github";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import {
+  appHomeUnlink,
   completeAuth,
   file,
   githubWebhook,
   person,
-  slackCommand,
   slackMention,
   slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
@@ -231,7 +231,7 @@ describe("MCP Authorization", () => {
     const connected = await connectAlice(run);
 
     const unlinked = await connected.continue(
-      slackCommand("unlink eval-auth", { author: ALICE }),
+      appHomeUnlink("eval-auth", { author: ALICE }),
     );
     expect(unlinked.turns).toEqual([]);
 

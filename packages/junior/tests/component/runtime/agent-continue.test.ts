@@ -1,5 +1,9 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
+import {
+  createPausedTurns,
+  wakePausedTurn,
+} from "@/chat/task-execution/turn-wake";
 import {
   getConversationWorkState,
   startConversationWork,
@@ -30,9 +34,9 @@ function slackSessionSource(threadTs: string) {
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
-    JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
+    JUNIOR_STATE_ADAPTER: process.env["JUNIOR_STATE_ADAPTER"],
   };
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
   return original;
 });
 
@@ -48,7 +52,7 @@ const agentRunnerShouldNotRun = neverRunAgentRunner();
 
 describe("paused turn scheduling", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
   });
 
@@ -138,6 +142,8 @@ describe("paused turn scheduling", () => {
       sliceId: 1,
       state: "running",
       destination: SLACK_DESTINATION,
+      // The turn already used its lost-worker resume, so recovery fails it.
+      lostWorkerResumeCount: 1,
       source: slackSessionSource("1712345.0006"),
       piMessages: [
         {
@@ -150,7 +156,6 @@ describe("paused turn scheduling", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0006",
@@ -183,6 +188,8 @@ describe("paused turn scheduling", () => {
       run: async () => {
         await runNextPausedTurn(conversationId, {
           agentRunner: agentRunnerShouldNotRun,
+          pausedTurns: createPausedTurns(),
+          sendPluginTask: sendVercelPluginTask,
         });
         return { status: "completed" as const };
       },
@@ -224,6 +231,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        pausedTurns: createPausedTurns(),
+        sendPluginTask: sendVercelPluginTask,
       }),
     ).resolves.toBe(false);
     await expect(
@@ -259,7 +268,6 @@ describe("paused turn scheduling", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0004",
@@ -283,6 +291,8 @@ describe("paused turn scheduling", () => {
     await expect(
       runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        pausedTurns: createPausedTurns(),
+        sendPluginTask: sendVercelPluginTask,
       }),
     ).resolves.toBe(false);
     await expect(

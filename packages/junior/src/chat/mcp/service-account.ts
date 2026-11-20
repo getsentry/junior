@@ -18,12 +18,17 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { isRecord } from "@/chat/coerce";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import { botConfig } from "@/chat/config";
 
 const SERVICE_ACCOUNT_KEY_PREFIX = "junior:mcp_service_account";
 const SIGN_IN_KEY_PREFIX = "junior:mcp_service_account_sign_in";
@@ -46,39 +51,41 @@ function serviceAccountKey(provider: string): string {
   return `${SERVICE_ACCOUNT_KEY_PREFIX}:${provider}`;
 }
 
+function updateLockKey(provider: string): string {
+  return `${serviceAccountKey(provider)}:update`;
+}
+
+// OAuth payloads are stored as the MCP SDK returned them. Only their object
+// shape is checked here.
+const storedOAuthClientInformationSchema =
+  z.custom<OAuthClientInformationMixed>(
+    (value) => typeof value === "object" && value !== null,
+  );
+const storedOAuthDiscoveryStateSchema = z.custom<OAuthDiscoveryState>(
+  (value) => typeof value === "object" && value !== null,
+);
+const storedOAuthTokensSchema = z.custom<OAuthTokens>(
+  (value) => typeof value === "object" && value !== null,
+);
+
+const credentialsSchema = z.object({
+  clientInformation: storedOAuthClientInformationSchema,
+  connectedAtMs: z.number(),
+  connectedBy: z.string().optional().catch(undefined),
+  discoveryState: storedOAuthDiscoveryStateSchema.optional().catch(undefined),
+  redirectUrl: z.string(),
+  tokens: storedOAuthTokensSchema,
+});
+
 function parseCredentials(
   value: unknown,
 ): McpServiceAccountCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
   try {
-    const parsed = JSON.parse(value) as unknown;
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed.clientInformation) ||
-      !isRecord(parsed.tokens) ||
-      typeof parsed.connectedAtMs !== "number" ||
-      typeof parsed.redirectUrl !== "string"
-    ) {
-      return undefined;
-    }
-    return {
-      clientInformation:
-        parsed.clientInformation as OAuthClientInformationMixed,
-      connectedAtMs: parsed.connectedAtMs,
-      ...(typeof parsed.connectedBy === "string"
-        ? { connectedBy: parsed.connectedBy }
-        : undefined),
-      ...(isRecord(parsed.discoveryState)
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      redirectUrl: parsed.redirectUrl,
-      tokens: parsed.tokens as OAuthTokens,
-    };
+    // Plaintext values from before encryption are JSON strings.
+    const parsed = credentialsSchema.safeParse(
+      typeof value === "string" ? JSON.parse(value) : value,
+    );
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -88,8 +95,34 @@ function parseCredentials(
 export async function getMcpServiceAccountCredentials(
   provider: string,
 ): Promise<McpServiceAccountCredentials | undefined> {
-  return parseCredentials(
-    await getStateAdapter().get(serviceAccountKey(provider)),
+  const state = getStateAdapter();
+  const stored = await readEncryptedState(state, serviceAccountKey(provider));
+  const credentials = parseCredentials(stored?.value);
+  if (credentials && stored?.stale) {
+    await saveStaleCredentials(provider);
+  }
+  return credentials;
+}
+
+/**
+ * Save stale credentials again with the active key. It runs only when the
+ * update lock is free, so it cannot write back a refresh token that an
+ * update replaced.
+ */
+async function saveStaleCredentials(provider: string): Promise<void> {
+  const state = getStateAdapter();
+  await withLock(
+    state,
+    updateLockKey(provider),
+    async (lock) => {
+      const key = serviceAccountKey(provider);
+      const current = await readEncryptedState(state, key);
+      const credentials = parseCredentials(current?.value);
+      if (!current?.stale || !credentials) return;
+      await fenceLock(state, lock);
+      await putMcpServiceAccountCredentials(provider, credentials);
+    },
+    { ttlMs: MUTATION_LOCK_TTL_MS },
   );
 }
 
@@ -98,9 +131,9 @@ export async function putMcpServiceAccountCredentials(
   provider: string,
   credentials: McpServiceAccountCredentials,
 ): Promise<void> {
-  await getStateAdapter().set(
+  await createEncryptedState(getStateAdapter()).set(
     serviceAccountKey(provider),
-    JSON.stringify(credentials),
+    credentials,
   );
 }
 
@@ -113,7 +146,7 @@ export async function deleteMcpServiceAccountCredentials(
 
 function clientMetadata(redirectUrl: string): OAuthClientMetadata {
   return {
-    client_name: "Junior MCP Service Account",
+    client_name: `${botConfig.userName} MCP Service Account`,
     redirect_uris: [redirectUrl],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
@@ -122,7 +155,7 @@ function clientMetadata(redirectUrl: string): OAuthClientMetadata {
 }
 
 function reconnectMessage(provider: string): string {
-  return `The ${provider} service account is not authorized anymore. A Junior admin must run \`junior service-account connect ${provider}\`.`;
+  return `The ${provider} service account is not authorized anymore. An admin must run \`junior service-account connect ${provider}\`.`;
 }
 
 /**
@@ -152,7 +185,7 @@ export function createMcpServiceAccountClientProvider(
     const state = getStateAdapter();
     const result = await withLock(
       state,
-      `${serviceAccountKey(provider)}:update`,
+      updateLockKey(provider),
       async (lock) => await run(() => fenceLock(state, lock)),
       { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: UPDATE_LOCK_WAIT_MS },
     );
@@ -273,40 +306,18 @@ function signInKey(state: string): string {
   return `${SIGN_IN_KEY_PREFIX}:${state}`;
 }
 
+const signInSchema = z.object({
+  clientInformation: storedOAuthClientInformationSchema,
+  codeVerifier: z.string(),
+  discoveryState: storedOAuthDiscoveryStateSchema.optional().catch(undefined),
+  provider: z.string(),
+  redirectUrl: z.string(),
+  startedBy: z.string().optional().catch(undefined),
+});
+
 function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed.clientInformation) ||
-      typeof parsed.codeVerifier !== "string" ||
-      typeof parsed.provider !== "string" ||
-      typeof parsed.redirectUrl !== "string"
-    ) {
-      return undefined;
-    }
-    return {
-      clientInformation:
-        parsed.clientInformation as OAuthClientInformationMixed,
-      codeVerifier: parsed.codeVerifier,
-      ...(isRecord(parsed.discoveryState)
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      provider: parsed.provider,
-      redirectUrl: parsed.redirectUrl,
-      ...(typeof parsed.startedBy === "string"
-        ? { startedBy: parsed.startedBy }
-        : undefined),
-    };
-  } catch {
-    return undefined;
-  }
+  const parsed = signInSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Result of finishing a sign-in. A failure message is safe to show the Admin. */
@@ -322,9 +333,9 @@ function signInProvider(input: {
 }) {
   const captured: {
     authorizationUrl?: URL;
-    clientInformation?: OAuthClientInformationMixed;
-    codeVerifier?: string;
-    discoveryState?: OAuthDiscoveryState;
+    clientInformation?: OAuthClientInformationMixed | undefined;
+    codeVerifier?: string | undefined;
+    discoveryState?: OAuthDiscoveryState | undefined;
     tokens?: OAuthTokens;
   } = {
     clientInformation: input.pending?.clientInformation,
@@ -397,16 +408,16 @@ export async function startMcpServiceAccountSignIn(input: {
   if (!authorizationUrl || !clientInformation || !codeVerifier) {
     throw new Error(`${provider} did not return an authorization URL`);
   }
-  await getStateAdapter().set(
+  await createEncryptedState(getStateAdapter()).set(
     signInKey(state),
-    JSON.stringify({
+    {
       clientInformation,
       codeVerifier,
       ...(discoveryState ? { discoveryState } : undefined),
       provider,
       redirectUrl: input.redirectUrl,
       ...(input.startedBy ? { startedBy: input.startedBy } : undefined),
-    } satisfies McpServiceAccountSignIn),
+    } satisfies McpServiceAccountSignIn,
     SIGN_IN_TTL_MS,
   );
   return { authorizationUrl };
@@ -427,7 +438,9 @@ export async function finishMcpServiceAccountSignIn(input: {
   const provider = input.plugin.manifest.name;
   const state = input.callback.get("state");
   const pending = state
-    ? parseSignIn(await getStateAdapter().get(signInKey(state)))
+    ? parseSignIn(
+        await createEncryptedState(getStateAdapter()).get(signInKey(state)),
+      )
     : undefined;
   if (
     !state ||

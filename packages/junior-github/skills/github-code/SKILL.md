@@ -13,16 +13,17 @@ Use `git` and `gh` for repository work.
 | Update PR title/body/base/state | `github_updatePullRequest`                                                                                    |
 | Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`                                                |
 | Submit PR review                | `github_submitPullRequestReview`                                                                              |
+| Comment on PR / reply in thread | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                              |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
 | Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
 
-| Need                          | Read                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| Commands and permissions      | [references/api-surface.md](references/api-surface.md)                                 |
-| Edit, verify, and open a PR   | [references/workflow.md](references/workflow.md)                                       |
-| Command or permission failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                               | Read                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Commands and permissions           | [references/api-surface.md](references/api-surface.md)                                 |
+| Edit, verify, and open a PR        | [references/workflow.md](references/workflow.md)                                       |
+| Command, permission, or CI failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Always
 
@@ -35,7 +36,10 @@ Use `git` and `gh` for repository work.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.
 - Stop for an unclear target, missing access, destructive work, or a GitHub permission failure.
-- Unless the user opts out, push completed work and open a PR. Open it ready for review when the work is complete and the checks pass. Open a draft only when work, checks, or decisions remain.
-- Report repo, branch, PR, checks, and skipped checks.
+- Code changes always end in a pushed branch and a PR. Do not ask whether to open one. Skip it only when the user opts out or asks for investigation only.
+- Open the PR as a draft, unless the requester asks for a ready PR. A scope or follow-up question is not a reason to stop: open the PR, and name the question in the PR body and the report. Name each open decision of a draft in its PR body: when the required checks pass, the Watch marks a draft with no open decision ready for review. It checks the changed files against CODEOWNERS first: a draft that would ask code owners to review, or whose repo's `AGENTS.md` asks for drafts, stays a draft, and the Watch tells the requester that it waits for their review.
+- Link the PR. Mention checks only when they failed or were skipped.
+- The runtime adds the requester `via` line. Do not write one.
+- Credit other people, such as a reporter, by GitHub `@login` so GitHub notifies them. Get the login from `userLookup` (`linked_identities` with provider `github`, else a GitHub link in `profile_fields`). Pass the Slack user ID when known. With no login, write the name. Never guess a login. When you delegate the write, put the `@login` in the brief.
 
 Do not install or repair the GitHub plugin from this skill.

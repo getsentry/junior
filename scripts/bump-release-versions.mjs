@@ -16,6 +16,7 @@ const files = [
   "packages/junior-cloudflare/package.json",
   "packages/junior-dashboard/package.json",
   "packages/junior-datadog/package.json",
+  "packages/junior-figma/package.json",
   "packages/junior-tts/package.json",
   "packages/junior-github/package.json",
   "packages/junior-google/package.json",
@@ -25,9 +26,12 @@ const files = [
   "packages/junior-notion/package.json",
   "packages/junior-octolens/package.json",
   "packages/junior-pagerduty/package.json",
+  "packages/junior-restream/package.json",
   "packages/junior-maintenance/package.json",
+  "packages/junior-search/package.json",
   "packages/junior-sentry/package.json",
   "packages/junior-vercel/package.json",
+  "packages/junior-xdotcom/package.json",
 ];
 
 for (const relativePath of files) {

@@ -2,25 +2,25 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   fileReferenceSchema,
   GOOGLE_FILE_TYPES,
   googleFileRequest,
   parseFileReference,
-  readGoogleFile,
 } from "./files";
+import { readRequesterFile } from "./file-access";
 import type { GoogleToolContext } from "./shared";
 
 const inputSchema = z
   .object({
     file: fileReferenceSchema("Google Docs, Sheets, or Slides"),
-    pageToken: z
+    page_token: z
       .string()
       .min(1)
       .max(2048)
       .optional()
-      .describe("nextPageToken from an earlier call, to read more comments."),
+      .describe("next_page_token from an earlier call, to read more comments."),
   })
   .strict();
 
@@ -31,15 +31,15 @@ const replyOutputSchema = z.object({
     .describe("Set when the reply resolved or reopened the comment."),
   author: z.string().optional(),
   content: z.string(),
-  createdTime: z.string().optional(),
+  created_at: z.string().optional(),
 });
 
 const commentOutputSchema = z.object({
   author: z.string().optional(),
-  commentId: z.string(),
+  comment_id: z.string(),
   content: z.string(),
-  createdTime: z.string().optional(),
-  quotedText: z
+  created_at: z.string().optional(),
+  quoted_text: z
     .string()
     .optional()
     .describe("The file text that the comment is attached to."),
@@ -50,11 +50,11 @@ const commentOutputSchema = z.object({
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("listGoogleFileComments"),
   comments: z.array(commentOutputSchema),
-  fileId: z.string(),
-  nextPageToken: z
+  file_id: z.string(),
+  next_page_token: z
     .string()
     .optional()
-    .describe("Set when the file has more comments. Pass it as pageToken."),
+    .describe("Set when the file has more comments. Pass it as page_token."),
 });
 
 const authorSchema = z
@@ -94,64 +94,60 @@ const COMMENT_FIELDS =
   "comments(author/displayName,content,createdTime,id,quotedFileContent/value,resolved,replies(action,author/displayName,content,createdTime)),nextPageToken";
 
 /** List the comments and replies on one Google Doc, Sheet, or Slides file. */
-export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as Junior's own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
-    inputSchema,
-    outputSchema,
-    async execute(input) {
-      const ref = parseFileReference(input.file);
-      // Check the type first: drive.readonly can also read comments on other
-      // Drive files, such as PDFs.
-      await readGoogleFile(ctx, ref, GOOGLE_FILE_TYPES);
-      const response = await googleFileRequest(ctx, ref, {
-        operation: "google.drive.comments.list",
-        path: `/drive/v3/files/${ref.fileId}/comments`,
-        query: {
-          fields: COMMENT_FIELDS,
-          pageSize: "100",
-          ...(input.pageToken ? { pageToken: input.pageToken } : undefined),
-        },
-      });
-      const { comments, nextPageToken } = commentListSchema.parse(
-        response.body,
-      );
-      return {
-        target: "listGoogleFileComments" as const,
-        comments: comments.map((comment) => ({
-          ...(comment.author?.displayName
-            ? { author: comment.author.displayName }
+export const listGoogleFileCommentsTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works only for files that the requester can open too: shared with them, with their domain, or with anyone who has the link. Returns up to 100 comments per call. Comments can be private: share only what the requester needs.",
+  inputSchema,
+  outputSchema,
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const ref = parseFileReference(input.file);
+    // Check the type first: drive.readonly can also read comments on other
+    // Drive files, such as PDFs.
+    await readRequesterFile(ctx, ref, GOOGLE_FILE_TYPES);
+    const response = await googleFileRequest(ctx, ref, {
+      operation: "google.drive.comments.list",
+      path: `/drive/v3/files/${ref.fileId}/comments`,
+      query: {
+        fields: COMMENT_FIELDS,
+        pageSize: "100",
+        ...(input.page_token ? { pageToken: input.page_token } : undefined),
+      },
+    });
+    const { comments, nextPageToken } = commentListSchema.parse(response.body);
+    return {
+      target: "listGoogleFileComments" as const,
+      comments: comments.map((comment) => ({
+        ...(comment.author?.displayName
+          ? { author: comment.author.displayName }
+          : undefined),
+        comment_id: comment.id,
+        content: comment.content,
+        ...(comment.createdTime
+          ? { created_at: comment.createdTime }
+          : undefined),
+        ...(comment.quotedFileContent?.value
+          ? { quoted_text: comment.quotedFileContent.value }
+          : undefined),
+        replies: comment.replies.map((reply) => ({
+          ...(reply.action ? { action: reply.action } : undefined),
+          ...(reply.author?.displayName
+            ? { author: reply.author.displayName }
             : undefined),
-          commentId: comment.id,
-          content: comment.content,
-          ...(comment.createdTime
-            ? { createdTime: comment.createdTime }
+          content: reply.content,
+          ...(reply.createdTime
+            ? { created_at: reply.createdTime }
             : undefined),
-          ...(comment.quotedFileContent?.value
-            ? { quotedText: comment.quotedFileContent.value }
-            : undefined),
-          replies: comment.replies.map((reply) => ({
-            ...(reply.action ? { action: reply.action } : undefined),
-            ...(reply.author?.displayName
-              ? { author: reply.author.displayName }
-              : undefined),
-            content: reply.content,
-            ...(reply.createdTime
-              ? { createdTime: reply.createdTime }
-              : undefined),
-          })),
-          resolved: comment.resolved === true,
         })),
-        fileId: ref.fileId,
-        ...(nextPageToken ? { nextPageToken } : undefined),
-      };
-    },
-  });
-}
+        resolved: comment.resolved === true,
+      })),
+      file_id: ref.fileId,
+      ...(nextPageToken ? { next_page_token: nextPageToken } : undefined),
+    };
+  },
+});

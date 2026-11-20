@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_participants_unsubscribed_idx" ON "junior_conversation_participants" USING btree ("user_id","root_conversation_id") WHERE "junior_conversation_participants"."unsubscribed_at" is not null;

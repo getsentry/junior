@@ -9,10 +9,12 @@ import type {
 } from "@sentry/junior/api/schema";
 import type {
   ActorIdentity,
-  ConversationStatsReport,
+  ConversationReportMessageEvent,
+  ConversationFeedItem,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
+  ReviewItemChangeRecord,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -31,8 +33,8 @@ export type TranscriptViewToolCallPart = {
   input?: unknown;
   name: string;
   output?: unknown;
-  resultTimestamp?: number;
-  startedTimestamp?: number;
+  resultTimestamp?: number | undefined;
+  startedTimestamp?: number | undefined;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -40,6 +42,8 @@ export type TranscriptViewToolCallPart = {
 export type TranscriptViewSubagentPart = {
   agentName?: string;
   childConversationId: string;
+  /** A Thread renders as a link to its page; Tasks collapse to one line. */
+  childKind: "thread" | "task";
   /** When the child reached its current terminal status. */
   finishedTimestamp?: number;
   id: string;
@@ -51,39 +55,35 @@ export type TranscriptViewSubagentPart = {
 };
 
 export type TranscriptViewContextEventPart = {
-  event:
-    | {
-        createdAt: string;
-        type: "compaction";
-        modelId?: string;
-        modelProfile?: string;
-        summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
-      }
-    | {
-        createdAt: string;
-        modelId: string;
-        modelProfile: string;
-        reasoningLevel?: string;
-        summary?: string;
-        type: "handoff";
-      };
+  /** People mentioned in the summary, resolved by the API. */
+  mentions?: ActorIdentity[];
+  event: {
+    createdAt: string;
+    type: "compaction";
+    modelId?: string;
+    summary?: string;
+    details?: {
+      reason: "capacity";
+      estimatedInputTokens: number;
+      replacementInputTokens?: number | undefined;
+      triggerTokens: number;
+      inputLimitTokens: number;
+      inputMessageCount: number;
+      retainedMessageCount: number;
+      summaryChars: number;
+    };
+  };
   type: "context_event";
 };
 
 export type TranscriptViewStructuredEventPart = {
+  /** People mentioned in the preview and details, resolved by the API. */
+  mentions?: ActorIdentity[];
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
+  /** Turn that emitted the event. */
+  turnId?: string;
   type: "structured_event";
   version: number;
 };
@@ -107,22 +107,37 @@ export type TranscriptViewTurnContext = {
   kind: string;
   loadedAt: string;
   pluginName: string;
+  turnId: string;
   version: number;
 };
 
 export type TranscriptViewMessage = {
   cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
+  /** Agent invocation whose input this is. An agent wrote it, not a person. */
+  agentInvocationId?: string;
+  /** Identity id of the author. Conversation `authors` maps it to the person. */
+  actorIdentityId?: string;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
-  eventObjectType?: ObjectType;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
+  eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
+  /** Every Event when several arrived together in one message. */
+  events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
-  /** People mentioned in the message text. */
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
+  /** Event message whose Turn ended without a reply. */
+  noReply?: true;
+  /** Person changes to Review items that this message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
+  /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
   context?: boolean;
@@ -130,19 +145,16 @@ export type TranscriptViewMessage = {
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */
   pending?: boolean;
-  route?: {
-    confidence?: number;
-    modelId: string;
-    modelProfile: string;
-    reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
-  };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
+  /** Local files of a pending send that the server has not stored yet. */
+  files?: File[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;
@@ -152,33 +164,59 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
-  activityPreview?: ConversationSummaryReport["activityPreview"];
-  annotations?: ConversationSummaryReport["annotations"];
-  sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
-  archivedAt?: string | null;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
-  channel?: string;
-  channelName?: string;
-  channelNameRedacted?: boolean;
-  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
+  activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
+  /** The latest Brief's status, summary, and intent, when visible. */
+  brief?: ConversationFeedItem["brief"] | undefined;
+  /** The newest stored files, when private content is visible. */
+  media?: ConversationFeedItem["media"] | undefined;
+  links?: ConversationFeedItem["links"] | undefined;
+  annotations?: ConversationSummaryReport["annotations"] | undefined;
+  sidebarAnnotations?:
+    | ConversationSummaryReport["sidebarAnnotations"]
+    | undefined;
+  archivedAt?: string | null | undefined;
+  pinnedAt?: string | null | undefined;
+  pinPosition?: number | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
+  channel?: string | undefined;
+  channelName?: string | undefined;
+  channelNameRedacted?: boolean | undefined;
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"] | undefined;
   cumulativeDurationMs: number;
-  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
+  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"] | undefined;
   displayTitle: string;
   id: string;
+  /** The viewer takes part, so they can pin, archive, rename, and mark it. */
+  isParticipant: boolean;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string | undefined;
   lastProgressAt: string;
   lastSeenAt: string;
-  locationId?: string;
-  locationUrl?: string;
-  actorIdentity?: ConversationSummaryReport["actorIdentity"];
-  participants?: ConversationSummaryReport["participants"];
-  sentryTraceUrl?: string;
+  locationId?: string | undefined;
+  locationUrl?: string | undefined;
+  actorIdentity?: ConversationSummaryReport["actorIdentity"] | undefined;
+  participants?: ConversationSummaryReport["participants"] | undefined;
+  sentryTraceUrl?: string | undefined;
   startedAt: string;
-  status: ConversationSummaryReport["status"];
+  status: ConversationStatus;
+  /** What the Conversation and its child Conversations wait on. */
+  treeState?: ConversationSummaryReport["treeState"] | undefined;
+  /** A Conversation in the tree watches for an Event or a Timer. */
+  watching?: boolean | undefined;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
-  traceId?: string;
-  isPriority?: boolean;
-  unfinishedWork?: boolean;
-  visibility?: ConversationSummaryReport["visibility"];
+  traceId?: string | undefined;
+  isPriority?: boolean | undefined;
+  kind: ConversationSummaryReport["kind"];
+  parentConversationId?: string | undefined;
+  /** Visible Threads under this row, newest first. */
+  threads?: Conversation[] | undefined;
+  /** A Turn waits on a person to finish an authorization. Server-owned. */
+  awaitingAuthorization?: boolean | undefined;
+  visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The viewer's newest answer here. The viewer's own feed rows only. */
+  viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };
 
 export type Identity = DashboardIdentity;
@@ -189,10 +227,7 @@ export type DashboardCoreData = {
   me: Identity;
 };
 
-export type SystemData = DashboardCoreData & {
-  conversationStats?: ConversationStatsReport;
-  conversationStatsError: boolean;
-  conversationStatsLoading: boolean;
+export type SystemPluginsData = {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
@@ -200,7 +235,8 @@ export type SystemData = DashboardCoreData & {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle";
+/** The status of one Conversation's own work, as the API derives it. */
+export type ConversationStatus = ConversationSummaryReport["status"];
 
 export type CodeBlock = {
   code: string;

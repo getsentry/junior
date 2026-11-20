@@ -61,6 +61,7 @@ describe("createSlackTurnRuntime", () => {
       const message = createTestMessage({ text: "hey bot" });
 
       await runtime.handleNewMention(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 
@@ -92,6 +93,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       await runtime.handleNewMention(thread, latest, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
         messageContext: {
           skipped: [skipped],
@@ -150,6 +152,7 @@ describe("createSlackTurnRuntime", () => {
         const message = createTestMessage({ id: "m-failed-turn" });
 
         await runtime.handleNewMention(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
           isFinalAttempt,
         });
@@ -158,12 +161,10 @@ describe("createSlackTurnRuntime", () => {
         expect(thread.posts).toHaveLength(shouldPostFallback ? 1 : 0);
         expect(
           thread.posts.some((post) =>
-            typeof post === "string"
-              ? post.includes(
-                  "I ran into an internal error while processing that. " +
-                    "Reference: `event_id=",
-                )
-              : false,
+            JSON.stringify(post).includes(
+              "I ran into an internal error while processing that. " +
+                "Reference: `event_id=",
+            ),
           ),
         ).toBe(shouldPostFallback);
       },
@@ -189,6 +190,7 @@ describe("createSlackTurnRuntime", () => {
         });
 
         await runtime.handleSubscribedMessage(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
         });
 
@@ -209,10 +211,7 @@ describe("createSlackTurnRuntime", () => {
         );
         expect(deps.executeSlackTurn).not.toHaveBeenCalled();
       } finally {
-        setExperimentalFeatures({
-          "passive-routing": true,
-          subagents: true,
-        });
+        setExperimentalFeatures({ "passive-routing": true });
       }
     });
 
@@ -233,6 +232,7 @@ describe("createSlackTurnRuntime", () => {
 
       await expect(
         runtime.handleSubscribedMessage(thread, message, {
+          conversationId: thread.id,
           destination: createTestDestination(thread),
         }),
       ).resolves.toBeUndefined();
@@ -259,6 +259,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       await runtime.handleSubscribedMessage(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 
@@ -281,6 +282,7 @@ describe("createSlackTurnRuntime", () => {
       const message = createTestMessage({});
 
       await runtime.handleSubscribedMessage(thread, message, {
+        conversationId: thread.id,
         destination: createTestDestination(thread),
       });
 

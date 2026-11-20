@@ -1,5 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { logWarn } from "@/chat/logging";
+import { logWarn, withSpan } from "@/chat/logging";
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -24,8 +24,8 @@ type AssistantStatusSender = (
  * Slack's loading surface and keeps the raw Slack `status` field fixed.
  */
 export function createSlackAdapterStatusSender(args: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantStatus">;
 }): AssistantStatusSender {
   const adapter = args.getSlackAdapter() as Pick<
@@ -55,12 +55,14 @@ export function createSlackAdapterStatusSender(args: {
     const nextLoadingMessages = text ? (loadingMessages ?? [text]) : undefined;
 
     try {
-      await runWithBoundSlackToken(adapter, boundToken, () =>
-        adapter.setAssistantStatus(
-          normalizedChannelId,
-          threadTs,
-          text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
-          nextLoadingMessages,
+      await withSetStatusSpan(() =>
+        runWithBoundSlackToken(adapter, boundToken, () =>
+          adapter.setAssistantStatus(
+            normalizedChannelId,
+            threadTs,
+            text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
+            nextLoadingMessages,
+          ),
         ),
       );
     } catch (error) {
@@ -81,12 +83,9 @@ export function createSlackAdapterStatusSender(args: {
  * `loading_messages` while `status` stays fixed and generic.
  */
 export function createSlackWebApiStatusSender(args: {
-  channelId?: string;
-  threadTs?: string;
-  getSlackClient?: typeof getSlackClient;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
 }): AssistantStatusSender {
-  const getClient = args.getSlackClient ?? getSlackClient;
-
   return async (text, loadingMessages) => {
     const channelId = args.channelId;
     const threadTs = args.threadTs;
@@ -102,14 +101,16 @@ export function createSlackWebApiStatusSender(args: {
     const nextLoadingMessages = text ? (loadingMessages ?? [text]) : undefined;
 
     try {
-      await getClient().assistant.threads.setStatus({
-        channel_id: normalizedChannelId,
-        thread_ts: threadTs,
-        status: text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
-        ...(nextLoadingMessages
-          ? { loading_messages: nextLoadingMessages }
-          : undefined),
-      });
+      await withSetStatusSpan(() =>
+        getSlackClient().assistant.threads.setStatus({
+          channel_id: normalizedChannelId,
+          thread_ts: threadTs,
+          status: text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
+          ...(nextLoadingMessages
+            ? { loading_messages: nextLoadingMessages }
+            : undefined),
+        }),
+      );
     } catch (error) {
       logAssistantStatusFailure({
         status: text,
@@ -120,6 +121,25 @@ export function createSlackWebApiStatusSender(args: {
       });
     }
   };
+}
+
+// This call does not go through `withSlackRetries`, so it needs its own
+// `http.client` span. The span uses the same name and fields.
+async function withSetStatusSpan<T>(task: () => Promise<T>): Promise<T> {
+  const method = "assistant.threads.setStatus";
+  return await withSpan(
+    `POST slack.com/api/${method}`,
+    "http.client",
+    {},
+    task,
+    {
+      "http.request.method": "POST",
+      "server.address": "slack.com",
+      "url.scheme": "https",
+      "url.path": `/api/${method}`,
+      "app.slack.method": method,
+    },
+  );
 }
 
 function getSlackAdapterRequestToken(adapter: {

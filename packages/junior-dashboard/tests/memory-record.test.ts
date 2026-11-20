@@ -13,7 +13,6 @@ describe("memory permalink record", () => {
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "explicit",
         sourcePlatform: "slack",
-        visibility: "private",
       }),
     ).toMatchObject({
       actions: [
@@ -25,7 +24,6 @@ describe("memory permalink record", () => {
       id: "memory/1",
       metadata: expect.arrayContaining([
         { label: "Learned", value: "Explicit" },
-        { label: "Visibility", value: "Private" },
       ]),
       title: "Use pnpm.",
     });
@@ -41,7 +39,6 @@ describe("memory permalink record", () => {
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "automatic",
         sourcePlatform: "web",
-        visibility: "private",
       }),
     ).toMatchObject({
       id: "memory/api-1",
@@ -53,7 +50,7 @@ describe("memory permalink record", () => {
     });
   });
 
-  it("allows forgetting public memories with a shared-scope confirmation", () => {
+  it("confirms that forgetting removes the memory for everyone", () => {
     expect(
       memoryPageRecord({
         content: "Deploys happen on Tuesdays.",
@@ -63,7 +60,6 @@ describe("memory permalink record", () => {
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "automatic",
         sourcePlatform: "slack",
-        visibility: "public",
       }),
     ).toMatchObject({
       actions: [

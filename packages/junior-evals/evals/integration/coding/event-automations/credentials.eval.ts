@@ -31,13 +31,13 @@ const issueTrigger = {
 
 function credentialMode(call: ToolCall | undefined): unknown {
   const input = call?.input;
-  return input && typeof input === "object" && "credentialMode" in input
-    ? input.credentialMode
+  return input && typeof input === "object" && "credential_mode" in input
+    ? input.credential_mode
     : undefined;
 }
 
 describe("Event automation credentials", () => {
-  test("when event work may need user-bound authorization, use the creator default", async ({
+  test("when the creator does not ask for their credentials, use the system default", async ({
     run,
   }) => {
     const conversation = await run(
@@ -50,7 +50,7 @@ describe("Event automation credentials", () => {
       rubric({
         pass: [
           "The event automation is created without asking for separate confirmation to use credentials needed for the requested work.",
-          "The reply may accurately say the event automation can use the creator's connected GitHub access; credential access alone does not mean the task executes as the user.",
+          "The reply does not say the event automation will use the creator's connected GitHub access.",
         ],
         fail: [
           "Do not require the user to separately authorize routine connected credential use.",
@@ -59,16 +59,17 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    const creates = completedToolCalls("createEventAutomation", conversation);
+    const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
       trigger: {
+        type: "event",
         events: ["pull_request.review.changes_requested"],
         namespace: "github",
-        identifier: "getsentry/junior#691",
+        match: { repo: "getsentry/junior", pull_request: 691 },
       },
     });
-    expect([undefined, "creator"]).toContain(credentialMode(creates[0]));
+    expect([undefined, "system"]).toContain(credentialMode(creates[0]));
   });
 
   test("when another channel member requests creator credentials, explain who can enable them", async ({
@@ -101,28 +102,24 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    expect(completedToolCalls("createEventAutomation", conversation)).toEqual(
-      [],
-    );
-    expect(completedToolCalls("deleteEventAutomation", conversation)).toEqual(
-      [],
-    );
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
+    expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
     expect(
       conversation.toolCalls.filter(
         (call) =>
-          call.name === "updateEventAutomation" &&
+          call.name === "updateAutomation" &&
           credentialMode(call) === "creator",
       ),
     ).toEqual([]);
     expect(
-      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+      completedToolCalls("searchAutomations", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
           expect.objectContaining({
-            createdBy: expect.objectContaining({ username: "alice" }),
+            created_by: expect.objectContaining({ username: "alice" }),
             id,
-            isCreator: false,
+            is_creator: false,
           }),
         ],
       }),
@@ -156,24 +153,22 @@ describe("Event automation credentials", () => {
       }),
     );
 
-    expect(completedToolCalls("createEventAutomation", conversation)).toEqual(
-      [],
-    );
+    expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
     expect(
-      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+      completedToolCalls("searchAutomations", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
         automations: [
           expect.objectContaining({
-            createdBy: expect.objectContaining({ username: "alice" }),
+            created_by: expect.objectContaining({ username: "alice" }),
             id,
-            isCreator: true,
+            is_creator: true,
           }),
         ],
       }),
     ]);
     expect(
-      completedToolCalls("updateEventAutomation", conversation).filter(
+      completedToolCalls("updateAutomation", conversation).filter(
         (call) => credentialMode(call) === "creator",
       ),
     ).toHaveLength(1);

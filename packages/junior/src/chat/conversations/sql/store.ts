@@ -3,9 +3,11 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { recordConversationParticipant } from "./participants";
-import { replaceConversationMetrics } from "../metrics";
+import {
+  readConversationRunMetrics,
+  replaceConversationMetrics,
+} from "../metrics";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,
@@ -16,6 +18,8 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
   ConversationExecution,
+  ConversationRunMetrics,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -26,21 +30,18 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
-import type { AgentTurnUsage } from "@/chat/usage";
-import type {
-  JuniorDestinationKind,
-  JuniorDestinationVisibility,
-} from "@/db/schema/destinations";
+import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
 } from "./bindings";
 import {
   actorFromIdentityRow,
-  actorIdentityForConversation,
+  resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
 import {
@@ -48,10 +49,13 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
-type ConversationRow = Omit<
-  typeof juniorConversations.$inferSelect,
-  "legacyArchivedAt"
->;
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
+import { nextDetailVersion } from "./detail-version";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -67,7 +71,7 @@ interface DestinationUpsert {
   metadata?: Record<string, unknown>;
   provider: string;
   providerDestinationId: string;
-  providerTenantId?: string;
+  providerTenantId?: string | undefined;
   refreshVisibility: boolean;
   visibility: JuniorDestinationVisibility;
 }
@@ -138,7 +142,7 @@ function localWorkspaceFromConversationId(
 }
 
 function destinationUpsertFromDestination(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId?: string;
   destination: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -180,24 +184,17 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
-// and no supported worker writes the legacy status.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  return (
-    status === "paused" ? "awaiting_resume" : status
-  ) as ConversationStatus;
 }
 
 function destinationFromRow(
@@ -284,8 +281,15 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       ...(row.metricRunId ? { runId: row.metricRunId } : undefined),
       ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
+    kind: conversationKindFromRow(row),
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
+      : undefined),
+    ...(row.rootConversationId
+      ? { rootConversationId: row.rootConversationId }
+      : undefined),
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
@@ -297,21 +301,29 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
+    ...(msFromDate(row.stoppedAt) !== undefined
+      ? { stoppedAtMs: msFromDate(row.stoppedAt) }
+      : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
 
 function emptyConversation(args: {
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
+  kind?: "root" | "automation" | undefined;
   nowMs: number;
-  source?: ConversationSource;
+  source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
 }): Conversation {
   return {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -356,11 +368,25 @@ export class SqlStore implements ConversationStore {
     await bindProviderConversation(this.executor, args);
   }
 
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
+  }
+
   async createChild(args: {
     childConversationId: string;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     await this.withConversationMutation(args.parentConversationId, async () => {
@@ -376,25 +402,39 @@ export class SqlStore implements ConversationStore {
                 `Conversation parent changed for ${args.childConversationId}`,
               );
             }
+            if (existing.kind !== args.kind) {
+              throw new Error(
+                `Conversation kind changed for ${args.childConversationId}`,
+              );
+            }
             return;
           }
-          const parent = await this.get({
-            conversationId: args.parentConversationId,
-          });
-          if (!parent) {
+          const parentRow = await this.readConversationRow(
+            args.parentConversationId,
+          );
+          if (!parentRow) {
             throw new Error(
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
+          // A child stores its parent's Destination row and Location, so it
+          // reads visibility and Location from its own row, the same as a root.
+          const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,
               nowMs,
               source: args.source,
             }),
+            kind: args.kind,
             parentConversationId: args.parentConversationId,
+            ...(location ? { location } : undefined),
+            ...(args.title ? { title: args.title } : undefined),
           };
-          await this.upsertConversation({ conversation: child });
+          await this.upsertConversation({
+            conversation: child,
+            destinationId: parentRow.conversation.destinationId ?? undefined,
+          });
         },
       );
     });
@@ -410,17 +450,25 @@ export class SqlStore implements ConversationStore {
     return conversationFromRow(row);
   }
 
+  async getRunMetrics(args: {
+    conversationId: string;
+    runId: string;
+  }): Promise<ConversationRunMetrics | undefined> {
+    return await readConversationRunMetrics(this.executor, args);
+  }
+
   async recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
-    destination?: Destination;
+    destination?: Destination | undefined;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -441,6 +489,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -473,16 +522,14 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string | undefined;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
-    destination?: Destination;
+    destination?: Destination | undefined;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    metrics: {
-      durationMs: number;
-      usage?: AgentTurnUsage;
-    } | null;
+    metrics: ConversationRunMetrics | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
@@ -506,15 +553,37 @@ export class SqlStore implements ConversationStore {
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
         existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
-      const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
+      const latestMetricRunId = existing?.executionMetrics?.runId;
+      // A Run with metric rows that no longer owns the latest metrics is older
+      // than the latest Run. Its terminal status must not replace the status
+      // of that newer Run.
+      const olderRunFinished =
+        args.metrics !== null &&
+        args.execution.runId !== undefined &&
+        latestMetricRunId !== undefined &&
+        latestMetricRunId !== args.execution.runId &&
+        (args.execution.status === "idle" ||
+          args.execution.status === "failed") &&
+        (await readConversationRunMetrics(this.executor, {
+          conversationId: args.conversationId,
+          runId: args.execution.runId,
+        })) !== undefined;
+      const incomingIsFresh =
+        !olderRunFinished && incomingExecutionAt >= existingExecutionAt;
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
+      // Root Actor and origin Source come from the saved Conversation, as in
+      // recordActivity. A later Turn, such as an event on a Conversation that
+      // the dashboard started, must not derive a system Actor from its Source.
+      const actor = mergeActor(existing?.actor, args.actor);
+      const source = existing?.source ?? args.source;
       await this.upsertConversation({
         conversation: {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
+          kind: existing?.kind ?? "root",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId
@@ -523,8 +592,8 @@ export class SqlStore implements ConversationStore {
           ...(existing?.location ? { location: existing.location } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
-          ...(args.actor ? { actor: args.actor } : undefined),
-          ...(args.source ? { source: args.source } : undefined),
+          ...(actor ? { actor } : undefined),
+          ...(source ? { source } : undefined),
           ...(args.title ? { title: args.title } : undefined),
           ...(args.visibility ? { visibility: args.visibility } : undefined),
           execution,
@@ -532,6 +601,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
@@ -546,6 +616,7 @@ export class SqlStore implements ConversationStore {
               metricRunId: args.execution.runId,
               executionDurationMs: args.metrics.durationMs,
               executionUsage: args.metrics.usage ?? null,
+              detailVersion: nextDetailVersion,
             })
             .where(eq(juniorConversations.conversationId, args.conversationId));
         }
@@ -561,7 +632,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -626,6 +697,18 @@ export class SqlStore implements ConversationStore {
     return undefined;
   }
 
+  async recordDestinationVisibility(args: {
+    channelName?: string;
+    destination: Destination;
+    nowMs?: number;
+    visibility: ConversationPrivacy;
+  }): Promise<void> {
+    await this.upsertDestination(
+      destinationUpsertFromDestination(args),
+      args.nowMs ?? Date.now(),
+    );
+  }
+
   async findSlackDestinationByName(args: {
     channelName: string;
     teamId: string;
@@ -684,7 +767,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -706,8 +789,17 @@ export class SqlStore implements ConversationStore {
   /** Upsert the conversation row while preserving previously discovered nullable metadata fields. */
   private async upsertConversation(args: {
     conversation: Conversation;
+    /** A new child's Destination row, copied from its parent. */
+    destinationId?: string | undefined;
   }): Promise<void> {
     const { conversation } = args;
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
+      throw new Error(
+        `Conversation ${conversation.conversationId} kind does not match its parent`,
+      );
+    }
     // Root Conversations set Destination on first write. A Conversation with a
     // parent can omit Destination. Later updates may omit Destination because
     // onConflict keeps the existing destination_id.
@@ -724,7 +816,7 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const destinationId = await this.upsertDestination(
+    const upsertedDestinationId = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -735,20 +827,17 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
+    const destinationId = upsertedDestinationId ?? args.destinationId;
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
       location: conversation.location,
       sessionSource: conversation.sessionSource,
     });
-    const actorIdentityObservation = actorIdentityForConversation(conversation);
-    const actorIdentity = actorIdentityObservation
-      ? await upsertIdentity(
-          this.executor,
-          actorIdentityObservation,
-          conversation.updatedAtMs,
-        )
-      : undefined;
+    const actorIdentityId = await resolveConversationActorIdentityId(
+      this.executor,
+      conversation,
+    );
     const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
@@ -767,7 +856,7 @@ export class SqlStore implements ConversationStore {
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
-        actorIdentityId: actorIdentity?.id ?? null,
+        actorIdentityId: actorIdentityId ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
         actor: null,
@@ -780,7 +869,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: executionStatusToSql(conversation.execution.status),
+        executionStatus: conversation.execution.status,
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined
@@ -791,6 +880,7 @@ export class SqlStore implements ConversationStore {
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
+        kind: conversation.kind,
         rootConversationId,
       })
       .onConflictDoUpdate({
@@ -801,7 +891,8 @@ export class SqlStore implements ConversationStore {
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
-          actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
+          // Keep the stored Identity. A human reply cannot replace a system root.
+          actorIdentityId: sql`coalesce(${juniorConversations.actorIdentityId}, excluded.actor_identity_id)`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
@@ -815,6 +906,9 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          // Set once. This also fills a null kind left by an older deploy.
+          kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
+          detailVersion: nextDetailVersion,
         },
       })
       .returning({
@@ -826,7 +920,16 @@ export class SqlStore implements ConversationStore {
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // A conflict keeps the stored parent. A history append can create the row
+    // first under the event lock, so a new child can find a root row here.
+    if (
+      row.parentConversationId !== (conversation.parentConversationId ?? null)
+    ) {
+      throw new Error(
+        `Conversation parent changed for ${conversation.conversationId}`,
+      );
+    }
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

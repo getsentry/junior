@@ -4,8 +4,7 @@
  * Runtime actors are platform-scoped actors. Stored Slack actor parsing
  * remains explicit so durable conversation metadata is not repaired on read.
  */
-import { z } from "zod";
-import { actorSchema } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -28,10 +27,10 @@ export const storedSlackActorSchema = z
   .strict();
 
 interface BaseActor {
-  email?: string;
-  fullName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
   userId: string;
-  userName?: string;
+  userName?: string | undefined;
 }
 
 export interface SlackActor extends BaseActor {
@@ -56,18 +55,12 @@ export type UserActor = SlackActor | LocalActor | WebActor;
 export type Actor = UserActor | SystemActor;
 
 export interface SlackActorProfile {
-  email?: string;
-  fullName?: string;
-  userName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
+  userName?: string | undefined;
 }
 
 export type StoredSlackActor = z.output<typeof storedSlackActorSchema>;
-
-/** Parse a serialized runtime actor that crossed a durable boundary. */
-export function parseActor(value: unknown): Actor | undefined {
-  const result = actorSchema.safeParse(value);
-  return result.success ? result.data : undefined;
-}
 
 /** Return whether an actor is a platform-scoped user actor. */
 export function isUserActor(actor: Actor | undefined): actor is UserActor {
@@ -75,12 +68,12 @@ export function isUserActor(actor: Actor | undefined): actor is UserActor {
 }
 
 interface ActorInput {
-  email?: string;
-  fullName?: string;
+  email?: string | undefined;
+  fullName?: string | undefined;
   platform?: UserActor["platform"];
   teamId?: string;
-  userId?: string;
-  userName?: string;
+  userId?: string | undefined;
+  userName?: string | undefined;
 }
 
 function clean(value: string | undefined): string | undefined {
@@ -92,7 +85,8 @@ function isSyntheticActorUserId(value: string): boolean {
   return value.toLowerCase() === "unknown";
 }
 
-function isSlackUserId(value: string): boolean {
+/** Return whether a value has the shape of a Slack user id. */
+export function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_DISPLAY_PATTERN.test(value);
 }
 
@@ -140,7 +134,7 @@ export function createActor(
   context: {
     platform?: UserActor["platform"];
     teamId?: string;
-    userId?: string;
+    userId?: string | undefined;
   },
 ): UserActor | undefined {
   const platform = context.platform ?? input?.platform;

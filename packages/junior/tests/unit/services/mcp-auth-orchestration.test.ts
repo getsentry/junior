@@ -284,6 +284,7 @@ describe("createMcpAuthOrchestration", () => {
       sessionId: "run_1",
       linkSentAtMs: Date.now(),
     };
+    getMcpAuthSession.mockResolvedValue({ authSessionId: "auth_existing" });
 
     const orchestration = createMcpAuthOrchestration({
       abortAgent,
@@ -309,7 +310,6 @@ describe("createMcpAuthOrchestration", () => {
       toolChannelId: "C123",
     });
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
-    expect(getMcpAuthSession).not.toHaveBeenCalled();
     expect(deliverPrivateMessage).not.toHaveBeenCalled();
     expect(recordPendingAuth).toHaveBeenCalledWith(pendingAuth);
     expect(abandonTurnRecord).not.toHaveBeenCalled();

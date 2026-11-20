@@ -10,6 +10,7 @@ import {
 } from "@/chat/actor";
 
 const messageActors = new WeakMap<Message, UserActor>();
+const messageAuthorIdentityIds = new WeakMap<Message, string>();
 interface MessageAuthorIdentity {
   email?: string;
   fullName?: string;
@@ -62,6 +63,26 @@ export function bindMessageActorIdentity(
   messageActors.set(message, currentActor);
   applyActorToAuthor(message.author, currentActor);
   return currentActor;
+}
+
+/**
+ * Keep the author Identity id that ingress resolved, next to the Actor.
+ * The Message write reads it, so the write does not guess the author again.
+ */
+export function bindMessageAuthorIdentityId(
+  message: Message,
+  authorIdentityId: string | undefined,
+): void {
+  if (authorIdentityId) {
+    messageAuthorIdentityIds.set(message, authorIdentityId);
+  }
+}
+
+/** Read the author Identity id that ingress bound to a Chat SDK message. */
+export function getMessageAuthorIdentityId(
+  message: Message,
+): string | undefined {
+  return messageAuthorIdentityIds.get(message);
 }
 
 /** Read message identity without promoting adapter display fallbacks. */

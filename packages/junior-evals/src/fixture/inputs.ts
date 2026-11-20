@@ -3,6 +3,8 @@
  * route that production uses. History items use the same builders.
  */
 
+import type { JsonValue } from "@earendil-works/pi-ai";
+
 /** A Slack person. The Slack mock answers `users.info` with these fields. */
 export interface SlackAuthor {
   fullName?: string;
@@ -67,20 +69,54 @@ export interface ThreadMessageInput {
   text: string;
 }
 
-/** A slash command of Junior through the Slack webhook, with a valid signature. */
-export interface SlackCommandInput {
-  kind: "slack_command";
+/** A click on "Unlink" in Slack App Home, through the signed Slack webhook. */
+export interface AppHomeUnlinkInput {
+  kind: "app_home_unlink";
   author?: SlackAuthor;
-  /** The text after the command name, such as `unlink github`. */
-  text: string;
+  /** The plugin name, such as `github`. */
+  provider: string;
 }
 
 /** A dashboard message through `POST /api/conversations`. */
 export interface WebMessageInput {
   kind: "web_message";
-  /** Images that the person added to the message. */
-  images?: FileInput[];
+  /** Files that the person added to the message. */
+  files?: FileInput[];
+  /** After the post, the person steers the queued message into the running turn. */
+  steer?: boolean;
   text: string;
+}
+
+/**
+ * A person's answer or dismiss in the Inbox, through
+ * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
+ * web Conversation and assigns it to the person, as `addReviewItem` would.
+ */
+export interface ReviewItemActionInput {
+  kind: "review_item_action";
+  action: "submit" | "dismiss";
+  item: InboxItem;
+  /** The answer, by field id. */
+  values?: Record<string, string[]>;
+}
+
+/** An open item that a `ReviewItemActionInput` acts on. */
+export interface InboxItem {
+  body: string;
+  /** Without a request, the item is a notice. */
+  request?: {
+    question: string;
+    fields: (
+      | {
+          id: string;
+          kind: "choice";
+          label: string;
+          options: { label: string }[];
+        }
+      | { id: string; kind: "text"; label: string }
+    )[];
+  };
+  title: string;
 }
 
 /** The authenticated heartbeat route, which runs due automations. */
@@ -117,16 +153,17 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
 export type Input =
   | MessageInput
+  | ReviewItemActionInput
   | AutomationInput
   | CompleteAuthInput
-  | SlackCommandInput;
+  | AppHomeUnlinkInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: Record<string, JsonValue>;
   /** The tool output that the model saw. */
-  result: unknown;
+  result: JsonValue;
 }
 
 /** An earlier Junior reply in loaded history. */
@@ -134,7 +171,7 @@ export interface HistoryReply {
   kind: "reply";
   text: string;
   /** Completed tool calls before this reply. People did not see them. */
-  toolHistory?: HistoryToolCall[];
+  toolHistory?: HistoryToolCall[] | undefined;
 }
 
 /**
@@ -181,26 +218,38 @@ export function slackThreadMessage(
 }
 
 /**
- * Run the slash command of Junior in the Slack channel of the Conversation,
- * such as `slackCommand("unlink github")`. Junior answers the person in
- * private and starts no turn.
+ * Click "Unlink" for a provider in the Slack App Home of the person, such as
+ * `appHomeUnlink("github")`. Junior removes the account and starts no turn.
  */
-export function slackCommand(
-  text: string,
+export function appHomeUnlink(
+  provider: string,
   options: { author?: SlackAuthor } = {},
-): SlackCommandInput {
-  return { kind: "slack_command", text, ...options };
+): AppHomeUnlinkInput {
+  return { kind: "app_home_unlink", provider, ...options };
 }
 
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { images?: FileInput[] } = {},
+  options: { files?: FileInput[]; steer?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }
 
-/** A file for `files` or `images`. A string is the text of the file. */
+/** Answer a Review item from the dashboard, by field id. */
+export function reviewItemAnswer(
+  item: InboxItem,
+  values: Record<string, string[]>,
+): ReviewItemActionInput {
+  return { kind: "review_item_action", action: "submit", item, values };
+}
+
+/** Dismiss a Review item from the dashboard. */
+export function reviewItemDismiss(item: InboxItem): ReviewItemActionInput {
+  return { kind: "review_item_action", action: "dismiss", item };
+}
+
+/** A file for `files`. A string is the text of the file. */
 export function file(
   name: string,
   mimeType: string,

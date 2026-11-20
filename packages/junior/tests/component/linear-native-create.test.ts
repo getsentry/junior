@@ -12,7 +12,7 @@ import { createPluginHookRunner, setPlugins } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
-import { z } from "zod";
+import * as z from "zod";
 
 describe("Linear MCP create annotations", () => {
   let manager: McpToolManager | undefined;
@@ -182,7 +182,9 @@ describe("Linear MCP create annotations", () => {
           cards: createResult.cards,
         });
         expect(
-          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+          getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params[
+            "metadata"
+          ],
         ).toMatchObject({
           entities: [
             {

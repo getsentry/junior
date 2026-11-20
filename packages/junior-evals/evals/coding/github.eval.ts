@@ -28,6 +28,52 @@ describe("GitHub Skill Workflows", () => {
     );
   });
 
+  test("when completed code work leaves an optional follow-up, open the PR without asking", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Say you finished a code change on a pushed branch and the checks pass, but you left out an optional cleanup that would widen the change. Do you ask me before you open the PR, or what do you do? Keep it short.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer says Junior opens the pull request without asking first.",
+          "The answer says the left-out cleanup is named as a follow-up, such as in the pull request body or the report.",
+        ],
+        fail: [
+          "Do not say Junior asks the user whether to open the pull request or waits for permission.",
+          "Do not say Junior adds the cleanup to the change before opening the pull request.",
+        ],
+      }),
+    );
+  });
+
+  test("when CI stalls with no cause in the logs, check GitHub status before blaming an outage", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Say the checks on my PR sat queued for 40 minutes, then a job failed with nothing useful in the logs. What do you do first? Keep it short.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer says Junior checks GitHub status (githubstatus.com) for an open or recent incident.",
+          "The answer says Junior reports a related incident as the likely cause, and does not blame an outage when there is no related incident.",
+        ],
+        fail: [
+          "Do not say the failure is an outage without checking GitHub status.",
+          "Do not tell the user to check GitHub status themselves.",
+        ],
+      }),
+    );
+  });
+
   test("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({
     run,
   }) => {
@@ -119,6 +165,28 @@ describe("GitHub Skill Workflows", () => {
           "Do not choose getsentry/junior-eval-bot-never-exists as the action target.",
           "Do not create or comment on a GitHub issue for either fake repo.",
           "Do not ask the user to restate the repository or issue number.",
+        ],
+      }),
+    );
+  });
+
+  test("when a reply names pull requests from several repos, qualify each reference", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "In one line, tell me that PR 3313 in getsentry/junior and PR 812 in getsentry/sentry-docs are both ready for review. Don't look anything up.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply writes each pull request with its repository, such as getsentry/junior#3313 and getsentry/sentry-docs#812, or links each one to its GitHub URL.",
+        ],
+        fail: [
+          "Do not write a bare #3313 or #812 without its repository.",
+          "Do not put the pull request references in code formatting.",
         ],
       }),
     );

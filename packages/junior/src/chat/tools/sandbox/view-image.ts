@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -16,7 +16,11 @@ const viewImageInputSchema = z
   })
   .strict();
 
-/** Create a tool that loads a sandbox image into the active model context. */
+/**
+ * Create a tool that loads a sandbox image into the active model context.
+ *
+ * @runBuilt viewImage
+ */
 export function createViewImageTool(
   sandbox: SandboxWorkspace,
   supportsImageInput: () => boolean,

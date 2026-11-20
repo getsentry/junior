@@ -2,7 +2,7 @@
 
 ## Source Inventory
 
-Reviewed 2026-09-29; updated 2026-10-15. Official docs and repository contracts are authoritative for syntax and ownership. The completed workflow is evidence of one working setup, not a performance guarantee.
+Reviewed 2026-09-29; updated 2026-11-14. Official docs and repository contracts are authoritative for syntax and ownership. The completed workflow is evidence of one working setup, not a performance guarantee.
 
 | Source                                                                            | Confidence                 | Contribution and limits                                                                                                                                                                                                                                                                                                                               |
 | --------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,11 +27,12 @@ Documentation is linked and summarized, not copied as a bundled upstream manual.
 - **Adopted:** general Junior ownership in the existing browser plugin. Browser capture is the entry point. The workflow is not specific to one app or deployment.
 - **Adopted:** workflow-process class and reference-backed shape. The main checklist is short; exact rendering commands are a separate lookup. Inline-only guidance would mix story decisions with optional CLI detail.
 - **Adopted:** product-led narration, requested collaborator credit, and supported capability claims. User corrections rejected voice-focused introductions and take numbers.
+- **Adopted:** an outro that says what the subject is, with a link when one exists. A video for a public audience ended on "tag me in Slack"; the user preferred a short description and a website link.
 - **Adopted:** reuse unchanged speech and captures. Measure new clips and update later scene starts. This reduced paid generation during small edits.
 - **Adopted:** inspect output after timeouts; check actual attachment bytes. One render completed despite a tool timeout. A large master needed a smaller delivery copy.
 - **Adopted:** standard-library WAV measurement fallback. FFmpeg was available while FFprobe was not. No extra audio package was needed.
 - **Rejected:** shipping the one-off composition, fixtures, assets, or hardcoded browser path. Those are project choices, not reusable skill policy.
-- **Adopted:** hand off to an implementation profile for composition. The requester asked for the stronger profile, and the polish pass ran on it. The skill names no model, because profiles change.
+- **Removed:** hand off to an implementation profile for composition. getsentry/junior#2681 removed the `handoff` tool and model profiles, so every Turn runs on one model.
 - **Adopted:** ASR word alignment, cue lookup by phrase, and DOM-measured boxes. These replaced word-count captions and guessed coordinates, which caused cut phrases and misplaced highlights.
 - **Adopted:** still-grid review with a defect table. The listed defects were found and fixed during the polish pass.
 - **Adopted, conditional:** music only from supplied or licensed tracks, ducked under narration. The user asked for music guidance; no music was used in the observed runs, so the mix values are a starting point, not a measured result.

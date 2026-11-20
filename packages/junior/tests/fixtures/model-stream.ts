@@ -1,36 +1,42 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import {
+  normalizeContext,
+  type AssistantMessage,
+  type Context,
+  type SimpleStreamOptions,
+  type StreamFunction,
+} from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 type FixedModelOutput =
   | {
       type: "text";
       text: string;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown> | "abort";
     }
   | {
       type: "toolCall";
       name: string;
       arguments: Parameters<typeof fauxToolCall>[1];
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "error";
       errorMessage: string;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "message";
       message: AssistantMessage;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     };
 
@@ -58,8 +64,8 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   if (!onRequest && !waitFor) {
     return message;
   }
-  return async (_context, options) => {
-    onRequest?.();
+  return async (context, options) => {
+    onRequest?.(context);
     if (waitFor === "abort") {
       const signal = options?.signal;
       if (!signal) {
@@ -77,9 +83,19 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   };
 }
 
+/** Call a provider stream the way pi-ai's `streamSimple` calls one. */
+export function fauxRequestStream(
+  stream: StreamFunction<string, SimpleStreamOptions>,
+): AgentRequestStreamFn {
+  return (model, context, options) =>
+    stream(model, normalizeContext(context), options);
+}
+
 /** Set the model output returned for each model request. */
-export function createModelStream(outputs: FixedModelOutput[]): StreamFn {
+export function createModelStream(
+  outputs: FixedModelOutput[],
+): AgentRequestStreamFn {
   const faux = createFauxCore({ api: "test", provider: "test" });
   faux.setResponses(outputs.map(createResponseStep));
-  return faux.stream;
+  return fauxRequestStream(faux.stream);
 }

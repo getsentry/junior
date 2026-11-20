@@ -15,9 +15,8 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import { installEvalClock } from "./src/eval-clock";
+import { installTestClock } from "@sentry/junior-testing/clock";
 import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
-import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
 import {
@@ -27,12 +26,15 @@ import {
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
-type EvalGlobalProject = Parameters<typeof setupPostgres>[0] &
-  Parameters<typeof startRecordingRun>[0] & {
-    provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
-  };
+type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
+  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
+};
 
-/** Set up shared Postgres and public sandbox egress for one eval invocation. */
+/**
+ * Set up shared Postgres and public sandbox egress for one eval invocation.
+ * `@sentry/roach/vitest` runs before this, so this process already sends
+ * its traffic through Roach.
+ */
 export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
@@ -43,7 +45,6 @@ export default async function setup(
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
-  let stopRecordings: (() => Promise<void>) | undefined;
   let mswListening = false;
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
   const fixtureEnv = {
@@ -65,7 +66,6 @@ export default async function setup(
     const errors: unknown[] = [];
     for (const task of [
       async () => await egress?.close(),
-      async () => await stopRecordings?.(),
       async () => {
         if (mswListening) mswServer.close();
       },
@@ -93,8 +93,8 @@ export default async function setup(
   };
 
   try {
-    const redisUrl = process.env.REDIS_URL?.trim();
-    const stateKeyPrefix = process.env.JUNIOR_STATE_KEY_PREFIX?.trim();
+    const redisUrl = process.env["REDIS_URL"]?.trim();
+    const stateKeyPrefix = process.env["JUNIOR_STATE_KEY_PREFIX"]?.trim();
     if (!redisUrl || !stateKeyPrefix) {
       throw new Error(
         "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
@@ -114,7 +114,6 @@ export default async function setup(
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);
     previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
-    stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
     // The Vercel Sandbox client gives `fetch` its own agent.
@@ -123,7 +122,7 @@ export default async function setup(
     // The worker makes egress tokens, leases, and fixture credentials with
     // the eval clock, and this process checks them. Until the first test
     // sets it, the clock is real, so snapshot warmup below uses real time.
-    const evalClock = installEvalClock();
+    const evalClock = installTestClock();
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
@@ -146,7 +145,7 @@ export default async function setup(
       },
     });
     process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
-    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    process.env["JUNIOR_BASE_URL"] = egress.baseUrl;
     for (const packages of [
       [],
       ["@sentry/junior-github"],
@@ -170,6 +169,7 @@ export default async function setup(
     try {
       await cleanup();
     } catch (cleanupError) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- `errors` keeps both failures; `cause` keeps the setup failure first.
       throw new AggregateError(
         [error, cleanupError],
         "Eval global setup and cleanup failed",

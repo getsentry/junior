@@ -12,10 +12,6 @@ Make the subject the story. For a product, show what people can do, why it matte
 | set up Remotion, measure clips, mix music, render, check an export, or see revision examples                      | [references/rendering.md](references/rendering.md) |
 | time motion to the narration: word alignment, camera moves, highlights, cursor, captions, transitions, and stills | [references/motion.md](references/motion.md)       |
 
-## 0. Pick The Model Profile
-
-Composition, motion timing, and frame review are implementation work. When `handoff` is available and a listed profile fits implementation better than the active one, switch before step 1. If the requester names a model or profile, use it when it is available. Do not hand off only to summarize finished work.
-
 ## 1. Resolve The Brief And Reuse Work
 
 - Read the current request and prior decisions. Keep the agreed audience, length, tone, credits, and destination. Ask only for a missing decision that blocks work.
@@ -41,6 +37,7 @@ For a raw interaction recording without an edited presentation, use `agent-brows
 ## 3. Prepare Narration And Music
 
 - Write spoken text separately from scene layout and delivery directions. Keep the opening about the work. Put credits and operational capabilities where they support the story.
+- End on what the subject is, in a line that a viewer who does not know it can follow. Add where to learn more, such as a link, only when there is one. Do not end on an internal call to action, such as "tag us in Slack", unless asked.
 - For requested speech, load the available TTS skill and use its credential, cost, and retry rules. Use the agreed voice preset. Do not silently replace a missing provider with another voice.
 - Generate one clip per scene to make revisions cheap. Reuse unchanged clips and generate changed text to fresh paths. A visual-only edit needs no new speech request.
 - Measure each clip. Align its words to get word times. Derive scene frames from the last spoken word plus explicit lead and tail time. Recompute later scene offsets after a clip changes.

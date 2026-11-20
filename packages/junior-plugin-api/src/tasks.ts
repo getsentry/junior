@@ -4,8 +4,11 @@
  * Plugins register small task handlers. Junior core owns scheduling, delivery,
  * retries, and the bounded run projection.
  */
-import { z } from "zod";
-import type { PluginConversationEvents } from "./conversation-events";
+import * as z from "zod";
+import type {
+  PluginConversationEvents,
+  PluginTurnEventReader,
+} from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
 import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
@@ -94,6 +97,8 @@ export interface PluginTaskContext extends PluginContext {
     load(): Promise<PluginRunContext>;
   };
   state: PluginState;
+  /** Events that this plugin emitted in the completed Turn, oldest first. */
+  turnEvents: PluginTurnEventReader;
 }
 
 /** Plugin task handler registered by name in a plugin manifest module. */

@@ -1,14 +1,16 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import {
-  isAgentRunFeatureDisabled,
-  type AgentRun,
-  type MessageAgent,
-  type SpawnAgent,
+import { mapBounded } from "@/chat/fan-out";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
+import type { MessageAttachment } from "@/chat/attachments/input";
+import type {
+  AgentAttachment,
+  AgentEnvironment,
+  AgentRun,
 } from "@/chat/agent/types";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
@@ -17,70 +19,93 @@ export interface AgentRunner {
 
 /** Compose the agent executor with stable host dependencies. */
 export function createAgentRunner(
-  execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
+  execute: (
+    run: AgentRun,
+    streamFn?: AgentRequestStreamFn,
+  ) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
-    bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
-    bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
-    streamFn?: StreamFn;
-    tracePropagation?: SandboxEgressTracePropagationConfig;
+    backgroundCompactionQueue?: BackgroundCompactionQueue;
+    bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
+    bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
+    conversationWorkQueue?: ConversationWorkQueue;
+    streamFn?: AgentRequestStreamFn;
+    tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
+  const backgroundCompactionQueue = options?.backgroundCompactionQueue;
+  const conversationWorkQueue = options?.conversationWorkQueue;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
   const bindMessageAgent = options?.bindMessageAgent;
-  const canBindSpawn =
-    Boolean(bindSpawnAgent) && isExperimentalFeatureEnabled("subagents");
   return {
     run: async (run) => {
-      const spawnAgent =
-        bindSpawnAgent &&
-        canBindSpawn &&
-        !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
-          ? bindSpawnAgent(run)
-          : undefined;
-      // A child agent can always message its parent, even when it is too deep
-      // to start child agents of its own.
-      const messageAgent =
-        bindMessageAgent &&
-        canBindSpawn &&
-        (spawnAgent || run.parentConversationId)
-          ? bindMessageAgent(run)
-          : undefined;
       const nextRun: AgentRun = {
         ...run,
         environment: {
           ...run.environment,
           attachmentStorage:
             run.environment?.attachmentStorage ?? attachmentStorage,
+          backgroundCompactionQueue:
+            run.environment?.backgroundCompactionQueue ??
+            backgroundCompactionQueue,
+          conversationWorkQueue:
+            run.environment?.conversationWorkQueue ?? conversationWorkQueue,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
+          // Tool wiring binds agent tools after it reads the Turn's behavior.
+          ...(bindSpawnAgent ? { bindSpawnAgent } : undefined),
+          ...(bindSpawnAgent && bindMessageAgent
+            ? { bindMessageAgent }
+            : undefined),
         },
-        ...(spawnAgent || messageAgent
-          ? {
-              durability: {
-                ...run.durability,
-                ...(spawnAgent ? { spawnAgent } : undefined),
-                ...(messageAgent ? { messageAgent } : undefined),
-              },
-            }
-          : undefined),
       };
-      if (run.instruction.storedAttachments?.length) {
-        // Image storage loads runtime config. Keep it behind execution so the
-        // local CLI can set its defaults before config is first read.
-        const { loadInputImages } = await import("@/chat/attachments/images");
+      // Attachment storage loads runtime config. Keep it behind execution so
+      // the local CLI can set its defaults before config is first read.
+      const loadStoredAttachments = async (
+        attachments: readonly MessageAttachment[],
+      ): Promise<AgentAttachment[]> => {
+        const { loadInputAttachments } =
+          await import("@/chat/attachments/model-input");
         const storage = nextRun.environment?.attachmentStorage;
         if (!storage) throw new Error("Attachment storage is unavailable.");
+        return await loadInputAttachments({
+          attachments,
+          conversationId: run.conversationId,
+          storage,
+        });
+      };
+      if (run.instruction.storedAttachments?.length) {
         nextRun.instruction = {
           ...run.instruction,
-          attachments: await loadInputImages({
-            attachments: run.instruction.storedAttachments,
-            conversationId: run.conversationId,
-            storage,
-          }),
+          attachments: await loadStoredAttachments(
+            run.instruction.storedAttachments,
+          ),
+        };
+      }
+      const drainSteeringMessages = nextRun.durability?.drainSteeringMessages;
+      if (drainSteeringMessages) {
+        // Steered web messages carry stored files like the instruction does.
+        nextRun.durability = {
+          ...nextRun.durability,
+          drainSteeringMessages: (accept) =>
+            drainSteeringMessages(async (messages) =>
+              accept(
+                await mapBounded(
+                  messages,
+                  async ({ storedAttachments, ...message }) =>
+                    storedAttachments?.length
+                      ? {
+                          ...message,
+                          attachments:
+                            await loadStoredAttachments(storedAttachments),
+                        }
+                      : message,
+                ),
+              ),
+            ),
         };
       }
       return await execute(nextRun, streamFn);

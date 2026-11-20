@@ -153,6 +153,7 @@ export async function migratePluginSchemas(
       continue;
     }
     const table = migrationTable(root.pluginName);
+    // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
     const initialTime = await appliedMigrationTime(executor, table);
     const initialExisting = appliedCount(migrations, initialTime);
     if (initialExisting === migrations.length) {
@@ -167,6 +168,7 @@ export async function migratePluginSchemas(
       options.onPluginMigration?.(summary);
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Migrate one plugin at a time, in name order.
     const summary = await executor.withMigrationLock(table, async () => {
       const currentTime =
         (await appliedMigrationTime(executor, table)) ??

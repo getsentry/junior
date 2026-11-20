@@ -87,14 +87,9 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     },
   });
 
+  // Callers ask for the action's confirmation before they run it.
   function runAction(recordAction: PluginUserPageRecordAction) {
     if (actionStarted.current) return;
-    if (
-      recordAction.confirmation &&
-      !window.confirm(recordAction.confirmation)
-    ) {
-      return;
-    }
     actionStarted.current = true;
     action.mutate(recordAction);
   }

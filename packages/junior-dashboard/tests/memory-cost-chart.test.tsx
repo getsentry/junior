@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { MemoryCostChart } from "../src/client/pages/memory/MemoryCostChart";
@@ -15,13 +16,16 @@ function costDays(costUsd: number, events: number) {
 }
 
 describe("MemoryCostChart", () => {
-  it("stacks extraction and recall cost for each day with shared tooltips", () => {
+  it("totals extraction and recall cost in the legend", () => {
     const html = renderToStaticMarkup(
-      <MemoryCostChart
-        extractionDays={costDays(0.005, 1)}
-        range={30}
-        recallDays={costDays(0.005, 2)}
-      />,
+      // The chart heading links to its section, which reads the URL.
+      <MemoryRouter>
+        <MemoryCostChart
+          extractionDays={costDays(0.005, 1)}
+          range={30}
+          recallDays={costDays(0.005, 2)}
+        />
+      </MemoryRouter>,
     );
 
     expect(html).toContain("$0.01");
@@ -29,14 +33,5 @@ describe("MemoryCostChart", () => {
       'Extraction <span aria-hidden="true">·</span> $0.005',
     );
     expect(html).toContain('Recall <span aria-hidden="true">·</span> $0.005');
-    expect(html).toContain(
-      'aria-label="Memory extraction and recall cost during the last 30 days"',
-    );
-    expect(html).not.toContain('aria-label="Memory cost range"');
-    expect(html).toContain(
-      'aria-label="Jul 30: extraction $0.005, 1 run; recall $0.005, 2 runs"',
-    );
-    expect(html).toMatch(/fill="#67e8f9"[^>]+height="70"[^>]+y="94"/);
-    expect(html).toMatch(/fill="#e879f9"[^>]+height="70"[^>]+y="24"/);
   });
 });

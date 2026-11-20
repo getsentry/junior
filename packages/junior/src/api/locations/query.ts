@@ -30,6 +30,8 @@ import {
 } from "../conversations/aggregate";
 import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
+import { readFirstHumanMessageTexts } from "../conversations/first-message";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { summaryFromRow } from "../conversations/reporting";
 import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
@@ -398,6 +400,9 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
       executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+      archivedAt: juniorConversations.archivedAt,
       handle: juniorIdentities.handle,
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: sql<string | null>`CASE
@@ -406,6 +411,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
         ELSE NULL
       END`,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,
@@ -448,106 +454,106 @@ export async function readLocationDetailFromSql(
 
   const [locationRows, dayRows, hourRows, actorRows, recentRows] =
     await Promise.all([
-    getDb()
-      .select({
-        ...locationColumns(),
-        ...treeAggregateColumns,
-        ...conversationRangeColumns(),
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
+      getDb()
+        .select({
+          ...locationColumns(),
+          ...treeAggregateColumns,
+          ...conversationRangeColumns(),
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(where)
+        .groupBy(...locationGroupBy()),
+      getDb()
+        .select({
+          date: activityDate,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(and(where, gte(juniorConversations.lastActivityAt, start)))
+        .groupBy(activityDate),
+      getDb()
+        .select({
+          date: activityHour,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(
+          and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
+        )
+        .groupBy(activityHour),
+      getDb()
+        .select({
+          actorIdentityId: juniorConversations.actorIdentityId,
+          email: juniorUsers.primaryEmailNormalized,
+          fullName: juniorUsers.displayName,
+          handle: juniorIdentities.handle,
+          identityEmail: juniorIdentities.email,
+          identityProvider: juniorIdentities.provider,
+          providerSubjectId: juniorIdentities.providerSubjectId,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .leftJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(where)
+        .groupBy(
+          juniorConversations.actorIdentityId,
+          juniorUsers.primaryEmailNormalized,
+          juniorUsers.displayName,
+          juniorIdentities.handle,
+          juniorIdentities.email,
+          juniorIdentities.provider,
+          juniorIdentities.providerSubjectId,
         ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(where)
-      .groupBy(...locationGroupBy()),
-    getDb()
-      .select({
-        date: activityDate,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(and(where, gte(juniorConversations.lastActivityAt, start)))
-      .groupBy(activityDate),
-    getDb()
-      .select({
-        date: activityHour,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(
-        and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
-      )
-      .groupBy(activityHour),
-    getDb()
-      .select({
-        actorIdentityId: juniorConversations.actorIdentityId,
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        handle: juniorIdentities.handle,
-        identityEmail: juniorIdentities.email,
-        identityProvider: juniorIdentities.provider,
-        providerSubjectId: juniorIdentities.providerSubjectId,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .leftJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(
-        juniorConversations.actorIdentityId,
-        juniorUsers.primaryEmailNormalized,
-        juniorUsers.displayName,
-        juniorIdentities.handle,
-        juniorIdentities.email,
-        juniorIdentities.provider,
-        juniorIdentities.providerSubjectId,
-      ),
-    recentLocationRows(getDb(), locationId),
-  ]);
+      recentLocationRows(getDb(), locationId),
+    ]);
 
   const locationRow = locationRows[0];
   const location = locationRow ? locationFromAggregate(locationRow) : undefined;
@@ -597,16 +603,21 @@ export async function readLocationDetailFromSql(
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
   const hourlyActivity = activityHours(hours, nowMs);
   const recentConversationIds = recentRows.map((row) => row.conversationId);
-  const [accessByConversation, metricsByRoot, automationTitleByConversation] =
-    await Promise.all([
-      readConversationAccessFromSql(
-        getDb(),
-        recentConversationIds,
-        options.viewer,
-      ),
-      readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
-      readAutomationTitlesByConversationId(recentRows),
-    ]);
+  const [
+    accessByConversation,
+    metricsByRoot,
+    automationTitleByConversation,
+    firstHumanMessageTextByConversation,
+  ] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      recentConversationIds,
+      options.viewer,
+    ),
+    readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
+    readAutomationTitlesByConversationId(recentRows),
+    readFirstHumanMessageTexts(getDb(), recentRows),
+  ]);
   return {
     ...location,
     activityDays: activity,
@@ -622,6 +633,9 @@ export async function readLocationDetailFromSql(
       summaryFromRow(row, {
         access: accessByConversation.get(row.conversationId),
         automationTitle: automationTitleByConversation.get(row.conversationId),
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(
+          row.conversationId,
+        ),
         metrics: metricsByRoot.get(row.conversationId),
       }),
     ),

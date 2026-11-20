@@ -21,8 +21,7 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
-import { defaultModelId } from "@/chat/model-profile";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { CLI_USAGE } from "./run";
 
 type PullOptions = {
@@ -33,9 +32,10 @@ type PullOptions = {
 };
 
 type RunOptions = {
+  assistantName: string;
   model: string;
   out: string;
-  promptFile?: string;
+  promptFile?: string | undefined;
   snapshots: string[];
   turnByTurn: boolean;
 };
@@ -51,7 +51,7 @@ function optionValue(argv: string[], index: number, option: string): string {
 function parsePullOptions(argv: string[]): PullOptions {
   const conversationIds: string[] = [];
   let baseUrl: string | undefined;
-  let token = process.env.JUNIOR_API_TOKEN?.trim();
+  let token = process.env["JUNIOR_API_TOKEN"]?.trim();
   let out: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
@@ -102,8 +102,10 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
     }
   }
   if (snapshots.length === 0) throw new Error(CLI_USAGE);
+  const bot = await configuredBot();
   return {
-    model: model ?? (await configuredDefaultModelId()),
+    assistantName: bot.userName,
+    model: model ?? bot.fastModelId,
     out,
     promptFile,
     snapshots,
@@ -112,12 +114,16 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
 }
 
 /**
- * Read the app default model only when a run needs it. `chat/config` reads
- * `DATABASE_URL` at import, and `briefs pull` must work with only a token.
+ * Read the production bot config only when a run needs it. `chat/config`
+ * reads `DATABASE_URL` at import, and `briefs pull` must work with only a
+ * token.
  */
-async function configuredDefaultModelId(): Promise<string> {
+async function configuredBot(): Promise<{
+  fastModelId: string;
+  userName: string;
+}> {
   const { botConfig } = await import("@/chat/config");
-  return defaultModelId(botConfig);
+  return botConfig;
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
@@ -173,6 +179,7 @@ async function pullSnapshot(
     eventsUrl.searchParams.set("before", cursor);
     eventsUrl.searchParams.set("limit", "1000");
     const page = conversationEventPageSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Each page reads back from the cursor of the page before.
       await fetchJson(eventsUrl, options.token),
     );
     eventPages.push(page);
@@ -192,11 +199,13 @@ function fileStem(conversationId: string): string {
 async function pullAll(options: PullOptions): Promise<void> {
   await mkdir(options.out, { recursive: true });
   for (const conversationId of options.conversationIds) {
+    // oxlint-disable-next-line no-await-in-loop -- Pull one Conversation at a time, so output stays in order.
     const snapshot = await pullSnapshot(options, conversationId);
     const output = path.join(
       options.out,
       `${fileStem(snapshot.detail.conversationId)}.snapshot.json`,
     );
+    // oxlint-disable-next-line no-await-in-loop -- Pull one Conversation at a time, so output stays in order.
     await writeFile(output, `${JSON.stringify(snapshot, undefined, 2)}\n`);
     console.log(output);
   }
@@ -235,9 +244,17 @@ async function runSnapshot(
     finalThroughIndex,
   )) {
     versions.push(
+      // oxlint-disable-next-line no-await-in-loop -- Generate one version at a time, under model rate limits.
       await generateBrief({
+        assistantName: options.assistantName,
         completeObject: (request) =>
-          completeObject({ ...request, modelId: options.model }),
+          completeObject({
+            ...request,
+            modelId: options.model,
+            operation: "brief_update",
+            // The CLI report sums the cost of each version.
+            cost: { owner: "caller" },
+          }),
         input: briefInputFromSnapshot(snapshot, throughIndex),
         previous: versions.at(-1)?.brief,
         prompt,
@@ -284,6 +301,7 @@ async function runAll(options: RunOptions): Promise<void> {
   if (!prompt.trim()) throw new Error("Brief prompt must not be empty");
   await mkdir(options.out, { recursive: true });
   for (const snapshot of options.snapshots) {
+    // oxlint-disable-next-line no-await-in-loop -- Run one snapshot at a time, under model rate limits.
     await runSnapshot(snapshot, options, prompt);
   }
 }

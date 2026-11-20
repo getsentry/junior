@@ -1,0 +1,158 @@
+import { X } from "lucide-react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+
+import { cn } from "../styles";
+import { useInboxUi } from "../uiShell";
+import { Button } from "./ui/button";
+import { BottomSheet } from "./BottomSheet";
+import { Drawer } from "./Drawer";
+
+const panelMediaQuery = "(min-width: 80rem)";
+
+function subscribeToPanelLayout(onChange: () => void) {
+  const media = window.matchMedia(panelMediaQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+/** Report whether details fit beside their source right now. */
+export function hasPanelSpace() {
+  return window.matchMedia(panelMediaQuery).matches;
+}
+
+/** Report whether details fit beside their source instead of in a sheet. */
+export function useDetailsPanel(): boolean {
+  return useSyncExternalStore(
+    subscribeToPanelLayout,
+    hasPanelSpace,
+    () => false,
+  );
+}
+
+/** Show details beside their source, or in a bottom sheet when space is limited. */
+export function DetailsPanel(props: {
+  actions?: ReactNode | undefined;
+  children: ReactNode;
+  onClose(): void;
+  label: string;
+  title: ReactNode;
+  sheetTitle?: string | undefined;
+  /** Nested details stay modal inside an existing drawer. */
+  overlay?: boolean | undefined;
+}) {
+  const { onClose, overlay } = props;
+  const inbox = useInboxUi();
+  const closeLabel = `Close ${props.label.toLowerCase()}`;
+  const panel = useDetailsPanel();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const wasPanel = useRef(panel);
+  useEffect(() => {
+    if (
+      panel &&
+      !wasPanel.current &&
+      !document.querySelector("[data-dashboard-modal]")
+    ) {
+      closeRef.current?.focus({ preventScroll: true });
+    }
+    wasPanel.current = panel;
+  }, [panel]);
+  useEffect(() => {
+    if (!panel || overlay) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("[data-dashboard-modal]")
+      ) {
+        event.preventDefault();
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [panel, overlay, onClose]);
+  if (!panel) {
+    return (
+      <BottomSheet
+        label={props.label}
+        title={props.sheetTitle}
+        onClose={onClose}
+      >
+        {props.actions ? (
+          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+            <div className="min-h-0">{props.children}</div>
+            <div className="flex justify-end gap-1 border-t border-dashboard-border px-4 py-2">
+              {props.actions}
+            </div>
+          </div>
+        ) : (
+          props.children
+        )}
+      </BottomSheet>
+    );
+  }
+
+  if (overlay) {
+    return (
+      <Drawer
+        actions={props.actions}
+        closeLabel={closeLabel}
+        header={props.title}
+        label={props.label}
+        onClose={onClose}
+        openKey={props.label}
+        width="wide"
+      >
+        {props.children}
+      </Drawer>
+    );
+  }
+
+  return (
+    <aside
+      aria-label={props.label}
+      // Esc closes it before Esc leaves the page.
+      data-escape-owner=""
+      className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
+    >
+      {/* In the new UI: the same height and centre line as the conversation
+          header beside it, the header row above a 1px border. The title
+          starts on the body's text edge, and the close icon ends 24px in,
+          like the header's last icon. */}
+      <header
+        className={cn(
+          "flex items-center justify-between gap-3 border-b border-dashboard-border pl-5",
+          inbox ? "box-content h-header pr-4" : "py-2 pr-3",
+        )}
+      >
+        <div className="min-w-0 flex-1">{props.title}</div>
+        {/* Keep actions beside close, so they do not move with the title width. */}
+        <div
+          className={cn(
+            "flex shrink-0 items-center",
+            inbox ? "gap-1" : "gap-0.5",
+          )}
+        >
+          {props.actions}
+          <Button
+            variant="ghost"
+            ref={closeRef}
+            aria-label={closeLabel}
+            data-slot="details-panel-close"
+            onClick={onClose}
+            size="icon"
+          >
+            {inbox ? (
+              <X aria-hidden="true" size={16} strokeWidth={1.9} />
+            ) : (
+              <X aria-hidden="true" size={15} />
+            )}
+          </Button>
+        </div>
+      </header>
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+        {props.children}
+      </div>
+    </aside>
+  );
+}

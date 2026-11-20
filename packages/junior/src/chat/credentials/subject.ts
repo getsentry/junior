@@ -3,6 +3,7 @@ import type { PluginCredentialSubject } from "@sentry/junior-plugin-api";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { isDmChannel, normalizeSlackConversationId } from "@/chat/slack/client";
 import { isActorUserId, parseActorUserId } from "@/chat/actor";
+import { readJuniorSecret } from "@/chat/secrets";
 
 const CREDENTIAL_SUBJECT_HMAC_CONTEXT = "junior.credential_subject.v1";
 const CREDENTIAL_SUBJECT_SIGNATURE_VERSION = "v1";
@@ -10,10 +11,6 @@ type SlackDirectPluginCredentialSubject = Extract<
   PluginCredentialSubject,
   { allowedWhen: "private-direct-conversation" }
 >;
-
-function getCredentialSubjectSecret(): string | undefined {
-  return process.env.JUNIOR_SECRET?.trim() || undefined;
-}
 
 /** Encode ordered signing fields without allowing delimiter ambiguity. */
 function buildPayload(parts: string[]): string {
@@ -62,7 +59,7 @@ export function bindSlackDirectCredentialSubject(input: {
 }): CredentialSubject | undefined {
   const channelId = normalizeSlackConversationId(input.channelId);
   const teamId = input.teamId.trim();
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const { subject } = input;
   const userId = parseActorUserId(subject.userId);
   if (
@@ -100,7 +97,7 @@ export function verifySlackDirectCredentialSubject(input: {
   teamId: string;
 }): boolean {
   const channelId = normalizeSlackConversationId(input.channelId);
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   if (!channelId || !secret) {
     return false;
   }
@@ -137,7 +134,7 @@ export function bindScheduledAutomationCredentialSubject(input: {
   plugin: string;
   subject: PluginCredentialSubject;
 }): CredentialSubject | undefined {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const plugin = input.plugin.trim();
   const userId = parseActorUserId(input.subject.userId);
   if (
@@ -175,7 +172,7 @@ export function verifyScheduledAutomationCredentialSubject(input: {
   plugin: string;
   subject: CredentialSubject;
 }): boolean {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const { subject } = input;
   const binding = subject.binding;
   if (
@@ -214,7 +211,7 @@ export function bindEventAutomationCredentialSubject(input: {
     userId: string;
   };
 }): CredentialSubject | undefined {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const plugin = input.plugin.trim();
   const userId = parseActorUserId(input.subject.userId);
   if (
@@ -252,7 +249,7 @@ export function verifyEventAutomationCredentialSubject(input: {
   plugin: string;
   subject: CredentialSubject;
 }): boolean {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const { subject } = input;
   const binding = subject.binding;
   if (
@@ -287,7 +284,7 @@ export function bindTimerWatchCredentialSubject(input: {
   userId: string;
   watchId: string;
 }): CredentialSubject | undefined {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const userId = parseActorUserId(input.userId);
   const { conversationId, watchId } = input;
   if (
@@ -323,7 +320,7 @@ export function verifyTimerWatchCredentialSubject(input: {
   subject: CredentialSubject;
   watchId: string;
 }): boolean {
-  const secret = getCredentialSubjectSecret();
+  const secret = readJuniorSecret();
   const { subject } = input;
   const binding = subject.binding;
   if (

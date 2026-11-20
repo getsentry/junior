@@ -1,11 +1,12 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
+  type AssistantMessageEvent,
   type Model,
 } from "@earendil-works/pi-ai";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
   const span = {
@@ -68,12 +69,18 @@ type SpanMock = {
   end: ReturnType<typeof vi.fn>;
 };
 
+// Lets the relay read pushed events before the test continues.
+function flushEvents(): Promise<void> {
+  return new Promise((r) => setImmediate(r));
+}
+
 function getSpan(): SpanMock {
   return startInactiveSpan.mock.results[0]!.value as SpanMock;
 }
 
 describe("createTracedStreamFn", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.resetModules();
   });
@@ -83,14 +90,14 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
       undefined,
     );
 
-    expect(returned).toBe(stream);
+    expect(returned).not.toBe(stream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
     const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");
@@ -102,7 +109,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       {
@@ -132,6 +139,218 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
+  it("hashes the provider request body and leaves it unchanged", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    // Runs one call whose provider builds `payload`, and returns the
+    // `app.ai.request.*` attributes that the span got.
+    const hashesFor = async (payload: Record<string, unknown>) => {
+      startInactiveSpan.mockClear();
+      const span = {
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        setStatus: vi.fn(),
+        end: vi.fn(),
+      };
+      startInactiveSpan.mockReturnValueOnce(span);
+      let hookResult: unknown = "not called";
+      const base: AgentRequestStreamFn = async (model, _context, options) => {
+        hookResult = await options?.onPayload?.(payload, model);
+        return createAssistantMessageEventStream();
+      };
+      await createTracedStreamFn(base)(
+        fakeModel("anthropic/claude-opus-5.5"),
+        { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+        undefined,
+      );
+      expect(hookResult).toBeUndefined();
+      const attributes = Object.assign(
+        {},
+        ...span.setAttributes.mock.calls.map((c) => c[0]),
+      ) as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.entries(attributes).filter(([key]) =>
+          key.startsWith("app.ai.request."),
+        ),
+      );
+    };
+    const breakpoint = { type: "ephemeral" };
+    // Like Pi: the last user message becomes a text block with the
+    // breakpoint, and earlier ones keep string content.
+    const user = (text: string, cached = false) => ({
+      role: "user",
+      content: cached
+        ? [{ type: "text", text, cache_control: breakpoint }]
+        : text,
+    });
+    const reply = {
+      role: "assistant",
+      content: [{ type: "text", text: "a1" }],
+    };
+    const request = (
+      messages: unknown[],
+      description = "Search the web.",
+      cached = true,
+      effort = "high",
+    ) => ({
+      model: "anthropic/claude-opus-5.5",
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort },
+      system: [
+        {
+          type: "text",
+          text: "you are junior",
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      tools: [
+        {
+          name: "search",
+          description,
+          input_schema: { type: "object", properties: {} },
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      messages,
+    });
+
+    const first = await hashesFor(request([user("u1", true)]));
+    const appended = await hashesFor(
+      request([user("u1"), reply, user("u2", true)]),
+    );
+    const edited = await hashesFor(
+      request([user("u1 edited"), reply, user("u2", true)]),
+    );
+    const withoutBreakpoints = await hashesFor(
+      request([user("u1"), reply, user("u2")], "Search the web.", false),
+    );
+    const otherTool = await hashesFor(
+      request([user("u1", true)], "Search the internet."),
+    );
+    const otherEffort = await hashesFor(
+      request([user("u1", true)], "Search the web.", true, "medium"),
+    );
+
+    expect(first["app.ai.request.tools.count"]).toBe(1);
+    expect(first["app.ai.request.messages.count"]).toBe(1);
+    expect(first["app.ai.request.tools.hash"]).toMatch(/^[0-9a-f]{16}$/);
+    expect(first["app.ai.request.system_instructions.hash"]).toMatch(
+      /^[0-9a-f]{16}$/,
+    );
+    expect(first).not.toHaveProperty(
+      "app.ai.request.messages.before_last_reply.hash",
+    );
+    expect(appended["app.ai.request.messages.before_last_reply.hash"]).toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(edited["app.ai.request.messages.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(appended["app.ai.request.prefix.before_last_reply.hash"]).toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(edited["app.ai.request.prefix.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(first).not.toHaveProperty(
+      "app.ai.request.prefix.before_last_reply.hash",
+    );
+    expect(first["app.ai.request.thinking.type"]).toBe("adaptive");
+    expect(first["app.ai.request.effort"]).toBe("high");
+    expect(otherEffort["app.ai.request.effort"]).toBe("medium");
+    expect(otherEffort["app.ai.request.prefix.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    for (const key of [
+      "app.ai.request.tools.hash",
+      "app.ai.request.system_instructions.hash",
+      "app.ai.request.messages.hash",
+    ]) {
+      expect(otherEffort[key]).toBe(first[key]);
+    }
+    expect(withoutBreakpoints).toEqual(appended);
+    expect(otherTool["app.ai.request.tools.hash"]).not.toBe(
+      first["app.ai.request.tools.hash"],
+    );
+    expect(otherTool["app.ai.request.system_instructions.hash"]).toBe(
+      first["app.ai.request.system_instructions.hash"],
+    );
+
+    // A 1920x1080 PNG header, and an image whose size cannot be read.
+    const png = Buffer.alloc(24);
+    png.writeUInt32BE(0x89504e47, 0);
+    png.write("IHDR", 12, "latin1");
+    png.writeUInt32BE(1920, 16);
+    png.writeUInt32BE(1080, 20);
+    const image = (mediaType: string, data: Buffer) => ({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType,
+        data: data.toString("base64"),
+      },
+    });
+    const withImages = await hashesFor(
+      request([
+        {
+          role: "user",
+          content: [image("image/png", png), { type: "text", text: "u1" }],
+        },
+        reply,
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call-1",
+              content: [image("image/jpeg", Buffer.from("not a jpeg"))],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(withImages).toMatchObject({
+      "app.ai.request.images.count": 2,
+      // 2,691 for the PNG on the high-resolution tier, plus the flat 1,920.
+      "app.ai.request.images.estimate": 4_611,
+      "app.ai.request.images.unsized": 1,
+    });
+    expect(
+      Object.keys(first).filter((key) =>
+        key.startsWith("app.ai.request.images."),
+      ),
+    ).toEqual([]);
+  });
+
+  it("records AI Gateway routing from the provider stream", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const onProviderStreamEvent = vi.fn();
+    const event = {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      provider_metadata: {
+        gateway: { routing: { finalProvider: "bedrock" } },
+      },
+    };
+    const base: AgentRequestStreamFn = async (model, _context, options) => {
+      await options?.onProviderStreamEvent?.(event, model);
+      return createAssistantMessageEventStream();
+    };
+    await createTracedStreamFn(base)(
+      fakeModel("anthropic/claude-opus-5.5"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      { onProviderStreamEvent },
+    );
+
+    expect(getSpan().setAttributes).toHaveBeenCalledWith({
+      "app.ai.gateway.provider": "bedrock",
+    });
+    // The caller's hook still sees the event.
+    expect(onProviderStreamEvent).toHaveBeenCalledWith(
+      event,
+      expect.objectContaining({ id: "anthropic/claude-opus-5.5" }),
+    );
+  });
+
   it("keeps private conversation content out of semantic attributes", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
@@ -140,7 +359,7 @@ describe("createTracedStreamFn", () => {
       "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base as AgentRequestStreamFn,
       conversationPrivacy: "private",
     });
     await traced(
@@ -183,9 +402,13 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
+    const callerAttributes = vi.fn((message: AssistantMessage) => ({
+      "app.caller.input": message.usage.input,
+    }));
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base as AgentRequestStreamFn,
       conversationPrivacy: "public",
+      endAttributes: callerAttributes,
     });
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
@@ -193,14 +416,21 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBe(stream);
-
     // Resolve the stream's terminal Promise to trigger end-attribute population.
     const finalMessage = fakeMessage();
+    finalMessage.usage = {
+      ...finalMessage.usage,
+      input: 97,
+      cacheWrite: 3,
+      cacheWrite1h: 2,
+    };
     stream.end(finalMessage);
-    await stream.result();
+    for await (const _event of returned) {
+      // The relayed stream ends when the provider stream ends.
+    }
+    await expect(returned.result()).resolves.toBe(finalMessage);
     // Allow the .then callback to flush.
-    await new Promise((r) => setImmediate(r));
+    await flushEvents();
 
     const span = getSpan();
     const endAttributes = Object.fromEntries(
@@ -209,6 +439,9 @@ describe("createTracedStreamFn", () => {
     expect(typeof endAttributes["gen_ai.output.messages"]).toBe("string");
     expect(endAttributes["gen_ai.usage.input_tokens"]).toBe(100);
     expect(endAttributes["gen_ai.usage.output_tokens"]).toBe(5);
+    expect(endAttributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(3);
+    expect(endAttributes["app.ai.usage.cache_write_1h"]).toBe(2);
+    expect(endAttributes["app.caller.input"]).toBe(97);
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
     expect(span.end).toHaveBeenCalledTimes(1);
@@ -220,7 +453,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: base as StreamFn,
+      base: base as AgentRequestStreamFn,
       conversationPrivacy: "public",
     });
     await traced(
@@ -291,7 +524,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -316,7 +549,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
 
     await withLogContext(
       { conversationId: "conv_123", runId: "run_456" },
@@ -341,7 +574,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
 
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -366,12 +599,109 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.conversation.compacted"]).toBe(true);
   });
 
+  it("records time to first byte and first token once without changing stream events", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
+    const returned = await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const finalMessage = fakeMessage();
+    const events: AssistantMessageEvent[] = [
+      { type: "start", partial: finalMessage },
+      { type: "text_start", contentIndex: 0, partial: finalMessage },
+      {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "hi",
+        partial: finalMessage,
+      },
+      { type: "done", reason: "stop", message: finalMessage },
+    ];
+    vi.setSystemTime(10_250);
+    stream.push(events[0]!);
+    await flushEvents();
+    vi.setSystemTime(10_900);
+    stream.push(events[1]!);
+    await flushEvents();
+    vi.setSystemTime(11_500);
+    for (const event of events.slice(2)) {
+      stream.push(event);
+    }
+
+    const received: AssistantMessageEvent[] = [];
+    for await (const event of returned) {
+      received.push(event);
+    }
+    await expect(returned.result()).resolves.toBe(finalMessage);
+    await new Promise((r) => setImmediate(r));
+
+    expect(received).toEqual(events);
+    expect(received[0]).toBe(events[0]);
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(250);
+    expect(endAttributes["gen_ai.response.time_to_first_chunk"]).toBe(0.9);
+    expect(endAttributes["app.ai.first_token_type"]).toBe("text_start");
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
+    const timingWrites = span.setAttribute.mock.calls.filter((c) =>
+      [
+        "app.ai.time_to_first_byte_ms",
+        "gen_ai.response.time_to_first_chunk",
+      ].includes(c[0] as string),
+    );
+    expect(timingWrites).toHaveLength(2);
+  });
+
+  it("records time to first byte but not first token when the stream errors after start", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const errorMessage = { ...fakeMessage(), stopReason: "aborted" as const };
+    vi.setSystemTime(10_300);
+    stream.push({ type: "start", partial: errorMessage });
+    await flushEvents();
+    vi.setSystemTime(10_800);
+    stream.push({ type: "error", reason: "aborted", error: errorMessage });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const endAttributes = Object.fromEntries(
+      getSpan().setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(300);
+    expect(
+      endAttributes["gen_ai.response.time_to_first_chunk"],
+    ).toBeUndefined();
+    expect(endAttributes["app.ai.first_token_type"]).toBeUndefined();
+  });
+
   it("ends the span when the stream errors", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -393,8 +723,16 @@ describe("createTracedStreamFn", () => {
       code: 2,
       message: "LLM stream failed",
     });
-    const endAttributeKeys = span.setAttribute.mock.calls.map((c) => c[0]);
-    expect(endAttributeKeys).toContain("error.type");
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["error.type"]).toBeDefined();
+    // An error or abort before any event records no timing.
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(false);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBeUndefined();
+    expect(
+      endAttributes["gen_ai.response.time_to_first_chunk"],
+    ).toBeUndefined();
   });
 
   it("sets error status and ends the span when base() throws", async () => {
@@ -403,7 +741,7 @@ describe("createTracedStreamFn", () => {
       throw new Error("gateway down");
     });
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await expect(
       traced(
         fakeModel("openai/gpt-5.4"),
@@ -422,20 +760,19 @@ describe("createTracedStreamFn", () => {
 
   it("sets error status and ends the span when stream.result() rejects", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const fakeStream = {
-      result: () => Promise.reject(new Error("stream failure")),
-    };
-    const base = vi.fn(() => fakeStream);
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => Promise.reject(new Error("stream failure"));
+    const base = vi.fn(() => stream);
 
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
       undefined,
     );
 
-    await new Promise((r) => setImmediate(r));
+    stream.end();
+    await flushEvents();
 
     const span = getSpan();
     expect(span.setStatus).toHaveBeenCalledWith({
@@ -450,7 +787,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as StreamFn);
+    const traced = createTracedStreamFn(base as AgentRequestStreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

@@ -15,8 +15,8 @@ afterEach(() => {
 
 it("forwards every dashboard route through the Junior app", async () => {
   const registeredDashboard = createDashboardApp({
+    agentName: "Junior",
     authRequired: false,
-    componentGallery: true,
   });
   const registeredRoutes = registeredDashboard.routes
     .map((route) => ({
@@ -37,7 +37,6 @@ it("forwards every dashboard route through the Junior app", async () => {
     functionMaxDurationSeconds: undefined,
     dashboard: {
       authRequired: false,
-      componentGallery: true,
     },
     pluginRuntimeRegistrations: [],
     pluginSet: defineJuniorPlugins([]),

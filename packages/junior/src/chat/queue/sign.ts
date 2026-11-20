@@ -1,6 +1,7 @@
 /** Sign and check queue messages before public callbacks run them. */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
+import { readJuniorSecret } from "@/chat/secrets";
 
 export const QUEUE_SIGNATURE_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -22,10 +23,6 @@ export interface QueueSignConfig<
   separator?: string;
   signatureVersion: Version;
   parts(message: Message): readonly string[];
-}
-
-function secret(): string | undefined {
-  return process.env.JUNIOR_SECRET?.trim() || undefined;
 }
 
 function digest(args: {
@@ -69,7 +66,7 @@ export function signQueueMessage<
   signatureVersion: Version;
   signedAtMs: number;
 } {
-  const key = secret();
+  const key = readJuniorSecret();
   if (!key) {
     throw new Error("Cannot sign queue message without JUNIOR_SECRET");
   }
@@ -118,7 +115,7 @@ export function verifyQueueMessage<
     return { status: "rejected", reason: "malformed" };
   }
 
-  const key = secret();
+  const key = readJuniorSecret();
   if (!key) {
     return { status: "unavailable", reason: "missing_secret" };
   }

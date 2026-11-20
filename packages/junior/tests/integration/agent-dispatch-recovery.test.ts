@@ -8,7 +8,15 @@ import {
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
+import {
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+  runHeartbeatAfterLeasesExpire,
+} from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -21,11 +29,10 @@ import { createModelStream } from "../fixtures/model-stream";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 describe("agent dispatch recovery", () => {
@@ -35,24 +42,31 @@ describe("agent dispatch recovery", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
     vi.restoreAllMocks();
   });
 
-  it("projects the diagnostic from a terminal model failure", async () => {
+  it("projects a failed turn's diagnostic and runs a turn again after a thrown error", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const firstRun = await createAgentDispatchWorkHarness(
-      createModelAgentRunner(
-        createModelStream([
-          {
-            type: "error",
-            errorMessage: "Model provider quota exhausted",
-          },
-        ]),
-      ),
+    const agentRunner = createModelAgentRunner(
+      createModelStream([
+        {
+          type: "error",
+          errorMessage: "Model provider quota exhausted",
+        },
+        {
+          type: "toolCall",
+          name: "reply",
+          arguments: { text: "Recovered digest" },
+        },
+      ]),
     );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, runtime, state } =
+      await createConversationWorkHarness(agentRunner);
     await expect(
-      firstRun.runtime.runDispatchTurn(dispatch, {
+      runtime.runDispatchTurn(dispatch, {
         ack: vi.fn(async () => {}),
       }),
     ).resolves.toMatchObject({
@@ -74,25 +88,59 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
-    const replay = await createAgentDispatchWorkHarness(neverRunAgentRunner());
-    await enqueueAgentDispatch(dispatch, {
-      queue: replay.queue,
-      state: replay.state,
+    // A paused run whose resume fails ends the dispatch on that delivery.
+    const unresumable = await createDispatch("resume-failure");
+    await saveTurnCheckpoint({
+      conversationId: getDispatchConversationId(unresumable),
+      dispatchId: unresumable.id,
+      messages: [
+        {
+          role: "user",
+          content: unresumable.input,
+          timestamp: unresumable.createdAtMs,
+        },
+      ],
+      mode: "paused",
+      reason: "yield",
+      sliceId: 1,
+      turnId: getDispatchTurnId(unresumable.id),
     });
-    await processConversationQueueMessage(replay.queue.takeMessage(), {
-      queue: replay.queue,
-      run: replay.run,
-      state: replay.state,
-    });
+    // A thrown runtime error fails the turn without a dispatch outcome, so
+    // the next delivery runs it again.
+    const interrupted = await createDispatch("thrown-error");
+    runAgent.mockRejectedValueOnce(new Error("Sandbox setup failed"));
 
-    expect(replay.queue.hasQueuedMessages()).toBe(false);
+    for (const replayed of [dispatch, unresumable, interrupted]) {
+      await enqueueAgentDispatch(replayed, { queue, state });
+    }
+    let deliveries = 0;
+    while (queue.hasQueuedMessages()) {
+      deliveries += 1;
+      if (deliveries > 6) {
+        throw new Error("Dispatch queue did not drain");
+      }
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        state,
+      });
+    }
+
+    expect(deliveries).toBe(4);
+    expect(runAgent).toHaveBeenCalledTimes(3);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       status: "failed",
     });
+    await expect(getDispatchRecord(unresumable.id)).resolves.toMatchObject({
+      status: "failed",
+    });
+    await expect(getDispatchRecord(interrupted.id)).resolves.toMatchObject({
+      status: "completed",
+    });
   });
 
-  it("resumes paused dispatch work through production routing", async () => {
+  it("resumes dispatch work after a timeout and ends it at its reply", async () => {
     const dispatch = await createDispatch(
       "resume",
       {
@@ -120,29 +168,31 @@ describe("agent dispatch recovery", () => {
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        // The host deadline aborts this request, so the Turn pauses.
+        { type: "text", text: "Timed out", waitFor: "abort" },
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Resumed scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Resumed scheduled digest" },
         },
-        // The declared result is final. The resumed slice must not call the
-        // model again and replace it.
+        // The reply is final. The model must not be called again to replace
+        // it.
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Replaced scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Replaced scheduled digest" },
         },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
+
+    const requestBudgetMs =
+      (getChatConfig().functionMaxDurationSeconds -
+        FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+      1000;
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     let deliveries = 0;
@@ -151,13 +201,19 @@ describe("agent dispatch recovery", () => {
       if (deliveries > 5) {
         throw new Error("Dispatch continuation queue did not drain");
       }
-      await processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run,
-        // Pause the first slice after the declared result is saved.
-        softYieldAfterMs: deliveries === 1 ? 0 : undefined,
-        state,
-      });
+      await runWithTurnRequestDeadline(
+        async () =>
+          await processConversationQueueMessage(queue.takeMessage(), {
+            queue,
+            run,
+            // In the resumed slice, a yield is due after the `reply` result.
+            // No step follows it, so the Turn ends instead.
+            softYieldAfterMs: deliveries === 2 ? 0 : undefined,
+            state,
+          }),
+        // The first slice gets only 2.5s of the host request.
+        deliveries === 1 ? Date.now() - requestBudgetMs + 2_500 : Date.now(),
+      );
     }
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
@@ -176,7 +232,9 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "completed",
     });
+    expect(deliveries).toBe(2);
     expect(runAgent).toHaveBeenCalledTimes(2);
+    // The resumed Run keeps the dispatch authority and thread.
     const resumedRun = runAgent.mock.calls[1]?.[0];
     expect(resumedRun).toMatchObject({
       actor: dispatch.actor,
@@ -193,9 +251,33 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
-    expect(resumedRun).not.toHaveProperty("delivery");
     expect(resumedRun?.instruction.text).toBe(dispatch.input);
     expect(resumedRun?.instruction.context).toBeUndefined();
+  });
+
+  it("fails the dispatch when every try of its worker is killed", async () => {
+    vi.useFakeTimers({
+      now: 1_800_000_000_000,
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
+    const dispatch = await createDispatch("killed-worker");
+    const { killWorker, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+      // Injected fault: the worker of this try is killed mid-run.
+      await killWorker(
+        queue.takeMessageFor(getDispatchConversationId(dispatch)),
+      );
+      await runHeartbeatAfterLeasesExpire(queue);
+    }
+
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      errorMessage: "Dispatch work stopped after repeated failed attempts.",
+      status: "failed",
+    });
   });
 
   it("repairs a pending mailbox append without owning execution recovery", async () => {

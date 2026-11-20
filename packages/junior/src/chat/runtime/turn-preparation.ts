@@ -16,9 +16,10 @@ import { getThreadTs } from "@/chat/runtime/thread-context";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   buildConversationContext,
-  estimateConversationContextTokens,
+  estimateConversationMessagesTokens,
   isHumanConversationMessage,
   normalizeConversationText,
+  trimConversationMessages,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
@@ -32,12 +33,14 @@ import {
 import {
   getLocationConfigurationService,
   getPersistedSandboxState,
+  getPersistedThreadState,
 } from "@/chat/runtime/thread-state";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
+  persistConversationMessageWindow,
 } from "@/chat/conversations/messages";
-import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
+import { loadThreadContextTrimFloor } from "@/chat/conversations/thread-context";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { parseContent } from "@/chat/slack/message/content";
 import type {
@@ -52,20 +55,17 @@ export interface PreparedTurnState {
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
-  conversationContext?: string;
-  sandboxRef?: SandboxRef;
+  /** Latest thread Messages for reply decisions. A Turn prompt builds its own. */
+  conversationContext?: string | undefined;
+  sandboxRef?: SandboxRef | undefined;
   userMessageAlreadyReplied?: boolean;
   userMessageId?: string;
 }
 
 export interface PrepareTurnStateDeps {
-  compactConversationIfNeeded: (
-    conversation: ThreadConversationState,
-    context: TurnContext,
-  ) => Promise<void>;
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
-    context: TurnContext & { threadTs?: string },
+    context: TurnContext & { threadTs?: string | undefined },
   ) => Promise<void>;
   resolveBackfillMessageActors: (
     messages: Message[],
@@ -89,7 +89,7 @@ function getBackfillText(entry: Message): string | undefined {
 
 /**
  * Seed durable conversation memory before the current turn so routing and
- * compaction can reason over a thread even when no prior app state exists.
+ * trimming can reason over a thread even when no prior app state exists.
  */
 async function seedConversationBackfill(
   thread: Thread,
@@ -100,7 +100,10 @@ async function seedConversationBackfill(
   },
   resolveMessageActors: (messages: Message[]) => Promise<void>,
 ): Promise<"recent_messages" | "thread_fetch"> {
-  if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
+  if (
+    conversation.messages.length > 0 ||
+    conversation.historyFromSeq !== undefined
+  ) {
     return "recent_messages";
   }
 
@@ -173,11 +176,11 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
-    const existingState = await args.thread.state;
-    const sandboxRef = getPersistedSandboxState(existingState ?? {});
+    const { conversationId } = args.context;
+    const existingState = await getPersistedThreadState(conversationId);
+    const sandboxRef = getPersistedSandboxState(existingState);
     const conversation = coerceThreadConversationState(existingState);
-    const conversationId = args.context.threadId ?? args.context.runId;
-    if (conversationId && isVisionEnabled()) {
+    if (isVisionEnabled()) {
       conversation.vision = await loadConversationVisionCache(conversationId);
     }
     await hydrateConversationMessages({ conversation, conversationId });
@@ -234,46 +237,44 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
 
     if (isVisionEnabled() && shouldHydrateVisionContext) {
       await deps.hydrateConversationVisionContext(conversation, {
+        conversationId,
         threadId: args.context.threadId,
         channelId: args.context.channelId,
         actorId: args.context.actorId,
         runId: args.context.runId,
-        threadTs: getThreadTs(args.context.threadId),
+        threadTs: getThreadTs(args.message),
       });
-      if (conversationId) {
-        await persistConversationVisionCache(
-          conversationId,
-          conversation.vision,
-        );
-      }
+      await persistConversationVisionCache(conversationId, conversation.vision);
     }
 
     // Record the visible transcript after vision hydration (so the current
-    // turn's messages capture their image-context meta) but before compaction
-    // trims the working set, so every live message reaches SQL at least once.
+    // turn's messages capture their image-context meta) but before trimming
+    // drops older Messages, so every live message reaches SQL at least once.
     await persistConversationMessages({ conversation, conversationId });
+    // Reload so every Message has its seq. The Turn saves the highest seq
+    // as its thread context cursor.
+    await hydrateConversationMessages({ conversation, conversationId });
 
-    await deps.compactConversationIfNeeded(conversation, {
-      threadId: args.context.threadId,
-      channelId: args.context.channelId,
-      actorId: args.context.actorId,
-      runId: args.context.runId,
-    });
-    if (conversationId) {
-      await persistConversationMessageSummaries({
-        conversation,
+    if (
+      (await trimConversationMessages(conversation, () =>
+        loadThreadContextTrimFloor(conversationId),
+      )) &&
+      conversation.historyFromSeq !== undefined
+    ) {
+      await persistConversationMessageWindow({
         conversationId,
+        historyFromSeq: conversation.historyFromSeq,
       });
     }
 
     const conversationContext = buildConversationContext(conversation, {
-      excludeMessageId: userMessageId,
-    });
+      excludeMessageIds: [userMessageId],
+    }).text;
 
     setSpanAttributes({
       "app.backfill_source": backfillSource ?? "none",
       "app.context_tokens_estimated":
-        estimateConversationContextTokens(conversation),
+        estimateConversationMessagesTokens(conversation),
     });
 
     return {

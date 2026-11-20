@@ -10,18 +10,18 @@ export type McpProviderErrorPhase =
 export interface McpProviderErrorDetails {
   phase: McpProviderErrorPhase;
   provider: string;
-  missingSession?: boolean;
-  resourceHost?: string;
-  status?: number;
+  missingSession?: boolean | undefined;
+  resourceHost?: string | undefined;
+  status?: number | undefined;
 }
 
 /** Safe failure at an MCP network or OAuth boundary. */
 export class McpProviderError extends Error {
   readonly phase: McpProviderErrorPhase;
   readonly provider: string;
-  readonly missingSession?: boolean;
-  readonly resourceHost?: string;
-  readonly status?: number;
+  readonly missingSession?: boolean | undefined;
+  readonly resourceHost?: string | undefined;
+  readonly status?: number | undefined;
 
   constructor(details: McpProviderErrorDetails) {
     super(`MCP provider ${details.phase.replace("_", " ")} failed`);
@@ -100,7 +100,7 @@ export class McpServiceAccountRequiredError extends McpToolError {
 
   constructor(provider: string, displayName: string) {
     super(
-      `${displayName} is not available yet. Junior uses a shared ${displayName} account for everyone, and a Junior admin must connect it on the dashboard Admin page.`,
+      `${displayName} is not available yet. This app uses a shared ${displayName} account for everyone, and an admin must connect it on the dashboard Admin page.`,
     );
     this.name = "McpServiceAccountRequiredError";
     this.provider = provider;

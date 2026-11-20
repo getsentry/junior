@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversation_participants" ADD COLUMN "pin_position" integer;

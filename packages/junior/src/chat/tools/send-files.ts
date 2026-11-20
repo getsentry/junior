@@ -1,9 +1,10 @@
+import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import { storeAttachments } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import {
@@ -49,7 +50,7 @@ function normalizeFiles(
   return files.map((file) => ({
     path: file.path,
     ...(file.filename ? { filename: file.filename } : undefined),
-    ...(file.mimeType ? { mimeType: file.mimeType } : undefined),
+    ...(file.mime_type ? { mime_type: file.mime_type } : undefined),
   }));
 }
 
@@ -76,13 +77,17 @@ type FileDelivery = {
   send: (files: SandboxFileUpload[]) => Promise<void>;
 };
 
-/** Store files in the active Conversation and optionally deliver them to its Location. */
+/**
+ * Store files in the active Conversation and optionally deliver them to its Location.
+ *
+ * @runBuilt sendFiles
+ */
 export function createSendFilesTool(
   state: ToolState,
   materializeFile: MaterializeFile,
   output:
     | { attachments: FileAttachments; delivery?: FileDelivery }
-    | { attachments?: FileAttachments; delivery: FileDelivery },
+    | { attachments?: FileAttachments | undefined; delivery: FileDelivery },
 ) {
   const { attachments, delivery } = output;
   return zodTool({
@@ -106,8 +111,8 @@ export function createSendFilesTool(
     outputSchema: sendFilesResultSchema,
     execute: async ({ files }, options) => {
       const filesToSend = normalizeFiles(files);
-      const materializedFiles = await Promise.all(
-        filesToSend.map((file) => materializeFile(file)),
+      const materializedFiles = await mapBounded(filesToSend, (file) =>
+        materializeFile(file),
       );
       const operationKey = createOperationKey("sendFiles", {
         conversation_id: attachments?.conversationId,

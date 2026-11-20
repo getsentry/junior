@@ -2,89 +2,90 @@
 
 ## Intent
 
-Frontend code should make layout and styling ownership obvious at the component
-that renders the UI. Do not hide product-specific presentation in large
-stylesheets or semantic class contracts. Repeated product surfaces should share
-named components so pages stay thin and taste stays consistent.
+The component that renders UI owns its layout and styling. Repeated product
+surfaces share named components, so pages stay thin and the look stays
+consistent.
 
 ## Policy
 
-- Prefer component-owned Tailwind utility classes over dashboard or feature
-  stylesheets.
-- Keep stable page chrome visible while data loads. Preserve the page title,
-  navigation, filters, actions, and split-pane geometry when they do not depend
-  on the pending data.
-- A visible loading region must use a named loading component owned beside the
-  finished component or layout. Match the usual structure, spacing, row count,
-  media size, and text height. Reuse the finished layout when practical.
-- Replace only the pending region. Keep useful existing results during refresh,
-  filter, and sort requests. Show pending feedback instead of replacing those
-  results with a skeleton.
-- Use `Skeleton` for placeholder leaves and `PageContentSkeleton` for standard
-  page bodies. Hide placeholder leaves from assistive technology. Give the
-  loading region one concise status label.
-- Skeleton motion must stop when the user prefers reduced motion. Do not use a
-  centered progress card when the expected page structure is known.
-- Prefer small named components for repeated UI surfaces, such as `Field`,
-  `TextInput`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
-  repeated `<div className="field">` style hooks.
-- For data tables, give metric and status columns equal fixed widths. Let only
-  the leading label column flex. Prefer `table-fixed` so column widths stay
-  stable as values change. Give the table a minimum width and horizontal scroll
-  on narrow viewports so fixed columns do not crush the label column.
-- Put repeated semantic surfaces in shared client components outside the route
-  or page module. For the dashboard, that home is
-  `packages/junior-dashboard/src/client/components/`. Charts, drawers, tables,
-  secondary nav, and page time-range controls belong there, not as copy-pasted
-  route markup. See that directory's `README.md` for the local kit map.
-- Promote a surface into a shared component on the second real use, or when a
-  third use is already certain. Do not extract on taste alone.
-- Keep page modules thin. Compose shared components and wire data. Do not grow
-  large one-off Tailwind blocks inside a page when the same surface already has,
-  or should have, a named component.
-- When you add or change a shared dashboard component, add or update a fixture
-  on the matching local gallery section (`/dev/foundations`, `/dev/charts`, or
-  `/dev/transcripts`) so visual review can cover only that surface. Keep `/dev`
-  as the catalog index. Feature-only widgets do not need gallery coverage.
-- Do not add filler eyebrows or section labels that only restate the page title,
-  chart purpose, or an obvious section role. If the page or chart title already
-  names the content, skip decorative headers such as `Automation`,
-  `Memory system`, or `Your trail`.
-- Do not duplicate status or kind text when an icon, title, or other primary
-  chrome already carries that fact. If a row shows a kind or status icon, do not
-  also render labels such as `Event`/`Scheduled` or `Ready`/`Active` as
-  secondary text for the same fact.
-- Own page-level filters and secondary nav in one shared layout control. Charts
-  and sections consume that control. They must not each own a duplicate
-  time-range selector, secondary nav, or equivalent page chrome.
-- Keep Tailwind classes colocated with the component or component-local helper
-  that owns the markup.
-- Use the named type scale from the dashboard Tailwind theme
-  (`text-2xs` through `text-4xl`). Reserve `text-2xs` for compact badges and
-  chart annotations. Use `text-xs` or larger for body copy, controls, subtext,
-  and standalone metadata. Do not use arbitrary `text-[Nrem]` sizes.
-- Use stylesheets only for Tailwind entry files, minimal global resets, vendor
-  integration constraints, or selectors that cannot reasonably be represented
-  with utilities.
-- Avoid visual gradients by default in product UI. Use solid surfaces, borders,
-  spacing, and status accents unless a gradient carries specific product meaning.
-- Do not create broad semantic CSS class APIs for one-off feature UI.
-- Own conversation mobile geometry in named components only:
-  - `layout/VisualViewportShell` owns the fixed shell, visualViewport CSS
-    variables, and body scroll lock.
-  - `conversations/ChatLayout` owns the scroll-above-dock frame for reply
-    threads.
-  - `conversations/ComposerDock` owns reply bottom pad and dock chrome.
-  Pages and feature modules pass children only. They must not invent viewport
-  height, offset, bottom pad, or `env(safe-area-inset-bottom)` math for the
-  composer. Home and create are one landing surface (compose hero + list nav),
-  not a dock. `/conversations/new` redirects to `/`.
+### Components
+
+- Put repeated surfaces (charts, drawers, tables, secondary nav, time-range
+  controls, `Field`, `Input`, `StatusChip`, `Section`, `Toolbar`,
+  `EmptyState`) in shared components. Dashboard home:
+  `packages/junior-dashboard/src/client/components/`.
+- Extract on the second real use, or when a third use is certain. Not on taste.
+- Keep pages thin: compose shared components and wire data.
+- Own page filters and secondary nav in one shared layout control. Sections
+  must not each own a copy.
+- Title page, card, and panel sections with `layout/SectionTitle` (or a
+  shared component that uses it, such as `FactSection` and `CardHeader`).
+  Small muted text is for field and subsection labels only.
+- Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
+  chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
+  `FilteredList` puts the panel beside the toolbar and the list, so both
+  narrow. A long `FilterOptions` list gets a search box, not "show more". Row
+  details open in an overlay `DetailsPanel` that slides over the list and
+  filters. On small screens both are modal sheets. Do not put page filters
+  in popovers or native selects.
+- Check a changed shared component on a real page with
+  `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` and the dashboard E2E
+  screenshots.
+
+### Styling
+
+- Use Tailwind utilities colocated with the component that owns the markup.
+- Use stylesheets only for Tailwind entry files, minimal resets, vendor
+  constraints, or selectors utilities cannot express. No semantic CSS class
+  APIs for one-off UI.
+- Use the theme type scale (`text-2xs` to `text-4xl`). `text-2xs` is only for
+  compact badges and chart notes; body copy, controls, and metadata use
+  `text-xs` or larger. No arbitrary `text-[Nrem]`.
+- No gradients unless they carry product meaning.
+- JS sizes that must match CSS use the same unit. Text, spacing, and
+  breakpoints are in rem, so they grow with the browser font size. Write the
+  JS size in rem, or read the rendered size. Use a px constant only when the
+  CSS that it matches is in px too (`ITEM_PX` and `h-[8px]`), and say so in a
+  comment. `ResizablePanel` sizes must be rem or percent, the style check
+  rejects px breakpoints, and the `px-geometry` lint rule rejects a `*_PX`
+  constant in `*` or `/` math when no element in the file uses its size.
+- Data tables: `table-fixed`, equal fixed widths for metric and status
+  columns, only the label column flexes, a minimum width, and horizontal
+  scroll on narrow screens.
+
+### Loading
+
+- Keep page chrome (title, nav, filters, actions, split panes) visible while
+  data loads.
+- A loading region uses a named loading component beside the finished one. It
+  matches structure, spacing, row count, media size, and text height.
+- Replace only the pending region. Keep existing results during refresh,
+  filter, and sort, and show pending feedback.
+- Use `Skeleton` for leaves and `PageContentSkeleton` for page bodies. Hide
+  leaves from assistive technology. Give the region one status label.
+- Stop skeleton motion for reduced motion. No centered progress card when the
+  page structure is known.
+
+### Content
+
+- No filler eyebrows or labels that restate the page or chart title.
+- Do not repeat a status or kind in text when an icon or title already shows
+  it.
+
+### Conversation mobile geometry
+
+- `layout/VisualViewportShell` owns the fixed shell, visualViewport CSS
+  variables, and body scroll lock.
+- `conversations/ChatLayout` owns the scroll-above-dock frame.
+- `conversations/ComposerDock` owns the bottom pad and dock chrome.
+- Pages pass children only. They must not compute viewport height, offsets,
+  bottom pad, or `env(safe-area-inset-bottom)` for the composer.
+- Home and create are one landing surface, not a dock. `/conversations/new`
+  redirects to `/`.
 
 ## Exceptions
 
-- Do not create a separate published design-system package for Junior UI unless
-  a second product must share the same components.
-- Third-party rendered markup may need narrow wrapper selectors when utilities
-  cannot reach the generated DOM safely.
-- A page may keep truly one-off layout glue inline when it is not a repeated
-  product surface and extracting it would only add indirection.
+- No published design-system package unless a second product shares the
+  components.
+- Third-party markup may need narrow wrapper selectors.
+- A page may keep one-off layout glue inline when it is not a repeated surface.

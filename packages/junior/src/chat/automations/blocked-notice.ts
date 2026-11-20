@@ -1,3 +1,4 @@
+import { automationTaskDescription } from "@/chat/automations/task";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
@@ -7,6 +8,7 @@ import { fallbackShortTitle } from "@/chat/services/short-title";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   openSlackDirectMessage,
+  // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
   postSlackMessage,
 } from "@/chat/slack/outbound";
 
@@ -54,11 +56,12 @@ export async function notifyAutomationBlocked(
       const title =
         task.title ??
         fallbackShortTitle(
-          task.task.text,
+          automationTaskDescription(task.task),
           ref.kind === "scheduled"
             ? "Scheduled automation"
             : "Event automation",
         );
+      // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
       await postSlackMessage({
         channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
         text: buildBlockedNoticeText(ref.automationId, title, ref.reason),

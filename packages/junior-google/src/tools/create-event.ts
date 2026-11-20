@@ -4,7 +4,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   emailListSchema,
   googleApiError,
@@ -89,11 +89,11 @@ const inputSchema = z
     end: z.iso
       .datetime({ offset: true })
       .describe("Event end, RFC 3339 with offset."),
-    timeZone: timeZoneSchema,
+    time_zone: timeZoneSchema,
     attendees: emailListSchema(50).describe(
-      "Email addresses of required attendees. Junior adds the requester automatically when it knows their email.",
+      "Email addresses of required attendees. The tool adds the requester automatically when their email is known.",
     ),
-    optionalAttendees: emailListSchema(50)
+    optional_attendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to invite as optional attendees."),
     repeat: repeatSchema
@@ -122,105 +122,105 @@ export function calendarEventId(toolCallId: string | undefined): string {
 }
 
 /** Create an event on Junior's own calendar and invite the attendees. */
-export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    describeProposal(input) {
-      const optional = input.optionalAttendees.length
-        ? ` (optional: ${input.optionalAttendees.join(", ")})`
-        : "";
-      const repeat = input.repeat
-        ? `, repeating ${recurrenceRule(input.repeat)}`
-        : "";
-      return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
-    },
-    description:
-      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
-    inputSchema,
-    outputSchema,
-    async execute(input, options) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
-      const startMs = Date.parse(input.start);
-      const endMs = Date.parse(input.end);
-      if (endMs <= startMs) {
-        throw new PluginToolInputError("end must be after start.");
-      }
-      if (endMs - startMs > MAX_EVENT_MS) {
-        throw new PluginToolInputError("Events can be at most 8 hours long.");
-      }
-      const attendees = await withRequester(ctx, input.attendees);
-      const required = new Set(attendees);
-      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
-        (email) => !required.has(email),
-      );
-      if (attendees.length + optionalAttendees.length === 0) {
-        throw new PluginToolInputError("Invite at least one attendee.");
-      }
-      requireAllowedEmails(
-        [...attendees, ...optionalAttendees],
-        ctx.allowedDomains,
-      );
+export const createCalendarEventTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  describeProposal(input) {
+    const optional = input.optional_attendees.length
+      ? ` (optional: ${input.optional_attendees.join(", ")})`
+      : "";
+    const repeat = input.repeat
+      ? `, repeating ${recurrenceRule(input.repeat)}`
+      : "";
+    return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
+  },
+  description:
+    "Create a Google Calendar event organized by your own Google account and email invites to the attendees. Every event gets a Google Meet link. You can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
+  inputSchema,
+  outputSchema,
+  async execute(input, options, ctx: GoogleToolContext) {
+    const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+    const startMs = Date.parse(input.start);
+    const endMs = Date.parse(input.end);
+    if (endMs <= startMs) {
+      throw new PluginToolInputError("end must be after start.");
+    }
+    if (endMs - startMs > MAX_EVENT_MS) {
+      throw new PluginToolInputError("Events can be at most 8 hours long.");
+    }
+    const attendees = await withRequester(ctx, input.attendees);
+    const required = new Set(attendees);
+    const optionalAttendees = [...new Set(input.optional_attendees)].filter(
+      (email) => !required.has(email),
+    );
+    if (attendees.length + optionalAttendees.length === 0) {
+      throw new PluginToolInputError("Invite at least one attendee.");
+    }
+    requireAllowedEmails(
+      [...attendees, ...optionalAttendees],
+      ctx.allowedDomains,
+    );
 
-      const eventId = calendarEventId(options.toolCallId);
-      const response = await googleApiRequest(ctx, {
-        body: {
-          attendees: [
-            ...attendees.map((email) => ({ email })),
-            ...optionalAttendees.map((email) => ({ email, optional: true })),
-          ],
-          conferenceData: {
-            createRequest: {
-              conferenceSolutionKey: { type: "hangoutsMeet" },
-              requestId: eventId,
-            },
+    const eventId = calendarEventId(options.toolCallId);
+    const response = await googleApiRequest(ctx, {
+      body: {
+        attendees: [
+          ...attendees.map((email) => ({ email })),
+          ...optionalAttendees.map((email) => ({ email, optional: true })),
+        ],
+        conferenceData: {
+          createRequest: {
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+            requestId: eventId,
           },
-          ...(input.description
-            ? { description: input.description }
-            : undefined),
-          end: { dateTime: input.end, timeZone },
-          guestsCanModify: false,
-          id: eventId,
-          ...(input.location ? { location: input.location } : undefined),
-          ...(input.repeat
-            ? { recurrence: [recurrenceRule(input.repeat)] }
-            : undefined),
-          start: { dateTime: input.start, timeZone },
-          summary: input.title,
         },
-        operation: "google.calendar.event.create",
-        path: "/calendar/v3/calendars/primary/events",
-        query: {
-          conferenceDataVersion: "1",
-          sendUpdates: "all",
-        },
+        ...(input.description ? { description: input.description } : undefined),
+        end: { dateTime: input.end, timeZone },
+        guestsCanModify: false,
+        id: eventId,
+        ...(input.location ? { location: input.location } : undefined),
+        ...(input.repeat
+          ? { recurrence: [recurrenceRule(input.repeat)] }
+          : undefined),
+        start: { dateTime: input.start, timeZone },
+        summary: input.title,
+      },
+      operation: "google.calendar.event.create",
+      path: "/calendar/v3/calendars/primary/events",
+      query: {
+        conferenceDataVersion: "1",
+        sendUpdates: "all",
+      },
+    });
+
+    let created = true;
+    let event = response;
+    if (response.status === 409) {
+      // A retry of the same tool call already created this event.
+      created = false;
+      event = await googleApiRequest(ctx, {
+        operation: "google.calendar.event.get",
+        path: `/calendar/v3/calendars/primary/events/${eventId}`,
       });
-
-      let created = true;
-      let event = response;
-      if (response.status === 409) {
-        // A retry of the same tool call already created this event.
-        created = false;
-        event = await googleApiRequest(ctx, {
-          operation: "google.calendar.event.get",
-          path: `/calendar/v3/calendars/primary/events/${eventId}`,
-        });
-        if (event.status !== 200) {
-          throw googleApiError("google.calendar.event.get", event);
-        }
-      } else if (response.status !== 200) {
-        throw googleApiError("google.calendar.event.create", response);
+      if (event.status !== 200) {
+        throw googleApiError("google.calendar.event.get", event);
       }
+    } else if (response.status !== 200) {
+      throw googleApiError("google.calendar.event.create", response);
+    }
 
-      return {
-        target: "createCalendarEvent" as const,
-        created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
-      };
-    },
-  });
-}
+    return {
+      target: "createCalendarEvent" as const,
+      created,
+      ...ownEventResult(
+        ownEventSchema.parse(event.body),
+        timeZone,
+        ctx.accountEmail,
+      ),
+    };
+  },
+});

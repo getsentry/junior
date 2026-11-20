@@ -1,46 +1,56 @@
-import type { StoredSlackActor } from "@/chat/actor";
+import { eq } from "drizzle-orm";
+import type { Actor, StoredSlackActor } from "@/chat/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
+import { upsertIdentity } from "@/chat/identities/sql";
+import type { JuniorSqlDatabase } from "@/db/db";
 import type { Conversation, ConversationSource } from "../store";
-import type { juniorIdentities } from "@/db/schema";
+import { juniorConversations, type juniorIdentities } from "@/db/schema";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
-/** Build a durable identity observation from a stored conversation actor. */
-export function identityFromActor(
+/**
+ * Convert an Actor in the stored Conversation shape to a runtime Actor.
+ *
+ * TODO(dcramer): Remove after Conversations store the Identity id instead of
+ * StoredSlackActor.
+ */
+function actorFromStoredActor(
   actor: StoredSlackActor | undefined,
-): IdentityUpsert | undefined {
+): Actor | undefined {
   if (actor?.slackUserId) {
     return {
-      kind: "user",
-      provider: "slack",
-      providerTenantId: actor.teamId,
-      providerSubjectId: actor.slackUserId,
-      ...(actor.fullName ? { displayName: actor.fullName } : undefined),
-      ...(actor.slackUserName ? { handle: actor.slackUserName } : undefined),
-      ...(actor.email
-        ? { email: actor.email, emailVerified: true }
-        : undefined),
-      metadata: { platform: "slack" },
+      ...(actor.email ? { email: actor.email } : undefined),
+      ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+      platform: "slack",
+      // Older stored Slack actors can omit the team. SQL stores a missing
+      // tenant as an empty string.
+      teamId: actor.teamId ?? "",
+      userId: actor.slackUserId,
+      ...(actor.slackUserName ? { userName: actor.slackUserName } : undefined),
     };
   }
-  // Dashboard/web actors store a verified email without a Slack subject.
-  const email = actor?.email?.trim().toLowerCase();
-  if (!email) {
+  if (!actor?.email) {
     return undefined;
   }
+  // A stored web actor keeps only its verified email and name. The web
+  // Identity does not use the Actor user id.
   return {
-    kind: "user",
-    provider: "junior",
-    providerSubjectId: email,
-    email,
-    emailVerified: true,
-    ...(actor?.fullName ? { displayName: actor.fullName } : undefined),
-    metadata: { platform: "web" },
+    email: actor.email,
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+    platform: "web",
+    userId: actor.email,
   };
 }
 
-/** Build a system identity when a conversation has no user actor. */
-export function systemIdentityFromSource(
+/**
+ * Build the legacy system Identity for a Conversation that has no Actor.
+ *
+ * TODO(dcramer): Remove after every ingress supplies its Actor. These rows use
+ * one subject per Source (`scheduler`, `local-cli`, `event`). An Actor
+ * uses the one system Identity instead, so the backfill must merge them.
+ */
+function systemIdentityFromSource(
   source: ConversationSource | undefined,
 ): IdentityUpsert | undefined {
   if (source === "scheduler") {
@@ -48,7 +58,7 @@ export function systemIdentityFromSource(
       kind: "system",
       provider: "junior",
       providerSubjectId: "scheduler",
-      displayName: "Junior Scheduler",
+      displayName: "Scheduler",
     };
   }
   if (source === "local") {
@@ -70,14 +80,39 @@ export function systemIdentityFromSource(
   return undefined;
 }
 
-/** Prefer the user actor identity, else a source-derived system identity. */
-export function actorIdentityForConversation(
+/**
+ * Return the root Actor's Identity id. Save the Identity only when the
+ * Conversation has none yet. Use the legacy source system Identity when the
+ * Conversation has no actor.
+ */
+export async function resolveConversationActorIdentityId(
+  executor: JuniorSqlDatabase,
   conversation: Conversation,
-): IdentityUpsert | undefined {
-  return (
-    identityFromActor(conversation.actor) ??
-    systemIdentityFromSource(conversation.source)
-  );
+): Promise<string | undefined> {
+  // The root Actor is set once. A later write merges other people's Actor
+  // fields into `conversation.actor`, so saving it again could link the root
+  // Actor's Identity to the User of whoever wrote last.
+  const [stored] = await executor
+    .db()
+    .select({ actorIdentityId: juniorConversations.actorIdentityId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversation.conversationId))
+    .limit(1);
+  if (stored?.actorIdentityId) {
+    return stored.actorIdentityId;
+  }
+  const actor = actorFromStoredActor(conversation.actor);
+  if (actor) {
+    return await resolveActorIdentityId(
+      executor,
+      actor,
+      conversation.updatedAtMs,
+    );
+  }
+  const fallback = systemIdentityFromSource(conversation.source);
+  return fallback
+    ? (await upsertIdentity(executor, fallback, conversation.updatedAtMs)).id
+    : undefined;
 }
 
 /**

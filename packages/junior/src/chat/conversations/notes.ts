@@ -1,14 +1,35 @@
 /**
  * Conversation notes: short facts that core attaches to a Conversation without
  * starting a Turn. The next Turn shows them to the model in its runtime turn
- * context. See "Conversation Notes" in README.md.
+ * context. A failed Turn also becomes a note for the next Turn. A note is
+ * context, never user intent, and only core adds one.
  */
 import { getConversationEventStore } from "@/chat/db";
+import type { ConversationTurnFailureCode } from "./history";
 import {
   conversationNoteEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
   MAX_CONVERSATION_NOTE_CHARS,
 } from "./structured-events";
+
+/**
+ * Tell the next Turn that a Turn failed. Pi drops a failed assistant message
+ * before it calls the model, so without this note the model cannot see it.
+ * The note has the error reference, never the raw error.
+ */
+function failedTurnNote(
+  failureCode: ConversationTurnFailureCode,
+  eventId: string | undefined,
+): string {
+  const reference = eventId ? ` Error reference: event_id=${eventId}.` : "";
+  // A rejected post leaves no visible reply, so the model must not answer
+  // as if the person read it.
+  const seen =
+    failureCode === "delivery_failed"
+      ? "Your reply was not delivered, so the person did not see it. They may have seen an error reply."
+      : "The person may have seen an error reply or no reply.";
+  return `Your previous turn failed before it finished. ${seen}${reference} Do not assume that request was completed.`;
+}
 
 /** Most notes that one Turn shows. Older notes in the window are dropped. */
 const MAX_CONVERSATION_NOTES_PER_TURN = 20;
@@ -51,9 +72,10 @@ export async function addConversationNote(input: {
 
 /**
  * Load the note texts for one Turn, oldest first: the notes added after the
- * previous Turn started and before this Turn started. A retry of the Turn
- * reads the same window, so each note is shown to one Turn. A Turn that is
- * not the newest started Turn gets no notes.
+ * previous Turn started and before this Turn started, plus a note for each
+ * `turn_failed` event in that window. A retry of the Turn reads the same
+ * window, so each note is shown to one Turn. A Turn that is not the newest
+ * started Turn gets no notes.
  */
 export async function loadTurnConversationNotes(input: {
   conversationId: string;
@@ -62,17 +84,21 @@ export async function loadTurnConversationNotes(input: {
   const newestFirst: string[] = [];
   let foundTurn = false;
   let beforeSeq: number | undefined;
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   scan: while (true) {
     const page = await getConversationEventStore().query(input.conversationId, {
       beforeSeq,
       limit: 100,
-      types: ["turn_started", "structured_event"],
+      types: ["turn_started", "turn_failed", "structured_event"],
     });
     for (const { data } of [...page.events].reverse()) {
       if (data.type === "turn_started") {
         if (foundTurn) break scan;
         if (data.turnId !== input.turnId) return [];
         foundTurn = true;
+      } else if (foundTurn && data.type === "turn_failed") {
+        newestFirst.push(failedTurnNote(data.failureCode, data.eventId));
+        if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       } else if (
         foundTurn &&
         data.type === "structured_event" &&
@@ -82,7 +108,7 @@ export async function loadTurnConversationNotes(input: {
       ) {
         // The schema makes `text` a string.
         newestFirst.push(
-          conversationNoteEvent.parse(data.content).text as string,
+          conversationNoteEvent.parse(data.content)["text"] as string,
         );
         if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       }
@@ -90,5 +116,6 @@ export async function loadTurnConversationNotes(input: {
     if (!page.hasOlder || page.events.length === 0) break;
     beforeSeq = page.events[0]!.seq;
   }
+  /* oxlint-enable no-await-in-loop */
   return newestFirst.reverse();
 }

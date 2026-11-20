@@ -1,12 +1,28 @@
+import pLimit from "p-limit";
 import {
   type PluginEgress,
+  type PluginLogger,
   type PluginToolOutput,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
+import {
+  ADD_REVIEW_REACTION,
+  type GitHubGraphqlOperation,
+  REMOVE_REVIEW_REACTION,
+  REVIEW_REACTIONS,
+} from "../graphql-documents.js";
+import { loadLatestReviews } from "../pull-request-reviews.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
+import {
+  type GitHubApiResponse,
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 /**
  * GitHub has reactions but no feedback state. This tool maps each state to a
@@ -25,20 +41,41 @@ type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
 type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
 type PullRequestCommentKind = "conversation" | "review";
 
+// A review body has no REST reactions endpoint, so it uses GraphQL, which
+// names the same reactions differently.
+const GRAPHQL_REACTION_CONTENT: Record<string, string> = {
+  eyes: "EYES",
+  "+1": "THUMBS_UP",
+  "-1": "THUMBS_DOWN",
+};
+const REST_REACTION_CONTENT = new Map(
+  Object.entries(GRAPHQL_REACTION_CONTENT).map(([rest, graphql]) => [
+    graphql,
+    rest,
+  ]),
+);
+
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    commentKind: z
-      .enum(["conversation", "review"])
+    comment_kind: z
+      .enum(["conversation", "review", "review_body"])
       .describe(
-        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment.',
+        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment, "review_body" for the body of a submitted review. Use the exact value from the event.',
       ),
-    commentId: z
+    comment_id: z
       .number()
       .int()
       .positive()
       .describe(
-        "GitHub comment id (conversation comment id or inline review comment id).",
+        "GitHub comment id (conversation comment id, inline review comment id, or review id). Use the exact value from the event.",
+      ),
+    pull_request: z
+      .number()
+      .int()
+      .positive()
+      .describe(
+        "Pull request number that the comment is on. Use the exact value from the event.",
       ),
     status: z
       .enum(["addressed", "declined"])
@@ -51,37 +88,35 @@ const inputSchema = z
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequestFeedback"),
   repo: z.string(),
-  commentId: z.number(),
+  comment_id: z.number(),
   status: z.enum(["addressed", "declined"]),
-  reactionId: z.number(),
 });
 interface Result extends PluginToolOutput {
   target: "updatePullRequestFeedback";
   repo: string;
-  commentId: number;
+  comment_id: number;
   status: FeedbackOutcome;
-  reactionId: number;
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-/** Build the GitHub API path for one pull request comment's reactions. */
-export function pullRequestCommentReactionsPath(input: {
+interface PullRequestCommentRef {
   owner: string;
   name: string;
   commentKind: PullRequestCommentKind;
   commentId: number;
-}): string {
+}
+
+function pullRequestCommentPath(input: PullRequestCommentRef): string {
   // Conversation comments live under the issues endpoint; inline review
   // comments live under the pulls endpoint. GitHub has no shared path.
   const segment = input.commentKind === "conversation" ? "issues" : "pulls";
-  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}/reactions`;
+  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}`;
+}
+
+/** Build the GitHub API path for one pull request comment's reactions. */
+export function pullRequestCommentReactionsPath(
+  input: PullRequestCommentRef,
+): string {
+  return `${pullRequestCommentPath(input)}/reactions`;
 }
 
 /** Return the GitHub reaction for one feedback state. */
@@ -91,24 +126,6 @@ export function pullRequestFeedbackReactionContent(
   return STATUS_TO_REACTION_CONTENT[status];
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  return "GitHub request failed";
-}
-
 const reactionSchema = z.object({
   id: z.number(),
   content: z.string(),
@@ -116,14 +133,324 @@ const reactionSchema = z.object({
 });
 
 /**
- * Set Junior's feedback reaction on a pull request comment. Replace only
- * state reactions Junior previously added to the same comment.
+ * Return the issue or pull request number of one comment in `repo`. A
+ * conversation comment is an issue comment, so its issue can be a plain issue.
+ */
+async function commentParentNumber(
+  egress: PluginEgress,
+  input: PullRequestCommentRef,
+): Promise<string> {
+  const commentResponse = await githubApi(egress, {
+    operation: "github.pull.comment.get",
+    path: pullRequestCommentPath(input),
+  });
+  const commentPayload = commentResponse.body;
+  if (!commentResponse.ok) {
+    const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubErrorMessage(commentPayload)}`;
+    if (commentResponse.status === 404) throw new PluginToolInputError(message);
+    throw new Error(message);
+  }
+  const comment = z
+    .object({
+      issue_url: z.string().optional(),
+      pull_request_url: z.string().optional(),
+    })
+    .safeParse(commentPayload);
+  const parentUrl = comment.success
+    ? input.commentKind === "conversation"
+      ? comment.data.issue_url
+      : comment.data.pull_request_url
+    : undefined;
+  // The comment endpoint is scoped to `repo`, so only the number is read.
+  const number = /\/(?:issues|pulls)\/(\d+)$/.exec(parentUrl ?? "")?.[1];
+  if (!number) {
+    throw new Error("GitHub comment did not name its issue or pull request.");
+  }
+  return number;
+}
+
+/**
+ * Refuse feedback unless GitHub shows that `number` is a pull request in
+ * `repo` that the bot authored.
+ */
+async function assertBotAuthoredPullRequest(
+  egress: PluginEgress,
+  input: {
+    botUserId: number;
+    name: string;
+    number: number;
+    owner: string;
+  },
+): Promise<void> {
+  const { number } = input;
+  // GitHub returns 404 here when the number is a plain issue.
+  const pullResponse = await githubApi(egress, {
+    operation: "github.pull.get",
+    path: `${repoPath(input)}/pulls/${number}`,
+  });
+  const pullPayload = pullResponse.body;
+  if (!pullResponse.ok && pullResponse.status !== 404) {
+    throw new Error(
+      `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubErrorMessage(pullPayload)}`,
+    );
+  }
+  const pull = z
+    .object({ user: z.object({ id: z.number() }).nullable() })
+    .safeParse(pullPayload);
+  if (
+    !pullResponse.ok ||
+    !pull.success ||
+    pull.data.user?.id !== input.botUserId
+  ) {
+    throw new PluginToolInputError(
+      "This bot can only set feedback status on comments on pull requests it authored.",
+    );
+  }
+}
+
+/** Build the GitHub API path for one pull request review. */
+export function pullRequestReviewPath(input: {
+  owner: string;
+  name: string;
+  pullRequest: number;
+  reviewId: number;
+}): string {
+  return `${repoPath(input)}/pulls/${input.pullRequest}/reviews/${input.reviewId}`;
+}
+
+/** Return the GraphQL name of one REST reaction content. */
+export function graphqlReactionContent(content: string): string {
+  return GRAPHQL_REACTION_CONTENT[content] ?? content;
+}
+
+const reviewReactionsSchema = z.object({
+  data: z.object({
+    node: z.object({
+      reactionGroups: z.array(
+        z.object({
+          content: z.string(),
+          reactors: z.object({
+            nodes: z.array(z.object({ databaseId: z.number().optional() })),
+          }),
+        }),
+      ),
+    }),
+  }),
+});
+
+/** One reaction by the bot. REST reactions have an id; GraphQL ones do not. */
+interface BotReaction {
+  content: string;
+  id?: number;
+}
+
+/**
+ * The reactions on one pull request comment or review body. Each kind has its
+ * own GitHub API, but the feedback rules are the same for both.
+ */
+interface FeedbackReactions {
+  list(): Promise<GitHubApiResponse>;
+  botReactions(body: unknown): BotReaction[];
+  remove(reaction: BotReaction): Promise<GitHubApiResponse>;
+  add(content: string): Promise<GitHubApiResponse>;
+}
+
+/** Return the REST reactions of a comment that is on `pullRequest`. */
+async function commentReactions(
+  egress: PluginEgress,
+  input: PullRequestCommentRef & { botUserId: number; pullRequest: number },
+): Promise<FeedbackReactions> {
+  const parentNumber = await commentParentNumber(egress, input);
+  if (parentNumber !== String(input.pullRequest)) {
+    throw new PluginToolInputError(
+      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}.`,
+    );
+  }
+  const path = pullRequestCommentReactionsPath(input);
+  return {
+    list: () =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.list",
+        path: `${path}?per_page=100`,
+      }),
+    botReactions: (body) =>
+      z
+        .array(reactionSchema)
+        .parse(body)
+        .filter((reaction) => reaction.user?.id === input.botUserId),
+    remove: (reaction) =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.delete",
+        method: "DELETE",
+        path: `${path}/${reaction.id}`,
+      }),
+    add: (content) =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.create",
+        method: "POST",
+        path,
+        body: { content },
+      }),
+  };
+}
+
+/**
+ * Return the GraphQL reactions of a review on `pullRequest`, and the login of
+ * its author when the review requests changes.
+ */
+async function reviewBodyReactions(
+  egress: PluginEgress,
+  input: {
+    botUserId: number;
+    name: string;
+    owner: string;
+    pullRequest: number;
+    reviewId: number;
+  },
+): Promise<FeedbackReactions & { changesRequestedBy?: string }> {
+  // The path names the pull request, so GitHub returns 404 for a review on
+  // another pull request.
+  const reviewResponse = await githubApi(egress, {
+    operation: "github.pull.review.get",
+    path: pullRequestReviewPath(input),
+  });
+  if (!reviewResponse.ok) {
+    const message = `GitHub review lookup failed with HTTP ${reviewResponse.status}: ${githubErrorMessage(reviewResponse.body)}`;
+    if (reviewResponse.status === 404) throw new PluginToolInputError(message);
+    throw new Error(message);
+  }
+  const review = z
+    .object({
+      node_id: z.string().min(1),
+      state: z.string().optional(),
+      user: z
+        .object({ login: z.string().min(1) })
+        .nullable()
+        .optional(),
+    })
+    .parse(reviewResponse.body);
+  const subjectId = review.node_id;
+  const graphql = (
+    operation: string,
+    document: GitHubGraphqlOperation,
+    variables: Record<string, string>,
+  ) =>
+    githubApi(egress, {
+      operation,
+      method: "POST",
+      path: "/graphql",
+      body: { ...document, variables },
+    });
+  const update =
+    `github.pull.review-reaction.update:${input.owner}/${input.name}`.toLowerCase();
+  return {
+    ...(review.state === "CHANGES_REQUESTED" && review.user
+      ? { changesRequestedBy: review.user.login }
+      : undefined),
+    list: () =>
+      graphql("github.pull.review-reaction.list", REVIEW_REACTIONS, {
+        subjectId,
+      }),
+    botReactions: (body) =>
+      reviewReactionsSchema
+        .parse(body)
+        .data.node.reactionGroups.filter((group) =>
+          group.reactors.nodes.some(
+            (reactor) => reactor.databaseId === input.botUserId,
+          ),
+        )
+        .map((group) => ({
+          content: REST_REACTION_CONTENT.get(group.content) ?? group.content,
+        })),
+    remove: (reaction) =>
+      graphql(update, REMOVE_REVIEW_REACTION, {
+        subjectId,
+        content: graphqlReactionContent(reaction.content),
+      }),
+    add: (content) =>
+      graphql(update, ADD_REVIEW_REACTION, {
+        subjectId,
+        content: graphqlReactionContent(content),
+      }),
+  };
+}
+
+/**
+ * Ask the reviewer who requested changes to review again, while their latest
+ * review still requests changes. GitHub stops asking a reviewer once they
+ * review, so the fixed pull request would not wait on them. A reviewer who
+ * approved since then is not asked. The request is optional, so a failure is
+ * logged and does not fail the tool.
+ */
+async function requestReviewAgain(
+  ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
+  input: { name: string; owner: string; pullRequest: number; reviewer: string },
+): Promise<void> {
+  const fields = {
+    number: input.pullRequest,
+    repo: `${input.owner}/${input.name}`,
+  };
+  try {
+    const pullPath = `${repoPath(input)}/pulls/${input.pullRequest}`;
+    let rejectedStatus: number | undefined;
+    const latest = await loadLatestReviews(async (query) => {
+      const page = await githubApi(ctx.egress, {
+        operation: "github.pull.review.list",
+        path: `${pullPath}/reviews?${query}`,
+      });
+      // An empty page ends the read.
+      if (page.ok) return page.body;
+      rejectedStatus = page.status;
+      return [];
+    });
+    if (
+      rejectedStatus === undefined &&
+      latest.get(input.reviewer.toLowerCase())?.state === "CHANGES_REQUESTED"
+    ) {
+      const response = await githubApi(ctx.egress, {
+        operation: "github.pull.request_reviewers",
+        method: "POST",
+        path: `${pullPath}/requested_reviewers`,
+        body: { reviewers: [input.reviewer] },
+      });
+      if (!response.ok) rejectedStatus = response.status;
+    }
+    if (rejectedStatus !== undefined) {
+      ctx.log.warn(
+        "github.pull_request.request_reviewers_after_feedback.rejected",
+        { ...fields, status: rejectedStatus },
+      );
+    }
+  } catch (error) {
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_feedback.failed",
+      {
+        ...fields,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+    );
+  }
+}
+
+// GraphQL reports errors with HTTP 200, so a failed reply can be `ok`.
+function failed(response: GitHubApiResponse): boolean {
+  const errors = (response.body as { errors?: unknown } | null | undefined)
+    ?.errors;
+  return !response.ok || (Array.isArray(errors) && errors.length > 0);
+}
+
+/**
+ * Set Junior's feedback reaction on a pull request comment or review body.
+ * Replace only state reactions Junior previously added to the same comment.
+ * Addressed change requests ask their reviewer to review again.
  */
 export function createGitHubUpdatePullRequestFeedbackTool(
-  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({
+    // No action review: the tool checks in code that the bot authored the pull
+    // request, and it changes only the bot's own reaction, which is reversible.
+    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -131,11 +458,15 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set Junior's outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only Junior's prior status reaction on that comment.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Addressed on a change request asks its reviewer to review again, unless they approved since. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
@@ -143,97 +474,90 @@ export function createGitHubUpdatePullRequestFeedbackTool(
           { cause: parsedInput.error },
         );
       }
-      const { commentId, commentKind, status } = parsedInput.data;
+      const {
+        comment_id: commentId,
+        comment_kind: commentKind,
+        pull_request: pullRequest,
+        status,
+      } = parsedInput.data;
       const repo = parseRepo(parsedInput.data.repo);
       const botUserId = botUserIdFromEmail(botEmail);
       if (botUserId === undefined) {
         throw new Error("GitHub App bot identity is not configured.");
       }
-      const targetContent = pullRequestFeedbackReactionContent(status);
-      const baseUrl = `https://api.github.com${pullRequestCommentReactionsPath({
+      await assertBotAuthoredPullRequest(ctx.egress, {
         owner: repo.owner,
         name: repo.name,
-        commentKind,
-        commentId,
-      })}`;
-
-      const listResponse = await ctx.egress.fetch({
-        provider: "github",
-        operation: "github.pull.comment-reaction.list",
-        request: new Request(`${baseUrl}?per_page=100`, {
-          headers: { Accept: "application/vnd.github+json" },
-        }),
+        number: pullRequest,
+        botUserId,
       });
-      const listPayload = await readJson(listResponse);
-      if (!listResponse.ok) {
+      const reactions: FeedbackReactions & { changesRequestedBy?: string } =
+        commentKind === "review_body"
+          ? await reviewBodyReactions(ctx.egress, {
+              owner: repo.owner,
+              name: repo.name,
+              pullRequest,
+              reviewId: commentId,
+              botUserId,
+            })
+          : await commentReactions(ctx.egress, {
+              owner: repo.owner,
+              name: repo.name,
+              commentKind,
+              commentId,
+              pullRequest,
+              botUserId,
+            });
+      const targetContent = pullRequestFeedbackReactionContent(status);
+
+      const listResponse = await reactions.list();
+      const listPayload = listResponse.body;
+      if (failed(listResponse)) {
         throw new Error(
-          `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubError(listPayload)}`,
+          `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubErrorMessage(listPayload)}`,
         );
       }
-      const botReactions = z
-        .array(reactionSchema)
-        .parse(listPayload)
-        .filter(
-          (reaction) =>
-            reaction.user?.id === botUserId &&
-            FEEDBACK_REACTION_CONTENTS.has(reaction.content),
-        );
-      const existing = botReactions.find(
-        (reaction) => reaction.content === targetContent,
-      );
+      const botReactions = reactions
+        .botReactions(listPayload)
+        .filter((reaction) => FEEDBACK_REACTION_CONTENTS.has(reaction.content));
 
-      for (const stale of botReactions) {
-        if (stale.content === targetContent) continue;
-        const deleteResponse = await ctx.egress.fetch({
-          provider: "github",
-          operation: "github.pull.comment-reaction.delete",
-          request: new Request(`${baseUrl}/${stale.id}`, {
-            method: "DELETE",
-          }),
-        });
-        if (!deleteResponse.ok && deleteResponse.status !== 404) {
-          const deletePayload = await readJson(deleteResponse);
+      // Feedback reactions are a small fixed set, so remove them at once.
+      const deleteResponses = await pLimit(FEEDBACK_REACTION_CONTENTS.size).map(
+        botReactions.filter((stale) => stale.content !== targetContent),
+        (stale) => reactions.remove(stale),
+      );
+      for (const deleteResponse of deleteResponses) {
+        if (failed(deleteResponse) && deleteResponse.status !== 404) {
           throw new Error(
-            `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubError(deletePayload)}`,
+            `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubErrorMessage(deleteResponse.body)}`,
           );
         }
       }
 
-      if (existing) {
-        return {
-          target: "updatePullRequestFeedback",
-          repo: repo.ref,
-          commentId,
-          status,
-          reactionId: existing.id,
-        };
+      if (
+        !botReactions.some((reaction) => reaction.content === targetContent)
+      ) {
+        const createResponse = await reactions.add(targetContent);
+        const createPayload = createResponse.body;
+        if (failed(createResponse)) {
+          throw new Error(
+            `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`,
+          );
+        }
       }
-
-      const createResponse = await ctx.egress.fetch({
-        provider: "github",
-        operation: "github.pull.comment-reaction.create",
-        request: new Request(baseUrl, {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ content: targetContent }),
-        }),
-      });
-      const createPayload = await readJson(createResponse);
-      if (!createResponse.ok) {
-        throw new Error(
-          `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubError(createPayload)}`,
-        );
+      if (status === "addressed" && reactions.changesRequestedBy) {
+        await requestReviewAgain(ctx, {
+          owner: repo.owner,
+          name: repo.name,
+          pullRequest,
+          reviewer: reactions.changesRequestedBy,
+        });
       }
-      const created = reactionSchema.parse(createPayload);
       return {
         target: "updatePullRequestFeedback",
         repo: repo.ref,
-        commentId,
+        comment_id: commentId,
         status,
-        reactionId: created.id,
       };
     },
   });

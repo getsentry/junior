@@ -24,6 +24,23 @@ describe("Slack conversation prompt context", () => {
     });
   });
 
+  it("keeps a set channel topic and drops a blank description", () => {
+    expect(
+      resolveSlackConversationContext({
+        channelId: "C123",
+        channelName: "engineering",
+        channelTopic: " Deploy freeze until Friday ",
+        channelDescription: "   ",
+        channelType: "channel",
+      }),
+    ).toEqual({
+      type: "public_channel",
+      name: "#engineering",
+      topic: "Deploy freeze until Friday",
+      visibility: "public",
+    });
+  });
+
   it("includes private conversation names when Slack provides them", () => {
     expect(
       resolveSlackConversationContext({

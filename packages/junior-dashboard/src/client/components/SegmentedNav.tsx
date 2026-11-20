@@ -81,7 +81,7 @@ function edgeFade(edges: HiddenEdges): CSSProperties | undefined {
 /**
  * Show links between sibling pages as underline tabs. The current page has
  * a solid underline that sits on the border below the row. App navigation
- * uses pills and in-place panel switches use `SegmentedTabs`, so the three
+ * uses pills and in-place panel switches use `ui/tabs`, so the three
  * levels stay distinct.
  *
  * With `fill`, links share the row width equally while their labels fit.
@@ -92,6 +92,8 @@ export function SegmentedNav(props: {
   ariaLabel: string;
   fill?: boolean;
   items: readonly SegmentedNavItem[];
+  /** Match the header row (`h-header`), so labels share the pane's top centre line. */
+  toolbar?: boolean;
 }) {
   const { pathname } = useLocation();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -137,10 +139,11 @@ export function SegmentedNav(props: {
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative flex h-10 items-center justify-center whitespace-nowrap font-sans text-sm font-medium no-underline transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+      "relative flex items-center justify-center whitespace-nowrap font-sans text-sm font-medium no-underline transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
       isActive
         ? "text-dashboard-text after:bg-dashboard-text-solid"
         : "text-dashboard-text-muted hover:text-dashboard-text",
+      props.toolbar ? "h-header" : "h-10",
       props.fill ? "min-w-max flex-[1_0_0]" : "shrink-0",
     );
 

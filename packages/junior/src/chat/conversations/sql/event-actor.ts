@@ -1,8 +1,9 @@
-import { and, eq, or, sql } from "drizzle-orm";
-import { parseActorUserId } from "@/chat/actor";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import * as z from "zod";
+import { isSlackUserId, parseActorUserId } from "@/chat/actor";
 import { parseSessionSource } from "@/chat/source";
-import type { IdentityUpsert } from "@/chat/identities/identity";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { logWarn } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -11,38 +12,21 @@ import {
 } from "@/db/schema";
 import type { ConversationEventData } from "../history";
 
-const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
+// Legacy author metadata: drop fields with the wrong type instead of failing.
+const authorMetaSchema = z.object({
+  author: z.object({
+    email: z.string().optional().catch(undefined),
+    fullName: z.string().optional().catch(undefined),
+    isBot: z.boolean().optional().catch(undefined),
+    userId: z.string().optional().catch(undefined),
+    userName: z.string().optional().catch(undefined),
+  }),
+});
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function readAuthor(meta: unknown): {
-  email?: string;
-  fullName?: string;
-  isBot?: boolean;
-  userId?: string;
-  userName?: string;
-} {
-  if (!isRecord(meta) || !isRecord(meta.author)) {
-    return {};
-  }
-  const author = meta.author;
-  return {
-    ...(typeof author.email === "string" ? { email: author.email } : undefined),
-    ...(typeof author.fullName === "string"
-      ? { fullName: author.fullName }
-      : undefined),
-    ...(typeof author.isBot === "boolean"
-      ? { isBot: author.isBot }
-      : undefined),
-    ...(typeof author.userId === "string"
-      ? { userId: author.userId }
-      : undefined),
-    ...(typeof author.userName === "string"
-      ? { userName: author.userName }
-      : undefined),
-  };
+function readAuthor(
+  meta: unknown,
+): z.output<typeof authorMetaSchema>["author"] {
+  return authorMetaSchema.safeParse(meta).data?.author ?? {};
 }
 
 /** Read the Slack workspace that owns a conversation, when it has one. */
@@ -50,9 +34,21 @@ export async function loadConversationSlackTenantId(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<string | undefined> {
-  const [row] = await executor
+  return (await loadConversationSlackTenantIds(executor, [conversationId])).get(
+    conversationId,
+  );
+}
+
+/** Read the Slack workspace that owns each conversation, with one query. */
+export async function loadConversationSlackTenantIds(
+  executor: JuniorSqlDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (conversationIds.length === 0) return new Map();
+  const rows = await executor
     .db()
     .select({
+      conversationId: juniorConversations.conversationId,
       providerTenantId: juniorDestinations.providerTenantId,
       sessionSource: juniorConversations.sessionSource,
     })
@@ -61,17 +57,28 @@ export async function loadConversationSlackTenantId(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(eq(juniorConversations.conversationId, conversationId))
-    .limit(1);
-  const destinationTenant = row?.providerTenantId?.trim();
-  if (destinationTenant) {
-    return destinationTenant;
+    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+  const tenants = new Map<string, string>();
+  for (const row of rows) {
+    const tenantId = conversationSlackTenantId(row);
+    if (tenantId) tenants.set(row.conversationId, tenantId);
   }
-  const sessionSource = parseSessionSource(row?.sessionSource);
-  if (sessionSource?.kind === "slack") {
-    return sessionSource.teamId;
-  }
-  return undefined;
+  return tenants;
+}
+
+/**
+ * Return the Slack workspace that owns a conversation, from its Destination
+ * tenant or its stored Slack session source.
+ */
+export function conversationSlackTenantId(row: {
+  providerTenantId: string | null | undefined;
+  sessionSource: unknown;
+}): string | undefined {
+  const sessionSource = parseSessionSource(row.sessionSource);
+  return (
+    row.providerTenantId?.trim() ||
+    (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined)
+  );
 }
 
 async function findIdentityIdByProviderSubject(
@@ -127,9 +134,12 @@ async function findJuniorIdentityIdByEmail(
 }
 
 /**
- * Resolve a dashboard:<hash> author against junior identities keyed by email.
- * Web actors store userId as dashboard:${sha256(email).slice(0,24)} while the
- * durable identity subject remains the verified email.
+ * Resolve a legacy dashboard:<hash> author against junior identities keyed by
+ * email. Web Actors stored dashboard:${sha256(email).slice(0,24)} before they
+ * used the User id. This read-only fallback serves only those old events.
+ *
+ * TODO(dcramer): Delete with the guess in resolveEventActorIdentityId, after
+ * every stored user Message event has its author Identity.
  */
 async function findJuniorIdentityIdByDashboardAuthorId(
   executor: JuniorSqlDatabase,
@@ -148,7 +158,7 @@ async function findJuniorIdentityIdByDashboardAuthorId(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.emailVerified, true),
         sql`${juniorIdentities.emailNormalized} is not null`,
-        // Match webActorFromEmail(): dashboard:${sha256(email).slice(0,24)}
+        // Match legacyWebActorUserId(): dashboard:${sha256(email).slice(0,24)}
         sql`concat(
           'dashboard:',
           left(encode(digest(${juniorIdentities.emailNormalized}, 'sha256'), 'hex'), 24)
@@ -161,8 +171,8 @@ async function findJuniorIdentityIdByDashboardAuthorId(
 
 /**
  * Resolve the durable actor identity for one event payload.
- * Human user messages get an identity when author data is enough; other events
- * keep a null actor.
+ * Ingress sets `authorIdentityId` on new user Messages. Legacy writes without
+ * it still guess the author from its data, and a new Message logs the guess.
  */
 export async function resolveEventActorIdentityId(
   executor: JuniorSqlDatabase,
@@ -182,6 +192,12 @@ export async function resolveEventActorIdentityId(
   if (data.role !== "user") {
     return undefined;
   }
+  if (data.type === "message") {
+    // TODO(dcramer): Remove the guess after every ingress sets the author.
+    logWarn("conversation.message.author_identity.missing", {
+      "app.message.id": data.messageId,
+    });
+  }
 
   const author = readAuthor(data.meta);
   if (author.isBot === true) {
@@ -192,61 +208,54 @@ export async function resolveEventActorIdentityId(
     return undefined;
   }
 
-  if (SLACK_USER_ID_PATTERN.test(userId)) {
+  if (isSlackUserId(userId)) {
     const tenantId = await loadConversationSlackTenantId(
       executor,
       args.conversationId,
     );
-    const observation: IdentityUpsert = {
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: userId,
-      ...(tenantId ? { providerTenantId: tenantId } : undefined),
-      ...(author.fullName ? { displayName: author.fullName } : undefined),
-      ...(author.userName ? { handle: author.userName } : undefined),
-      ...(author.email
-        ? { email: author.email, emailVerified: true }
-        : undefined),
-    };
-    // Prefer an exact tenant match when known; otherwise create/update without
-    // inventing a tenant for multi-workspace Slack subjects.
-    if (tenantId) {
-      const stored = await upsertIdentity(executor, observation, args.nowMs);
-      return stored.id;
-    }
-    return (
-      (await findIdentityIdByProviderSubject(executor, {
+    // Prefer an exact tenant match when known; otherwise only find an existing
+    // identity, so a multi-workspace Slack subject does not get a tenant.
+    if (!tenantId) {
+      return await findIdentityIdByProviderSubject(executor, {
         provider: "slack",
         providerSubjectId: userId,
-      })) ?? undefined
+      });
+    }
+    return await resolveActorIdentityId(
+      executor,
+      {
+        platform: "slack",
+        teamId: tenantId,
+        userId,
+        ...(author.email ? { email: author.email } : undefined),
+        ...(author.fullName ? { fullName: author.fullName } : undefined),
+        ...(author.userName ? { userName: author.userName } : undefined),
+      },
+      args.nowMs,
     );
   }
 
   const email =
     typeof author.email === "string" && author.email.includes("@")
-      ? author.email.trim().toLowerCase()
+      ? author.email
       : userId.includes("@")
-        ? userId.trim().toLowerCase()
+        ? userId
         : undefined;
   if (email) {
-    const stored = await upsertIdentity(
+    return await resolveActorIdentityId(
       executor,
       {
-        kind: "user",
-        provider: "junior",
-        providerSubjectId: email,
+        platform: "web",
+        userId,
         email,
-        emailVerified: true,
-        ...(author.fullName ? { displayName: author.fullName } : undefined),
-        metadata: { platform: "web" },
+        ...(author.fullName ? { fullName: author.fullName } : undefined),
       },
       args.nowMs,
     );
-    return stored.id;
   }
 
-  // Dashboard authors store dashboard:<hash> without email in meta. Junior
-  // identities stay keyed by verified email, so match the hash of that email.
+  // Legacy dashboard authors store dashboard:<hash> without email in meta.
+  // Junior identities stay keyed by verified email, so match its hash.
   if (userId.startsWith("dashboard:")) {
     return findJuniorIdentityIdByDashboardAuthorId(executor, userId);
   }

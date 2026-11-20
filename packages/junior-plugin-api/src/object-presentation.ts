@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Native object types. `task` is the stored name for a Ticket. */
 export const objectTypeSchema = z.enum([
@@ -7,6 +7,18 @@ export const objectTypeSchema = z.enum([
   "automation",
   "deployment",
   "calendar_event",
+  "conversation",
+  "person",
+  "document",
+  "message",
+  "web_page",
+  "chart",
+  "event",
+  "trace",
+  "release",
+  "dashboard",
+  "monitor",
+  "alert",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -17,6 +29,18 @@ const objectTypeLabels = {
   automation: "Automation",
   deployment: "Deployment",
   calendar_event: "Calendar event",
+  conversation: "Conversation",
+  person: "Person",
+  document: "Document",
+  message: "Message",
+  web_page: "Web page",
+  chart: "Chart",
+  event: "Event",
+  trace: "Trace",
+  release: "Release",
+  dashboard: "Dashboard",
+  monitor: "Monitor",
+  alert: "Alert",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -30,7 +54,18 @@ const objectIconNames = [
   "workflow",
   "rocket",
   "calendar",
+  "comment-discussion",
+  "person",
+  "file",
+  "comment",
+  "globe",
+  "graph",
+  "pulse",
+  "bell",
+  "rows",
+  "tag",
   "package",
+  "apps",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
 export type ObjectTone =
@@ -44,8 +79,8 @@ export type ObjectTone =
 /** Resolve identity and state without replacing the type icon with a warning. */
 export function objectPresentation(object: {
   objectType: ObjectType;
-  status?: string;
-  facts?: { type: string };
+  status?: string | undefined;
+  facts?: { type: string; state?: string; enabled?: boolean } | undefined;
 }): { icon: ObjectIconName; tone: ObjectTone; label: string } {
   // Saved deployment cards used Item before Deployment became a native type.
   const type =
@@ -60,6 +95,18 @@ export function objectPresentation(object: {
       automation: "workflow",
       deployment: "rocket",
       calendar_event: "calendar",
+      conversation: "comment-discussion",
+      person: "person",
+      document: "file",
+      message: "comment",
+      web_page: "globe",
+      chart: "graph",
+      event: "pulse",
+      trace: "rows",
+      release: "tag",
+      dashboard: "apps",
+      monitor: "bell",
+      alert: "bell",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];
@@ -85,6 +132,18 @@ export function objectPresentation(object: {
     if (status === "ready" || status === "succeeded") tone = "success";
     if (status === "error" || status === "failed") tone = "danger";
     if (status === "building" || status === "in_progress") tone = "info";
+  } else if (type === "monitor") {
+    // The provider's status names the state, such as "Down" or "Missed".
+    // The tone follows the shared state, not that word.
+    const state = object.facts?.state;
+    if (state === "ok") tone = "success";
+    if (state === "failing") tone = "danger";
+    if (state === "pending") tone = "info";
+  } else if (type === "alert") {
+    if (object.facts?.enabled) tone = "success";
+  } else if (type === "conversation") {
+    if (status === "running") tone = "info";
+    if (status === "failed") tone = "danger";
   }
   if (status === "warning" || status === "blocked") tone = "warning";
   return { icon, tone, label: objectTypeLabels[type] };

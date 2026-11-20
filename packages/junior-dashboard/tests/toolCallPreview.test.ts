@@ -43,13 +43,13 @@ describe("toolCallPreview", () => {
     ).toBe('github_search, query: "is:pr is:open", limit: 25');
   });
 
-  it("shows only the skill name for loadSkill", () => {
+  it("shows only the $skill-name for loadSkill", () => {
     expect(
       toolCallPreview("loadSkill", {
         skill_name: "github",
         ignored: "value",
       }),
-    ).toBe("github");
+    ).toBe("$github");
   });
 
   it("shows only the query for webSearch", () => {

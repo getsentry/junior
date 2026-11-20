@@ -35,13 +35,13 @@ describe("createApp sandbox config", () => {
 });
 
 describe("createApp experimental config", () => {
-  it("opts into experimental subagents", async () => {
+  it("opts into an experimental feature", async () => {
     await createApp({
       plugins: defineJuniorPlugins([]),
-      experimental: { subagents: true },
+      experimental: { "passive-routing": true },
     });
 
-    expect(isExperimentalFeatureEnabled("subagents")).toBe(true);
+    expect(isExperimentalFeatureEnabled("passive-routing")).toBe(true);
   });
 
   it("rejects unknown experimental feature keys", async () => {

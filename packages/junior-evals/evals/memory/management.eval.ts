@@ -11,8 +11,9 @@ describe("Memory Management", () => {
   test("automatically injects relevant memories without requiring a recall tool", async ({
     run,
   }) => {
-    await insertMemory({ content: RISKS_FIRST, visibility: "private" });
+    await insertMemory({ content: RISKS_FIRST });
 
+    // A private Conversation recalls public memory.
     const conversation = await run(
       slackMention("How should I structure my next PR summary?", {
         channelType: "im",
@@ -35,7 +36,7 @@ describe("Memory Management", () => {
     expect(await readMemories()).toContainEqual(
       expect.objectContaining({
         content: RISKS_FIRST,
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     );
@@ -44,12 +45,10 @@ describe("Memory Management", () => {
   test("does not passively duplicate an existing semantic memory", async ({
     run,
   }) => {
-    await insertMemory({ content: RISKS_FIRST, visibility: "private" });
+    await insertMemory({ content: RISKS_FIRST });
 
     const conversation = await run(
-      slackMention("For PR summaries, I still want risk notes first.", {
-        channelType: "im",
-      }),
+      slackMention("For PR summaries, I still want risk notes first."),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -67,7 +66,7 @@ describe("Memory Management", () => {
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         content: RISKS_FIRST,
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     ]);
@@ -76,10 +75,7 @@ describe("Memory Management", () => {
   test("when asked to forget a remembered preference, archive the matching memory", async ({
     run,
   }) => {
-    await insertMemory({
-      content: "Prefers terse PR summaries.",
-      visibility: "private",
-    });
+    await insertMemory({ content: "Prefers terse PR summaries." });
 
     const conversation = await run(
       slackMention("Please forget that I prefer terse PR summaries."),

@@ -1,15 +1,22 @@
 import { ArrowRight, ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
-import { ButtonLink } from "../components/Button";
+import { buttonVariants } from "../components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { Link } from "react-router";
 import { ObjectIcon } from "../components/ObjectIcon";
-import { automationPath, formatRelativeTime } from "../format";
+import { automationPath } from "../format";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
-import { cn } from "../styles";
+import { cn, dashboardMessageCardClass } from "../styles";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
+import { formatRelativeTime } from "../time";
 
 type SourceTask = NonNullable<ConversationDetailReport["sourceTask"]>;
 
@@ -48,13 +55,12 @@ export function TranscriptAutomationTriggerView(props: {
     (part) => part.type === "text" && part.redacted,
   );
   const [open, setOpen] = useState(false);
-  const promptId = useId();
   const automationId = props.sourceTask.id?.trim();
   const name = props.sourceTask.title?.trim() || "Automation";
   const details = [
     props.sourceTask.triggerLabel,
     props.message.timestamp
-      ? formatRelativeTime(new Date(props.message.timestamp).toISOString())
+      ? formatRelativeTime(props.message.timestamp)
       : undefined,
     runsAsLabel(props.sourceTask),
   ].filter(Boolean);
@@ -62,7 +68,10 @@ export function TranscriptAutomationTriggerView(props: {
   return (
     <section
       aria-label={name}
-      className="grid w-full min-w-0 max-w-[37.5rem] gap-2 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-4 py-3"
+      className={cn(
+        "grid w-full min-w-0 max-w-[37.5rem] gap-2 px-4 py-3",
+        dashboardMessageCardClass,
+      )}
     >
       <div className="flex min-w-0 items-center gap-3">
         <ObjectIcon objectType="automation" size={16} decorative />
@@ -70,13 +79,16 @@ export function TranscriptAutomationTriggerView(props: {
           <HighlightText text={name} />
         </span>
         {automationId ? (
-          <ButtonLink
-            className="h-8 shrink-0 text-xs"
+          <Link
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-8 shrink-0 text-xs",
+            )}
             to={automationPath(automationId)}
           >
             Open automation
             <ArrowRight aria-hidden="true" size={14} />
-          </ButtonLink>
+          </Link>
         ) : null}
       </div>
       {details.length > 0 ? (
@@ -85,30 +97,21 @@ export function TranscriptAutomationTriggerView(props: {
         </p>
       ) : null}
       {text ? (
-        <div className="min-w-0">
-          <button
-            aria-controls={promptId}
-            aria-expanded={open}
-            className="-mx-1 inline-flex cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-            onClick={() => setOpen((value) => !value)}
-            type="button"
-          >
+        <Collapsible className="min-w-0" onOpenChange={setOpen} open={open}>
+          <CollapsibleTrigger className="group -mx-1 inline-flex cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
             <ChevronRight
               aria-hidden="true"
-              className={cn("size-3 transition-transform", open && "rotate-90")}
+              className="size-3 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none"
               strokeWidth={2.2}
             />
             {open ? "Hide prompt" : "Show prompt"}
-          </button>
-          {open ? (
-            <pre
-              className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border-subtle bg-dashboard-bg px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted"
-              id={promptId}
-            >
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border-subtle bg-dashboard-bg px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               <HighlightText text={text} />
             </pre>
-          ) : null}
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : redacted ? (
         <RedactedMarker />
       ) : null}

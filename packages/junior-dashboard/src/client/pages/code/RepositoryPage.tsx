@@ -1,13 +1,13 @@
 import { useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import {
   useCodeRepositoryConversationsData,
   useCodeRepositoryData,
 } from "../../api";
-import { ButtonLink } from "../../components/Button";
+import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
 import {
@@ -18,7 +18,7 @@ import {
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
-import { buildConversations } from "../../format";
+import { buildConversations, workspacePath } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { CodeSummaryCards } from "./CodeSummaryCards";
@@ -36,9 +36,11 @@ import {
   RepositoryConversationsTab,
 } from "./RepositoryTabs";
 import { cn, dashboardInlineLinkClass } from "../../styles";
+import { OutboundLink } from "../../components/OutboundLink";
+import { getDashboardAgentName } from "../../agentName";
 
 const RECENT_ROWS = 5;
-const DESCRIPTION = "Conversations and code changes from Junior.";
+const DESCRIPTION = "Conversations and code changes in this repository.";
 
 /** Inline link style used by `ConversationSummary` location links. */
 const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
@@ -46,7 +48,7 @@ const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
 /** Render one repository tab under the shared header and tab bar. */
 export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const params = useParams();
-  const repositoryId = params.repositoryId;
+  const repositoryId = params["repositoryId"];
   const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeRepositoryData(repositoryId);
   if (!query.data && !query.error) {
@@ -66,7 +68,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
         <BackToCode />
         <EmptyTelemetry>
           This repository is unavailable. It may not have any code changes from
-          Junior.
+          {getDashboardAgentName()}.
         </EmptyTelemetry>
       </PageLayout>
     );
@@ -98,17 +100,12 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
             <div className="flex flex-wrap items-center gap-2">
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
-                <ButtonLink
-                  rel="noopener noreferrer"
-                  target="_blank"
-                  to={repository.url}
+                <OutboundLink
+                  className={buttonVariants({ variant: "outline" })}
+                  href={repository.url}
                 >
                   Open repository
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="size-3.5 shrink-0"
-                  />
-                </ButtonLink>
+                </OutboundLink>
               ) : null}
             </div>
           }
@@ -156,10 +153,7 @@ function RepositoryDescription(props: { data: CodeRepositoryReport }) {
       {workspaces.map((workspace, index) => (
         <span key={workspace.id}>
           {index > 0 ? ", " : null}
-          <Link
-            className={inlineLinkClass}
-            to={`/system/workspaces/${encodeURIComponent(workspace.id)}`}
-          >
+          <Link className={inlineLinkClass} to={workspacePath(workspace.id)}>
             {workspace.name}
           </Link>
         </span>

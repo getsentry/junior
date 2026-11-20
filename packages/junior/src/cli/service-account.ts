@@ -105,7 +105,7 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
     });
     console.log(
       [
-        `Open this URL in a browser on this machine. Sign in as the account Junior should use for ${provider}, not as yourself:`,
+        `Open this URL in a browser on this machine. Sign in as the account the bot should use for ${provider}, not as yourself:`,
         "",
         authorizationUrl.toString(),
         "",
@@ -148,7 +148,7 @@ async function runDisconnect(plugin: PluginDefinition): Promise<number> {
   const provider = plugin.manifest.name;
   await disconnectServiceAccount(plugin);
   console.log(
-    `Removed the ${provider} service account from Junior. To revoke the grant, remove Junior's connection in the ${provider} account settings.`,
+    `Removed the ${provider} service account. To revoke the grant, remove the app connection in the ${provider} account settings.`,
   );
   return 0;
 }

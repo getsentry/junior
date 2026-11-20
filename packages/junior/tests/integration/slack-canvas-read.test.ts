@@ -10,8 +10,8 @@ import {
 
 describe("createSlackCanvasReadTool", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
   });
 
   it("reads canvas content from a Slack canvas URL", async () => {
@@ -38,7 +38,7 @@ describe("createSlackCanvasReadTool", () => {
 
     const result = await tool.execute(
       { canvas: "https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T" },
-      {} as never,
+      {},
     );
 
     expect(result).toMatchObject({
@@ -73,7 +73,7 @@ describe("createSlackCanvasReadTool", () => {
       throw new Error("slackCanvasRead execute function missing");
     }
 
-    const result = await tool.execute({ canvas: "F0ABCDEF" }, {} as never);
+    const result = await tool.execute({ canvas: "F0ABCDEF" }, {});
 
     expect(result).toMatchObject({
       canvas_id: "F0ABCDEF",
@@ -81,7 +81,7 @@ describe("createSlackCanvasReadTool", () => {
     });
   });
 
-  it("reads a bounded line range and exposes continuation details", async () => {
+  it("reads the whole canvas by default", async () => {
     const body = Array.from(
       { length: 1005 },
       (_, index) => `line ${index + 1}`,
@@ -99,7 +99,7 @@ describe("createSlackCanvasReadTool", () => {
       throw new Error("slackCanvasRead execute function missing");
     }
 
-    const result = (await tool.execute({ canvas: "F0LONG" }, {} as never)) as {
+    const result = (await tool.execute({ canvas: "F0LONG" }, {})) as {
       truncated: boolean;
       content: string;
       original_byte_length: number;
@@ -112,23 +112,13 @@ describe("createSlackCanvasReadTool", () => {
       };
     };
 
-    expect(result.truncated).toBe(true);
-    expect(result.content).toBe(
-      Array.from({ length: 1000 }, (_, index) => `line ${index + 1}`).join(
-        "\n",
-      ),
-    );
+    // The tool pipeline, not this tool, cuts a long canvas for the model.
+    expect(result.truncated).toBe(false);
+    expect(result.content).toBe(body);
     expect(result.start_line).toBe(1);
-    expect(result.end_line).toBe(1000);
+    expect(result.end_line).toBe(1005);
     expect(result.total_lines).toBe(1005);
-    expect(result.continuation).toEqual({
-      arguments: {
-        canvas: "F0LONG",
-        offset: 1001,
-        limit: 1000,
-      },
-      reason: "file has more lines",
-    });
+    expect(result).not.toHaveProperty("continuation");
     expect(result.original_byte_length).toBe(body.length);
   });
 
@@ -151,7 +141,7 @@ describe("createSlackCanvasReadTool", () => {
 
     const result = await tool.execute(
       { canvas: "F0WINDOW", offset: 2, limit: 2 },
-      {} as never,
+      {},
     );
 
     expect(result).toMatchObject({
@@ -188,7 +178,7 @@ describe("createSlackCanvasReadTool", () => {
       throw new Error("slackCanvasRead execute function missing");
     }
 
-    const result = await tool.execute({ canvas: "f0lower" }, {} as never);
+    const result = await tool.execute({ canvas: "f0lower" }, {});
 
     expect(result).toMatchObject({
       canvas_id: "F0LOWER",
@@ -203,7 +193,7 @@ describe("createSlackCanvasReadTool", () => {
     }
 
     await expect(
-      tool.execute({ canvas: "https://example.com/not-a-canvas" }, {} as never),
+      tool.execute({ canvas: "https://example.com/not-a-canvas" }, {}),
     ).rejects.toThrow("Could not parse a Slack canvas/file ID");
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
   });
@@ -219,7 +209,7 @@ describe("createSlackCanvasReadTool", () => {
     await expect(
       tool.execute(
         { canvas: "https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T" },
-        {} as never,
+        {},
       ),
     ).rejects.toThrow("not_found");
   });
@@ -234,9 +224,9 @@ describe("createSlackCanvasReadTool", () => {
       throw new Error("slackCanvasRead execute function missing");
     }
 
-    await expect(
-      tool.execute({ canvas: "F0ABCDEF" }, {} as never),
-    ).rejects.toThrow("Canvas has no downloadable URL");
+    await expect(tool.execute({ canvas: "F0ABCDEF" }, {})).rejects.toThrow(
+      "Canvas has no downloadable URL",
+    );
   });
 
   it("rejects non-Canvas Slack files before download", async () => {
@@ -254,8 +244,8 @@ describe("createSlackCanvasReadTool", () => {
       throw new Error("slackCanvasRead execute function missing");
     }
 
-    await expect(
-      tool.execute({ canvas: "F0SCRIPT" }, {} as never),
-    ).rejects.toThrow("Canvas document");
+    await expect(tool.execute({ canvas: "F0SCRIPT" }, {})).rejects.toThrow(
+      "Canvas document",
+    );
   });
 });

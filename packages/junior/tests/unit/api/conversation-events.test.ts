@@ -3,7 +3,7 @@ import {
   defineConversationEvent,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
@@ -172,7 +172,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("projects the stored actor identity for each visible user message", () => {
+  it("projects the author of each user message without inventing a person", () => {
     const message = event(1, {
       type: "message",
       messageId: "message-1",
@@ -187,11 +187,30 @@ describe("conversation report event projection", () => {
         },
       },
     });
+    // A parent agent wrote this child input, so it names the agent invocation.
+    const agentInput = event(2, {
+      type: "message",
+      messageId: "agent-invocation:invocation-1:input",
+      role: "user",
+      text: "audit the repo",
+      meta: { agentInvocationId: "invocation-1" },
+    });
+    // Each Review item change keeps its own record, so the dashboard shows
+    // what the message did, not the item's current state.
+    const answer = event(3, {
+      type: "message",
+      messageId: "answer-1",
+      role: "user",
+      text: "Alice answered review item item-1.",
+      meta: {
+        reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
+      },
+    });
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: true,
-        events: [message],
+        events: [message, agentInput, answer],
       }),
     ).toEqual([
       {
@@ -209,12 +228,34 @@ describe("conversation report event projection", () => {
           },
         },
       },
+      {
+        seq: 2,
+        createdAt: "1970-01-01T00:00:02.000Z",
+        data: {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
+          text: "audit the repo",
+        },
+      },
+      {
+        seq: 3,
+        createdAt: "1970-01-01T00:00:03.000Z",
+        data: {
+          type: "message",
+          messageId: "answer-1",
+          role: "user",
+          reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
+          text: "Alice answered review item item-1.",
+        },
+      },
     ]);
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: false,
-        events: [message],
+        events: [message, agentInput, answer],
       }),
     ).toEqual([
       {
@@ -223,6 +264,27 @@ describe("conversation report event projection", () => {
         data: {
           type: "message",
           messageId: "message-1",
+          role: "user",
+          redacted: true,
+        },
+      },
+      {
+        seq: 2,
+        createdAt: "1970-01-01T00:00:02.000Z",
+        data: {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
+          redacted: true,
+        },
+      },
+      {
+        seq: 3,
+        createdAt: "1970-01-01T00:00:03.000Z",
+        data: {
+          type: "message",
+          messageId: "answer-1",
           role: "user",
           redacted: true,
         },
@@ -695,6 +757,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
             provider: "private-provider",
@@ -710,6 +773,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      eventNamespace: "github",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });
@@ -935,7 +999,6 @@ describe("conversation report event projection", () => {
     const events = [
       event(1, {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
         replacementHistory: [
@@ -957,6 +1020,7 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      // Stored by retired model handoff; the report skips it.
       event(2, {
         type: "handoff",
         modelProfile: "handoff",
@@ -997,21 +1061,15 @@ describe("conversation report event projection", () => {
     ).toEqual([
       {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
-      },
-      {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        summary: "Fix the remaining test.",
       },
       {
         type: "subagent",
         startedSeq: 3,
         startedAt: "1970-01-01T00:00:03.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "agent",
         agentName: "release-checker",
         task: "Check the private release notes.",
@@ -1044,6 +1102,7 @@ describe("conversation report event projection", () => {
           inputMessageIds: ["private-input-id"],
           surface: "slack",
         }),
+        // Retired Turn router and model handoff rows are skipped.
         event(2, {
           type: "turn_routed",
           turnId: "turn-1",
@@ -1055,7 +1114,6 @@ describe("conversation report event projection", () => {
         }),
         event(3, {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "private-model-id",
           details: {
             reason: "capacity",
@@ -1129,7 +1187,7 @@ describe("conversation report event projection", () => {
     });
 
     expect(projected.map(({ seq }) => seq)).toEqual([
-      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
+      1, 3, 4, 7, 8, 9, 10, 11, 13,
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       {
@@ -1139,17 +1197,7 @@ describe("conversation report event projection", () => {
         inputMessageIds: ["private-input-id"],
       },
       {
-        type: "turn_routed",
-        turnId: "turn-1",
-        modelProfile: "handoff",
-        modelId: "private-routed-model-id",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-      },
-      {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "private-model-id",
         details: {
           reason: "capacity",
@@ -1174,13 +1222,6 @@ describe("conversation report event projection", () => {
         ],
       },
       {
-        type: "handoff",
-        modelProfile: "fast",
-        modelId: "private-handoff-model-id",
-        reasoningLevel: "high",
-        triggeringToolCallId: "private-handoff-tool-call-id",
-      },
-      {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
@@ -1203,6 +1244,7 @@ describe("conversation report event projection", () => {
         startedSeq: 9,
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "advisor",
         agentName: "reviewer",
         task: "Review the plan.",
@@ -1214,6 +1256,7 @@ describe("conversation report event projection", () => {
         startedSeq: 9,
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "advisor",
         agentName: "reviewer",
         task: "Review the plan.",
@@ -1225,6 +1268,7 @@ describe("conversation report event projection", () => {
         startedSeq: 11,
         startedAt: "1970-01-01T00:00:11.000Z",
         childConversationId: "legacy-child-conversation",
+        childKind: "task",
         subagentKind: "advisor",
         status: "running",
       },
@@ -1313,6 +1357,7 @@ describe("conversation report event projection", () => {
           startedSeq: 1,
           startedAt: "2026-07-15T12:00:00.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           status: "running",
         },
@@ -1326,6 +1371,7 @@ describe("conversation report event projection", () => {
         startedSeq: 1,
         startedAt: "2026-07-15T12:00:00.000Z",
         childConversationId: "child-1",
+        childKind: "task",
         subagentKind: "advisor",
         status: "completed",
       },
@@ -1421,7 +1467,9 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-1",
-      status: "completed" as const,
+      kind: "root" as const,
+      status: "done" as const,
+      turnActive: false,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
       lastProgressAt: "2026-07-15T12:00:00.000Z",
@@ -1465,7 +1513,9 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-privacy",
-      status: "completed" as const,
+      kind: "root" as const,
+      status: "done" as const,
+      turnActive: false,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
       lastProgressAt: "2026-07-15T12:00:00.000Z",

@@ -57,6 +57,7 @@ describe("message projection", () => {
           explicitMention: true,
           replied: true,
         },
+        seq: 0,
       },
     ]);
   });
@@ -105,6 +106,8 @@ describe("message projection", () => {
         text: "hello",
         createdAtMs: 1_000,
         meta: { imagesHydrated: true, imageFileIds: ["F1"] },
+        // The edit keeps the seq of the first save.
+        seq: 0,
       },
     ]);
   });

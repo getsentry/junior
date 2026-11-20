@@ -1,8 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Exception to the strict base: the .d.ts files of drizzle-orm and the other packages/junior dependencies
+    // fail type checks (for example, drizzle-orm imports optional drivers
+    // such as `gel` that are not installed). Remove this line when
+    // `tsc --noEmit -p . --skipLibCheck false` passes.
+    "skipLibCheck": true,
+    // Temporary exception: 164 errors remain under exactOptionalPropertyTypes
+    // (122 in packages/junior, 42 in packages/junior-dashboard). Count them
+    // with `tsc --noEmit -p . --exactOptionalPropertyTypes`. Remove this line
+    // when that command passes.
+    "exactOptionalPropertyTypes": false,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "ES2025.Intl", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -10,13 +20,16 @@
     "resolveJsonModule": true,
     "allowJs": false,
     "noEmit": true,
+    // Tests import the example app, which runs its `.ts` files in Node.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior/api": ["../junior/src/api.ts"],
       "@sentry/junior/api/schema": ["../junior/src/api/schema.ts"],
       "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
       "@sentry/junior-dashboard": ["./src/index.ts"],
-      "@/*": ["../junior/src/*"]
+      "@/*": ["../junior/src/*"],
+      "@dashboard/*": ["./src/client/*"]
     },
     "types": ["node", "vitest/globals"]
   },
@@ -25,6 +38,19 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
-    "tests/**/*.tsx"
+    "tests/**/*.tsx",
+    "oxlint/**/*.ts",
+    "e2e/composer-stand-in.spec.ts",
+    "e2e/composer-references.spec.ts",
+    "e2e/composer-typeahead.spec.ts",
+    "e2e/composer-skill-menu.spec.ts",
+    "e2e/conversation-watches.spec.ts",
+    "e2e/dashboard-switch.spec.ts",
+    "e2e/inbox/**/*.ts",
+    "e2e/person-cards.spec.ts",
+    "e2e/request-budget.ts",
+    "e2e/review-item-evidence.spec.ts",
+    "playwright.config.ts",
+    "tsdown.client.config.ts"
   ]
 }

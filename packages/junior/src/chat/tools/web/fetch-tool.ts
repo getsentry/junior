@@ -1,6 +1,6 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
@@ -10,13 +10,11 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   assertPublicUrl,
   fetchTextWithRedirects,
+  readResponseBytes,
   withTimeout,
 } from "@/chat/tools/web/network";
 import type { ToolHooks } from "@/chat/tools/types";
-import {
-  extractWebFetchResponse,
-  MAX_FETCH_CHARS,
-} from "@/chat/tools/web/fetch-content";
+import { extractWebFetchResponse } from "@/chat/tools/web/fetch-content";
 
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";
@@ -32,35 +30,34 @@ function filenameForUrl(url: URL, mediaType: string): string {
   return `fetched-file.${extensionForMediaType(mediaType)}`;
 }
 
+export const webFetchToolDefinition = zodToolDefinition({
+  description:
+    "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    url: z.string().min(1).describe("HTTP(S) URL to fetch."),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create the fetch tool with delivery guidance scoped to active file-send capability. */
 export function createWebFetchTool(
   hooks: ToolHooks,
-  options: { canSendFilesToActiveConversation?: boolean } = {},
+  options: {
+    canSendFilesToActiveConversation?: boolean;
+  } = {},
 ) {
   const override = hooks.toolOverrides?.webFetch;
   return zodTool({
-    description:
-      "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      url: z.string().min(1).describe("HTTP(S) URL to fetch."),
-      max_chars: z.coerce
-        .number()
-        .int()
-        .min(500)
-        .max(MAX_FETCH_CHARS)
-        .describe("Optional maximum number of extracted characters to return.")
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
-    execute: async ({ url, max_chars }) => {
+    ...webFetchToolDefinition,
+    execute: async ({ url }) => {
       if (override?.execute) {
-        return override.execute({ url, max_chars });
+        return override.execute({ url });
       }
 
       const safeUrl = await assertPublicUrl(url);
@@ -74,8 +71,12 @@ export function createWebFetchTool(
       ).toLowerCase();
 
       if (response.ok && contentType.startsWith("image/")) {
-        const bytes = Buffer.from(await response.arrayBuffer());
-        if (bytes.byteLength > MAX_FETCH_BYTES) {
+        // A cut image is not usable, so an image over the limit fails.
+        const { bytes, truncated } = await readResponseBytes(
+          response,
+          MAX_FETCH_BYTES,
+        );
+        if (truncated) {
           throw new ToolInputError("image response body too large");
         }
 
@@ -90,17 +91,17 @@ export function createWebFetchTool(
             mimeType: contentType.split(";")[0] ?? "application/octet-stream",
           },
         ];
-        const artifactRefs = hooks.writeGeneratedArtifacts
-          ? await hooks.writeGeneratedArtifacts(files)
+        const fileRefs = hooks.writeGeneratedFiles
+          ? await hooks.writeGeneratedFiles(files)
           : [];
 
         return {
           url: safeUrl.toString(),
           media_type: contentType,
           bytes: bytes.byteLength,
-          images: artifactRefs,
+          images: fileRefs,
           delivery:
-            artifactRefs.length > 0
+            fileRefs.length > 0
               ? options.canSendFilesToActiveConversation
                 ? "Fetched images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
                 : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."
@@ -108,7 +109,7 @@ export function createWebFetchTool(
         };
       }
 
-      return await extractWebFetchResponse(safeUrl, response, max_chars);
+      return await extractWebFetchResponse(safeUrl, response);
     },
   });
 }

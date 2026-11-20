@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { ensureConversationRow } from "@/chat/conversations/sql/conversation-row";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
+  requestAnotherSlice,
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
@@ -162,6 +164,120 @@ describe("conversation SQL store", () => {
         lastActivityAtMs: 1,
         parentConversationId: "parent-without-root",
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps the kind that each Conversation gets at create", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "kind-root",
+        destination: inboundMessage("activity").destination,
+        nowMs: 1,
+      });
+      await store.createChild({
+        childConversationId: "agent:kind-task",
+        kind: "task",
+        parentConversationId: "kind-root",
+        nowMs: 2,
+      });
+      await store.recordActivity({
+        conversationId: "agent:kind-task",
+        nowMs: 3,
+      });
+
+      await expect(
+        store.get({ conversationId: "kind-root" }),
+      ).resolves.toMatchObject({ kind: "root" });
+      await expect(
+        store.get({ conversationId: "agent:kind-task" }),
+      ).resolves.toMatchObject({ kind: "task" });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-task",
+          kind: "thread",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation kind changed for agent:kind-task");
+
+      const at = new Date(4);
+      const row = {
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle" as const,
+      };
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-root-child",
+            kind: "root",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "kind-task-root",
+            kind: "task",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-unknown",
+            kind: "unknown" as "task",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining("junior_conversations_kind_check"),
+        },
+      });
+
+      // A history append creates a root row for the child id after
+      // createChild reads it and before createChild writes it.
+      const readChild = store.get.bind(store);
+      vi.spyOn(store, "get").mockImplementation(async (args) => {
+        const existing = await readChild(args);
+        if (args.conversationId === "agent:kind-raced") {
+          await ensureConversationRow(fixture.sql, args.conversationId, 5);
+        }
+        return existing;
+      });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-raced",
+          kind: "task",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation parent changed for agent:kind-raced");
     } finally {
       await fixture.close();
     }
@@ -646,7 +762,7 @@ describe("conversation SQL store", () => {
     }
   }, 15_000);
 
-  it("fills missing actor identity from later trusted profile observations", async () => {
+  it("keeps the root actor identity across later writes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -664,6 +780,8 @@ describe("conversation SQL store", () => {
         source: "slack",
         nowMs: 1_000,
       });
+      // A later write does not save the root Actor's Identity again. The
+      // person's own Turns save their Slack profile on that Identity.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity-fill").destination,
@@ -677,17 +795,27 @@ describe("conversation SQL store", () => {
         source: "slack",
         nowMs: 2_000,
       });
+      // An event write without an Actor, such as a mailbox mirror after the
+      // Redis work state expired, must not replace the Slack root Actor.
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: { status: "idle", updatedAtMs: 3_000 },
+        lastActivityAtMs: 3_000,
+        metrics: null,
+        source: "event",
+        updatedAtMs: 3_000,
+      });
 
       await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
         {
           conversationId: CONVERSATION_ID,
-          actor: {
-            email: "casey@example.com",
-            fullName: "Casey Example",
-            slackUserId: "U123",
-          },
+          actor: { platform: "slack", slackUserId: "U123", teamId: "T123" },
+          source: "slack",
         },
       ]);
+      const [stored] = await store.listByActivity({ limit: 5 });
+      expect(stored?.actor?.email).toBeUndefined();
     } finally {
       await fixture.close();
     }
@@ -1184,7 +1312,7 @@ ORDER BY metric
       ).toEqual([
         { metric: "cache_creation_tokens", value: 2 },
         { metric: "cached_input_tokens", value: 5 },
-        { metric: "cost_usd", value: 0.015 },
+        { metric: "cost_micro_usd", value: 15_000 },
         { metric: "duration_ms", value: 1_500 },
         { metric: "input_tokens", value: 5 },
         { metric: "output_tokens", value: 3 },
@@ -1306,7 +1434,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "failed",
+            status: "needs_input",
           }),
         ],
       });
@@ -1316,7 +1444,7 @@ ORDER BY metric
     }
   });
 
-  it("reports stale running SQL execution status as active", async () => {
+  it("reports stale running SQL execution status as working", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1340,7 +1468,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "active",
+            status: "working",
           }),
         ],
       });
@@ -1351,7 +1479,7 @@ ORDER BY metric
     }
   });
 
-  it("maps idle SQL execution status to completed", async () => {
+  it("maps idle SQL execution status to done", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1378,7 +1506,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "completed",
+            status: "done",
           }),
         ],
       });
@@ -1430,7 +1558,7 @@ ORDER BY metric
             conversationId: CONVERSATION_ID,
             lastProgressAt: new Date(600_000).toISOString(),
             lastSeenAt: new Date(600_000).toISOString(),
-            status: "active",
+            status: "working",
           }),
         ],
       });
@@ -1490,6 +1618,51 @@ ORDER BY metric
       await expect(running).resolves.toEqual({ status: "completed" });
     } finally {
       vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("stores a paused execution as paused", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const message = inboundMessage("slice");
+      await appendInboundMessage({
+        message,
+        conversationStore: store,
+        nowMs: 1_000,
+        state,
+      });
+      const lease = await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        nowMs: 2_000,
+        state,
+      });
+      if (lease.status !== "acquired") {
+        throw new Error("expected a lease");
+      }
+      await requestAnotherSlice({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        destination: message.destination,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        state,
+      });
+
+      const [row] = await fixture.sql
+        .db()
+        .select({ executionStatus: juniorConversations.executionStatus })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(row?.executionStatus).toBe("paused");
+    } finally {
       await disconnectStateAdapter();
       await fixture.close();
     }

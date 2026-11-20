@@ -5,11 +5,11 @@ import pg, {
   type QueryResultRow,
 } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { forwardInfoMessages } from "./info-messages";
+import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
-import { traceQueries } from "./tracing";
 import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
@@ -22,11 +22,9 @@ class PostgresExecutor implements JuniorSqlExecutor {
   private isolatedQueryId = 0;
 
   private readonly pool: PgPool;
-  private readonly connectionString: string;
 
-  constructor(pool: PgPool, connectionString: string) {
+  constructor(pool: PgPool) {
     this.pool = pool;
-    this.connectionString = connectionString;
   }
 
   db(): JuniorDatabase {
@@ -56,10 +54,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
     statement: string,
     params: readonly unknown[] = [],
   ): Promise<T[]> {
-    const client = traceQueries(await this.pool.connect(), {
-      connectionString: this.connectionString,
-      driver: "postgres",
-    });
+    const client = await this.pool.connect();
     try {
       // A named statement uses the extended protocol, which accepts one statement only.
       const result = await client.query<QueryResultRow>({
@@ -74,10 +69,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
-    );
+    await applyMigrations(this, config);
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -150,7 +142,13 @@ class PostgresExecutor implements JuniorSqlExecutor {
     const client = await this.pool.connect();
     const lockName = `junior:migrate:${migrationTable}`;
     try {
-      await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
+      await waitForMigrationLock(async () => {
+        const result = await client.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+          [lockName],
+        );
+        return result.rows[0]?.locked === true;
+      });
       return await callback();
     } finally {
       // Ending the session releases the lock without replacing a migration error.
@@ -163,10 +161,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
-      connectionString: this.connectionString,
-      driver: "postgres",
-    });
+    return this.transactionClient.getStore() ?? this.pool;
   }
 }
 
@@ -174,6 +169,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
 export function createPostgresJuniorSqlExecutor(args: {
   applicationName?: string;
   connectionString: string;
+  onInfo?: ((message: string) => void) | undefined;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   const pool = new Pool({
@@ -189,5 +185,8 @@ export function createPostgresJuniorSqlExecutor(args: {
       "app.db.driver": "postgres",
     });
   });
-  return new PostgresExecutor(pool, args.connectionString);
+  if (args.onInfo) {
+    forwardInfoMessages(pool, args.onInfo);
+  }
+  return new PostgresExecutor(pool);
 }

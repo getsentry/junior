@@ -1,4 +1,4 @@
-import type { Event } from "@sentry/junior-plugin-api";
+import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -11,13 +11,25 @@ import {
   collectEventMatchKeys,
   findMatchingWatches,
 } from "@/chat/events/store";
-import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import {
+  collectInboxSnoozeMatchKeys,
+  fireInboxSnoozeTriggers,
+  hasInboxSnoozeMatch,
+} from "@/chat/inbox-snoozes/triggers";
+import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { mapBounded } from "@/chat/fan-out";
+
+// Each Watch check reads the state adapter. Bound the reads for a webhook
+// with many events.
+const WATCH_MATCH_CONCURRENCY = 4;
 
 export type EventAppPublisher = {
-  hasMatch(event: Event): Promise<boolean>;
+  hasMatch(events: Event[]): Promise<boolean>;
   neededMatchKeys(input: {
+    data?: EventData;
     eventTypes: string[];
     identifiers: string[];
     namespace: string;
@@ -29,34 +41,47 @@ export type EventAppPublisher = {
 export function createEventAppPublisher(args: {
   conversationWork: () => {
     queue?: ConversationWorkQueue;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   };
 }): EventAppPublisher {
-  // Event automations still key by destination team until that store is conversation-owned.
-  const resolveEventAutomationTeamId = createEventTeamIdResolver();
-
   return {
-    async hasMatch(event) {
+    async hasMatch(events) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
-      const [subscriptions, tasks] = await Promise.all([
-        findMatchingWatches({
-          data: event.data,
-          eventType: event.eventType,
-          namespace: event.namespace,
-          identifier: event.identifier,
-          state: work.state,
-        }),
+      // Event automations still key by destination team until that store is
+      // conversation-owned.
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
+      const [subscriptions, tasks, snoozed] = await Promise.all([
+        mapBounded(
+          events,
+          (event) =>
+            findMatchingWatches({
+              data: event.data,
+              eventType: event.eventType,
+              namespace: event.namespace,
+              identifier: event.identifier,
+              state: work.state,
+            }),
+          WATCH_MATCH_CONCURRENCY,
+        ),
         eventAutomationTeamId
-          ? findMatchingEventAutomations(getDb(), event, eventAutomationTeamId)
+          ? findMatchingEventAutomations(
+              getDb(),
+              events,
+              eventAutomationTeamId,
+              getEventCatalog(),
+            )
           : Promise.resolve([]),
+        hasInboxSnoozeMatch(getDb(), events),
       ]);
-      return subscriptions.length > 0 || tasks.length > 0;
+      return (
+        snoozed ||
+        [...subscriptions, ...tasks].some((matched) => matched.length > 0)
+      );
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
-      const [watchKeys, taskKeys] = await Promise.all([
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
+      const [watchKeys, taskKeys, snoozeKeys] = await Promise.all([
         collectEventMatchKeys({
           eventTypes: input.eventTypes,
           identifiers: input.identifiers,
@@ -65,19 +90,26 @@ export function createEventAppPublisher(args: {
         }),
         eventAutomationTeamId
           ? collectEventAutomationMatchKeys(getDb(), {
+              catalog: getEventCatalog(),
+              ...(input.data ? { data: input.data } : undefined),
               eventTypes: input.eventTypes,
               identifiers: input.identifiers,
               namespace: input.namespace,
               teamId: eventAutomationTeamId,
             })
           : Promise.resolve([] as string[]),
+        collectInboxSnoozeMatchKeys(getDb(), {
+          eventTypes: input.eventTypes,
+          identifiers: input.identifiers,
+          namespace: input.namespace,
+        }),
       ]);
-      return [...new Set([...watchKeys, ...taskKeys])].sort();
+      return [...new Set([...watchKeys, ...taskKeys, ...snoozeKeys])].sort();
     },
     async publish(event) {
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const eventAutomationTeamId = await resolveBotSlackTeamId();
       await Promise.all([
         ingestEvent(event, {
           queue,
@@ -91,6 +123,8 @@ export function createEventAppPublisher(args: {
               teamId: eventAutomationTeamId,
             })
           : Promise.resolve(),
+        // Snoozes belong to Users, not to a Slack workspace.
+        fireInboxSnoozeTriggers(getDb(), event),
       ]);
     },
   };

@@ -4,6 +4,7 @@
  * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
  */
+import { automationTaskText } from "@/chat/automations/task";
 import { slackMention } from "@/chat/slack/mrkdwn";
 import { createHash } from "node:crypto";
 import {
@@ -28,6 +29,10 @@ import {
   eventAutomationRunLimitReason,
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import {
+  findAutomationSkill,
+  missingAutomationSkillReason,
+} from "@/chat/automations/skill";
 import { botConfig } from "@/chat/config";
 import {
   slackChannelMessageReplyThreadTs,
@@ -37,7 +42,12 @@ import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { eventGuidance } from "@/chat/events/catalog";
+import {
+  eventAuthorText,
+  resolveEventAuthor,
+  type AuthorTrust,
+} from "@/chat/identities/trust";
+import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
 /** Bind provider delivery identity to one automation's durable dispatch. */
@@ -57,28 +67,36 @@ function eventInput(
   task: EventAutomation,
   event: Event,
   outcomes: TaskOutcome[],
+  catalog: EventCatalog,
+  author: AuthorTrust,
 ): string {
-  const guidance = eventGuidance(
-    getEventCatalog(),
-    event.namespace,
-    task.trigger.resourceType,
-    event.eventType,
-  );
+  const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
     about: task.trigger.label,
+    event: event.eventType,
+    source: event.namespace,
     creator: slackMention(task.createdBy.slackUserId),
-    instructions: task.task.text,
+    instructions: automationTaskText(task.task),
+    ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
     outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
+    authorText: eventAuthorText(author),
     externalText: event.untrustedText,
     externalTextMaxLength: EVENT_TEXT_MAX_LENGTH,
   });
 }
 
-/** Match a normalized event and dispatch every matching automation. */
+/**
+ * Match a normalized event and dispatch every matching automation.
+ *
+ * Plugins publish one copy of an occurrence for each scope, such as a pull
+ * request and its repository. All copies share one event key. An automation
+ * with no identifier matches every copy, and the dispatch key and the run
+ * limit both use the event key, so it runs and counts once.
+ */
 export async function ingestEventAutomations(
   input: unknown,
   options: {
@@ -90,13 +108,35 @@ export async function ingestEventAutomations(
   const event = eventSchema.parse(input);
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
-  const tasks = (
-    await findMatchingEventAutomations(db, event, options.teamId)
-  ).filter((task) => slackChannelMessageRunsAutomation(event, task));
+  const catalog = getEventCatalog();
+  const [matches = []] = await findMatchingEventAutomations(
+    db,
+    [event],
+    options.teamId,
+    catalog,
+  );
+  const tasks = matches.filter((task) =>
+    slackChannelMessageRunsAutomation(event, task),
+  );
+  if (tasks.length === 0) return { dispatched: 0 };
+  const author = await resolveEventAuthor(event);
   let dispatched = 0;
   const errors: unknown[] = [];
+  /* oxlint-disable no-await-in-loop -- Each dispatch takes the shared pending-append index lock, which does not wait. */
   for (const task of tasks) {
     try {
+      const skill = task.task.kind === "skill" ? task.task.skill : undefined;
+      if (skill && !(await findAutomationSkill(skill))) {
+        const reason = missingAutomationSkillReason(skill);
+        if (await blockEventAutomation(db, task.id, reason)) {
+          await notifyAutomationBlocked({
+            automationId: task.id,
+            kind: "event",
+            reason,
+          });
+        }
+        continue;
+      }
       const idempotencyKey = eventAutomationDispatchKey(
         task.id,
         event.namespace,
@@ -128,7 +168,8 @@ export async function ingestEventAutomations(
               "app.event_automation.max_runs": botConfig.maxEventAutomationRuns,
               "app.event_automation.run_window_ms":
                 botConfig.eventAutomationRunWindowMs,
-              "app.event_automation.resource_type": task.trigger.resourceType,
+              "app.event_automation.resource_type":
+                task.trigger.resourceType ?? "any",
               "app.task.id": task.id,
             },
           });
@@ -163,7 +204,8 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes),
+          input: eventInput(task, event, outcomes, catalog, author),
+          ...(skill ? { skill } : undefined),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
@@ -181,6 +223,7 @@ export async function ingestEventAutomations(
       errors.push(error);
     }
   }
+  /* oxlint-enable no-await-in-loop */
   if (errors.length > 0) {
     throw new AggregateError(
       errors,

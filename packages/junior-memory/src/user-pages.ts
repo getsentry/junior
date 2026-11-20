@@ -1,6 +1,6 @@
 /** Render memory in Junior's User page format. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
-import { listMemories, type MemoryVisibility, type MemoryView } from "./viewer";
+import { listMemories, type MemoryView } from "./viewer";
 import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
@@ -21,23 +21,35 @@ function originLabel(origin: MemoryView["origin"]): string {
   return "Other";
 }
 
-function visibilityLabel(visibility: MemoryVisibility): string {
-  return visibility === "public" ? "Public" : "Private";
-}
+/** The page filter that lists archived memories instead of active ones. */
+const ARCHIVED_MEMORY_FILTER = "archived";
 
-function pageFilter(filter: string | undefined): {
-  visibility?: MemoryVisibility;
-} {
-  if (filter === "private") return { visibility: "private" };
-  if (filter === "public") return { visibility: "public" };
-  return {};
-}
+// Why a memory left recall, by `archive_reason`.
+const ARCHIVE_REASON_LABELS: Record<string, string> = {
+  contradicted: "Contradicted",
+  superseded: "Replaced",
+  tool_removed: "Forgotten",
+  user_removed: "Forgotten",
+};
 
-function pageEmptyText(input: { filter?: string; query?: string }): string {
+function pageEmptyText(input: {
+  archived: boolean;
+  query?: string | undefined;
+}): string {
   if (input.query) return "No memories matched your search.";
-  if (input.filter === "private") return "No private memories yet.";
-  if (input.filter === "public") return "No public memories yet.";
+  if (input.archived) return "No archived memories.";
   return "No memories yet.";
+}
+
+function archiveFacts(memory: MemoryView) {
+  if (memory.archivedAtMs === undefined) return [];
+  return [
+    { label: "Archived", value: rememberedDate(memory.archivedAtMs) },
+    {
+      label: "Reason",
+      value: ARCHIVE_REASON_LABELS[memory.archiveReason ?? ""] ?? "Archived",
+    },
+  ];
 }
 
 /** Create the interactive Memories dashboard page. */
@@ -45,44 +57,28 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
   return {
     id: "memories",
     label: "Memories",
-    navigation: "primary",
-    description:
-      "Personal and public memories Junior can use across conversations.",
+    navigation: "profile",
+    description: "Public memories that every conversation can use.",
     async read(ctx, input) {
-      const page = await listMemories(ctx.db as MemoryDb, ctx.viewer.id, {
+      const archived = input.filter === ARCHIVED_MEMORY_FILTER;
+      const page = await listMemories(ctx.db as MemoryDb, {
+        ...(archived ? { archived: true } : undefined),
         cursor: input.cursor,
-        ...pageFilter(input.filter),
         limit: input.limit,
         ...(input.query ? { query: input.query } : undefined),
       });
       return {
         type: "list",
-        emptyText: pageEmptyText(input),
+        emptyText: pageEmptyText({ archived, query: input.query }),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
-          actions:
-            memory.visibility === "private"
-              ? [
-                  {
-                    confirmation: "Forget this memory?",
-                    href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
-                    label: "Forget",
-                    method: "DELETE" as const,
-                    tone: "danger" as const,
-                  },
-                ]
-              : [],
           id: memory.id,
           title: memory.content,
           metadata: [
             { label: "Type", value: titleCase(memory.kind) },
             { label: "Learned", value: originLabel(memory.origin) },
             { label: "Source", value: titleCase(memory.sourcePlatform) },
-            {
-              label: "Visibility",
-              value: visibilityLabel(memory.visibility),
-            },
             { label: "Remembered", value: rememberedDate(memory.createdAtMs) },
             { label: "Observed", value: rememberedDate(memory.observedAtMs) },
             {
@@ -91,6 +87,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
                 ? rememberedDate(memory.expiresAtMs)
                 : "Never",
             },
+            ...archiveFacts(memory),
           ],
         })),
       };

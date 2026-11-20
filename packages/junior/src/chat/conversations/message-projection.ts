@@ -32,13 +32,11 @@ function splitMeta(meta: Record<string, unknown> | undefined): {
   meta?: ConversationMessageMeta;
 } {
   const rest = { ...(meta ?? {}) };
-  const author = rest.author as ConversationAuthor | undefined;
-  delete rest.author;
+  const author = rest["author"] as ConversationAuthor | undefined;
+  delete rest["author"];
   return {
     ...(author ? { author } : undefined),
-    ...(Object.keys(rest).length > 0
-      ? { meta: rest as ConversationMessageMeta }
-      : undefined),
+    ...(Object.keys(rest).length > 0 ? { meta: rest } : undefined),
   };
 }
 
@@ -65,6 +63,9 @@ export function projectConversationMessages(
         role: data.role,
         text: data.text,
         createdAtMs: event.createdAtMs,
+        ...(data.authorIdentityId
+          ? { authorIdentityId: data.authorIdentityId }
+          : undefined),
         ...splitMeta(data.meta),
       };
       if (data.type === "message" && current)
@@ -79,6 +80,8 @@ export function projectConversationMessages(
         message: {
           ...message,
           createdAtMs: current?.message.createdAtMs ?? message.createdAtMs,
+          // An edit keeps the seq of the first save, so it is not new again.
+          seq: current?.message.seq ?? event.seq,
         },
         ...(current?.repliedAtMs === undefined
           ? undefined

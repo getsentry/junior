@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
+  captureTurnFailure,
   finalizeFailedTurnReply,
-  finalizeFailedTurnReplyWithEvent,
   getTurnFailureReason,
 } from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -11,6 +11,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 function providerErrorReply(args: {
   assistantMessageCount: number;
   errorMessage?: string;
+  eventId?: string;
   providerError?: unknown;
   text: string;
 }): AgentRunResult {
@@ -25,6 +26,7 @@ function providerErrorReply(args: {
       toolErrorCount: 0,
       usedPrimaryText: false,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : undefined),
+      ...(args.eventId ? { eventId: args.eventId } : undefined),
       ...(args.providerError
         ? { providerError: args.providerError }
         : undefined),
@@ -34,17 +36,16 @@ function providerErrorReply(args: {
 
 describe("finalizeFailedTurnReply", () => {
   it("never delivers synthesized error text without assistant messages", () => {
-    const logException = vi.fn().mockReturnValue("evt_123");
     const internalError = new Error("ECONNRESET at redis.js:42");
 
     const finalized = finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: internalError.message,
+        eventId: "evt_123",
         providerError: internalError,
         text: "Error: ECONNRESET at redis.js:42",
       }),
-      logException,
     });
 
     expect(finalized.text).not.toContain("ECONNRESET");
@@ -58,17 +59,17 @@ describe("finalizeFailedTurnReply", () => {
       { modelId: "xai/grok-4.5" },
     );
 
-    const finalized = finalizeFailedTurnReplyWithEvent({
-      reply: providerErrorReply({
+    const reported = captureTurnFailure(
+      providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: providerError.message,
         providerError,
         text: "",
       }),
       logException,
-    });
+    );
 
-    expect(finalized.failureReason).toBe("server");
+    expect(reported.diagnostics.eventId).toBe("evt_503");
     const attributes = logException.mock.calls[0]?.[2];
     expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
@@ -111,14 +112,14 @@ describe("finalizeFailedTurnReply", () => {
       cause: providerError,
     });
 
-    finalizeFailedTurnReply({
-      reply: providerErrorReply({
+    captureTurnFailure(
+      providerErrorReply({
         assistantMessageCount: 0,
         providerError: reviewError,
         text: "",
       }),
       logException,
-    });
+    );
 
     expect(logException.mock.calls[0]?.[2]).toMatchObject({
       "app.ai.provider_error.kind": "invalid_response",
@@ -152,10 +153,10 @@ describe("finalizeFailedTurnReply", () => {
         reply: providerErrorReply({
           assistantMessageCount: 0,
           errorMessage: error.message,
+          eventId: "evt_terminal",
           providerError: error,
           text: "",
         }),
-        logException: vi.fn().mockReturnValue("evt_terminal"),
       });
 
       expect(finalized.text).toContain(explanation);
@@ -165,14 +166,12 @@ describe("finalizeFailedTurnReply", () => {
   );
 
   it("delivers genuine model-authored partial text with the interruption marker", () => {
-    const logException = vi.fn().mockReturnValue("evt_456");
-
     const finalized = finalizeFailedTurnReply({
       reply: providerErrorReply({
         assistantMessageCount: 1,
+        eventId: "evt_456",
         text: "Here is what I found so far",
       }),
-      logException,
     });
 
     expect(finalized.text).toBe(

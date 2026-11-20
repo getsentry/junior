@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "../styles";
 import { ShimmerText } from "./ShimmerText";
-import { Tooltip } from "./Tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export type MetricTooltipLine = {
   label?: string;
@@ -10,11 +10,6 @@ export type MetricTooltipLine = {
   live?: boolean;
   value: string;
   valueStyle?: "heading";
-};
-
-export type MetricListItem = {
-  content: ReactNode;
-  key: string;
 };
 
 function TooltipLines(props: { lines: MetricTooltipLine[] }) {
@@ -70,12 +65,12 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
 
 /** Render compact metadata text with an optional styled hover/focus tooltip. */
 export function MetricValue(props: {
-  align?: "left" | "right";
+  align?: "left" | "right" | undefined;
   children: ReactNode;
   className?: string;
-  tooltip?: MetricTooltipLine[];
+  tooltip?: MetricTooltipLine[] | undefined;
   /** Custom tooltip content, such as a usage summary, instead of lines. */
-  tooltipCard?: ReactNode;
+  tooltipCard?: ReactNode | undefined;
   tooltipPlacement?: "above" | "below";
 }) {
   const tooltip = props.tooltip?.filter((line) => line.value.trim());
@@ -85,61 +80,44 @@ export function MetricValue(props: {
   }
 
   return (
-    <Tooltip
-      align={props.align}
-      className={cn(
-        "w-[calc(100vw-2rem)] max-w-80 rounded-lg border border-dashboard-border-emphasis bg-dashboard-bg text-left text-xs font-normal text-dashboard-text-muted shadow-xl shadow-black/35",
-        props.tooltipCard ? "p-3 leading-snug" : "px-3 py-2 leading-relaxed",
-      )}
-      content={
-        props.tooltipCard ? (
-          <span className="block max-h-[min(30rem,var(--radix-hover-card-content-available-height,30rem))] overflow-y-auto">
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              "inline-flex border-b border-dotted border-dashboard-border-interactive outline-none transition-colors hover:border-dashboard-border-heavy focus-visible:border-dashboard-border-heavy",
+              props.className,
+            )}
+            tabIndex={0}
+          >
+            {props.children}
+          </span>
+        }
+      />
+      <TooltipContent
+        align={
+          props.align === "left"
+            ? "start"
+            : props.align === "right"
+              ? "end"
+              : "center"
+        }
+        className={cn(
+          "w-[calc(100vw-2rem)] max-w-80 rounded-lg bg-dashboard-bg text-left font-normal shadow-xl shadow-black/35",
+          props.tooltipCard ? "p-3 leading-snug" : "px-3 py-2 leading-relaxed",
+        )}
+        side={props.tooltipPlacement === "above" ? "top" : "bottom"}
+      >
+        {props.tooltipCard ? (
+          <span className="block max-h-[min(30rem,var(--available-height,30rem))] overflow-y-auto">
             {props.tooltipCard}
           </span>
         ) : tooltip ? (
           <span className="block max-h-72 overflow-y-auto">
             <TooltipLines lines={tooltip} />
           </span>
-        ) : null
-      }
-      placement={props.tooltipPlacement ?? "below"}
-    >
-      <span
-        className={cn(
-          "inline-flex border-b border-dotted border-dashboard-border-interactive outline-none transition-colors hover:border-dashboard-border-heavy focus-visible:border-dashboard-border-heavy",
-          props.className,
-        )}
-        tabIndex={0}
-      >
-        {props.children}
-      </span>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
-  );
-}
-
-/** Render inline metadata with consistent dot spacing across dashboard headers. */
-export function MetricList(props: {
-  className?: string;
-  items: MetricListItem[];
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-x-1.5 gap-y-1",
-        props.className,
-      )}
-    >
-      {props.items.map((item, index) => (
-        <span
-          className="inline-flex min-w-0 items-center gap-x-1.5"
-          key={item.key}
-        >
-          {index > 0 ? (
-            <span className="text-dashboard-text-muted">·</span>
-          ) : null}
-          <span className="min-w-0">{item.content}</span>
-        </span>
-      ))}
-    </div>
   );
 }

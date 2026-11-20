@@ -1,6 +1,6 @@
 ---
 name: example-local
-description: Provide a compact local example response. Use when users invoke /example-local.
+description: Provide a compact local example response. Use when users invoke $example-local.
 ---
 
 # Local Example Skill

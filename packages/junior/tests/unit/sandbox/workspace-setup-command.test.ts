@@ -37,6 +37,7 @@ describe("Workspace snapshot setup command", () => {
         id: "workspace-one",
         name: "one",
         setupScript: "",
+        vcpus: null,
         repos: [],
         snapshot: null,
       },
@@ -82,6 +83,7 @@ describe("Workspace snapshot setup command", () => {
         id: "workspace-one",
         name: "one",
         setupScript: "printf ready",
+        vcpus: null,
         repos: [],
         snapshot: null,
       },
@@ -89,7 +91,7 @@ describe("Workspace snapshot setup command", () => {
     );
 
     expect(command.args.at(-1)).toBe("printf ready");
-    expect(command.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
+    expect(command.env["NODE_OPTIONS"]).toBe("--max-old-space-size=4096");
     expect(command.args.join("\n")).toContain(
       "/tmp/junior-snapshot-build-build-one/lock",
     );
@@ -103,10 +105,11 @@ describe("Workspace snapshot setup command", () => {
       id: "workspace-one",
       name: "one",
       setupScript: "printf ready",
+      vcpus: null,
       repos: [],
       snapshot: null,
     });
 
-    expect(command.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
+    expect(command.env["NODE_OPTIONS"]).toBe("--max-old-space-size=4096");
   });
 });

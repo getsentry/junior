@@ -1,12 +1,14 @@
-/** Shared Vercel Queue callback wiring for signed messages. */
+/** Shared queue callback wiring for signed messages. */
 import {
-  handleCallback,
-  registerDevConsumer,
-  type MessageMetadata,
-  type RetryDirective,
-} from "@vercel/queue";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+  getQueueProvider,
+  type QueueConsumer,
+  type QueueMessageMetadata,
+  type QueueRetryDirective,
+} from "@/chat/queue/provider";
+import {
+  runWithNewTurnRequestDeadline,
+  runWithTurnRequestDeadline,
+} from "@/chat/runtime/request-deadline";
 import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
 export interface QueueCallbackOptions<Message> {
@@ -15,16 +17,16 @@ export interface QueueCallbackOptions<Message> {
   maxDeliveries: number | null;
   onRejected(
     reason: QueueRejectReason | string,
-    metadata: MessageMetadata,
+    metadata: QueueMessageMetadata,
     error?: unknown,
   ): void;
   permanentError?: (error: unknown) => string | undefined;
-  run(message: Message, metadata: MessageMetadata): Promise<void>;
+  run(message: Message, metadata: QueueMessageMetadata): Promise<void>;
   /**
    * Acknowledge without checking or running the message.
    * Use for kill switches that must not depend on signing secrets.
    */
-  skip?: (metadata: MessageMetadata) => boolean;
+  skip?: (metadata: QueueMessageMetadata) => boolean;
   topic: string;
   verify(value: unknown): QueueVerifyResult<Message>;
   visibilityTimeoutSeconds?: number;
@@ -34,7 +36,7 @@ export interface QueueCallbackOptions<Message> {
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const consume = async (
     message: Message,
-    metadata: MessageMetadata,
+    metadata: QueueMessageMetadata,
   ): Promise<void> => {
     if (options.skip?.(metadata)) {
       return;
@@ -52,7 +54,7 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
 
   const handler = async (
     value: unknown,
-    metadata: MessageMetadata,
+    metadata: QueueMessageMetadata,
   ): Promise<void> => {
     if (options.skip?.(metadata)) {
       return;
@@ -67,13 +69,18 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    await consume(checked.message, metadata);
+    // Each provider call is its own host request. The Vercel local-dev
+    // consumer runs inside the sender's async context, so without a new
+    // deadline every call inherits the sender's spent deadline.
+    await runWithNewTurnRequestDeadline(() =>
+      consume(checked.message, metadata),
+    );
   };
 
   const retry = (
     error: unknown,
-    metadata: MessageMetadata,
-  ): RetryDirective | undefined => {
+    metadata: QueueMessageMetadata,
+  ): QueueRetryDirective | undefined => {
     const reason = options.permanentError?.(error);
     if (reason) {
       options.onRejected(reason, metadata, error);
@@ -88,27 +95,24 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     return undefined;
   };
 
-  const visibility =
-    options.visibilityTimeoutSeconds === undefined
-      ? {}
-      : { visibilityTimeoutSeconds: options.visibilityTimeoutSeconds };
+  const consumer: QueueConsumer = {
+    consumerGroup: options.consumerGroup,
+    handler,
+    retry,
+    topic: options.topic,
+    visibilityTimeoutSeconds: options.visibilityTimeoutSeconds,
+  };
 
   return {
     /** Run a message that an in-process queue already trusts. */
     consume,
-    create: () => handleCallback(handler, { retry, ...visibility }),
+    consumer,
+    create: () => getQueueProvider().createCallback(consumer),
     registerDev: () => {
-      if (process.env.NODE_ENV !== "development") {
+      if (process.env["NODE_ENV"] !== "development") {
         return undefined;
       }
-      return registerDevConsumer({
-        client: createVercelQueueClient(),
-        consumerGroup: options.consumerGroup,
-        handler,
-        retry,
-        topic: options.topic,
-        ...visibility,
-      });
+      return getQueueProvider().registerDevConsumer?.(consumer);
     },
   };
 }

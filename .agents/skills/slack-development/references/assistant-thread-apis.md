@@ -104,15 +104,11 @@ This file intentionally separates:
 3. Lifecycle event handling:
 
 - `packages/junior/src/chat/slack/assistant-thread/lifecycle.ts`
-- `packages/junior/src/chat/runtime/slack-runtime.ts`
+- `packages/junior/src/chat/ingress/slack-webhook.ts`
 
 4. DM title generation and permission handling:
 
 - `packages/junior/src/chat/slack/assistant-thread/title.ts`
-
-5. Current delivery contract:
-
-- `packages/junior/src/chat/slack/README.md`
 
 ## Audit Checklist
 

@@ -1,16 +1,26 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
-import { objectPresentation } from "@sentry/junior-plugin-api";
+import { Badge } from "../components/ui/badge";
+import {
+  objectPresentation,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
   CircleX,
   GitMerge,
   GitPullRequest,
-  Globe2,
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -22,8 +32,12 @@ import {
   summarizeUsage,
   automationPath,
 } from "../format";
-import { Tooltip } from "../components/Tooltip";
-import { MetricList, type MetricListItem } from "../components/Metric";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
@@ -32,13 +46,19 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
   type SidebarAnnotationBadgeGroup,
 } from "./sidebarAnnotationBadges";
-
-const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
+import {
+  linkStatusLabel,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
+import { OutboundLink } from "../components/OutboundLink";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -50,14 +70,12 @@ export function PendingAuthorization(props: {
 }) {
   return (
     <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
-      <a
+      <OutboundLink
         className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
-        rel="noreferrer"
-        target="_blank"
       >
         {props.authorization.label}
-      </a>
+      </OutboundLink>
       <p className="mb-0 mt-1 text-xs text-dashboard-text-muted">
         {props.authorization.completionText}
       </p>
@@ -65,51 +83,26 @@ export function PendingAuthorization(props: {
   );
 }
 
-/** Show whether the selected conversation is public or private. */
+/**
+ * Mark a private conversation with a lock icon. Public is the default, so it
+ * gets no marker, which keeps the title bar short.
+ */
 export function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
-  if (!props.visibility) return null;
-  const isPublic = props.visibility === "public";
-  const Icon = isPublic ? Globe2 : LockKeyhole;
-  const shortLabel = isPublic ? "Public" : "Private";
-  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
-  const detail = isPublic
-    ? "Anyone in this workspace can see this transcript."
-    : "Only members of this conversation can see this transcript.";
+  if (props.visibility !== "private") return null;
+  const label =
+    "Private conversation. Only members of this conversation can see this transcript.";
   return (
     <span
-      className={
-        isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-      }
+      className="inline-flex items-center text-dashboard-text-muted"
       role="note"
-      title={`${fullLabel}. ${detail}`}
+      title={label}
     >
-      <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span aria-hidden="true" className="truncate">
-        {shortLabel}
-      </span>
-      <span className="sr-only">
-        {fullLabel}. {detail}
-      </span>
+      <LockKeyhole aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="sr-only">{label}</span>
     </span>
   );
-}
-
-type ResourceLinkStatus = NonNullable<
-  Extract<
-    NonNullable<ConversationDetailReport["annotations"]>[number],
-    { kind: "resource_link" }
-  >["status"]
->;
-
-/** True when the conversation has at least one resource-link annotation. */
-export function hasConversationAnnotations(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-): boolean {
-  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -118,6 +111,7 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   const isMobile = useIsMobileViewport();
+  const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
   const details = annotations.map((annotation) =>
@@ -135,9 +129,47 @@ export function ConversationSidebarAnnotations(props: {
 
   return (
     <Tooltip
-      align="left"
-      content={
-        <ul className="m-0 list-none space-y-1 p-0">
+      onOpenChange={(open, details) => {
+        if (open && details.trigger) setSide(sideWithMoreRoom(details.trigger));
+      }}
+    >
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={`Linked work, newest first: ${details.join(", ")}`}
+            // Rows that are one stretched link turn off pointer events.
+            // The trigger takes them back, so hover opens the tooltip.
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center"
+          >
+            {useMobileFacepile ? (
+              <SidebarAnnotationIconFacepile
+                annotations={mobileFacepileAnnotations}
+                // Discs sit on the sidebar panel / row surface.
+                cutoutColor="var(--color-dashboard-surface-panel)"
+              />
+            ) : (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                {badges.labeledGroups.map((group) => (
+                  <SidebarAnnotationGroupChip group={group} key={group.label} />
+                ))}
+                {badges.overflowGroupCount > 0 ? (
+                  <Badge
+                    className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center"
+                    variant="count"
+                  >
+                    +{badges.overflowGroupCount}
+                  </Badge>
+                ) : null}
+              </span>
+            )}
+          </span>
+        }
+      />
+      <TooltipContent align="start" side={side}>
+        <TooltipTitle>Linked work</TooltipTitle>
+        {/* A row can link many items. Scroll the list so the tooltip stays on
+            screen; Base UI keeps the popup open while the pointer is on it. */}
+        <ul className="thin-scrollbar m-0 max-h-80 list-none space-y-1 overflow-y-auto overscroll-contain p-0 pr-1">
           {annotations.map((annotation, index) => (
             <li
               className="flex min-w-0 items-center gap-1.5"
@@ -156,33 +188,7 @@ export function ConversationSidebarAnnotations(props: {
             </li>
           ))}
         </ul>
-      }
-      label="Linked work"
-      triggerClassName="min-w-0"
-    >
-      <span
-        aria-label={`Linked work, newest first: ${details.join(", ")}`}
-        className="inline-flex min-w-0 max-w-full items-center"
-      >
-        {useMobileFacepile ? (
-          <SidebarAnnotationIconFacepile
-            annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface (#09090b).
-            cutoutColor="var(--color-dashboard-surface-panel)"
-          />
-        ) : (
-          <span className="inline-flex min-w-0 items-center gap-1">
-            {badges.labeledGroups.map((group) => (
-              <SidebarAnnotationGroupChip group={group} key={group.label} />
-            ))}
-            {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
-                +{badges.overflowGroupCount}
-              </span>
-            ) : null}
-          </span>
-        )}
-      </span>
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -201,53 +207,143 @@ function SidebarAnnotationIconFacepile(props: {
     <span
       className={cn(
         // Isolate stacking context so z-index only orders chips inside the pile.
-        // Extra right pad keeps the last chip's cutout ring from clipping.
-        "relative isolate inline-flex h-[18px] items-center pr-0.5",
+        "relative isolate inline-flex h-[18px] min-w-0 items-center",
         props.className,
       )}
     >
-      {props.annotations.map((annotation, index) => (
-        <SidebarAnnotationStatusChip
-          annotation={annotation}
-          cutoutColor={props.cutoutColor}
-          key={annotation.key}
-          // Each chip to the right layers above the chip before it.
-          stacked={index > 0}
-          zIndex={index + 1}
-        />
-      ))}
+      <FittingIcons
+        // The padding keeps the cutout rings inside the clipped row.
+        className="-m-0.5 h-[22px] min-w-[22px] p-0.5"
+        icons={props.annotations.map((annotation, index) => (
+          <SidebarAnnotationStatusChip
+            annotation={annotation}
+            cutoutColor={props.cutoutColor}
+            key={annotation.key}
+            // Each chip to the right layers above the chip before it.
+            stacked={index > 0}
+            zIndex={index + 1}
+          />
+        ))}
+        overflow={(count) => (
+          <Badge
+            aria-hidden="true"
+            className="relative -ml-0.5 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
+            style={{
+              boxShadow: `0 0 0 2px ${props.cutoutColor}`,
+              zIndex: props.annotations.length + 1,
+            }}
+            variant="count"
+          >
+            +{count}
+          </Badge>
+        )}
+      />
     </span>
   );
 }
 
-/** One shared label with every status icon for that label. */
+/**
+ * Show the icons that fit in the row and a +N count for the rest. Icons that
+ * do not fit wrap onto lines that the row clips, so the count follows the
+ * real width.
+ */
+export function FittingIcons(props: {
+  className: string;
+  icons: ReactNode[];
+  overflow(count: number): ReactNode;
+}) {
+  const rowRef = useRef<HTMLSpanElement>(null);
+  const overflowRef = useRef<HTMLSpanElement>(null);
+  const total = props.icons.length;
+  const [shown, setShown] = useState(total);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const countFirstLine = () => {
+      const items = Array.from(row.children);
+      const bottom = items[0]?.getBoundingClientRect().bottom ?? 0;
+      return items.filter((item) => item.getBoundingClientRect().top < bottom)
+        .length;
+    };
+    const measure = () => {
+      // Measure without the +N first. Otherwise its own width keeps the
+      // last icons hidden after the row grows wide enough for all of them.
+      const overflow = overflowRef.current;
+      if (overflow) overflow.style.display = "none";
+      const fitting = countFirstLine();
+      if (overflow) overflow.style.display = "";
+      setShown(fitting === total || !overflow ? fitting : countFirstLine());
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+    // Run again when `shown` changes: the +N that mounts takes width, and
+    // this pass counts it before paint. The observer would run after paint.
+  }, [shown, total]);
+
+  return (
+    <>
+      <span
+        className={cn(
+          // The row gap pushes wrapped lines fully outside the clip.
+          "flex flex-wrap items-center gap-y-6 overflow-hidden",
+          props.className,
+        )}
+        ref={rowRef}
+      >
+        {props.icons}
+      </span>
+      {shown < total ? (
+        <span className="contents" ref={overflowRef}>
+          {props.overflow(total - shown)}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** One shared label with the status icons that fit and a count of the rest. */
 function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
-      {props.group.annotations.map((annotation) =>
-        annotation.objectType ? (
-          <ObjectIcon
-            {...annotation}
-            objectType={annotation.objectType}
-            key={annotation.key}
-            decorative
-            size={14}
-          />
-        ) : annotation.icon ? (
-          <SidebarAnnotationIcon
-            decorative
-            icon={annotation.icon}
-            key={annotation.key}
-            size={11}
-          />
-        ) : null,
-      )}
-      <span className="min-w-0 truncate whitespace-nowrap">
+    // No min-w-0: a chip shrinks only to one icon and its label, so the
+    // longest group gives up icons before a shorter one loses its label.
+    <Badge className="inline-flex h-5 items-center gap-1" variant="count">
+      <FittingIcons
+        className="h-3.5 min-w-3.5 gap-x-1"
+        icons={props.group.annotations.flatMap((annotation) =>
+          annotation.objectType ? (
+            <ObjectIcon
+              {...annotation}
+              objectType={annotation.objectType}
+              key={annotation.key}
+              // Match the h-3.5 row in rem. A px icon is cut at a small root font size.
+              className="size-3.5"
+              decorative
+              size={14}
+            />
+          ) : annotation.icon ? (
+            <SidebarAnnotationIcon
+              decorative
+              icon={annotation.icon}
+              key={annotation.key}
+              size={11}
+            />
+          ) : (
+            []
+          ),
+        )}
+        overflow={(count) => (
+          <span className="shrink-0 tabular-nums">+{count}</span>
+        )}
+      />
+      <span className="max-w-40 shrink-0 truncate whitespace-nowrap">
         {props.group.label}
       </span>
-    </span>
+    </Badge>
   );
 }
 
@@ -300,17 +396,23 @@ function SidebarAnnotationStatusChip(props: {
   );
 }
 
+/** Open toward the taller free space, so a long list covers fewer rows. */
+function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
+  const rect = trigger.getBoundingClientRect();
+  return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
+}
+
 function useIsMobileViewport(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
       if (typeof window === "undefined") return () => {};
-      const media = window.matchMedia(MOBILE_MEDIA_QUERY);
+      const media = window.matchMedia(MOBILE_LAYOUT_QUERY);
       media.addEventListener("change", onStoreChange);
       return () => media.removeEventListener("change", onStoreChange);
     },
     () =>
       typeof window !== "undefined" &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches,
+      window.matchMedia(MOBILE_LAYOUT_QUERY).matches,
     () => false,
   );
 }
@@ -318,8 +420,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -342,22 +444,41 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The closed and removed red, as GitHub shows a closed pull request. */
+export const CLOSED_TONE_CLASS = "text-[#f85149] light:text-[#cf222e]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: OPEN_TONE_CLASS,
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
-    className: "text-[#8c959f]",
+    className: "text-[#8c959f] light:text-[#59636e]",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: CLOSED_TONE_CLASS,
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7] light:text-[#8250df]",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
-    className: "text-[#3fb950]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -366,7 +487,24 @@ const SIDEBAR_ICON_PRESENTATION = {
   { className: string; Icon: typeof CircleDot; label: string }
 >;
 
-function SidebarAnnotationIcon(props: {
+/** The GitHub color and name of a code change state. */
+export function codeChangeTone(
+  state: CodeChangeState,
+  draft: boolean,
+): { className: string; label: string } {
+  return SIDEBAR_ICON_PRESENTATION[
+    state === "merged"
+      ? "git-merge"
+      : state === "closed"
+        ? "circle-x"
+        : draft
+          ? "circle-dashed"
+          : "circle-dot"
+  ];
+}
+
+/** Show a GitHub-style status icon for linked work, such as an open pull request. */
+export function SidebarAnnotationIcon(props: {
   icon: SidebarAnnotationIconName;
   size?: number;
   /** Hide accessible name when a parent already labels the control. */
@@ -398,86 +536,47 @@ function SidebarAnnotationIcon(props: {
   );
 }
 
-/** Render resource-link annotations under the conversation title. */
+/** Render linked work as a compact strip under the conversation title. */
 export function ConversationAnnotations(props: {
-  detail: ConversationDetailReport | undefined;
-  layout?: "list" | "strip";
+  links: readonly ConversationLink[];
 }) {
-  const links =
-    props.detail?.annotations?.filter(
-      (annotation) => annotation.url !== null,
-    ) ?? [];
-  if (links.length === 0) return null;
   return (
-    <div
-      className={cn(
-        "flex gap-x-4 gap-y-2",
-        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
-      )}
-    >
-      {links.map((link) => (
-        <a
-          className={cn(
-            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-            props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
-              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
-          )}
-          href={link.url ?? undefined}
-          key={`${link.plugin}:${link.key}`}
-          rel="noreferrer"
-          target="_blank"
-          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
+    <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
+      {props.links.map((link) => (
+        <OutboundLink
+          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          href={link.url}
+          key={link.key}
+          title={[
+            link.label,
+            objectSource(link.plugin),
+            linkStatusLabel(link.status),
+            link.description,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         >
           <ObjectIcon
-            objectType={
-              link.objectType ??
-              props.detail?.sidebarAnnotations?.find(
-                (annotation) => annotation.key === link.key,
-              )?.objectType ??
-              "item"
-            }
-            status={link.status}
-            facts={link.kind === "object" ? link.facts : undefined}
+            facts={link.facts}
+            objectType={link.objectType}
             size={16}
+            status={link.status}
           />
           <span className="min-w-0 break-words">{link.label}</span>
-        </a>
+        </OutboundLink>
       ))}
     </div>
   );
 }
 
-function resourceLinkTitle(link: {
-  description?: string;
+function LocationLink(props: {
   label: string;
-  plugin: string;
-  status?: ResourceLinkStatus;
-}): string {
-  const statusLabel = link.status
-    ? {
-        open: "Open",
-        draft: "Draft",
-        closed: "Closed",
-        merged: "Merged",
-        warning: "Needs attention",
-      }[link.status]
-    : undefined;
-  return [link.label, link.plugin, statusLabel, link.description]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function LocationLink(props: { label: string; locationUrl?: string }) {
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
-    <a
-      className={dashboardInlineLinkClass}
-      href={props.locationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
+    <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
-    </a>
+    </OutboundLink>
   ) : (
     props.label
   );
@@ -501,7 +600,7 @@ function SourceTask(props: {
   );
 }
 
-/** Resolve the model still running an open turn, including mid-turn handoffs. */
+/** Resolve the model that an open turn last called. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
 ): string | undefined {
@@ -516,49 +615,108 @@ export function liveModelId(
       if (openTurns.size === 0) modelId = undefined;
       continue;
     }
-    if (openTurns.size === 0) continue;
-    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
-      modelId = data.modelId;
-      continue;
-    }
-    if (data.type === "handoff") modelId = data.modelId;
+    if (openTurns.size > 0 && event.model) modelId = event.model.modelId;
   }
   return openTurns.size > 0 ? modelId : undefined;
 }
 
-/** True when runtime stats have content for the requested presentation. */
-export function hasConversationStats(props: {
+type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}): boolean {
+  detail?: ConversationDetailReport | undefined;
+  showUsageBreakdown?: boolean;
+};
+
+/** True when runtime stats have content to show in details. */
+export function hasConversationStats(props: ConversationStatsProps): boolean {
   return conversationStatItems(props).length > 0;
 }
 
-/** Render runtime, source, token, and cost metadata under the conversation title. */
-export function ConversationStats(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}) {
+type ConversationStatItem = {
+  content: ReactNode;
+  key: string;
+  label: string;
+  /** Shown below `md` only, where the title bar is hidden. */
+  mobileOnly?: boolean;
+};
+
+/** Render runtime, source, token, and cost metadata as a labeled list. */
+export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
-
   return (
-    <MetricList
-      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-      items={stats}
+    <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
+      {stats.map((item) => (
+        <div
+          className={cn(
+            "flex min-w-0 items-baseline justify-between gap-4",
+            item.mobileOnly && "md:hidden",
+          )}
+          key={item.key}
+        >
+          <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
+          <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+            {item.content}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * Name where a conversation runs, linked when the source has a URL. Returns
+ * null without a location, so callers can drop the slot around it.
+ */
+export function conversationLocation(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+): ReactNode {
+  if (!conversation) return null;
+  const location = slackLocationLabel(conversation, { includeId: false });
+  if (!location) return null;
+  return (
+    <LocationLink
+      label={location}
+      locationUrl={detail?.locationUrl ?? conversation.locationUrl}
     />
   );
 }
 
-function conversationStatItems(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-  variant?: "compact" | "full";
-}): MetricListItem[] {
+/**
+ * Show the estimated cost of a conversation with its breakdown tooltip.
+ * Returns null until there is a cost or a live run to show.
+ */
+export function conversationCost(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+  tooltipPlacement?: "above" | "below",
+): ReactNode {
+  if (!conversation) return null;
+  const costSummary = summarizeCost(
+    detail?.cumulativeUsage ?? conversation.cumulativeUsage,
+  );
+  const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
+  const live = conversationTurnIsActive(detail, conversation);
+  if (!costSummary && !auxiliaryCosts && !live) return null;
+  return (
+    <CostMetric
+      auxiliaryCosts={auxiliaryCosts}
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      live={live}
+      liveModelId={liveModelId(detail)}
+      modelUsage={detail?.modelUsage}
+      summary={costSummary}
+      tooltipPlacement={tooltipPlacement}
+    />
+  );
+}
+
+function conversationStatItems(
+  props: ConversationStatsProps,
+): ConversationStatItem[] {
   if (!props.conversation) return [];
-  const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
@@ -566,29 +724,49 @@ function conversationStatItems(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const costSummary = summarizeCost(usage);
-  const location = slackLocationLabel(props.conversation, {
-    includeId: false,
-  });
-  const locationUrl =
-    props.detail?.locationUrl ?? props.conversation.locationUrl;
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
-  const rawStats: Array<MetricListItem | undefined> = [
+  const lastActivityAt = props.conversation.lastSeenAt;
+  const location = conversationLocation(props.conversation, props.detail);
+  const cost = props.showUsageBreakdown
+    ? null
+    : conversationCost(props.conversation, props.detail);
+  const rawStats: Array<ConversationStatItem | undefined> = [
+    // The desktop title bar shows the location. Mobile hides that bar.
     location
       ? {
-          content: <LocationLink label={location} locationUrl={locationUrl} />,
+          content: location,
           key: "location",
+          label: "Location",
+          mobileOnly: true,
         }
       : undefined,
-    variant === "full" && sourceTask
+    sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
+          label: "Source",
+        }
+      : undefined,
+    lastActivityAt
+      ? {
+          content: (
+            <time
+              dateTime={lastActivityAt}
+              title={formatTime(lastActivityAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatRelativeTime(lastActivityAt)}
+            </time>
+          ),
+          key: "last-activity",
+          label: "Last activity",
         }
       : undefined,
     durationLabel !== "none"
@@ -603,13 +781,13 @@ function conversationStatItems(props: {
             />
           ),
           key: "duration",
+          label: "Runtime",
         }
       : undefined,
-    tokenSummary
+    tokenSummary && !props.showUsageBreakdown
       ? {
           content: (
             <TokenMetric
-              detailsHint={variant === "compact"}
               childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
@@ -625,36 +803,25 @@ function conversationStatItems(props: {
             />
           ),
           key: "tokens",
+          label: "Tokens",
         }
       : undefined,
-    costSummary ||
-    props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts ||
-    live
+    cost
       ? {
-          content: (
-            <CostMetric
-              detailsHint={variant === "compact"}
-              auxiliaryCosts={
-                props.detail?.auxiliaryCosts ??
-                props.conversation.auxiliaryCosts
-              }
-              childAgentTotals={childAgentTotals}
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={costSummary}
-            />
-          ),
+          content: cost,
           key: "cost",
+          label: "Cost",
         }
       : undefined,
     childAgentTotals
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
+          label: "Child conversations",
         }
       : undefined,
   ];
-  return rawStats.filter((item): item is MetricListItem => item !== undefined);
+  return rawStats.filter(
+    (item): item is ConversationStatItem => item !== undefined,
+  );
 }

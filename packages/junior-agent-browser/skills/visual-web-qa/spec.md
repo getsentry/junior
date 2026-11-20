@@ -50,6 +50,15 @@ The agent SHALL use a user-provided, local, or preview target for changed code, 
 - **WHEN** a user asks to verify an unmerged frontend change but the workspace has no runnable page, local server, or preview deployment
 - **THEN** the agent investigates enough to confirm the missing target and reports blocked instead of checking production and claiming the change is present
 
+### Behavior: Pull request evidence
+
+The agent SHALL attach safe screenshots to the pull request when the QA is for a pull request and image publishing is available. It SHALL inspect each image for sensitive data before it publishes the image.
+
+#### Scenario: Visual QA for a pull request
+
+- **WHEN** a user asks for visual QA of a frontend change in a pull request
+- **THEN** the agent checks each screenshot for sensitive data, publishes only safe screenshots with `publishImage`, and embeds the URLs in the pull request body or a comment
+
 ## Constraints
 
 ### Constraint: Evidence required
@@ -70,4 +79,4 @@ The agent MUST NOT leave an active video recording running after the target beha
 
 ### Constraint: Sensitive capture
 
-The agent MUST NOT record, screenshot, or share credential entry, session tokens, customer data, or unrelated sensitive interface state.
+The agent MUST NOT record, screenshot, or share credential entry, session tokens, customer data, or unrelated sensitive interface state. The agent MUST NOT publish an image that contains this data, because published image URLs are public.

@@ -9,6 +9,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { extractCanvasId } from "@/chat/slack/canvas-references";
+import { canvasBodyToMarkdown } from "@/chat/slack/tool-support/canvas/html";
 import {
   normalizeCanvasMarkdown,
   type CanvasMarkdownNormalization,
@@ -24,10 +25,10 @@ export interface CanvasCreateInput {
 
 export interface CanvasReadResult {
   canvasId: string;
-  title?: string;
-  permalink?: string;
-  mimetype?: string;
-  filetype?: string;
+  title?: string | undefined;
+  permalink?: string | undefined;
+  mimetype?: string | undefined;
+  filetype?: string | undefined;
   content: string;
   byteLength: number;
 }
@@ -40,7 +41,7 @@ export interface CanvasReadResult {
  */
 export async function createCanvas(
   input: CanvasCreateInput,
-): Promise<{ canvasId: string; permalink?: string }> {
+): Promise<{ canvasId: string; permalink?: string | undefined }> {
   const client = getSlackClient();
   const normalizedChannelId = normalizeSlackConversationId(input.channelId);
   const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";
@@ -190,10 +191,10 @@ function isCanvasFile(file: NonNullable<FilesInfoResponse["file"]>): boolean {
 }
 
 /**
- * Read a Slack canvas the bot has access to and return its raw downloadable
- * content. Slack does not expose a structured canvas-read API, so we fetch
- * file metadata via `files.info` and download the canvas body via the private
- * file URL with the bot token.
+ * Read a Slack canvas the bot has access to and return its body as Markdown.
+ * Slack does not expose a structured canvas-read API, so we fetch file
+ * metadata via `files.info` and download the canvas body via the private file
+ * URL with the bot token.
  */
 export async function readCanvas(
   canvasIdOrUrl: string,
@@ -236,13 +237,14 @@ export async function readCanvas(
   }
 
   const buffer = await downloadPrivateSlackFile(downloadUrl);
+  const title = file.title ?? file.name;
   return {
     canvasId,
-    title: file.title ?? file.name,
+    title,
     permalink: file.permalink,
     mimetype: file.mimetype,
     filetype: file.filetype,
-    content: buffer.toString("utf-8"),
+    content: canvasBodyToMarkdown(buffer.toString("utf-8"), title),
     byteLength: buffer.byteLength,
   };
 }

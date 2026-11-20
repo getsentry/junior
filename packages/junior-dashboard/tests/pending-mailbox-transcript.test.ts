@@ -14,6 +14,7 @@ function detail(
   events: ConversationDetailReport["events"] = [],
 ): ConversationDetailReport {
   return {
+    kind: "root",
     annotations: [],
     conversationId: "local:web:pending",
     cumulativeDurationMs: 0,
@@ -25,7 +26,8 @@ function detail(
     lastProgressAt: new Date(0).toISOString(),
     lastSeenAt: new Date(0).toISOString(),
     startedAt: new Date(0).toISOString(),
-    status: "active",
+    status: "working",
+    turnActive: true,
     surface: "api",
     visibility: "public",
   };

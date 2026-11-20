@@ -1,11 +1,18 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
-import { createOperatorTools } from "@/chat/tools/operator-sql";
+import { createTools } from "@/chat/tools";
+import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CONVERSATION_ID = "local:operator:current";
 
@@ -13,6 +20,7 @@ function context(
   conversationPrivacy: ToolRuntimeContext["conversationPrivacy"],
 ): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId: CONVERSATION_ID,
     conversationPrivacy,
     destination: { platform: "local", conversationId: CONVERSATION_ID },
@@ -27,8 +35,8 @@ function context(
 }
 
 async function runSql(input: Record<string, unknown>): Promise<any> {
-  const tool = createOperatorTools(context("private")).runOperatorSql;
-  if (!tool?.execute || !tool.prepareArguments) {
+  const tool = createRunOperatorSqlTool();
+  if (!tool.execute || !tool.prepareArguments) {
     throw new Error("runOperatorSql is missing");
   }
   return await tool.execute(tool.prepareArguments(input), {});
@@ -40,13 +48,14 @@ describe("operator SQL tool", () => {
   });
 
   it("exists only when the app opts in, and never in public Conversations", () => {
-    expect(createOperatorTools(context("private"))).toEqual({});
+    const toolNames = (
+      privacy: ToolRuntimeContext["conversationPrivacy"],
+    ): string[] => Object.keys(createTools([], {}, context(privacy)));
+    expect(toolNames("private")).not.toContain("runOperatorSql");
 
     setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "operator-tools": true });
-    expect(Object.keys(createOperatorTools(context("private")))).toEqual([
-      "runOperatorSql",
-    ]);
-    expect(createOperatorTools(context("public"))).toEqual({});
+    expect(toolNames("private")).toContain("runOperatorSql");
+    expect(toolNames("public")).not.toContain("runOperatorSql");
   });
 
   it("reads and writes the deployment database and reports SQL mistakes", async () => {

@@ -17,6 +17,8 @@ export type AnthropicRequest = {
   system?: unknown;
   tools?: unknown;
   messages: Array<{ role: string; content: unknown }>;
+  /** The `x-session-affinity` request header. */
+  sessionAffinity: string | null;
 };
 
 /** Fake only the HTTP response; Pi still parses output and serializes requests. */
@@ -29,7 +31,13 @@ export function mockAnthropicStream(
     http.post(
       "https://ai-gateway.vercel.sh/v1/messages",
       async ({ request }) => {
-        const input = (await request.clone().json()) as AnthropicRequest;
+        const input = {
+          ...((await request.clone().json()) as Omit<
+            AnthropicRequest,
+            "sessionAffinity"
+          >),
+          sessionAffinity: request.headers.get("x-session-affinity"),
+        };
         if (input.model !== modelId) return;
         const blocks = outputs[requests.length];
         requests.push(input);
@@ -49,7 +57,7 @@ export function mockAnthropicStream(
             },
           },
         ];
-        blocks.forEach((block, index) => {
+        for (const [index, block] of blocks.entries()) {
           events.push({
             type: "content_block_start",
             index,
@@ -67,7 +75,7 @@ export function mockAnthropicStream(
             });
           }
           events.push({ type: "content_block_stop", index });
-        });
+        }
         events.push(
           {
             type: "message_delta",
@@ -85,7 +93,7 @@ export function mockAnthropicStream(
           events
             .map(
               (event) =>
-                `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                `event: ${event["type"]}\ndata: ${JSON.stringify(event)}\n\n`,
             )
             .join(""),
           { headers: { "content-type": "text/event-stream" } },

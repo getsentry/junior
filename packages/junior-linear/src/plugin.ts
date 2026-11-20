@@ -4,7 +4,7 @@ import {
   type PluginRegistration,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,
@@ -163,8 +163,20 @@ async function annotateSavedIssue(
   };
 }
 
+/** Install options for the Linear plugin. */
+export interface LinearPluginOptions {
+  /**
+   * Facts for action review about where Linear writes go. For example, say
+   * which teams sync issues to public GitHub repositories. Only Guardian reads
+   * it.
+   */
+  reviewContext?: string;
+}
+
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
-export function linearPlugin(): PluginRegistration {
+export function linearPlugin(
+  options: LinearPluginOptions = {},
+): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
     events: {
@@ -182,6 +194,15 @@ export function linearPlugin(): PluginRegistration {
           matchFields: LINEAR_ISSUE_MATCH_FIELDS,
         },
       ],
+      // An issue carries its title and description, and a team can be
+      // private. So a trigger with no identifier must name its team or one
+      // issue.
+      events: Object.fromEntries(
+        LINEAR_ISSUE_EVENTS.map((eventType) => [
+          eventType,
+          { reach: { anyOf: ["teamKey", "issueIdentifier"] } },
+        ]),
+      ),
       isEnabled: () => Boolean(linearWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toUpperCase(),
     },
@@ -203,6 +224,9 @@ export function linearPlugin(): PluginRegistration {
         url: "https://mcp.linear.app/mcp",
       },
       name: "linear",
+      ...(options.reviewContext
+        ? { reviewContext: options.reviewContext }
+        : undefined),
     },
     hooks: {
       afterMcpTool: annotateSavedIssue,

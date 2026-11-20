@@ -6,7 +6,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import { briefEntriesFromReportEvents } from "./event-entries";
-import { parseBriefInput, type BriefInput } from "./schema";
+import { briefResourceLabel, parseBriefInput, type BriefInput } from "./schema";
 
 const EVENT_PAGE_SIZE = 500;
 
@@ -17,6 +17,7 @@ async function readReportEventsThrough(
 ): Promise<ConversationReportEvent[]> {
   const pages: ConversationReportEvent[][] = [];
   let beforeSeq: number | undefined = throughSeq + 1;
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   do {
     const page = await readConversationEventPage(executor, {
       beforeSeq,
@@ -27,6 +28,7 @@ async function readReportEventsThrough(
     pages.unshift(page.events);
     beforeSeq = page.previousSeq;
   } while (beforeSeq !== undefined);
+  /* oxlint-enable no-await-in-loop */
 
   const bySequence = new Map<number, ConversationReportEvent>();
   for (const event of pages.flat()) bySequence.set(event.seq, event);
@@ -105,7 +107,7 @@ export async function briefInputFromSql(
         : undefined),
     })),
     resources: annotations.map((annotation) => ({
-      label: annotation.label,
+      label: briefResourceLabel(annotation),
       url: annotation.url,
       ...(annotation.status ? { status: annotation.status } : undefined),
     })),

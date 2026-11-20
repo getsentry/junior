@@ -18,7 +18,7 @@ import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
 
 const originalCwd = process.cwd();
-const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
+const originalPluginPackages = process.env["JUNIOR_PLUGIN_PACKAGES"];
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
@@ -66,9 +66,9 @@ afterEach(async () => {
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
   if (originalPluginPackages === undefined) {
-    delete process.env.JUNIOR_PLUGIN_PACKAGES;
+    delete process.env["JUNIOR_PLUGIN_PACKAGES"];
   } else {
-    process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = originalPluginPackages;
   }
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -125,7 +125,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is malformed", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await expect(createApp()).rejects.toThrow(
       "JUNIOR_PLUGIN_PACKAGES must be valid JSON",
@@ -133,7 +133,7 @@ describe("createApp plugin config", () => {
   });
 
   it("fails loudly when the env plugin package fallback is not a package list", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify({
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify({
       packages: ["@acme/junior-plugin"],
     });
 
@@ -143,7 +143,7 @@ describe("createApp plugin config", () => {
   });
 
   it("does not read env plugin packages when plugins are explicit", async () => {
-    process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = "not-json";
 
     await createApp({
       plugins: defineJuniorPlugins([]),
@@ -728,7 +728,7 @@ describe("createApp plugin config", () => {
         hooks: {},
       }),
     ).toThrow(
-      'Junior plugin registration name "GitHub" must be a lowercase plugin identifier',
+      'Plugin registration name "GitHub" must be a lowercase plugin identifier',
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
@@ -758,9 +758,10 @@ describe("createApp plugin config", () => {
         },
         events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
+          events: { closed: { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -776,9 +777,30 @@ describe("createApp plugin config", () => {
               supportedEvents: ["issue.closed", "issue.closed"],
             },
           ],
+          events: { "issue.closed": { reach: "resource" } },
         },
       }),
-    ).toThrow('Junior plugin "event-demo" events is invalid.');
+    ).toThrow('Plugin "event-demo" events is invalid.');
+
+    expect(() =>
+      defineJuniorPlugin({
+        manifest: {
+          name: "event-demo",
+          displayName: "Event Demo",
+          description: "Invalid identifier pattern",
+        },
+        events: {
+          resourceTypes: [
+            {
+              type: "issue",
+              identifier: { format: "owner/repo#number", pattern: "(" },
+              supportedEvents: ["issue.closed"],
+            },
+          ],
+          events: { "issue.closed": { reach: "resource" } },
+        },
+      }),
+    ).toThrow('Plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
@@ -806,7 +828,6 @@ describe("createApp plugin config", () => {
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
-        componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -849,15 +870,9 @@ describe("createApp plugin config", () => {
     expect(pluginSystemPage.status).toBe(200);
     await expect(pluginSystemPage.text()).resolves.toBe("dashboard");
 
-    const componentGallery = await app.fetch(
-      new Request("http://localhost/dev"),
-    );
-    expect(componentGallery.status).toBe(200);
-    await expect(componentGallery.text()).resolves.toBe("dashboard");
     expect(createDashboardApp).toHaveBeenCalledWith(
       expect.objectContaining({
         agentName: botConfig.userName,
-        componentGallery: true,
       }),
     );
 
@@ -909,11 +924,13 @@ describe("createApp plugin config", () => {
       "/api/*",
       "/:slug",
       "/api/:section/*",
+      "/api/mcp/*",
+      "/.well-known/*",
     ]) {
       await expect(
         createApp({
           dashboard: {
-            authRequired: false,
+            authRequired: true,
           },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({

@@ -1,6 +1,12 @@
-import { z } from "zod";
-import type { PluginContext, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import * as z from "zod";
+import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
+import type {
+  Dispatch,
+  DispatchOptions,
+  DispatchResult,
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
+} from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
@@ -10,13 +16,31 @@ import type {
   PluginConversationEventStats,
 } from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
+import type { PluginConversationReviewItems } from "./review-items";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
+    /**
+     * Start a public Conversation for one person. Each call counts toward the
+     * dispatch limit of this heartbeat. See the route context version.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
   };
+  /** Conversation annotations, as from a plugin route. */
+  annotations: PluginConversationAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: CodeChangePublisher;
+  /** Host embedder bound to the configured embedding model. */
+  embedder: PluginEmbedder;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
   nowMs: number;
+  /** Review items in the Inbox, as from a plugin route. */
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 
@@ -25,7 +49,10 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
-  /** Bounded conversation candidates selected by the host. */
+  /**
+   * Bounded conversation candidates selected by the host, with the child
+   * conversations of candidate roots. Work in a child counts for its root.
+   */
   conversationIds: string[];
 }
 
@@ -44,7 +71,8 @@ export interface UnfinishedWorkResult {
   /**
    * Latest time when all known work finished, keyed by conversation id.
    * ISO-8601 timestamps. Used with conversation activity to decide whether
-   * finished work still belongs in Priority.
+   * finished work still belongs in Priority, and whether auto-archive may
+   * archive the conversation for users who turned it on.
    */
   finishedWorkAtByConversationId?: Record<string, string>;
 }
@@ -156,11 +184,39 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  agent: {
+    /**
+     * Start a public Conversation for one person, as if they sent `input` from
+     * the dashboard. It has no Slack Destination. Core starts work only when
+     * the person maps to exactly one current Slack member on the allowed
+     * domains: through an Identity of this plugin's provider that the OAuth
+     * account-linking flow linked, or through a verified email that is the
+     * User's primary email and the member's Slack email. Otherwise it returns
+     * `not_linked` and calls no model.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
+  };
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  /** Review items in the Inbox that the plugin adds and closes from its events. */
+  reviewItems: PluginConversationReviewItems;
+  /** Plugin-namespaced state, the same as in heartbeats. */
+  state: PluginState;
+  users: {
+    /**
+     * Read one stored identity and the user it links to now, with every
+     * identity of that user. A plugin that saved an identity id uses this to
+     * find the person's other linked accounts later.
+     */
+    readIdentity(
+      identityId: string,
+    ): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {

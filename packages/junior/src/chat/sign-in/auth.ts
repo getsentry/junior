@@ -7,21 +7,37 @@
  * identity.
  */
 import { createAuthMiddleware } from "better-auth/api";
+import { getSessionCookie } from "better-auth/cookies";
 import { betterAuth } from "better-auth/minimal";
+import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
-import { z } from "zod";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
-import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { parseAvatarUrl } from "@/chat/identities/avatar";
+import {
+  GOOGLE_IDENTITY_PROVIDER,
+  normalizeIdentityEmail,
+} from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { isAllowedDomain, readEnvList } from "./allowlist";
+import { getActiveSpan, getRootSpan } from "@/chat/sentry";
+import { readSignInSecret } from "@/chat/secrets";
+import { isAllowedDomain } from "@/chat/identities/trust";
+import { readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
+/** Set one attribute on the request span that runs this sign-in step. */
+function setRequestSpanAttribute(key: string, value: number | string): void {
+  const span = getActiveSpan();
+  if (span) getRootSpan(span).setAttribute(key, value);
+}
+
 // Claims Junior reads from the Google ID token. Google sets `hd` only for
 // Google Workspace accounts, so it proves the account belongs to the domain.
 // The email domain does not: a personal Google account can use any email.
+// Keep the full profile for Better Auth to read the native account subject.
 const googleClaimsSchema = z.object({
   sub: z.string().min(1),
   email: z.string().optional(),
@@ -35,17 +51,15 @@ const googleClaimsSchema = z.object({
  * Read Google ID token claims. Returns undefined for a malformed token, so
  * Better Auth redirects with `unable_to_get_user_info` instead of a 500.
  */
-function readGoogleClaims(
-  idToken: string,
-): z.infer<typeof googleClaimsSchema> | undefined {
-  let payload: unknown;
+function readGoogleClaims(idToken: string): GoogleProfile | undefined {
+  let payload: GoogleProfile;
   try {
-    payload = decodeJwt(idToken);
+    payload = decodeJwt<GoogleProfile>(idToken);
   } catch {
     return undefined;
   }
   const parsed = googleClaimsSchema.safeParse(payload);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? payload : undefined;
 }
 
 /** Verified Google account of one browser session. */
@@ -74,7 +88,7 @@ export interface SignInAuthConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   secret?: string;
-  sessionMaxAgeSeconds?: number;
+  sessionMaxAgeSeconds?: number | undefined;
   trustedOrigins: string[];
 }
 
@@ -96,7 +110,9 @@ function trimSlashes(value: string, leading: boolean): string {
 }
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 /** Resolve sign-in settings from dashboard options and environment. */
@@ -127,16 +143,14 @@ export function resolveSignInAuthConfig(
 
 function required(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new Error(`${name} is required for Junior sign-in`);
+    throw new Error(`${name} is required for sign-in`);
   }
   return value.trim();
 }
 
 function createBetterAuth(config: SignInAuthConfig) {
   const secret = required(
-    config.secret ??
-      process.env.BETTER_AUTH_SECRET ??
-      process.env.JUNIOR_SECRET,
+    config.secret ?? readSignInSecret(),
     "JUNIOR_SECRET or BETTER_AUTH_SECRET",
   );
   const sessionMaxAgeSeconds =
@@ -160,29 +174,42 @@ function createBetterAuth(config: SignInAuthConfig) {
     socialProviders: {
       google: {
         clientId: required(
-          config.googleClientId ?? process.env.GOOGLE_CLIENT_ID,
+          config.googleClientId ?? process.env["GOOGLE_CLIENT_ID"],
           "GOOGLE_CLIENT_ID",
         ),
         clientSecret: required(
-          config.googleClientSecret ?? process.env.GOOGLE_CLIENT_SECRET,
+          config.googleClientSecret ?? process.env["GOOGLE_CLIENT_SECRET"],
           "GOOGLE_CLIENT_SECRET",
         ),
         hd: hostedDomain,
         prompt: "select_account",
+        // Junior signs in only through the redirect flow. Turn off direct
+        // ID-token sign-in, so `getUserInfo` only reads tokens from Google.
+        disableIdTokenSignIn: true,
+        // Refresh the name and photo from Google on each sign-in. Without
+        // this, Better Auth keeps the values from the first sign-in.
+        overrideUserInfoOnSignIn: true,
         // Replaces Better Auth's default, which can check only one `hd`.
-        // The ID token comes from Google's token endpoint over TLS, or was
-        // verified by `verifyIdToken` first.
+        // The ID token comes from Google's token endpoint over TLS, so this
+        // reads its claims without a signature check.
         async getUserInfo(token) {
           if (!token.idToken) return null;
           const claims = readGoogleClaims(token.idToken);
           if (!claims) return null;
-          if (!isAllowedDomain(claims.hd, allowedDomains)) return null;
+          if (
+            !isAllowedDomain(claims.hd, {
+              allowedDomains,
+              ifNoDomains: "allow",
+            })
+          ) {
+            return null;
+          }
           return {
             user: {
-              id: claims.sub,
               email: claims.email,
-              emailVerified: claims.email_verified === true,
-              image: claims.picture,
+              emailVerified: claims.email_verified,
+              // `null` clears a photo that the person removed.
+              image: claims.picture ?? null,
               name: claims.name,
             },
             data: claims,
@@ -222,11 +249,28 @@ function createBetterAuth(config: SignInAuthConfig) {
         if (!google) {
           throw new Error("Google sign-in has no Google account");
         }
-        await recordGoogleSignIn(getSqlExecutor(), {
-          email,
-          subject: google.accountId,
-          displayName: created.user.name || undefined,
-        });
+        const nowMs = Date.now();
+        const previousSignedInAtMs = await recordGoogleSignIn(
+          getSqlExecutor(),
+          {
+            email,
+            subject: google.accountId,
+            displayName: created.user.name || undefined,
+            avatarUrl: parseAvatarUrl(
+              created.user.image,
+              GOOGLE_IDENTITY_PROVIDER,
+            ),
+          },
+          nowMs,
+        );
+        // A sign-in well inside the session lifetime means the browser lost
+        // its session, not that the session expired.
+        if (previousSignedInAtMs !== undefined) {
+          setRequestSpanAttribute(
+            "app.sign_in.previous_age_s",
+            Math.round((nowMs - previousSignedInAtMs) / 1000),
+          );
+        }
       }),
     },
   });
@@ -252,6 +296,12 @@ export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
       return { user: { email, emailVerified, name } };
     },
     async signInWithGoogle(request, callbackURL, errorCallbackURL) {
+      // A cookie that reaches here was rejected. Without one, the session
+      // expired or this browser never signed in.
+      setRequestSpanAttribute(
+        "app.sign_in.session_cookie",
+        getSessionCookie(request) ? "present" : "missing",
+      );
       const result = await getAuth().api.signInSocial({
         body: { provider: "google", callbackURL, errorCallbackURL },
         headers: request.headers,

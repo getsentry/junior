@@ -1,273 +1,284 @@
-import {
-  cloneElement,
-  isValidElement,
-  useEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { Ellipsis, Menu } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu, PanelRight } from "lucide-react";
+import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
-import { SearchInput } from "../components/SearchInput";
+import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
-  MobileHeaderLivePortal,
+  MobileHeaderTagsPortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
 import {
   ConversationHeaderActions,
   HeaderIconButton,
-  TranscriptViewToggle,
-  type ConversationArchiveAction,
+  TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
-import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
+import type { ConversationMenu } from "./conversationMenuItems";
+import { ChildAgentTags } from "./ChildAgentTags";
+import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
+import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { TranscriptSearchMatch } from "./transcriptSearch";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
-/** Show the conversation title, search, and details. */
+/**
+ * Keep the conversation title and frequently used controls in the header.
+ * Run facts and the Brief live in Conversation details.
+ */
 export function ConversationHeader(props: {
-  /** Parent chain of a child Conversation. Root Conversations omit it. */
-  agentTree?: ReactNode;
-  copyAction?: ReactNode;
-  annotations: ReactNode;
-  archive: ConversationArchiveAction;
-  brief?: ReactNode;
-  conversationId: string;
+  /** Agent tree of a child Conversation. Root Conversations omit it. */
+  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  contextTags?: ReactNode;
+  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
+  cost?: ReactNode | undefined;
+  detailsOpen: boolean;
+  /** Messages of failed menu actions, shown below the title bar. */
+  errors: readonly string[];
+  onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
-  identity: ReactNode;
+  /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
-  lastActivityAt?: string;
-  sentryConversationUrl?: string;
-  live: boolean;
-  meta?: ReactNode;
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  menu: ConversationMenu;
+  /**
+   * The Conversation is not created yet. Its actions stay inert until it
+   * exists; the sidebar toggle still works.
+   */
+  pending?: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
   search: string;
-  stats: ReactNode;
+  searchMatch: TranscriptSearchMatch;
+  sidebarToggle?: ReactNode | undefined;
+  /** Status pill of a child Conversation, after its title. */
+  status?: ReactNode;
   title: string;
   view: TranscriptViewMode;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsOpen = props.detailsOpen;
+  const detailsButtonRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const searchOpenVisible = searchOpen || props.search.length > 0;
+  const searchOpenVisible =
+    props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
+
+  useEffect(() => {
+    if (
+      wasDetailsOpen.current &&
+      !detailsOpen &&
+      document.activeElement === document.body
+    ) {
+      const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
+        ? menuButtonRef.current
+        : detailsButtonRef.current;
+      trigger?.focus({ preventScroll: true });
+    }
+    wasDetailsOpen.current = detailsOpen;
+  }, [detailsOpen]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!mobileMenuRef.current?.contains(event.target as Node)) {
-        setMobileMenuOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileMenuOpen]);
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (props.search.length > 0) props.onSearchChange("");
+  };
 
   const toggleSearch = () => {
     if (searchOpenVisible) {
-      setSearchOpen(false);
-      if (props.search.length > 0) props.onSearchChange("");
+      closeSearch();
       return;
     }
     setSearchOpen(true);
   };
 
-  const menuCopyAction =
-    isValidElement(props.copyAction) &&
-    typeof props.copyAction.type !== "string"
-      ? cloneElement(
-          props.copyAction as ReactElement<{ layout?: "icon" | "menu" }>,
-          { layout: "menu" },
-        )
-      : props.copyAction;
-
-  const mobileOverflow = (
-    <div className="relative" ref={mobileMenuRef}>
-      <HeaderIconButton
-        label={mobileMenuOpen ? "Close conversation menu" : "Conversation menu"}
-        onClick={() => setMobileMenuOpen((open) => !open)}
-        pressed={mobileMenuOpen}
-      >
-        <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
-      </HeaderIconButton>
-      {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={menuCopyAction}
-            detailsOpen={detailsOpen}
-            layout="menu"
-            onDetailsClick={() => {
-              setMobileMenuOpen(false);
-              setDetailsOpen(true);
-            }}
-            onSearchClick={() => {
-              setMobileMenuOpen(false);
-              toggleSearch();
-            }}
-            onViewChange={(value) => {
-              setMobileMenuOpen(false);
-              props.onViewChange(value);
-            }}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
-          {openMobileNavigation ? (
-            <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openMobileNavigation();
-              }}
-              type="button"
-            >
-              <Menu aria-hidden="true" size={16} strokeWidth={2} />
-              App menu
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+  const menuActions = (placement: "desktop" | "mobile") => (
+    <ConversationHeaderActions
+      // Desktop makes the whole control inert until the Conversation exists.
+      // Mobile turns off only these rows, so the app menu row stays usable.
+      disabled={placement === "mobile" && props.pending}
+      menu={props.menu}
+      onDetailsClick={props.onDetailsClick}
+      onSearchClick={toggleSearch}
+      placement={placement}
+      searchOpen={searchOpenVisible}
+    />
   );
+
+  const title =
+    props.view === "raw" ? (
+      // Event log is a debug view reached from the `⋯` menu. The title leads
+      // back to the Conversation.
+      <>
+        <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
+          <button
+            className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
+            onClick={() => props.onViewChange("rich")}
+            title="Back to conversation"
+            type="button"
+          >
+            {props.title}
+          </button>
+        </h2>
+        <span aria-hidden="true" className="text-dashboard-text-faint">
+          ›
+        </span>
+        <span
+          aria-current="page"
+          className="shrink-0 font-display text-base font-medium leading-6 tracking-tight"
+        >
+          Event log
+        </span>
+      </>
+    ) : (
+      <h2
+        aria-current="page"
+        className={cn(
+          "m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight",
+          // The title names the Conversation, so it keeps its width and the
+          // tags after it truncate first. A long title still leaves them room.
+          !props.agentTree &&
+            Boolean(props.contextTags) &&
+            "md:max-w-[70%] md:shrink-0",
+        )}
+      >
+        {props.title}
+      </h2>
+    );
+
+  const childAgentTags = <ChildAgentTags node={props.agentTree?.at(-1)} />;
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.archive.error ||
-    Boolean(props.linkedWork) ||
+    props.errors.length > 0 ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
-  const liveIndicator = props.live ? (
-    <span
-      aria-label="Conversation is live"
-      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
-      title="Live"
-    />
-  ) : null;
-
   return (
     <>
-      <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
-      <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
+      <MobileHeaderActionsPortal>
+        <ConversationOverflowMenu buttonRef={menuButtonRef}>
+          {menuActions("mobile")}
+          {openMobileNavigation ? (
+            <DropdownMenuItem onClick={openMobileNavigation}>
+              <Menu aria-hidden="true" />
+              App menu
+            </DropdownMenuItem>
+          ) : null}
+        </ConversationOverflowMenu>
+      </MobileHeaderActionsPortal>
+      {props.contextTags || props.linkedWork ? (
+        <MobileHeaderTagsPortal>
+          {/* One row. Tags keep their width; the slot scrolls. */}
+          <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
+            {props.contextTags}
+            {props.linkedWork ? (
+              <div aria-label="Linked work">{props.linkedWork}</div>
+            ) : null}
+          </div>
+        </MobileHeaderTagsPortal>
+      ) : null}
+      {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
+          covers it. Mobile: below the app header, which holds the menu. */}
       <header
         className={cn(
-          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
+          "relative z-10 border-b md:z-30 border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
-          <div className="min-w-0">
-            {props.agentTree ? (
-              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+          {/* Fill the free width, so the title's max width is a share of it. */}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {props.sidebarToggle ? (
+              <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
-                {props.title}
-              </h2>
-              {liveIndicator}
+            {props.agentTree ? (
+              <ConversationBreadcrumb current={title} nodes={props.agentTree} />
+            ) : (
+              title
+            )}
+            {props.status}
+            {childAgentTags}
+            {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
-            </div>
-            {props.meta ? (
-              <div className="mt-2 min-w-0 text-xs leading-snug text-dashboard-text-muted">
-                {props.meta}
+            ) : null}
+            {/* A child has no Location of its own. */}
+            {!props.agentTree && props.contextTags ? (
+              <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
+                {props.contextTags}
               </div>
             ) : null}
-            {props.forks ? (
-              <div className="mt-1.5 min-w-0">{props.forks}</div>
-            ) : null}
           </div>
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={props.copyAction}
-            detailsOpen={detailsOpen}
-            onDetailsClick={() => setDetailsOpen(true)}
-            onSearchClick={toggleSearch}
-            onViewChange={props.onViewChange}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            inert={props.pending}
+          >
+            {props.cost ? (
+              <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
+                {props.cost}
+              </span>
+            ) : null}
+            {props.view === "raw" ? null : (
+              <TranscriptSearchToggle
+                inputRef={searchInputRef}
+                onClick={toggleSearch}
+                open={searchOpenVisible}
+              />
+            )}
+            <ConversationOverflowMenu>
+              {menuActions("desktop")}
+            </ConversationOverflowMenu>
+            {detailsOpen ? null : (
+              <HeaderIconButton
+                ref={detailsButtonRef}
+                expanded={false}
+                label="Conversation details"
+                onClick={props.onDetailsClick}
+              >
+                <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+              </HeaderIconButton>
+            )}
+          </div>
         </div>
+        {props.forks ? (
+          <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
+        ) : null}
         {props.agentTree ? (
-          <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
+          <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
+            <ConversationBreadcrumb nodes={props.agentTree} />
+            <div className="flex shrink-0 items-center gap-1.5">
+              {props.status}
+              {childAgentTags}
+            </div>
+          </div>
         ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
-        {props.linkedWork ? (
-          <div
-            aria-label="Linked work"
-            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
-          >
-            {props.linkedWork}
-          </div>
-        ) : null}
-        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
-          <TranscriptViewToggle
-            labelled
-            onChange={props.onViewChange}
-            value={props.view}
-          />
-        </div>
         {searchOpenVisible ? (
-          <div className="px-4 py-3 md:px-7">
-            <SearchInput
-              className="min-w-0"
-              inputRef={searchInputRef}
-              label="Search transcript"
-              onChange={props.onSearchChange}
-              placeholder="Search transcript…"
-              size="compact"
-              value={props.search}
-            />
-          </div>
+          <TranscriptSearchBar
+            className="inset-x-3 md:left-auto md:right-4 md:w-[max(20rem,25vw)]"
+            inputRef={searchInputRef}
+            match={props.searchMatch}
+            onChange={props.onSearchChange}
+            onClose={closeSearch}
+            value={props.search}
+          />
         ) : null}
-        {props.archive.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update archive state.
+        {props.errors.map((error) => (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7" key={error}>
+            {error}
           </div>
-        ) : null}
+        ))}
       </header>
-
-      {detailsOpen ? (
-        <ConversationDetailsDrawer
-          annotations={props.annotations}
-          brief={props.brief}
-          conversationId={props.conversationId}
-          identity={props.identity}
-          lastActivityAt={props.lastActivityAt}
-          sentryConversationUrl={props.sentryConversationUrl}
-          onClose={() => setDetailsOpen(false)}
-          onOpenSubagent={props.onOpenSubagent}
-          privacy={props.privacy}
-          stats={props.stats}
-          title={props.title}
-        />
-      ) : null}
     </>
   );
 }

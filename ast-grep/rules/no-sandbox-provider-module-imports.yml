@@ -1,0 +1,93 @@
+id: no-sandbox-provider-module-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider().
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+ignores:
+  - packages/junior/src/chat/sandbox/provider.ts
+  - packages/junior/src/chat/sandbox/vercel/**
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["''](@/chat/sandbox/vercel|(\.{1,2}/)+(.+/)?sandbox/vercel)(/.*)?["'']$'
+---
+id: no-sandbox-provider-module-sibling-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider().
+# ast-grep's `*` also matches `/`, so this covers subdirectories too.
+files:
+  - packages/junior/src/chat/sandbox/*.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["'']\./vercel(/.*)?["'']$'
+---
+id: no-sandbox-provider-module-parent-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider().
+files:
+  - packages/junior/src/chat/sandbox/*/**/*.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["''](\.\./)+vercel(/.*)?["'']$'
+---
+id: no-docker-sandbox-provider-module-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider().
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+ignores:
+  - packages/junior/src/chat/sandbox/provider.ts
+  - packages/junior/src/chat/sandbox/docker/**
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["''](@/chat/sandbox/docker|(\.{1,2}/)+(.+/)?sandbox/docker)(/.*)?["'']$'
+---
+id: no-docker-sandbox-provider-module-sibling-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider().
+# ast-grep's `*` also matches `/`, so this covers subdirectories too.
+files:
+  - packages/junior/src/chat/sandbox/*.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["'']\./docker(/.*)?["'']$'
+---
+id: no-docker-sandbox-provider-module-parent-imports
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider().
+files:
+  - packages/junior/src/chat/sandbox/*/**/*.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["''](\.\./)+docker(/.*)?["'']$'

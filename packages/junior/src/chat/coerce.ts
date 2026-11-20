@@ -9,8 +9,3 @@ export function toOptionalNumber(value: unknown): number | undefined {
     ? value
     : undefined;
 }
-
-/** Type-guard: true when value is a non-null object (usable as Record). */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

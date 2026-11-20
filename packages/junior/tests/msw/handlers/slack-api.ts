@@ -3,6 +3,7 @@ import { TEST_USER_ID } from "../../fixtures/slack/factories/ids";
 import {
   slackOk,
   authTestOk,
+  botsInfoOk,
   teamInfoOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -15,8 +16,10 @@ import {
   conversationsInfoOk,
   conversationsJoinOk,
   conversationsListPage,
+  conversationsMembersPage,
   conversationsOpenOk,
   conversationsRepliesPage,
+  dndInfoOk,
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
   filesInfoOk,
@@ -38,14 +41,18 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
+  "bots.info",
   "team.info",
   "assistant.threads.setSuggestedPrompts",
   "assistant.threads.setTitle",
   "chat.postMessage",
   "chat.delete",
+  "chat.update",
   "chat.postEphemeral",
   "chat.getPermalink",
+  "chat.unfurl",
   "views.publish",
+  "views.open",
   "entity.presentDetails",
   "reactions.add",
   "reactions.remove",
@@ -53,8 +60,10 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.info",
   "conversations.join",
   "conversations.list",
+  "conversations.members",
   "conversations.open",
   "conversations.replies",
+  "dnd.info",
   "canvases.access.set",
   "canvases.create",
   "conversations.canvases.create",
@@ -75,8 +84,9 @@ export type SlackApiMethod = (typeof SUPPORTED_SLACK_API_METHODS)[number];
 
 export interface SlackMockHttpResponse {
   status?: number;
-  headers?: Record<string, string>;
-  body?: Record<string, unknown> | string;
+  headers?: Record<string, string> | undefined;
+  /** A stream body lets a file download arrive in chunks. */
+  body?: Record<string, unknown> | string | ReadableStream<Uint8Array>;
   /** Optional artificial latency before the HTTP response is returned. */
   delayMs?: number;
   /**
@@ -105,9 +115,15 @@ export interface CapturedSlackFileUploadCall {
   byteLength: number;
 }
 
+export interface CapturedSlackFileDownloadCall {
+  url: string;
+  headers: Record<string, string>;
+}
+
 const queuedResponses = new Map<string, SlackMockHttpResponse[]>();
 const capturedSlackApiCalls: CapturedSlackApiCall[] = [];
 const capturedSlackFileUploads: CapturedSlackFileUploadCall[] = [];
+const capturedSlackFileDownloads: CapturedSlackFileDownloadCall[] = [];
 
 function isSlackApiMethod(value: string): value is SlackApiMethod {
   return (SUPPORTED_SLACK_API_METHODS as readonly string[]).includes(value);
@@ -115,9 +131,9 @@ function isSlackApiMethod(value: string): value is SlackApiMethod {
 
 function normalizeHeaders(headers: Headers): Record<string, string> {
   const normalized: Record<string, string> = {};
-  headers.forEach((value, key) => {
+  for (const [key, value] of headers) {
     normalized[key.toLowerCase()] = value;
-  });
+  }
   return normalized;
 }
 
@@ -179,17 +195,17 @@ async function parseSlackApiRequestBody(
     const form = await request.formData();
     const parsed: Record<string, unknown> = {};
 
-    form.forEach((value, key) => {
+    for (const [key, value] of form) {
       if (typeof value === "string") {
         assignBodyValue(parsed, key, value);
-        return;
+        continue;
       }
       assignBodyValue(parsed, key, {
         name: value.name,
         size: value.size,
         type: value.type,
       });
-    });
+    }
 
     return parsed;
   }
@@ -220,6 +236,8 @@ function defaultSlackApiResponse(
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
     case "chat.delete":
+    case "chat.update":
+    case "chat.unfurl":
       return { body: slackOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
@@ -227,6 +245,7 @@ function defaultSlackApiResponse(
       return { body: chatGetPermalinkOk() };
     case "entity.presentDetails":
     case "views.publish":
+    case "views.open":
       return { body: slackOk() };
     case "reactions.add":
       return { body: reactionsAddOk() };
@@ -240,10 +259,14 @@ function defaultSlackApiResponse(
       return { body: conversationsJoinOk() };
     case "conversations.list":
       return { body: conversationsListPage() };
+    case "conversations.members":
+      return { body: conversationsMembersPage() };
     case "conversations.open":
       return { body: conversationsOpenOk() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
+    case "dnd.info":
+      return { body: dndInfoOk() };
     case "canvases.access.set":
       return { body: canvasesAccessSetOk() };
     case "canvases.create":
@@ -266,10 +289,17 @@ function defaultSlackApiResponse(
       return { body: filesGetUploadUrlOk() };
     case "files.completeUploadExternal":
       return { body: filesCompleteUploadOk() };
+    case "bots.info":
+      return {
+        body: botsInfoOk({
+          botId: typeof params["bot"] === "string" ? params["bot"] : undefined,
+        }),
+      };
     case "users.info":
       return {
         body: usersInfoOk({
-          userId: typeof params.user === "string" ? params.user : undefined,
+          userId:
+            typeof params["user"] === "string" ? params["user"] : undefined,
         }),
       };
     case "users.list":
@@ -305,7 +335,10 @@ function toHttpResponse(response: SlackMockHttpResponse): Response {
   const status = response.status ?? 200;
   const headers = response.headers;
 
-  if (typeof response.body === "string") {
+  if (
+    typeof response.body === "string" ||
+    response.body instanceof ReadableStream
+  ) {
     return new HttpResponse(response.body, {
       status,
       headers,
@@ -321,12 +354,12 @@ function toHttpResponse(response: SlackMockHttpResponse): Response {
 function getSlackConversationParam(
   params: Record<string, unknown>,
 ): { key: "channel" | "channel_id"; value: string } | undefined {
-  const channel = params.channel;
+  const channel = params["channel"];
   if (typeof channel === "string") {
     return { key: "channel", value: channel };
   }
 
-  const channelId = params.channel_id;
+  const channelId = params["channel_id"];
   if (typeof channelId === "string") {
     return { key: "channel_id", value: channelId };
   }
@@ -423,15 +456,20 @@ export function getCapturedSlackFileUploadCalls(): CapturedSlackFileUploadCall[]
   return [...capturedSlackFileUploads];
 }
 
+export function getCapturedSlackFileDownloadCalls(): CapturedSlackFileDownloadCall[] {
+  return [...capturedSlackFileDownloads];
+}
+
 export function resetSlackApiMockState(): void {
   queuedResponses.clear();
   capturedSlackApiCalls.length = 0;
   capturedSlackFileUploads.length = 0;
+  capturedSlackFileDownloads.length = 0;
 }
 
 export const slackApiHandlers = [
   http.post("https://slack.com/api/:method", async ({ params, request }) => {
-    const rawMethod = params.method;
+    const rawMethod = params["method"];
     if (typeof rawMethod !== "string" || !isSlackApiMethod(rawMethod)) {
       throw new Error(
         `[MSW] Unsupported Slack API method: ${String(rawMethod ?? "unknown")}`,
@@ -506,7 +544,11 @@ export const slackApiHandlers = [
     return toHttpResponse(response);
   }),
 
-  http.get("https://files.slack.com/:path*", async () => {
+  http.get("https://files.slack.com/:path*", async ({ request }) => {
+    capturedSlackFileDownloads.push({
+      url: request.url,
+      headers: normalizeHeaders(request.headers),
+    });
     const response = dequeueResponse(PRIVATE_FILE_DOWNLOAD_KEY) ?? {
       status: 200,
       body: "",

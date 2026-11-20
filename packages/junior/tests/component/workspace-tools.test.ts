@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   createSlackSource,
@@ -24,6 +25,11 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(
   () => ({
@@ -64,6 +70,7 @@ describe("Workspace tools", () => {
         id: "11111111-1111-4111-8111-111111111111",
         name: "sentry",
         setupScript: "pnpm install",
+        vcpus: null,
         repos: [
           {
             provider: "github",
@@ -105,6 +112,7 @@ describe("Workspace tools", () => {
         conversationId: conversationId!,
       } as const;
       const workspaceTools = createWorkspaceTools({
+        turnTools: rootTurnTools,
         conversationId: conversationId!,
         destination,
         egress: { fetch: async () => new Response("ok") },
@@ -115,14 +123,15 @@ describe("Workspace tools", () => {
           switch: async () => undefined,
         },
       });
-      const createTool = workspaceTools.createWorkspace!;
-      const updateTool = workspaceTools.updateWorkspace!;
-      const deleteTool = workspaceTools.deleteWorkspace!;
+      const createTool = workspaceTools["createWorkspace"]!;
+      const updateTool = workspaceTools["updateWorkspace"]!;
+      const deleteTool = workspaceTools["deleteWorkspace"]!;
       expect(createTool.description).toContain("`github`");
       expect(updateTool.description).toContain("`github`");
       const createInput = createTool.prepareArguments!({
         name: "relay",
         setup_script: "cargo fetch",
+        vcpus: 8,
         repos: [
           {
             provider: "github",
@@ -144,7 +153,7 @@ describe("Workspace tools", () => {
 
       expect(createTool.approvalMode).toBe("review");
       expect(createTool.describeProposal?.(createInput)).toBe(
-        "Create Workspace relay (1 repository; includes a setup script).",
+        "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
       );
       expect(updateTool.approvalMode).toBe("review");
       expect(updateTool.describeProposal?.(updateInput)).toBe(
@@ -158,6 +167,7 @@ describe("Workspace tools", () => {
         createTool.prepareArguments!({
           name: "relay",
           setup_script: null,
+          vcpus: null,
           repos: [
             {
               provider: "github",
@@ -221,6 +231,7 @@ describe("Workspace tools", () => {
 
       const delivered: LocalAgentReply[] = [];
       const results: LocalToolResult[] = [];
+      let firstRequestText = "";
 
       await runLocalAgentTurn(
         {
@@ -230,7 +241,14 @@ describe("Workspace tools", () => {
         {
           agentRunner: createModelAgentRunner(
             createModelStream([
-              { type: "toolCall", name: "listWorkspaces", arguments: {} },
+              {
+                type: "toolCall",
+                name: "listWorkspaces",
+                arguments: {},
+                onRequest: (context) => {
+                  firstRequestText = JSON.stringify(context.messages);
+                },
+              },
               {
                 type: "toolCall",
                 name: "switchWorkspace",
@@ -261,6 +279,7 @@ describe("Workspace tools", () => {
                 id: expect.any(String),
                 name: "relay",
                 setup_script: "cargo fetch",
+                vcpus: 8,
                 repos: [
                   {
                     provider: "github",
@@ -273,6 +292,7 @@ describe("Workspace tools", () => {
                 id: workspace.id,
                 name: "sentry-web",
                 setup_script: "pnpm install",
+                vcpus: null,
                 repos: [
                   {
                     provider: "github",
@@ -295,6 +315,11 @@ describe("Workspace tools", () => {
       expect(delivered).toEqual([
         { text: "The missing Workspace was not found." },
       ]);
+      // The context message names each Workspace and its repositories, so the
+      // agent can switch without a rejected clone or a listWorkspaces call.
+      expect(firstRequestText).toContain("<workspaces>");
+      expect(firstRequestText).toContain("- relay: getsentry/relay");
+      expect(firstRequestText).toContain("- sentry-web: getsentry/sentry");
       await expect(
         deleteTool.execute!(
           { id: workspace.id },
@@ -319,6 +344,7 @@ describe("Workspace tools", () => {
         id: "11111111-1111-4111-8111-111111111111",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [{ provider: "github", repo: "getsentry/sentry" }],
       };
@@ -352,11 +378,12 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
       await expect(
-        tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+        tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
       ).resolves.toMatchObject({
         workspace: { id: workspace.id },
         status: "ready",
@@ -394,6 +421,7 @@ describe("Workspace tools", () => {
         id: "33333333-3333-4333-8333-333333333333",
         name: "sentry-missing-snapshot",
         setupScript: "devenv sync",
+        vcpus: null,
         repos: [],
       };
       await getDb().insert(juniorWorkspaces).values({
@@ -423,11 +451,12 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
       await expect(
-        tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+        tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
       ).rejects.toBe(enqueueError);
       expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
         workspace: expect.objectContaining({ id: workspace.id }),
@@ -445,6 +474,7 @@ describe("Workspace tools", () => {
       id: "44444444-4444-4444-8444-444444444444",
       name: "sentry-retry-snapshot",
       setupScript: "devenv sync",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -486,11 +516,12 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: vi.fn(),
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     const tools = createWorkspaceTools(context);
     await expect(
-      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+      tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({ status: "building" });
     expect(sendNextWorkspaceSnapshotJob).toHaveBeenCalledWith({
       workspaceId: workspace.id,
@@ -504,6 +535,7 @@ describe("Workspace tools", () => {
       id: "22222222-2222-4222-8222-222222222222",
       name: "sentry-building",
       setupScript: "devenv sync",
+      vcpus: null,
       snapshot: null,
       repos: [{ provider: "github", repo: "getsentry/sentry" }],
     };
@@ -545,6 +577,7 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: switchWorkspace,
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     let subscribedBeforeSend = false;
@@ -555,7 +588,7 @@ describe("Workspace tools", () => {
 
     const tools = createWorkspaceTools(context);
     await expect(
-      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+      tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id, name: workspace.name },
       status: "building",

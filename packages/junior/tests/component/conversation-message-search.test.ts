@@ -9,7 +9,7 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation message search", () => {
-  it("returns only public user and assistant messages from the authorized workspace", async () => {
+  it("returns only public user and assistant messages from public Slack conversations", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -98,14 +98,10 @@ describe("conversation message search", () => {
         currentConversationId: "slack:CREQUEST:1700000000.100000",
         filters: { query: "launch checklist" },
         limit: 10,
-        scope: {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: "T123",
-        },
       });
 
-      expect(results).toHaveLength(2);
+      // Public is public: another Slack workspace matches too.
+      expect(results).toHaveLength(3);
       expect(results).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -120,21 +116,17 @@ describe("conversation message search", () => {
             providerDestinationId: "CARCHIVE",
             role: "assistant",
           }),
+          expect.objectContaining({ providerDestinationId: "COTHERWORKSPACE" }),
         ]),
       );
       expect(results.map((result) => result.excerpt).join(" ")).not.toMatch(
-        /private|system|other workspace/i,
+        /private|system/i,
       );
 
       const channelOnly = await search.search({
         currentConversationId: "slack:CREQUEST:1700000000.100000",
         filters: { channelId: "CARCHIVE" },
         limit: 10,
-        scope: {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: "T123",
-        },
       });
       expect(channelOnly).toEqual([
         expect.objectContaining({
@@ -150,11 +142,6 @@ describe("conversation message search", () => {
           query: "rollback",
         },
         limit: 10,
-        scope: {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: "T123",
-        },
       });
       expect(combined).toEqual([
         expect.objectContaining({
@@ -208,11 +195,6 @@ describe("conversation message search", () => {
           annotation: "ACME/WIDGET_V2",
         },
         limit: 10,
-        scope: {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: "T123",
-        },
       });
       expect(annotated).toEqual(
         expect.arrayContaining([
@@ -232,11 +214,6 @@ describe("conversation message search", () => {
           annotation: "acme/widget_v2#12",
         },
         limit: 10,
-        scope: {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: "T123",
-        },
       });
       expect(exactNested).toEqual([
         expect.objectContaining({

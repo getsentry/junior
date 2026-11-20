@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
@@ -10,6 +10,7 @@ import {
   loadSnapshotsForProfile,
 } from "@/chat/sandbox/snapshot/store";
 import type { JuniorDatabase } from "@/db/db";
+import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import type { Workspace, WorkspaceSnapshot } from "./types";
 import {
@@ -17,6 +18,9 @@ import {
   WorkspaceValidationError,
   type WorkspaceRecipeInput,
 } from "./validation";
+
+// Postgres `unique_violation`: another Workspace already has the name.
+const UNIQUE_VIOLATION = "23505";
 
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
@@ -27,6 +31,7 @@ function workspaceFromRows(
     id: row.id,
     name: row.name,
     setupScript: row.setupScript,
+    vcpus: row.vcpus,
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -95,32 +100,13 @@ function sameWorkspaceRepos(
   return currentIds.every((value, index) => value === nextIds[index]);
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (
-      typeof current === "object" &&
-      current !== null &&
-      "code" in current &&
-      (current as { code?: unknown }).code === "23505"
-    ) {
-      return true;
-    }
-    current =
-      typeof current === "object" && current !== null && "cause" in current
-        ? (current as { cause?: unknown }).cause
-        : undefined;
-  }
-  return false;
-}
-
 async function cleanupSnapshotBuilders(
   workspaceId: string,
   names: string[],
 ): Promise<void> {
   if (names.length === 0) return;
   try {
-    await deleteWorkspaceSnapshotBuilders(names);
+    await getSandboxProvider().deleteWorkspaceSnapshotBuilders(names);
   } catch (error) {
     logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
       "app.workspace.id": workspaceId,
@@ -225,7 +211,8 @@ export async function getWorkspace(
 /** Create one install-wide Workspace recipe. */
 export async function createWorkspace(input: {
   name: string;
-  setupScript?: string;
+  setupScript?: string | undefined;
+  vcpus?: number | null | undefined;
   repos: Array<{
     provider: string;
     repo: string;
@@ -243,13 +230,14 @@ export async function createWorkspace(input: {
         id,
         name: recipe.name,
         setupScript: recipe.setupScript,
+        vcpus: recipe.vcpus,
         createdAt: now,
         updatedAt: now,
       });
       await replaceWorkspaceRepos(db, id, recipe.repos);
     });
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (isPostgresErrorCode(error, UNIQUE_VIOLATION)) {
       throw new WorkspaceValidationError(
         `Workspace name already exists: ${recipe.name}`,
       );
@@ -265,7 +253,8 @@ export async function updateWorkspace(
   id: string,
   input: {
     name: string;
-    setupScript?: string;
+    setupScript?: string | undefined;
+    vcpus?: number | null | undefined;
     repos: Array<{
       provider: string;
       repo: string;
@@ -287,6 +276,7 @@ export async function updateWorkspace(
       const existing = existingRows[0];
       if (!existing) return undefined;
       const existingRepos = await loadWorkspaceRepos(db, id);
+      // Snapshot contents do not depend on vCPUs, so a size change keeps them.
       const snapshotChanged =
         existing.setupScript !== recipe.setupScript ||
         !sameWorkspaceRepos(existingRepos, recipe.repos);
@@ -295,6 +285,7 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          vcpus: recipe.vcpus,
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))
@@ -308,7 +299,7 @@ export async function updateWorkspace(
     if (!result) return undefined;
     await cleanupSnapshotBuilders(id, result.builderNames);
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (isPostgresErrorCode(error, UNIQUE_VIOLATION)) {
       throw new WorkspaceValidationError(
         `Workspace name already exists: ${recipe.name}`,
       );

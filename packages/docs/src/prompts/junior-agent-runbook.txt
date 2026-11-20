@@ -63,9 +63,9 @@ Success:
 
 ## Phase 3 — HUMAN GATE: storage and Vercel project settings
 
-Junior requires Postgres and Redis. The default memory plugin requires Postgres
-with pgvector support. Snapshot warmup requires REDIS_URL during the build and
-Vercel OIDC enabled. Do not guess Marketplace CLI product slugs.
+Junior requires Postgres with pgvector support, and Redis. Snapshot warmup
+requires REDIS_URL during the build and Vercel OIDC enabled. Do not guess
+Marketplace CLI product slugs.
 
 Stop and ask the human to open the linked Vercel project and complete:
 1. Storage: create or connect a Postgres database with pgvector support, such as
@@ -96,15 +96,17 @@ silently replacing it.
 
   JUNIOR_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
   CRON_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
+  JUNIOR_ENCRYPTION_KEYS=$(node -e "process.stdout.write(new Date().toISOString().slice(0, 7) + ':' + require('node:crypto').randomBytes(32).toString('base64url'))")
   for ENV in production preview development; do
     printf '%s' "$JUNIOR_SECRET" | pnpm dlx vercel@latest env add JUNIOR_SECRET "$ENV" $VERCEL_SCOPE
     printf '%s' "$CRON_SECRET" | pnpm dlx vercel@latest env add CRON_SECRET "$ENV" $VERCEL_SCOPE
+    printf '%s' "$JUNIOR_ENCRYPTION_KEYS" | pnpm dlx vercel@latest env add JUNIOR_ENCRYPTION_KEYS "$ENV" $VERCEL_SCOPE
     printf '%s' '900000' | pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS "$ENV" $VERCEL_SCOPE
   done
-  unset JUNIOR_SECRET CRON_SECRET
+  unset JUNIOR_SECRET CRON_SECRET JUNIOR_ENCRYPTION_KEYS
 
 Success:
-- JUNIOR_SECRET, CRON_SECRET, and VERCEL_SANDBOX_KEEPALIVE_MS are listed in all
+- JUNIOR_SECRET, CRON_SECRET, JUNIOR_ENCRYPTION_KEYS, and VERCEL_SANDBOX_KEEPALIVE_MS are listed in all
   three environments. Their values were never printed.
 
 ## Phase 5 — First production deploy
@@ -134,7 +136,7 @@ Stop and send the human:
   Create the Slack app using:
   https://junior.sentry.dev/start-here/slack-app-setup/
 
-  Before configuring Event Subscriptions, Interactivity, or the slash command:
+  Before configuring Event Subscriptions or Interactivity:
   1. Configure the required bot scopes and install the app to the workspace.
   2. In Vercel, add SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN to Production,
      Preview, and Development for this project.
@@ -161,7 +163,7 @@ Success:
 ## Phase 8 — HUMAN GATE: connect and verify Slack
 
 Stop and ask the human to finish the Slack setup guide using this request URL
-for Event Subscriptions, Interactivity, and the configured slash command:
+for Event Subscriptions and Interactivity:
 
   <STABLE_URL>/api/webhooks/slack
 
@@ -170,16 +172,11 @@ bot to a test channel, mention it, and confirm that it reacts and replies in the
 same thread. If URL validation or delivery fails, use:
   https://junior.sentry.dev/start-here/verify-and-troubleshoot/
 
-Also verify the Vercel deployment contains:
-- the /api/internal/heartbeat cron
-- Queue triggers for /api/internal/agent/continue and /api/internal/plugin/tasks
-
 ## Done
 
 Report only non-secret results:
 - local app directory
 - linked Vercel project and production URL
 - health result
-- heartbeat and Queue trigger result
 - Slack reply result
 - any optional setup left undone

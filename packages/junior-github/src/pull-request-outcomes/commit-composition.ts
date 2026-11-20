@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { botLoginFromEmail, isBotLogin } from "../webhooks/ownership.js";
 
@@ -48,6 +48,7 @@ export async function classifyGitHubPullRequestCommitComposition(args: {
   let inspectedCommits = 0;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const commits = commitPageSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging at the first page that settles the answer.
       await args.loadPage(page, PAGE_SIZE),
     );
     inspectedCommits += commits.length;

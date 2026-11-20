@@ -1,7 +1,9 @@
 name: PR Risk Experiment
 
 on:
-  pull_request_target:
+  # Needs a write token on fork PRs to apply the risk label. No step checks
+  # out or runs PR code; the action reads the PR through the API.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -30,7 +32,7 @@ jobs:
           apply-label: "true"
 
       - name: Upload risk result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: risk-pr-result
           path: risk-pr-result.json

@@ -1,28 +1,48 @@
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
-  type Identity,
-  type User,
   type Actor,
+  type PluginWorkOwner,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
-  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  readGitHubBody,
+  requesterPerson,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
+import type { GitHubDb } from "../db/database.js";
+import {
+  CONVERT_PULL_REQUEST_TO_DRAFT,
+  MARK_PULL_REQUEST_READY_FOR_REVIEW,
+} from "../graphql-documents.js";
+import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
+import {
+  checkPullRequestDescription,
+  PULL_REQUEST_BODY_RULES,
+} from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
     title: z
       .string()
       .trim()
@@ -32,9 +52,7 @@ const inputSchema = z
     body: z
       .string()
       .optional()
-      .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
-      ),
+      .describe(`Replacement pull request body. ${PULL_REQUEST_BODY_RULES}`),
     base: z
       .string()
       .trim()
@@ -63,27 +81,11 @@ const inputSchema = z
     { message: "At least one pull request field must be provided." },
   );
 
-// GitHub's REST API cannot change draft state; only these GraphQL mutations can.
-// Both alias the mutation field to `result` so one schema reads either response.
-const MARK_READY_FOR_REVIEW = {
-  operationName: "MarkPullRequestReadyForReview",
-  query:
-    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
-const CONVERT_TO_DRAFT = {
-  operationName: "ConvertPullRequestToDraft",
-  query:
-    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
 const draftMutationResponseSchema = z.object({
   data: z.object({
     result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
   }),
 });
-const graphqlErrorsSchema = z.object({
-  errors: z.array(z.object({ message: z.string() })).min(1),
-});
-
 const pullRequestSchema = z.object({
   base: z.string(),
   body: z.string().nullable(),
@@ -97,7 +99,7 @@ const pullRequestSchema = z.object({
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
@@ -112,33 +114,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
-  return "GitHub request failed";
-}
-
 /** Change draft state through GitHub GraphQL and return the confirmed value. */
 async function setPullRequestDraft(input: {
   draft: boolean;
@@ -146,53 +121,35 @@ async function setPullRequestDraft(input: {
   nodeId: string;
   repo: string;
 }): Promise<boolean> {
-  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
-  const response = await input.egress.fetch({
-    provider: "github",
+  const mutation = input.draft
+    ? CONVERT_PULL_REQUEST_TO_DRAFT
+    : MARK_PULL_REQUEST_READY_FOR_REVIEW;
+  const response = await githubApi(input.egress, {
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
-    request: new Request("https://api.github.com/graphql", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operationName: mutation.operationName,
-        query: mutation.query,
-        variables: { id: input.nodeId },
-      }),
-    }),
+    method: "POST",
+    path: "/graphql",
+    body: {
+      ...mutation,
+      variables: { id: input.nodeId },
+    },
   });
-  const payload = await readJson(response);
+  const payload = response.body;
   const isDraft =
     draftMutationResponseSchema.safeParse(payload).data?.data.result.pullRequest
       .isDraft;
   if (!response.ok || isDraft !== input.draft) {
     throw new Error(
-      `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`,
+      `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`,
     );
   }
   return isDraft;
 }
 
-function githubGraphqlErrorMessage(payload: unknown): string {
-  const result = graphqlErrorsSchema.safeParse(payload);
-  return result.success
-    ? result.data.errors.map((error) => error.message).join("; ")
-    : githubApiErrorMessage(payload);
-}
-
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(ctx: {
-  actor?: Actor;
-  automationLink?: { url: string };
-  conversationId?: string;
-  egress: PluginEgress;
-  log: PluginLogger;
-  events: { canSubscribe: boolean };
-  slack?: { conversationLink?: { url?: string } };
-  source?: Source;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
+export function createGitHubUpdatePullRequestTool(
+  /** Set when the description check experiment is on. */
+  descriptionChecks = false,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -204,7 +161,21 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: {
+        actor?: Actor | undefined;
+        conversationId?: string | undefined;
+        db: unknown;
+        decider: PluginDecider;
+        egress: PluginEgress;
+        log: PluginLogger;
+        events: { canSubscribe: boolean };
+        conversationLink?: { url: string };
+        resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+      },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
@@ -213,43 +184,51 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (descriptionChecks && update.body !== undefined) {
+        await checkPullRequestDescription(ctx.decider, update.body);
+      }
       const repo = parseRepo(update.repo);
+      const requester = await resolveGitHubRequester(ctx);
+      const currentBody =
+        update.body !== undefined
+          ? await readGitHubBody(ctx.egress, {
+              operation: "github.pull.get",
+              path: `${repoPath(repo)}/pulls/${update.pull_request}`,
+            })
+          : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                await appendGitHubRequesterAttribution(update.body, ctx),
+                appendGitHubRequesterAttribution(
+                  update.body,
+                  requester,
+                  currentBody,
+                ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
-                ctx.slack?.conversationLink?.url,
+                ctx.conversationLink?.url,
               ),
             }
           : undefined),
         ...(update.base !== undefined ? { base: update.base } : undefined),
         ...(update.state !== undefined ? { state: update.state } : undefined),
       };
-      const pullUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${update.number}`;
       const hasRestUpdate = Object.keys(payload).length > 0;
-      const response = await ctx.egress.fetch({
-        provider: "github",
+      const response = await githubApi(ctx.egress, {
         operation: hasRestUpdate ? "github.pull.update" : "github.pull.get",
-        request: new Request(pullUrl, {
-          method: hasRestUpdate ? "PATCH" : "GET",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            ...(hasRestUpdate
-              ? { "Content-Type": "application/json" }
-              : undefined),
-          },
-          ...(hasRestUpdate ? { body: JSON.stringify(payload) } : undefined),
-        }),
+        path: `${repoPath(repo)}/pulls/${update.pull_request}`,
+        ...(hasRestUpdate ? { method: "PATCH", body: payload } : undefined),
       });
-      const parsed = await readJson(response);
+      const parsed = response.body;
       if (!response.ok) {
-        throw new Error(
-          `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`,
-        );
+        const message = `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+        // 404 and 422 mean the model named a missing pull request or GitHub
+        // rejected the requested change, such as a base change in a stack.
+        if (response.status === 404 || response.status === 422) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const providerResult = z
         .object({
@@ -277,12 +256,21 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           repo: repo.ref,
         });
       }
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubPullRequestSubscribable({
-            number: providerResult.number,
-            repo: repo.ref,
-          })
-        : undefined;
+      // Like attribution, each person who asks Junior to change the pull
+      // request becomes one of its requesters.
+      const identity = requesterPerson(requester)?.identity;
+      if (identity) {
+        await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+          identityId: identity.id,
+          number: providerResult.number,
+          repositoryFullName: repo.ref,
+        });
+      }
+      const subscribable = gitHubPullRequestSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        number: providerResult.number,
+        repo: repo.ref,
+      });
       const data: PullRequest = {
         base: providerResult.base.ref,
         body: providerResult.body,

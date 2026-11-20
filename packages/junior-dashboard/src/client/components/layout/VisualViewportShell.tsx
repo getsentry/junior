@@ -6,13 +6,13 @@ import { cn } from "../../styles";
 /**
  * Own the dashboard visual-viewport shell.
  *
- * Only this component may pin the conversation workspace to visualViewport
+ * Only this component may pin pages with separate scroll panes to visualViewport
  * geometry and write the related CSS variables / body scroll lock.
  */
 export function VisualViewportShell(props: {
   children: ReactNode;
   className?: string;
-  /** Pin the shell to the mobile visual viewport (conversation routes). */
+  /** Pin pages with separate scroll panes to the mobile visual viewport. */
   enabled: boolean;
   style?: CSSProperties;
 }) {

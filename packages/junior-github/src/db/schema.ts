@@ -1,13 +1,15 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { z } from "zod";
+import * as z from "zod";
 
 export const githubPullRequestStateSchema = z.enum([
   "closed_unmerged",
@@ -18,6 +20,12 @@ export const githubPullRequestStateSchema = z.enum([
 export type GitHubPullRequestState = z.output<
   typeof githubPullRequestStateSchema
 >;
+
+/**
+ * What waits on the requester of a Junior pull request: merge it, or review
+ * it. They take one, not both.
+ */
+export type GitHubPullRequestAction = "merge" | "review";
 
 export const githubPullRequestCommitCompositionSchema = z.enum([
   "junior_only",
@@ -70,6 +78,13 @@ export const juniorGitHubIssues = pgTable(
   ],
 );
 
+/** A merge conflict fix that Junior started: the event it published. */
+export interface GitHubConflictFix {
+  atMs: number;
+  /** The head commit that the fix was for. */
+  headSha: string;
+}
+
 /** Current provider projection for pull requests classified as Junior-owned. */
 export const juniorGitHubPullRequests = pgTable(
   "junior_github_pull_requests",
@@ -85,10 +100,44 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    /** The daily reconcile compares this with GitHub. */
+    draft: boolean("draft").notNull().default(false),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    /**
+     * The requester's next action that Junior last derived from GitHub, and
+     * shows in the Inbox. Null when no action waits on them.
+     */
+    nextAction: text("next_action").$type<GitHubPullRequestAction>(),
+    /**
+     * Webhooks that asked to check the next action. The check runs again
+     * when this changes during a check.
+     */
+    readySyncRequests: integer("ready_sync_requests").notNull().default(0),
+    /**
+     * The request that runs the current check. Null when no check runs.
+     */
+    readySyncId: integer("ready_sync_id"),
+    /** When the current check started. */
+    readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /**
+     * When a person last chose Resume on the stopped merge conflict item.
+     * It counts as activity by a person, so the fix count starts again.
+     */
+    conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
+      withTimezone: true,
+    }),
+    /**
+     * The latest merge conflict fixes that Junior started, oldest first.
+     * Only these count as fixes, so a merge or force push for work that a
+     * person asked for does not.
+     */
+    conflictFixes: jsonb("conflict_fixes")
+      .$type<GitHubConflictFix[]>()
+      .notNull()
+      .default([]),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
@@ -126,8 +175,37 @@ export const juniorGitHubPullRequestIssues = pgTable(
   ],
 );
 
+/**
+ * People who asked Junior to open or update a pull request. Each row links
+ * the pull request to the Junior identity that acted. The user and any linked
+ * GitHub account come from that identity in core when a webhook needs them,
+ * so they stay correct when the person links an account later. The first row
+ * for a number is the person who asked Junior to open it. The create tool
+ * saves that row after GitHub opens the pull request.
+ */
+export const juniorGitHubPullRequestRequesters = pgTable(
+  "junior_github_pull_request_requesters",
+  {
+    /** Lowercase `owner/name`. */
+    repositoryFullName: text("repository_full_name").notNull(),
+    number: integer("number").notNull(),
+    /** Core `junior_identities.id` of the person who acted. */
+    identityId: text("identity_id").notNull(),
+    /** The Conversation where the person asked Junior to open the pull request. */
+    conversationId: text("conversation_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.repositoryFullName, table.number, table.identityId],
+    }),
+  ],
+);
+
 export const githubSqlSchema = {
   juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
+  juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 };

@@ -115,7 +115,6 @@ describe("normalizeToolResult", () => {
           id: "12345",
           label: "actor",
         },
-        acceptedPermissions: "contents=write",
         grant: {
           access: "write",
           name: "user-write",
@@ -139,12 +138,17 @@ describe("normalizeToolResult", () => {
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
-        "Junior had a credential lease for this grant and forwarded the request.",
+        "The runtime had a credential lease for this grant and forwarded the request.",
       ),
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
-        "Do not diagnose this as a missing user token or a local Junior runtime block",
+        "Do not diagnose this as a missing user token or a local runtime block",
+      ),
+    });
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining(
+        "Read the provider's error in the command output before you choose a cause.",
       ),
     });
     expect(result.content[0]).toMatchObject({
@@ -162,6 +166,41 @@ describe("normalizeToolResult", () => {
     });
   });
 
+  it("formats egress policy denials as deterministic tool text", () => {
+    const details = {
+      command: "git push origin main",
+      exit_code: 1,
+      stdout: "",
+      stderr: "error: RPC failed; HTTP 403 curl 22",
+      permission_denied: {
+        message:
+          "The runtime never pushes to the default branch (main) of getsentry/junior.",
+        method: "POST",
+        provider: "github",
+        source: "policy",
+        upstreamHost: "github.com",
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      },
+    };
+
+    const text = normalizeToolResult(details).content[0];
+
+    expect(text).toMatchObject({
+      type: "text",
+      text: expect.stringContaining(
+        "The runtime egress policy denied the request. It did not reach the provider.\nThe runtime never pushes to the default branch (main) of getsentry/junior.",
+      ),
+    });
+    expect(text).toMatchObject({
+      text: expect.stringContaining(
+        "Request: POST github.com/getsentry/junior.git/git-receive-pack",
+      ),
+    });
+    expect(text).toMatchObject({
+      text: expect.stringContaining("stderr:\nerror: RPC failed; HTTP 403"),
+    });
+  });
+
   it("formats upstream permission denials from required structured envelopes", () => {
     const details = {
       command: "git push",
@@ -169,7 +208,6 @@ describe("normalizeToolResult", () => {
       stdout: "",
       stderr: "remote: Permission denied",
       permission_denied: {
-        acceptedPermissions: "contents=write",
         grant: {
           access: "write",
           name: "user-write",
@@ -197,11 +235,11 @@ describe("normalizeToolResult", () => {
     expect(result.details).toEqual(details);
     expect(result.content[0]).toMatchObject({
       type: "text",
-      text: expect.stringContaining("Upstream permission denied."),
+      text: expect.stringContaining("Upstream provider rejected the request."),
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
-        "Do not diagnose this as a missing user token or a local Junior runtime block",
+        "Do not diagnose this as a missing user token or a local runtime block",
       ),
     });
   });

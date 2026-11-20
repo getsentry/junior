@@ -1,14 +1,22 @@
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
-test("opens a registered plugin page from primary navigation", async ({
+test("opens a registered plugin page from the profile menu", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
 
-  const memoriesLink = page.getByRole("link", { name: "Memories" });
+  await page
+    .getByRole("button", {
+      name: "Open profile menu for Dashboard User",
+      exact: true,
+    })
+    .click();
+  const memoriesLink = page
+    .locator("#profile-popover")
+    .getByRole("menuitem", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 
@@ -73,19 +81,9 @@ test("opens a registered plugin page from primary navigation", async ({
     }),
   ).toBeVisible();
   await screenshot(page, "memories-library");
-  await expect(page.getByText("Private").last()).toBeVisible();
-  const privateTab = page.getByRole("tab", { name: "Private 24" });
-  await privateTab.click();
-  await expect(privateTab).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(/filter=private/);
-  const navLinks = await page.locator("header nav a").allTextContents();
-  expect(navLinks.at(-1)?.trim()).toBe("System");
 });
 
-test("opens memory details in a slide-out drawer", async ({
-  page,
-  dashboard,
-}) => {
+test("opens memory details beside the library", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto(`${dashboard.baseURL}/memories/library`);
 
@@ -94,51 +92,35 @@ test("opens memory details in a slide-out drawer", async ({
   });
   await memory.click();
   await expect(page).toHaveURL(/\/memories\/memory-1/);
+  const details = page.getByRole("complementary", { name: "Memory details" });
+  await expect(
+    details.getByRole("heading", { name: "Preference" }),
+  ).toBeVisible();
+  await expect(details.getByText("From a Slack conversation")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The docked panel is not modal: the list stays usable beside it.
+  await expect(memory).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(page).toHaveURL(/\/memories\/library$/);
+  await expect(memory).toBeFocused();
   await expect(
     page
       .getByRole("navigation", { name: "Memory navigation" })
       .getByRole("link", { name: "Memories" }),
   ).toHaveAttribute("aria-current", "page");
-  const details = page.getByRole("dialog", { name: "What Junior remembers" });
-  await expect(details).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("hidden");
-  const closeMemoryDetails = details.getByRole("button", {
-    name: "Close memory details",
-  });
-  await expect(closeMemoryDetails).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(closeMemoryDetails).not.toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeMemoryDetails).toBeFocused();
-  await expect(details.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(details.getByText(/Preference · Private ·/)).toBeVisible();
-  await expect(
-    details.getByText(/Junior learned this from a Slack conversation/),
-  ).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("");
-  await expect(memory).toBeFocused();
 
   await page.setViewportSize({ height: 844, width: 390 });
   await memory.click();
-  const mobileDetails = page.getByRole("dialog", {
-    name: "What Junior remembers",
-  });
+  const mobileDetails = page.getByRole("dialog", { name: "Preference" });
   await expect(mobileDetails).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("hidden");
   await expect(
-    mobileDetails.getByText("Why Junior remembers this"),
+    mobileDetails.getByRole("button", { name: "Forget this memory" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(memory).toBeFocused();
 });
 
 test("renders an empty registered plugin page", async ({ page, dashboard }) => {
@@ -181,15 +163,6 @@ test("searches, paginates, and forgets plugin page records", async ({
     dashboardRequestCount += 1;
     await route.fallback();
   });
-  const countQueries: string[] = [];
-  await page.route("**/api/plugins/memory/counts*", async (route) => {
-    countQueries.push(new URL(route.request().url()).searchParams.get("q")!);
-    await route.fulfill({
-      json: forgotMemory
-        ? { active: 0, personal: 0, public: 0 }
-        : { active: 3, personal: 1, public: 2 },
-    });
-  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -204,7 +177,7 @@ test("searches, paginates, and forgets plugin page records", async ({
             {
               actions: [
                 {
-                  confirmation: "Forget this memory?",
+                  confirmation: "Forget this memory for everyone?",
                   href: "/api/plugins/memory/memories/memory-search",
                   label: "Forget",
                   method: "DELETE",
@@ -250,7 +223,6 @@ test("searches, paginates, and forgets plugin page records", async ({
             observedAt: "2026-07-30T12:00:00.000Z",
             origin: "explicit",
             sourcePlatform: "slack",
-            visibility: "private",
           },
         });
         return;
@@ -262,7 +234,13 @@ test("searches, paginates, and forgets plugin page records", async ({
     },
   );
 
-  await page.goto(`${dashboard.baseURL}/memories/library`);
+  // Load the summary first, so the forget must invalidate a cached copy.
+  await page.goto(`${dashboard.baseURL}/memories`);
+  await expect.poll(() => dashboardRequestCount).toBe(1);
+  const memoryNavigation = page.getByRole("navigation", {
+    name: "Memory navigation",
+  });
+  await memoryNavigation.getByRole("link", { name: "Memories" }).click();
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -270,12 +248,6 @@ test("searches, paginates, and forgets plugin page records", async ({
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
-  await expect(page.getByRole("tab", { name: "All 3" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Public 2" })).toBeVisible();
-  expect(countQueries).toEqual(["runbook"]);
-  const privateTab = page.getByRole("tab", { name: "Private 1" });
-  await privateTab.click();
-  await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
@@ -290,8 +262,6 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
-  await page.getByRole("tab", { name: /^All/ }).click();
-  await expect(page).not.toHaveURL(/filter=/);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -313,15 +283,18 @@ test("searches, paginates, and forgets plugin page records", async ({
     }),
   ).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", {
       name: /^View memory details: Deploy runbooks live in Notion/,
     })
     .click();
   await page
-    .getByRole("dialog", { name: "What Junior remembers" })
+    .getByRole("complementary", { name: "Memory details" })
     .getByRole("button", { name: "Forget this memory" })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Forget this memory for everyone?" })
+    .getByRole("button", { name: "Forget" })
     .evaluate((button) => {
       button.click();
       button.click();
@@ -329,11 +302,137 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: "All 0" })).toBeVisible();
   expect(forgetRequests).toBe(1);
-  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
+
+  await memoryNavigation.getByRole("link", { name: "Overview" }).click();
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+});
+
+test("lists archived memories and restores one", async ({
+  page,
+  dashboard,
+}) => {
+  let restoreMethod: string | undefined;
+  let restoreBody: unknown;
+  let activeReads = 0;
+  // Off when the permalink opens, as if the memory were past the first page.
+  let listed = true;
+  // Holds the first archived list read, so the tab switch can be checked.
+  let releaseArchived = () => {};
+  const archivedGate = new Promise<void>((resolve) => {
+    releaseArchived = resolve;
+  });
+  await page.route("**/api/user-pages/memory/memories*", async (route) => {
+    const archived =
+      new URL(route.request().url()).searchParams.get("filter") === "archived";
+    if (archived) await archivedGate;
+    const records = !archived
+      ? [{ id: "memory-1", title: "First page memory." }]
+      : restoreMethod || !listed
+        ? []
+        : [
+            {
+              id: "memory-archived",
+              metadata: [
+                { label: "Type", value: "Knowledge" },
+                { label: "Learned", value: "Automatic" },
+                { label: "Source", value: "Slack" },
+                { label: "Remembered", value: "Jul 1, 2026, 12:00 PM" },
+                { label: "Archived", value: "Jul 30, 2026, 12:00 PM" },
+                { label: "Reason", value: "Contradicted" },
+              ],
+              title: "Junior's updatePlan tool does not persist plan steps.",
+            },
+          ];
+    await route.fulfill({
+      json: {
+        type: "list",
+        emptyText: archived ? "No archived memories." : "No memories yet.",
+        records,
+        searchPlaceholder: "Search memories",
+      },
+    });
+  });
+  await page.route(
+    "**/api/plugins/memory/memories/memory-archived**",
+    async (route) => {
+      if (route.request().method() === "PATCH") {
+        restoreMethod = route.request().method();
+        restoreBody = route.request().postDataJSON();
+        await route.fulfill({
+          json: {
+            content: "Junior's updatePlan tool does not persist plan steps.",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: "memory-archived",
+            kind: "knowledge",
+            observedAt: "2026-07-01T12:00:00.000Z",
+            origin: "automatic",
+            sourcePlatform: "slack",
+          },
+        });
+        return;
+      }
+      if (
+        new URL(route.request().url()).searchParams.get("archived") !== "true"
+      ) {
+        activeReads += 1;
+      }
+      await route.fulfill({
+        json: {
+          archiveReason: "contradicted",
+          archivedAt: "2026-07-30T12:00:00.000Z",
+          content: "Junior's updatePlan tool does not persist plan steps.",
+          createdAt: "2026-07-01T12:00:00.000Z",
+          id: "memory-archived",
+          kind: "knowledge",
+          observedAt: "2026-07-01T12:00:00.000Z",
+          origin: "automatic",
+          sourcePlatform: "slack",
+        },
+      });
+    },
+  );
+
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto(`${dashboard.baseURL}/memories/library`);
+  await page
+    .getByRole("tablist", { name: "Memory state" })
+    .getByRole("tab", { name: "Archived" })
+    .click();
+  await expect(page).toHaveURL(/filter=archived/);
+  // Active rows do not stay on the Archived tab while it loads.
+  await expect(
+    page.getByRole("button", { name: /^View memory details: First page/ }),
+  ).toHaveCount(0);
+  releaseArchived();
+  await expect(
+    page.getByRole("heading", { name: "Archived memories" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: /^View memory details: Junior's updatePlan tool/,
+    })
+    .click();
+  const details = page.getByRole("complementary", { name: "Memory details" });
+  await expect(details.getByText("Contradicted")).toBeVisible();
+  await expect(
+    details.getByRole("button", { name: "Forget this memory" }),
+  ).toHaveCount(0);
+  await screenshot(page, "memories-archived-details");
+
+  // A permalink opens without the list, through the archived detail read.
+  listed = false;
+  await page.goto(
+    `${dashboard.baseURL}/memories/memory-archived?filter=archived`,
+  );
+  await details.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("No archived memories.")).toBeVisible();
+  expect(restoreMethod).toBe("PATCH");
+  expect(restoreBody).toEqual({ archived: false });
+  expect(activeReads).toBe(0);
+  await screenshot(page, "memories-archived-empty");
 });

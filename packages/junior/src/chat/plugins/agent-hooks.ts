@@ -5,6 +5,7 @@ import {
   pluginEventsSchema,
   promptContextSchema,
   promptMessageSchema,
+  eventDataSchema,
   eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
@@ -21,61 +22,93 @@ import type {
   PluginRouteApp,
   Platform,
   Event,
+  EventData,
+  EventPublisher,
   SlackConversationLink,
   PluginRegistration,
+  PluginToolDefinition,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
+import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { createPluginConversations } from "@/chat/conversations/plugin-search";
+import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, type SetSpanAttributes } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
+import {
+  runAfterToolExecuteHooks,
+  type AfterToolHookInput,
+  type ToolHookSandbox,
+  type ToolHookTurn,
+  type ToolResultNudge,
+} from "@/chat/plugins/after-tool-hooks";
+import {
+  basePluginContext,
+  createSandboxCapability,
+  pluginConfigValues,
+  withPluginHookSpan,
+} from "@/chat/plugins/hook-context";
+import {
+  createPluginDecider,
+  createPluginEmbedder,
+  createPluginModel,
+  createPluginReranker,
+} from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import {
-  getDashboardConversationLink,
-  getDashboardTaskLink,
-} from "@/chat/dashboard-link";
-import { createWatch } from "@/chat/events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
+import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
+import type {
+  AnyToolDefinition,
+  ToolExecuteOptions,
+} from "@/chat/tools/definition";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { createPluginWatches } from "@/chat/plugins/watches";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readActorIdentity,
+  readIdentityById,
+  resolveViewerUser,
+} from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type {
-  SandboxCommandInput,
-  SandboxWorkspace,
-} from "@/chat/sandbox/workspace";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
-import { z } from "zod";
+import * as z from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
-import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import {
+  getWorkspace,
+  listWorkspaceNamesByRepository,
+} from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
-
-/** Signal that a plugin intentionally denied a tool execution. */
-export class PluginHookDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PluginHookDeniedError";
-  }
-}
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import {
+  coreRegistrations,
+  isCoreRegistrationName,
+} from "@/chat/plugins/core-registrations";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -109,6 +142,7 @@ export interface AfterMcpToolHookInput {
 
 export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<OwnedObjectAnnotation[]>;
+  afterToolExecute(input: AfterToolHookInput): Promise<ToolResultNudge[]>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   prepareWorkspace(
@@ -148,18 +182,7 @@ const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function basePluginContext(plugin: PluginRegistration) {
-  const name = plugin.manifest.name;
-  return {
-    plugin: { name },
-    log: createPluginLogger(name),
-    db: getDb(),
-  };
-}
+const promptContextContentSchema = z.record(z.string(), z.unknown());
 
 /** Convert manifest names into model-facing tool namespaces. */
 function pluginToolNamespace(pluginName: string): string {
@@ -231,6 +254,32 @@ function pluginInvocationContext(
   }
 }
 
+/**
+ * Let a plugin add numeric diagnostics to its hook span. Plugins own the
+ * meaning of these attributes, so they stay in the plugin's `app.<name>.`
+ * namespace and cannot overwrite host attributes or carry text.
+ */
+function pluginSpanAttributeSetter(
+  pluginName: string,
+  setSpanAttributes: SetSpanAttributes,
+): UserPromptContext["setSpanAttributes"] {
+  const prefix = `app.${pluginName}.`;
+  return (attributes) => {
+    const allowed = Object.fromEntries(
+      Object.entries(attributes).filter(
+        ([key, value]) =>
+          key.length > prefix.length &&
+          key.startsWith(prefix) &&
+          typeof value === "number" &&
+          Number.isFinite(value),
+      ),
+    );
+    if (Object.keys(allowed).length > 0) {
+      setSpanAttributes(allowed);
+    }
+  };
+}
+
 function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
@@ -243,14 +292,33 @@ function invocationPluginContext(
     | "source"
     | "userText"
   >,
+  setSpanAttributes: SetSpanAttributes,
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
+  const conversationId = context.conversationId;
+  const onCost = context.conversationId
+    ? createPluginModelCostRecorder({
+        conversationId: context.conversationId,
+        pluginName: plugin.manifest.name,
+        source: "userPrompt",
+        ...(turnId ? { turnId } : undefined),
+      })
+    : undefined;
   const common = {
     ...base,
     conversationId: context.conversationId,
     locationId: context.locationId,
-    embedder: createPluginEmbedder(plugin.manifest.name),
+    embedder: createPluginEmbedder(plugin.manifest.name, { onCost }),
+    ...(conversationId
+      ? {
+          loadHistory: async () =>
+            await loadPluginPromptHistory({
+              conversationId,
+              pluginName: plugin.manifest.name,
+            }),
+        }
+      : undefined),
     ...(context.conversationId && turnId
       ? {
           events: createPluginConversationEvents({
@@ -261,7 +329,12 @@ function invocationPluginContext(
           }),
         }
       : undefined),
-    model: createPluginModel(plugin.manifest.name, plugin.model),
+    model: createPluginModel(plugin.manifest.name, plugin.model, { onCost }),
+    reranker: createPluginReranker(plugin.manifest.name, { onCost }),
+    setSpanAttributes: pluginSpanAttributeSetter(
+      plugin.manifest.name,
+      setSpanAttributes,
+    ),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
@@ -332,11 +405,11 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed = JSON.parse(serialized);
-  if (!isRecord(parsed)) {
+  const parsed = promptContextContentSchema.safeParse(JSON.parse(serialized));
+  if (!parsed.success) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
-  return parsed;
+  return parsed.data;
 }
 
 function toUserPromptContributionContext(args: {
@@ -353,16 +426,26 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
-  if (!isRecord(args.value) || typeof args.value.renderPrompt !== "function") {
+  const { value } = args;
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    !("renderPrompt" in value) ||
+    typeof value.renderPrompt !== "function"
+  ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value.context);
+  const context = promptContextSchema.safeParse(
+    "context" in value ? value.context : undefined,
+  );
   if (!context.success) {
     return undefined;
   }
-  const text = promptMessageSchema.safeParse({
-    text: args.value.renderPrompt(),
-  });
+  // Call it on its object: plugins may write renderPrompt as a method that
+  // reads `this`.
+  const rendered: unknown = value.renderPrompt.call(value);
+  const text = promptMessageSchema.safeParse({ text: rendered });
   if (!text.success) {
     return undefined;
   }
@@ -404,6 +487,9 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
+    if (isCoreRegistrationName(name)) {
+      throw new Error(`Plugin name "${name}" is reserved for a core feature`);
+    }
     if (
       plugin.events !== undefined &&
       !pluginEventsSchema.safeParse(plugin.events).success
@@ -443,8 +529,44 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
+/**
+ * Return app plugins, then core feature registrations. Feature hook sites
+ * read this list. Provider hooks, such as credentials and routes, read only
+ * app plugins.
+ */
+export function getRegistrations(): PluginRegistration[] {
+  return [...registeredPlugins, ...coreRegistrations()];
+}
+
+/** Conversation facts that plugin Markdown rewrites may use. */
+export interface PluginMarkdownFormat {
+  /** Config values by full key. Install defaults fill keys it does not set. */
+  configuration?: Record<string, unknown> | undefined;
+  /** Slack mentions of known people, by lowercase `provider:handle`. */
+  mentions?: ReadonlyMap<string, string> | undefined;
+  /** Where the text shows. Defaults to Slack. */
+  platform?: "slack" | "web";
+  /** The provider that wrote the text or that it went to. */
+  provider?: string;
+}
+
 /** Apply plugin Markdown rewrites before destination delivery formatting. */
-export function applyPluginFormatMarkdown(text: string): string {
+export function applyPluginFormatMarkdown(
+  text: string,
+  format: PluginMarkdownFormat = {},
+): string {
+  const resolved = { ...getConfigDefaults(), ...format.configuration };
+  const platform = format.platform ?? "slack";
+  const mention = ({
+    provider,
+    handle,
+  }: {
+    provider: string;
+    handle: string;
+  }) =>
+    platform === "slack"
+      ? format.mentions?.get(`${provider}:${handle}`.toLowerCase())
+      : undefined;
   let transformed = text;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.formatMarkdown;
@@ -452,7 +574,13 @@ export function applyPluginFormatMarkdown(text: string): string {
       continue;
     }
     try {
-      const next = hook({ text: transformed });
+      const next = hook({
+        config: pluginConfigValues(plugin.manifest.name, resolved),
+        mention,
+        platform,
+        ...(format.provider ? { provider: format.provider } : undefined),
+        text: transformed,
+      });
       if (typeof next === "string") {
         transformed = next;
       }
@@ -467,23 +595,52 @@ export function applyPluginFormatMarkdown(text: string): string {
   return transformed;
 }
 
+type PluginHookOutcome<T> =
+  | { error: unknown; plugin: PluginRegistration }
+  | { plugin: PluginRegistration; value: T };
+
+/**
+ * Run one hook of each plugin at once. `start` gives the call for a plugin,
+ * or nothing when the plugin has no such hook. The outcomes keep plugin
+ * order, so budgets and output order do not depend on which hook ends first.
+ */
+async function runPluginHooksAtOnce<T>(
+  plugins: readonly PluginRegistration[],
+  start: (plugin: PluginRegistration) => (() => Promise<T> | T) | undefined,
+): Promise<PluginHookOutcome<T>[]> {
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  return await Promise.all(
+    plugins.flatMap((plugin) => {
+      const run = start(plugin);
+      return run
+        ? [
+            limit(run).then(
+              (value): PluginHookOutcome<T> => ({ plugin, value }),
+              (error: unknown): PluginHookOutcome<T> => ({ error, plugin }),
+            ),
+          ]
+        : [];
+    }),
+  );
+}
+
 /** Collect stable plugin prompt contributions for the static system prompt. */
 export async function getPluginSystemPromptContributions(
   platform: Platform,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const pluginContributions = await hook({
-        ...systemPromptPluginContext(plugin),
-        platform,
-      });
+      if ("error" in outcome) throw outcome.error;
+      const pluginContributions = outcome.value;
       const result =
         systemPromptMessageArraySchema.safeParse(pluginContributions);
       if (!result.success) {
@@ -543,16 +700,31 @@ export async function getPluginUserPromptContributions(args: {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.userPrompt;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook &&
+      (() =>
+        withPluginHookSpan(
+          plugin.manifest.name,
+          "userPrompt",
+          async (setSpanAttributes) =>
+            await hook({
+              ...invocationPluginContext(
+                plugin,
+                args.context,
+                setSpanAttributes,
+                args.turnId,
+              ),
+            }),
+        ))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const rawResult = await hook({
-        ...invocationPluginContext(plugin, args.context, args.turnId),
-      });
+      if ("error" in outcome) throw outcome.error;
+      const rawResult = outcome.value;
       if (rawResult === undefined) {
         continue;
       }
@@ -617,13 +789,62 @@ export async function getPluginUserPromptContributions(args: {
   return contributions;
 }
 
+/**
+ * Model-facing definitions of one plugin's tools, by host tool name. They
+ * come from the plugin's `tools()` with no Turn.
+ */
+function pluginToolDefinitions(
+  plugin: PluginRegistration,
+): Record<string, AnyToolDefinition> {
+  const hook = plugin.hooks?.tools;
+  if (!hook) return {};
+  const pluginName = plugin.manifest.name;
+  const namespace = pluginToolNamespace(pluginName);
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const [localName, definition] of Object.entries(hook())) {
+    const execute = definition.execute;
+    // Naming conventions belong in lint, not on the turn's critical path.
+    definitions[`${namespace}_${localName}`] = {
+      ...(definition as AnyToolDefinition),
+      // Keep prototype methods and their receiver on class-instance tools.
+      // `getPluginTools` passes the Turn context as the third argument.
+      ...(execute
+        ? {
+            execute: execute.bind(definition) as AnyToolDefinition["execute"],
+          }
+        : undefined),
+      approvalMode: definition.approvalMode ?? "auto",
+      identity: {
+        id: `${pluginName}.${localName}`,
+        name: localName,
+        plugin: pluginName,
+      },
+      source: { id: pluginName, description: plugin.manifest.description },
+      exposure: definition.exposure ?? "deferred",
+    };
+  }
+  return definitions;
+}
+
+/** Model-facing definitions of every plugin tool, with no Turn. */
+export function getStaticPluginToolDefinitions(): Record<
+  string,
+  AnyToolDefinition
+> {
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const plugin of getRegistrations()) {
+    Object.assign(definitions, pluginToolDefinitions(plugin));
+  }
+  return definitions;
+}
+
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
     if (!hook) {
@@ -646,9 +867,6 @@ export function getPluginTools(
             channelCapabilities: resolveChannelCapabilities(
               slackToolContext.locationChannelId,
             ),
-            ...(dashboardConversationUrl
-              ? { conversationLink: { url: dashboardConversationUrl } }
-              : undefined),
             ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
@@ -658,72 +876,37 @@ export function getPluginTools(
       plugin: pluginName,
     });
     const mcp = pluginMcpContext(plugin, context);
-    const canSubscribe =
-      Boolean(plugin.events) && plugin.events?.isEnabled?.() !== false;
-    const events: ToolRegistrationHookContext["events"] = {
-      canSubscribe,
-      async subscribe(input) {
-        if (!canSubscribe) {
-          throw new Error("Watches are not available in this conversation.");
-        }
-        const registration = plugin.events;
-        const resourceType = registration?.resourceTypes.find(
-          (candidate) => candidate.type === input.resource.type,
-        );
-        if (
-          input.resource.namespace !== pluginName ||
-          !resourceType ||
-          input.events.length === 0 ||
-          input.events.some(
-            (eventType) => !resourceType.supportedEvents.includes(eventType),
-          )
-        ) {
-          throw new Error(
-            "Watch contains an event or resource that the plugin does not support.",
-          );
-        }
-        const subscription = await createWatch({
-          conversationId: context.conversationId,
-          events: input.events,
-          expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-          guidance: input.guidance,
-          intent: input.intent,
-          label: input.resource.label,
-          namespace: pluginName,
-          identifier: normalizeEventIdentifier(
-            registration,
-            input.resource.identifier,
-          ),
-          resourceType: input.resource.type,
-        });
-        return {
-          events: subscription.events,
-          id: subscription.id,
-        };
-      },
-    };
+    const events = createPluginWatches(plugin, context.conversationId);
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
-    const automationUrl =
-      (context.source.kind === "event_automation" ||
-        context.source.kind === "scheduled_automation") &&
-      context.source.automationId
-        ? getDashboardTaskLink(context.source.automationId)
-        : undefined;
+    const onCost = createPluginModelCostRecorder({
+      conversationId: context.conversationId,
+      pluginName,
+      source: "tool",
+      ...(context.turnId ? { turnId: context.turnId } : undefined),
+    });
     const common = {
       ...basePluginContext(plugin),
       annotations,
-      ...(automationUrl
-        ? { automationLink: { url: automationUrl } }
+      resolveWorkOwner: async () =>
+        await resolveWorkOwner({
+          actor: context.actor,
+          conversationId: context.conversationId,
+          resolveActor,
+        }),
+      ...(dashboardConversationUrl
+        ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
+      conversations: createPluginConversations(context.conversationId),
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
-      embedder: createPluginEmbedder(pluginName),
+      decider: createPluginDecider(pluginName, { onCost }),
+      embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),
-      model: createPluginModel(pluginName, plugin.model),
+      model: createPluginModel(pluginName, plugin.model, { onCost }),
       events,
       sandbox,
       state: createPluginState(pluginName),
@@ -741,8 +924,15 @@ export function getPluginTools(
             ...(resolved?.user ? { userId: resolved.user.id } : undefined),
           });
         },
+        replaceSlackMentions,
       },
       workspaces: {
+        async active() {
+          const id = context.workspaces?.activeWorkspaceId();
+          if (!id) return undefined;
+          const workspace = await getWorkspace(getDb(), id);
+          return workspace ? { name: workspace.name } : {};
+        },
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);
         },
@@ -799,17 +989,23 @@ export function getPluginTools(
         };
         break;
     }
-    const pluginTools = hook(pluginContext);
+    const definitions = pluginToolDefinitions(plugin);
     const namespace = pluginToolNamespace(pluginName);
-    for (const [localName, tool] of Object.entries(pluginTools)) {
-      // Naming conventions belong in lint, not on the turn's critical path.
-      const name = `${namespace}_${localName}`;
+    const disabled = plugin.hooks?.disabledTools?.(pluginContext) ?? {};
+    for (const localName of Object.keys(disabled)) {
+      if (!definitions[`${namespace}_${localName}`]) {
+        throw new Error(
+          `Plugin "${pluginName}" disabled unknown tool "${localName}"`,
+        );
+      }
+    }
+    for (const [name, definition] of Object.entries(definitions)) {
+      const localName = definition.identity!.name;
       if (tools[name]) {
         throw new Error(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as AnyToolDefinition;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );
@@ -820,29 +1016,30 @@ export function getPluginTools(
           "app.tool.missing_annotations": missingAnnotationKeys.join(","),
         });
       }
-      definition.approvalMode ??= "auto";
-      definition.identity = {
-        id: `${pluginName}.${localName}`,
-        name: localName,
-        plugin: pluginName,
+      const execute = definition.execute as
+        | PluginToolDefinition["execute"]
+        | undefined;
+      const disabledReason = disabled[localName];
+      tools[name] = {
+        ...definition,
+        ...(disabledReason ? { disabledReason } : undefined),
+        ...(execute
+          ? {
+              execute: async (input: unknown, options: ToolExecuteOptions) =>
+                annotateToolResult(
+                  context.conversationId,
+                  pluginName,
+                  await recordToolReply({
+                    conversationId: context.conversationId,
+                    plugin: pluginName,
+                    result: await execute(input, options, pluginContext),
+                    toolCallId: options.toolCallId,
+                  }),
+                  { readOnly: definition.annotations?.readOnlyHint === true },
+                ),
+            }
+          : undefined),
       };
-      definition.source = {
-        id: pluginName,
-        description: plugin.manifest.description,
-      };
-      definition.exposure ??= "deferred";
-      const execute = definition.execute;
-      if (execute) {
-        // Keep prototype methods and their receiver on plugin tool instances.
-        const wrapped: AnyToolDefinition = Object.create(definition);
-        wrapped.execute = async (input, options) =>
-          annotateToolResult(
-            context.conversationId,
-            pluginName,
-            await execute.call(definition, input, options),
-          );
-        tools[name] = wrapped;
-      } else tools[name] = definition;
     }
   }
   return tools;
@@ -898,17 +1095,86 @@ function requirePublishedEvent(
   }
 }
 
+/** The core event publisher that plugin event publishers write to. */
+export interface AppEventPublisher {
+  hasMatch?(events: Event[]): Promise<boolean>;
+  neededMatchKeys?(input: {
+    data?: EventData;
+    eventTypes: string[];
+    identifiers: string[];
+    namespace: string;
+  }): Promise<string[]>;
+  publish(event: Event): Promise<void>;
+}
+
+/**
+ * Bind the core event publisher to one plugin. Events get the plugin's
+ * namespace, and the plugin can publish only the event types it registered.
+ */
+export function createPluginEventPublisher(
+  plugin: PluginRegistration,
+  appEvents: AppEventPublisher,
+): EventPublisher {
+  const pluginName = plugin.manifest.name;
+  return {
+    async hasMatch(events) {
+      if (!appEvents.hasMatch) return false;
+      return await appEvents.hasMatch(
+        events.map((event) => {
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          return {
+            ...parsed,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          };
+        }),
+      );
+    },
+    async neededMatchKeys(input) {
+      if (!appEvents.neededMatchKeys) return [];
+      const identifiers = [
+        ...new Set(
+          input.identifiers
+            .map((identifier) =>
+              normalizeEventIdentifier(plugin.events, identifier),
+            )
+            .filter(Boolean),
+        ),
+      ];
+      if (identifiers.length === 0 || input.eventTypes.length === 0) {
+        return [];
+      }
+      return await appEvents.neededMatchKeys({
+        ...(input.data
+          ? { data: eventDataSchema.parse(input.data) }
+          : undefined),
+        eventTypes: input.eventTypes,
+        identifiers,
+        namespace: pluginName,
+      });
+    },
+    async publish(event) {
+      const parsed = eventInputSchema.parse(event);
+      requirePublishedEvent(plugin, parsed.eventType);
+      await appEvents.publish({
+        ...parsed,
+        identifier: normalizeEventIdentifier(plugin.events, parsed.identifier),
+        namespace: pluginName,
+      });
+    },
+  };
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  events: {
-    hasMatch?(event: Event): Promise<boolean>;
-    neededMatchKeys?(input: {
-      eventTypes: string[];
-      identifiers: string[];
-      namespace: string;
-    }): Promise<string[]>;
-    publish(event: Event): Promise<void>;
-  };
+  dispatchForIdentity: IdentityDispatcher;
+  /** Shows a Review item that a plugin route changed. App setup supplies it. */
+  showReviewItem?: ShowReviewItem;
+  events: AppEventPublisher;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -922,6 +1188,10 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      agent: {
+        dispatchForIdentity: (dispatchOptions) =>
+          options.dispatchForIdentity(pluginName, dispatchOptions),
+      },
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({
@@ -931,53 +1201,17 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
-      events: {
-        async hasMatch(event) {
-          if (!options.events.hasMatch) return false;
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          return await options.events.hasMatch({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
-        },
-        async neededMatchKeys(input) {
-          if (!options.events.neededMatchKeys) return [];
-          const identifiers = [
-            ...new Set(
-              input.identifiers
-                .map((identifier) =>
-                  normalizeEventIdentifier(plugin.events, identifier),
-                )
-                .filter(Boolean),
-            ),
-          ];
-          if (identifiers.length === 0 || input.eventTypes.length === 0) {
-            return [];
-          }
-          return await options.events.neededMatchKeys({
-            eventTypes: input.eventTypes,
-            identifiers,
-            namespace: pluginName,
-          });
-        },
-        async publish(event) {
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          await options.events.publish({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
-        },
+      state: createPluginState(pluginName),
+      reviewItems: {
+        forConversation: (conversationId) =>
+          createPluginReviewItems({
+            conversationId,
+            plugin: pluginName,
+            show: options.showReviewItem ?? (async () => {}),
+          }),
       },
+      users: { readIdentity: readIdentityById },
+      events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
@@ -985,7 +1219,7 @@ export function getPluginRoutes(options: {
       );
     }
     for (const route of pluginRoutes) {
-      if (!isRecord(route)) {
+      if (typeof route !== "object" || route === null || Array.isArray(route)) {
         throw new Error(
           `Plugin route from plugin "${pluginName}" must be an object`,
         );
@@ -1048,7 +1282,12 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     if (app === undefined) {
       continue;
     }
-    if (!isRecord(app) || typeof app.fetch !== "function") {
+    if (
+      typeof app !== "object" ||
+      app === null ||
+      Array.isArray(app) ||
+      typeof app.fetch !== "function"
+    ) {
       throw new Error(
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
@@ -1399,20 +1638,24 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.operationalReport;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook &&
+      (() =>
+        hook({
+          ...basePluginContext(plugin),
+          eventStats: createPluginConversationEventStats(plugin, () => nowMs),
+          nowMs,
+          state: pluginReadState(createPluginState(plugin.manifest.name)),
+        }))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const state = createPluginState(pluginName);
-      const report = await hook({
-        ...basePluginContext(plugin),
-        eventStats: createPluginConversationEventStats(plugin, () => nowMs),
-        nowMs,
-        state: pluginReadState(state),
-      });
+      if ("error" in outcome) throw outcome.error;
+      const report = outcome.value;
       if (!report) {
         continue;
       }
@@ -1440,21 +1683,25 @@ export async function getPluginProfileReports(args: {
   viewer: User;
 }): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
+  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.profileReport;
-    if (!hook) {
-      continue;
-    }
+    return (
+      hook &&
+      (() =>
+        hook({
+          ...basePluginContext(plugin),
+          nowMs: args.nowMs,
+          state: pluginReadState(createPluginState(plugin.manifest.name)),
+          subject: args.subject,
+          viewer: args.viewer,
+        }))
+    );
+  });
+  for (const outcome of outcomes) {
+    const pluginName = outcome.plugin.manifest.name;
     try {
-      const state = createPluginState(pluginName);
-      const report = await hook({
-        ...basePluginContext(plugin),
-        nowMs: args.nowMs,
-        state: pluginReadState(state),
-        subject: args.subject,
-        viewer: args.viewer,
-      });
+      if ("error" in outcome) throw outcome.error;
+      const report = outcome.value;
       if (!report) {
         continue;
       }
@@ -1476,7 +1723,7 @@ export async function getPluginProfileReports(args: {
 }
 
 function normalizeEnv(value: unknown): Record<string, string> {
-  if (!isRecord(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
   }
   const env: Record<string, string> = {};
@@ -1488,60 +1735,29 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function preparationSignal(
-  inputSignal?: AbortSignal,
-  ownerSignal?: AbortSignal,
-): AbortSignal | undefined {
-  if (!inputSignal) return ownerSignal;
-  if (!ownerSignal) return inputSignal;
-  return AbortSignal.any([inputSignal, ownerSignal]);
-}
-
-function createSandboxCapability(
-  workspace: SandboxWorkspace,
-  ownerSignal?: AbortSignal,
-): PluginSandbox {
-  return {
-    root: SANDBOX_WORKSPACE_ROOT,
-    juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
-    async readFile(filePath) {
-      return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
-    },
-    async run(input: SandboxCommandInput) {
-      const signal = preparationSignal(input.signal, ownerSignal);
-      const result = await runNonInteractiveCommand(workspace, {
-        ...input,
-        ...(signal ? { signal } : undefined),
-      });
-      return {
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      };
-    },
-    async writeFile(input) {
-      await workspace.writeFiles([
-        {
-          path: input.path,
-          content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
-        },
-      ]);
-    },
-  };
-}
-
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
-    actors?: () => Actor[];
+    actors?: (() => Actor[]) | undefined;
+    /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
+    toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
 ): PluginHookRunner {
-  const loaded = getPlugins();
+  const loaded = getRegistrations();
 
   return {
+    async afterToolExecute(tool) {
+      if (!input.toolRun) return [];
+      const { sandbox, ...turn } = input.toolRun;
+      return await runAfterToolExecuteHooks({
+        plugins: loaded,
+        sandbox: sandbox(),
+        tool,
+        turn,
+      });
+    },
     async afterMcpTool(tool) {
       const cards: OwnedObjectAnnotation[] = [];
       for (const plugin of loaded) {
@@ -1560,6 +1776,7 @@ export function createPluginHookRunner(
             })
           : undefined;
         try {
+          // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
           const result = await hook({
             ...basePluginContext(plugin),
             ...(tool.conversationId
@@ -1577,6 +1794,7 @@ export function createPluginHookRunner(
           });
           if (result && tool.conversationId) {
             cards.push(
+              // oxlint-disable-next-line no-await-in-loop -- Plugin names are unique, so at most one plugin owns the MCP provider.
               ...(await saveObjectAnnotations(
                 tool.conversationId,
                 plugin.manifest.name,
@@ -1640,6 +1858,7 @@ export function createPluginHookRunner(
             repo: repo.repo,
           }));
         if (selected.length === 0) continue;
+        // oxlint-disable-next-line no-await-in-loop -- Plugins prepare the same sandbox, so one runs at a time.
         const finalize = await hook({
           ...basePluginContext(plugin),
           repos: selected,
@@ -1648,6 +1867,7 @@ export function createPluginHookRunner(
         if (finalize) finalizers.push(finalize);
       }
       return async () => {
+        // oxlint-disable-next-line no-await-in-loop -- Finish workspaces in the order that plugins prepared them.
         for (const finalize of finalizers) await finalize();
       };
     },
@@ -1662,11 +1882,17 @@ export function createPluginHookRunner(
         logInfo("agent.plugin.sandbox_preparation.started", {
           "app.plugin.name": pluginName,
         });
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          sandbox: sandboxCapability,
-        });
+        // oxlint-disable-next-line no-await-in-loop -- Plugins prepare the same sandbox, so one runs at a time.
+        await withPluginHookSpan(
+          pluginName,
+          "sandboxPrepare",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              sandbox: sandboxCapability,
+            }),
+        );
       }
     },
     async beforeToolExecute(tool) {
@@ -1683,42 +1909,58 @@ export function createPluginHookRunner(
           continue;
         }
         let replacement: Record<string, unknown> | undefined;
-        let denied: string | undefined;
-        await hook({
-          ...basePluginContext(plugin),
-          actor: input.actor,
-          actors,
-          tool: {
-            name: tool.name,
-            input: nextInput,
-          },
-          users: {
-            resolveActor: async () =>
-              input.actor ? await readActorIdentity(input.actor) : undefined,
-          },
-          env: {
-            get(key) {
-              return env[key] ?? normalizeEnv(nextInput.env)[key];
-            },
-            set(key, value) {
-              env[key] = value;
-            },
-          },
-          decision: {
-            deny(message) {
-              denied = message;
-            },
-            replaceInput(input) {
-              replacement = input;
-            },
-          },
-        });
+        let blocked: PluginToolDeniedError | ToolInputError | undefined;
+        // oxlint-disable-next-line no-await-in-loop -- Each hook gets the arguments that the hook before it replaced.
+        await withPluginHookSpan(
+          pluginName,
+          "beforeToolExecute",
+          async () =>
+            await hook({
+              ...basePluginContext(plugin),
+              actor: input.actor,
+              actors,
+              tool: {
+                name: tool.name,
+                input: nextInput,
+              },
+              users: {
+                resolveActor: async () =>
+                  input.actor
+                    ? await readActorIdentity(input.actor)
+                    : undefined,
+              },
+              juniorRoot: SANDBOX_JUNIOR_ROOT,
+              env: {
+                get(key) {
+                  return env[key] ?? normalizeEnv(nextInput["env"])[key];
+                },
+                set(key, value) {
+                  env[key] = value;
+                },
+              },
+              decision: {
+                deny(reason) {
+                  blocked = new PluginToolDeniedError(reason);
+                },
+                redirect(message) {
+                  blocked = new ToolInputError(message);
+                },
+                replaceInput(input) {
+                  replacement = input;
+                },
+              },
+            }),
+        );
 
-        if (denied) {
-          throw new PluginHookDeniedError(denied);
+        if (blocked) {
+          throw blocked;
         }
         if (replacement !== undefined) {
-          if (!isRecord(replacement)) {
+          if (
+            typeof replacement !== "object" ||
+            replacement === null ||
+            Array.isArray(replacement)
+          ) {
             throw new Error(
               `Plugin "${pluginName}" replaced tool input with a non-object value`,
             );

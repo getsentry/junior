@@ -1,28 +1,39 @@
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type ToolRegistrationHookContext,
+  withToolContext,
+} from "@sentry/junior-plugin-api";
 import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
-  createMemoryArchiveTool,
-  createMemoryCreateTool,
-  createMemoryListTool,
-  createMemorySearchTool,
+  memoryArchiveTool,
+  memoryRestoreTool,
+  memoryCreateTool,
+  memoryListTool,
+  memorySearchTool,
   type MemoryCreateToolContext,
-  type MemoryReviewer,
-  type MemoryToolContext,
 } from "./tools";
 import { processMemorySession } from "./process-session";
+import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
+import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
+  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
-import type { MemoryDb } from "./store";
+import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
+const HEARTBEAT_REEMBED_BATCH_SIZE = 100;
+// The host stops waiting for a plugin heartbeat after 25s. Leave time for the
+// batch that is in progress when this budget ends.
+const HEARTBEAT_REEMBED_BUDGET_MS = 15_000;
+const HEARTBEAT_EXPIRED_ARCHIVE_LIMIT = 100;
 
 export interface MemoryPluginOptions {
   /** Disable automatic prompt recall while keeping explicit memory tools available. */
@@ -41,47 +52,23 @@ function memoryModelId(options: MemoryPluginOptions): string | undefined {
   return envModelId || undefined;
 }
 
-function memoryToolContext(ctx: {
-  agent: MemoryReviewer;
-  conversationId?: string;
-  db: MemoryToolContext["db"];
-  embedder?: MemoryToolContext["embedder"];
-  locationId?: string;
-  actor?: MemoryToolContext["actor"];
-  source: MemoryToolContext["source"];
-  users: MemoryToolContext["users"];
-  userText?: string;
-}): MemoryToolContext {
+function memoryToolContext(
+  ctx: ToolRegistrationHookContext,
+): MemoryCreateToolContext {
+  const agent = createMemoryAgent(ctx.model);
   return {
-    agent: ctx.agent,
+    agent,
     ...(ctx.conversationId
       ? { conversationId: ctx.conversationId }
       : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
-    db: ctx.db,
+    db: ctx.db as MemoryDb,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
     source: ctx.source,
+    supersessionDecider: agent,
     users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
-  };
-}
-
-function memoryCreateToolContext(ctx: {
-  agent: MemoryReviewer;
-  conversationId?: string;
-  db: MemoryCreateToolContext["db"];
-  embedder?: MemoryCreateToolContext["embedder"];
-  locationId?: string;
-  actor?: MemoryCreateToolContext["actor"];
-  source: MemoryCreateToolContext["source"];
-  supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
-  users: MemoryCreateToolContext["users"];
-  userText?: string;
-}): MemoryCreateToolContext {
-  return {
-    ...memoryToolContext(ctx),
-    supersessionDecider: ctx.supersessionDecider,
   };
 }
 
@@ -92,7 +79,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     manifest: {
       name: "memory",
       displayName: "Memory",
-      description: "Long-term Junior memory storage and recall",
+      description: "Long-term memory storage and recall",
     },
     model: modelId
       ? { structuredModelId: modelId }
@@ -100,6 +87,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
+      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],
@@ -117,14 +105,33 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         },
     userPages: [createMemoryUserPage()],
     hooks: {
-      async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
+      async heartbeat(ctx) {
+        const deadlineMs = Date.now() + HEARTBEAT_REEMBED_BUDGET_MS;
+        const db = ctx.db as MemoryDb;
+        // Archive before the re-embed. It is one bounded DB batch, so it
+        // cannot starve the re-embed, and an embedder failure cannot stop it.
+        // The re-embed deadline includes the time of this batch.
+        await archiveExpiredMemoriesInAllScopes({
+          db,
+          limit: HEARTBEAT_EXPIRED_ARCHIVE_LIMIT,
+          nowMs: ctx.nowMs,
         });
+        // Embedding spans show progress. The host logs failures.
+        await reembedMemories({
+          batchSize: HEARTBEAT_REEMBED_BATCH_SIZE,
+          db,
+          deadlineMs,
+          embedder: ctx.embedder,
+        });
+      },
+      async operationalReport(ctx) {
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
-          extractionDays,
+          extractionDays: memoryCostsByDay(
+            ctx.eventStats,
+            extractionCostFlow,
+            90,
+          ),
           nowMs: ctx.nowMs,
         });
       },
@@ -136,42 +143,37 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           users: ctx.users,
         });
       },
-      tools(ctx) {
-        const agent = createMemoryAgent(ctx.model);
-        const context = memoryToolContext({
-          ...ctx,
-          agent,
-          db: ctx.db as MemoryDb,
-          embedder: ctx.embedder,
-        });
-        const readTools = {
-          listMemories: createMemoryListTool(context),
-          searchMemories: createMemorySearchTool(context),
-        };
-        // Only the main agent writes memory. Child agent runs can read memory
-        // and suggest memories in their result.
-        if (ctx.source.kind === "agent_invocation") {
-          return readTools;
+      tools() {
+        return withToolContext(
+          {
+            createMemory: memoryCreateTool,
+            archiveMemory: memoryArchiveTool,
+            restoreMemory: memoryRestoreTool,
+            listMemories: memoryListTool,
+            searchMemories: memorySearchTool,
+          },
+          memoryToolContext,
+        );
+      },
+      disabledTools(ctx): Record<string, string> {
+        // Only a person's message in a public Conversation may write memory.
+        // Disable the write tools instead of omitting them, so the tool list
+        // and the prompt cache stay the same in every Turn.
+        if ("visibility" in ctx.source && ctx.source.visibility === "public") {
+          return {};
         }
+        const reason =
+          "Only a person's message in a public Conversation can write memory.";
         return {
-          createMemory: createMemoryCreateTool(
-            memoryCreateToolContext({
-              ...ctx,
-              agent,
-              db: ctx.db as MemoryDb,
-              embedder: ctx.embedder,
-              supersessionDecider: agent,
-            }),
-          ),
-          archiveMemory: createMemoryArchiveTool(context),
-          ...readTools,
+          createMemory: reason,
+          archiveMemory: reason,
+          restoreMemory: reason,
         };
       },
       ...(!options.disableRecall
         ? {
             async userPrompt(ctx) {
               return await createMemoryPromptContributions({
-                agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
@@ -182,7 +184,10 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 ...(ctx.locationId
                   ? { locationId: ctx.locationId }
                   : undefined),
+                loadHistory: ctx.loadHistory,
                 log: ctx.log,
+                reranker: ctx.reranker,
+                setSpanAttributes: ctx.setSpanAttributes,
                 source: ctx.source,
                 text: ctx.text,
                 users: ctx.users,

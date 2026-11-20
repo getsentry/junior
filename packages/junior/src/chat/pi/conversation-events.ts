@@ -4,7 +4,6 @@
  * Conversation storage owns the ordered event log. This module turns its
  * stored messages into the active Pi context.
  */
-import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ConversationEvent,
   ConversationEventData,
@@ -23,7 +22,6 @@ type AuthorizationCompletedEventData = Extract<
 export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
-  modelProfile: ModelProfile;
   replacementSeq: number | undefined;
 }
 
@@ -32,6 +30,9 @@ export interface PiConversationEventProjection extends PiConversationProjection 
   seqs: number[];
 }
 
+// Only the newest auth-blocked Turn resumes: `pendingAuth` holds one Turn, and
+// a newer pause abandons the older one. The note names the newest request so
+// the agent does not continue an older request that the person replaced.
 function authorizationObservationMessage(
   data: AuthorizationCompletedEventData,
   createdAtMs: number,
@@ -42,7 +43,7 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
+        text: `${label} completed for provider "${data.provider}". Continue the newest request that waited for it and retry the provider operation. If a later message from the person dropped that request, do not continue it; say only that ${data.provider} is connected.`,
       },
     ],
     timestamp: createdAtMs,
@@ -54,9 +55,7 @@ export function historyItemFromPiMessage(
   message: PiMessage,
   provenance: ConversationMessageProvenance,
 ): AgentHistoryItem {
-  const parsed = piMessageSchema.parse(message) as PiMessage & {
-    role: string;
-  };
+  const parsed = piMessageSchema.parse(message);
   const { role, ...fields } = parsed;
   if (role === "user") {
     return agentHistoryItemSchema.parse({
@@ -77,7 +76,10 @@ export function historyItemFromPiMessage(
       type: "tool_result",
     });
   }
-  throw new Error(`Unsupported durable agent message role "${role}"`);
+  return agentHistoryItemSchema.parse({
+    ...fields,
+    type: "system_message",
+  });
 }
 
 /** Translate one Junior-native history item into the Pi message it represents. */
@@ -89,6 +91,10 @@ export function piMessageFromHistoryItem(data: AgentHistoryItem): PiMessage {
   if (data.type === "assistant_message") {
     const { type: _, ...fields } = data;
     return piMessageSchema.parse({ ...fields, role: "assistant" });
+  }
+  if (data.type === "system_message") {
+    const { type: _, ...fields } = data;
+    return piMessageSchema.parse({ ...fields, role: "system" });
   }
   const { type: _, ...fields } = data;
   return piMessageSchema.parse({ ...fields, role: "toolResult" });
@@ -103,20 +109,19 @@ function historyItemProvenance(
 /**
  * Project ordered Junior events into Pi context.
  *
- * Compaction and handoff start with replacement history. Later native history
- * events append after it.
+ * Compaction and legacy handoff events start with replacement history. Later
+ * native history events append after it.
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options: { defaultProfile: ModelProfile; maxSeq?: number },
+  options: { maxSeq?: number } = {},
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = options.defaultProfile;
   let replacementSeq: number | undefined;
 
   for (const event of events) {
@@ -128,8 +133,15 @@ export function projectConversationEvents(
         `Unsupported conversation event "${event.data.originalType}" at seq ${event.seq} (schema version ${event.schemaVersion})`,
       );
     }
+    // Background compaction bookkeeping. A prepared summary enters model
+    // context only through the `compaction` event that swaps it in.
+    if (
+      event.data.type === "compaction_requested" ||
+      event.data.type === "compaction_prepared"
+    ) {
+      continue;
+    }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
-      modelProfile = event.data.modelProfile;
       replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
         const message = piMessageFromHistoryItem(replacement.item);
@@ -142,7 +154,8 @@ export function projectConversationEvents(
     if (
       event.data.type === "user_message" ||
       event.data.type === "assistant_message" ||
-      event.data.type === "tool_result"
+      event.data.type === "tool_result" ||
+      event.data.type === "system_message"
     ) {
       const message = piMessageFromHistoryItem(event.data);
       messages.push(message);
@@ -163,7 +176,6 @@ export function projectConversationEvents(
     messages,
     provenance,
     seqs,
-    modelProfile,
     replacementSeq,
   };
 }

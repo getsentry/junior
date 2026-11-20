@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Model-facing Slack list ID parameter. */
 export const slackListIdParam = z.string().min(1).describe("Slack list ID.");

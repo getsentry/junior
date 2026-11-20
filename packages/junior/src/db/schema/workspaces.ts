@@ -1,4 +1,10 @@
-import { pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { timestamptz } from "./timestamps";
 
 /** Named recipe used to prepare a reusable Sandbox. */
@@ -8,6 +14,7 @@ export const juniorWorkspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     setupScript: text("setup_script").notNull().default(""),
+    vcpus: integer("vcpus"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

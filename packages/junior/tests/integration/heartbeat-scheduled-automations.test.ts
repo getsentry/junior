@@ -8,7 +8,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   getDispatchConversationId,
@@ -19,12 +19,15 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -40,12 +43,21 @@ let creatorIdentityId = "";
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
-    ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        conversationWork: () => ({ queue }),
+      }),
   });
 }
 
@@ -92,7 +104,8 @@ function createTask(
     },
     status: "active",
     task: {
-      text: "Post a digest. Summarize the latest state.",
+      kind: "instruction",
+      instruction: "Post a digest. Summarize the latest state.",
     },
     updatedAtMs: nextRunAtMs,
     ...overrides,
@@ -132,9 +145,9 @@ describe("scheduled automation heartbeat", () => {
   beforeEach(async () => {
     conversationWorkQueue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ now: TEST_NOW_MS });
-    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "dispatch-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "dispatch-secret";
     await disconnectStateAdapter();
     creatorIdentityId = (
       await upsertIdentity(getSqlExecutor(), {
@@ -149,10 +162,10 @@ describe("scheduled automation heartbeat", () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
-    delete process.env.CRON_SECRET;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    delete process.env["CRON_SECRET"];
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -161,7 +174,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(
       db,
@@ -175,6 +188,11 @@ describe("scheduled automation heartbeat", () => {
           description: "Once\nat noon",
           kind: "one_off",
           timezone: "UTC",
+        },
+        task: {
+          kind: "instruction",
+          instruction:
+            "Post a digest for the Automation creator. Summarize the latest state.",
         },
       }),
     );
@@ -195,14 +213,17 @@ describe("scheduled automation heartbeat", () => {
     expect(running?.conversationId).toBe(
       getDispatchConversationId({ id: running!.dispatchId! }),
     );
+    await expect(
+      getConversationStore().get({ conversationId: running!.conversationId! }),
+    ).resolves.toMatchObject({ kind: "automation" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toContain("[task]");
-    expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
-    expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
+    expect(dispatchRecord?.input).toMatch(/^<task>\n/);
+    expect(dispatchRecord?.input).toContain("<created-by><@U039RR91S>.");
+    // The run gets the creator mention, not the stored phrase.
     expect(dispatchRecord?.input).toContain(
-      "Instructions: Post a digest. Summarize the latest state.",
+      "<instructions>Post a digest for <@U039RR91S>. Summarize the latest state.</instructions>",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
@@ -371,7 +392,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(db, createTask());
 
@@ -402,73 +423,104 @@ describe("scheduled automation heartbeat", () => {
     });
   }, 30_000);
 
-  it("blocks malformed scheduled automations without stopping the core heartbeat", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
+  it("fails a run whose dispatch does not finish within a day", async () => {
+    const dayMs = 24 * 60 * 60 * 1000;
     const db = scheduledAutomationDb();
-    await saveScheduledAutomation(db, {
-      ...createTask(),
-      id: "sched_plugin_malformed",
-      task: { text: "" },
-    });
-    const waitUntil = createWaitUntilCollector();
-    const request = new Request(
-      "https://example.invalid/api/internal/heartbeat",
-      {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      },
-    );
-    const response = await testHeartbeat(request, waitUntil.fn);
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
+    const task = createDailyTask({ nextRunAtMs: TEST_RUN_AT_MS });
+    await saveScheduledAutomation(db, task);
+    await runAuthorizedHeartbeat();
+    const stuck = await readScheduledRun(db, `${task.id}:${TEST_RUN_AT_MS}`);
+    expect(stuck).toMatchObject({ status: "running" });
 
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "blocked",
-      errorMessage: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
+    // The dispatch never finishes.
+    vi.setSystemTime(TEST_NOW_MS + dayMs + 60_000);
+    await runAuthorizedHeartbeat();
+
+    await expect(readScheduledRun(db, stuck!.id)).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "Scheduled automation run did not finish within 24 hours.",
     });
-    const blockedTask = await readScheduledAutomation(
-      db,
-      "sched_plugin_malformed",
-    );
-    expect(blockedTask).toMatchObject({
-      status: "blocked",
-      statusReason: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
-    });
-    // A block before dispatch tells the creator too.
-    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
-    await saveScheduledAutomation(db, {
-      ...blockedTask!,
-      nextRunAtMs: TEST_RUN_AT_MS,
+    // The run no longer blocks the Scheduled automation.
+    await expect(readScheduledAutomation(db, task.id)).resolves.toMatchObject({
       status: "active",
-      statusReason: undefined,
-      task: { text: "Post the recovered digest." },
-      updatedAtMs: TEST_NOW_MS + 1,
+      nextRunAtMs: TEST_RUN_AT_MS + 2 * dayMs,
     });
-    const retryWaitUntil = createWaitUntilCollector();
-    await testHeartbeat(request, retryWaitUntil.fn);
-    await retryWaitUntil.flush();
+  }, 30_000);
+
+  it("dispatches a skill run with the skill named in the dispatch", async () => {
+    const removeSkills = await installTestSkills([
+      {
+        name: "manual-digest",
+        description: "Post the manual digest.",
+        body: "Post the digest.",
+        disableModelInvocation: true,
+      },
+    ]);
+    try {
+      const db = scheduledAutomationDb();
+      await saveScheduledAutomation(
+        db,
+        createTask({
+          task: {
+            kind: "skill",
+            skill: "manual-digest",
+            context: "Only cover getsentry/junior.",
+          },
+        }),
+      );
+
+      await runAuthorizedHeartbeat();
+
+      const running = await readScheduledRun(
+        db,
+        `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      );
+      expect(running?.status).toBe("running");
+      const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
+      // The agent run invokes the skill from this field, not from the text.
+      expect(dispatchRecord?.skill).toBe("manual-digest");
+      expect(dispatchRecord?.input).toContain(
+        [
+          "Run the $manual-digest skill. The instructions below add context for this run.",
+          "<instructions>Only cover getsentry/junior.</instructions>",
+        ].join("\n"),
+      );
+    } finally {
+      await removeSkills();
+    }
+  }, 30_000);
+
+  it("blocks a skill run when the skill is no longer installed", async () => {
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(
+      db,
+      createTask({ task: { kind: "skill", skill: "removed-digest" } }),
+    );
+
+    await runAuthorizedHeartbeat();
+
+    const reason =
+      "The skill removed-digest is no longer installed. Choose another skill or switch to an instruction.";
     await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
+      readScheduledRun(db, `sched_plugin_1:${TEST_RUN_AT_MS}`),
     ).resolves.toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
+      status: "blocked",
+      errorMessage: reason,
+      dispatchId: null,
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(
+      readScheduledAutomation(db, "sched_plugin_1"),
+    ).resolves.toMatchObject({ status: "blocked", statusReason: reason });
+    expect(conversationWorkQueue.sentRecords()).toHaveLength(0);
+    // The creator hears that the Automation is blocked.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
   }, 30_000);
 
   it("skips old recurring occurrences and advances to the next future run", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const task = createDailyTask();
     await saveScheduledAutomation(db, task);
@@ -492,7 +544,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",

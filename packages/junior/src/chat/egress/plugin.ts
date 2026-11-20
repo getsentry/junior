@@ -3,6 +3,7 @@ import type {
   PluginAuthorization,
   PluginEgress,
 } from "@sentry/junior-plugin-api";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
@@ -15,8 +16,8 @@ interface PluginEgressAuth {
     grant: {
       access: "read" | "write";
       name: string;
-      reason?: string;
-      requirements?: string[];
+      reason?: string | undefined;
+      requirements?: string[] | undefined;
     };
     kind: "auth_required" | "unavailable";
     message: string;
@@ -25,26 +26,37 @@ interface PluginEgressAuth {
 }
 
 interface PluginEgressDeps {
-  credentialContext?: CredentialContext;
+  credentialAuditSource?: CredentialAuditSource;
+  credentialContext?: CredentialContext | undefined;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
+  /**
+   * Use only the credential subject's own stored OAuth token, never a
+   * plugin grant or an environment token.
+   */
+  userOAuthOnly?: boolean;
 }
 
 function credentialContextForPluginEgress(
   credentialContext: CredentialContext,
+  source: CredentialAuditSource | undefined,
 ): SandboxEgressCredentialContext {
   return {
     credentials: credentialContext,
     contextId: randomUUID(),
     egressId: `plugin-egress:${randomUUID()}`,
     expiresAtMs: Date.now() + 30 * 60 * 1000,
+    source,
   };
 }
 
 /** Create host-owned provider egress for plugin runtime tools. */
 export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
   const credentialContext = deps.credentialContext
-    ? credentialContextForPluginEgress(deps.credentialContext)
+    ? credentialContextForPluginEgress(
+        deps.credentialContext,
+        deps.credentialAuditSource,
+      )
     : undefined;
 
   return {
@@ -73,30 +85,23 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         );
       }
 
-      return await executeCredentialedEgressRequest({
+      const result = await executeCredentialedEgressRequest({
         activeEgressId: credentialContext.egressId,
         credentialContext,
         deps: {
           ...(deps.fetch ? { fetch: deps.fetch } : undefined),
-          recordAuthRequired: async (signal) => {
-            await deps.pluginAuth.handleAuthRequired({
-              ...(signal.authorization
-                ? { authorization: signal.authorization }
-                : undefined),
-              grant: signal.grant,
-              kind: signal.kind ?? "auth_required",
-              message: signal.message,
-              provider: signal.provider,
-            });
-          },
-          recordPermissionDenied: async () => {},
           tracePropagation: {},
         },
         operation,
         provider: input.provider,
         request: input.request,
         upstreamUrl,
+        ...(deps.userOAuthOnly ? { userOAuthOnly: true } : undefined),
       });
+      if (result.authRequired) {
+        await deps.pluginAuth.handleAuthRequired(result.authRequired);
+      }
+      return result.response;
     },
   };
 }

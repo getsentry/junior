@@ -10,24 +10,25 @@ import { getEnvApiKey } from "@/chat/pi/sdk";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 
 export type GatewayCredential = {
-  mode: "oidc" | "api_key";
+  mode: "oidc" | "api_key" | "none";
   token: string;
 };
 
-export const MISSING_GATEWAY_CREDENTIALS_ERROR =
-  "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)";
+// Sent when no credential resolves. Model clients refuse to send a request
+// without a key, so this lets the request reach the gateway. The gateway, or
+// an egress proxy that injects real credentials, then decides on auth.
+const UNAUTHENTICATED_GATEWAY_TOKEN = "unauthenticated";
 
 /**
- * Resolve the preferred AI Gateway bearer credential.
+ * Resolve the AI Gateway bearer credential.
  *
  * Order:
  * 1. Vercel OIDC via `@vercel/oidc` (request header `x-vercel-oidc-token`,
  *    then `VERCEL_OIDC_TOKEN`, with local refresh when needed)
  * 2. Explicit `AI_GATEWAY_API_KEY` / pi-ai env mapping for vercel-ai-gateway
+ * 3. A placeholder token (`mode: "none"`), so auth fails on the server side
  */
-export async function resolveGatewayCredential(): Promise<
-  GatewayCredential | undefined
-> {
+export async function resolveGatewayCredential(): Promise<GatewayCredential> {
   try {
     const oidcToken = toOptionalTrimmed(await getVercelOidcToken());
     if (oidcToken) {
@@ -43,10 +44,10 @@ export async function resolveGatewayCredential(): Promise<
     return { mode: "api_key", token: apiKey };
   }
 
-  return undefined;
+  return { mode: "none", token: UNAUTHENTICATED_GATEWAY_TOKEN };
 }
 
 /** Resolve the bearer token string for Authorization headers and Pi getApiKey. */
-export async function getGatewayApiKey(): Promise<string | undefined> {
-  return (await resolveGatewayCredential())?.token;
+export async function getGatewayApiKey(): Promise<string> {
+  return (await resolveGatewayCredential()).token;
 }

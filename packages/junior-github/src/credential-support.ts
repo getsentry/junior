@@ -13,12 +13,12 @@ import type {
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import {
   type GitHubAppPermissions,
   readGrantPermissions,
 } from "./permissions.js";
 
-export type JsonRecord = Record<string, unknown>;
 export type GitHubGrantName =
   | "installation-read"
   | "installation-write"
@@ -53,16 +53,18 @@ interface RefreshUserAccessTokenInput {
   clientIdEnv: string;
   clientSecretEnv: string;
   refreshToken: string;
-  requestedScope?: string;
+  requestedScope?: string | undefined;
 }
 
 interface CredentialLeaseInput {
-  account?: PluginProviderAccount;
-  authorization?: {
-    provider: "github";
-    scope?: string;
-    type: "oauth";
-  };
+  account?: PluginProviderAccount | undefined;
+  authorization?:
+    | {
+        provider: "github";
+        scope?: string;
+        type: "oauth";
+      }
+    | undefined;
   domains?: string[];
   expiresAtMs: number;
   token: string;
@@ -75,7 +77,7 @@ type TokenResolution =
 interface UserCredentialOptions {
   clientIdEnv: string;
   clientSecretEnv: string;
-  userScope?: string;
+  userScope?: string | undefined;
 }
 
 interface InstallationCredentialBaseOptions {
@@ -91,11 +93,13 @@ type InstallationCredentialOptions = InstallationCredentialBaseOptions &
         loadPermissions?: never;
         permissions?: GitHubAppPermissions;
         repositories?: string[];
+        repositoryIds?: number[];
       }
     | {
         loadPermissions: LoadInstallationReadPermissions;
         permissions?: never;
         repositories?: never;
+        repositoryIds?: never;
       }
   );
 
@@ -104,7 +108,8 @@ type LoadInstallationReadPermissions = (input: {
   installationId: number;
 }) => Promise<Record<string, "read">>;
 
-interface GitHubRepository {
+/** A GitHub repository named by owner and name. */
+export interface GitHubRepository {
   name: string;
   owner: string;
 }
@@ -121,7 +126,7 @@ export const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 export const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 export const CREATE_TOOL_ROUTING_GUIDANCE =
-  "This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.";
+  "This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.";
 export const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
 ];
@@ -138,7 +143,8 @@ class GitHubUserRefreshRejectedError extends Error {
   }
 }
 
-class GitHubRequestError extends Error {
+/** A GitHub API response with an error status. */
+export class GitHubRequestError extends Error {
   status: number;
 
   constructor(message: string, status: number) {
@@ -155,10 +161,34 @@ export class GitHubPluginSetupError extends Error {
   }
 }
 
-/** Return whether a provider value is a JSON object. */
-export function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+/** GitHub REST error body with a `message`. */
+export const githubMessageSchema = z.object({ message: z.string() });
+// Fields stay `unknown` where the parser below reports a specific error for
+// each wrong field.
+const oauthErrorSchema = z.object({ error: z.string() });
+const oauthTokenResponseSchema = z.object({
+  access_token: z.unknown().optional(),
+  expires_in: z.unknown().optional(),
+  refresh_token: z.unknown().optional(),
+  refresh_token_expires_in: z.unknown().optional(),
+  scope: z.unknown().optional(),
+});
+const installationTokenResponseSchema = z.object({
+  expires_at: z.unknown().optional(),
+  token: z.unknown().optional(),
+});
+const installationPermissionsSchema = z.object({
+  permissions: z.record(z.string(), z.unknown()),
+});
+const userAccountSchema = z.object({
+  html_url: z.unknown().optional(),
+  id: z.unknown().optional(),
+  login: z.unknown().optional(),
+});
+const verifiedEmailSchema = z.object({
+  email: z.string(),
+  verified: z.literal(true),
+});
 
 /** Read a non-empty GitHub plugin environment value. */
 export function readEnv(name: string): string | undefined {
@@ -289,10 +319,10 @@ export async function githubRequest(
   }
 
   if (!response.ok) {
-    const message =
-      isRecord(parsed) && typeof parsed.message === "string"
-        ? parsed.message
-        : `GitHub API error ${response.status}`;
+    const error = githubMessageSchema.safeParse(parsed);
+    const message = error.success
+      ? error.data.message
+      : `GitHub API error ${response.status}`;
     throw new GitHubRequestError(message, response.status);
   }
   return parsed;
@@ -328,9 +358,8 @@ function parseOAuthResponseJson(responseText: string): unknown {
 }
 
 function oauthErrorCode(data: unknown): string | undefined {
-  return isRecord(data) && typeof data.error === "string"
-    ? data.error
-    : undefined;
+  const parsed = oauthErrorSchema.safeParse(data);
+  return parsed.success ? parsed.data.error : undefined;
 }
 
 function isRejectedRefreshError(errorCode: string | undefined): boolean {
@@ -338,52 +367,60 @@ function isRejectedRefreshError(errorCode: string | undefined): boolean {
 }
 
 function parseOAuthTokenResponse(
-  data: unknown,
+  value: unknown,
   requestedScope?: string,
 ): PluginStoredTokens {
-  if (!isRecord(data)) {
+  const parsed = oauthTokenResponseSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("OAuth token response is invalid");
   }
-  if (typeof data.access_token !== "string" || !data.access_token.trim()) {
+  const data = parsed.data;
+  if (
+    typeof data["access_token"] !== "string" ||
+    !data["access_token"].trim()
+  ) {
     throw new Error("OAuth token response missing access_token");
   }
-  if (typeof data.refresh_token !== "string" || !data.refresh_token.trim()) {
+  if (
+    typeof data["refresh_token"] !== "string" ||
+    !data["refresh_token"].trim()
+  ) {
     throw new Error("OAuth token response missing refresh_token");
   }
   let scope = normalizeOAuthScope(requestedScope);
-  if (data.scope !== undefined) {
-    if (typeof data.scope !== "string") {
+  if (data["scope"] !== undefined) {
+    if (typeof data["scope"] !== "string") {
       throw new Error("OAuth token response returned invalid scope");
     }
-    scope = normalizeOAuthScope(data.scope) ?? scope;
+    scope = normalizeOAuthScope(data["scope"]) ?? scope;
   }
   const result: PluginStoredTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    accessToken: data["access_token"],
+    refreshToken: data["refresh_token"],
     ...(scope ? { scope } : undefined),
   };
-  if (data.expires_in !== undefined) {
+  if (data["expires_in"] !== undefined) {
     if (
-      typeof data.expires_in !== "number" ||
-      !Number.isFinite(data.expires_in) ||
-      data.expires_in <= 0
+      typeof data["expires_in"] !== "number" ||
+      !Number.isFinite(data["expires_in"]) ||
+      data["expires_in"] <= 0
     ) {
       throw new Error("OAuth token response returned invalid expires_in");
     }
-    result.expiresAt = Date.now() + data.expires_in * 1000;
+    result.expiresAt = Date.now() + data["expires_in"] * 1000;
   }
-  if (data.refresh_token_expires_in !== undefined) {
+  if (data["refresh_token_expires_in"] !== undefined) {
     if (
-      typeof data.refresh_token_expires_in !== "number" ||
-      !Number.isFinite(data.refresh_token_expires_in) ||
-      data.refresh_token_expires_in <= 0
+      typeof data["refresh_token_expires_in"] !== "number" ||
+      !Number.isFinite(data["refresh_token_expires_in"]) ||
+      data["refresh_token_expires_in"] <= 0
     ) {
       throw new Error(
         "OAuth token response returned invalid refresh_token_expires_in",
       );
     }
     result.refreshTokenExpiresAt =
-      Date.now() + data.refresh_token_expires_in * 1000;
+      Date.now() + data["refresh_token_expires_in"] * 1000;
   }
   return result;
 }
@@ -508,18 +545,20 @@ export function credentialUnavailable(message: string): PluginCredentialResult {
   };
 }
 
-function parseInstallationTokenResponse(data: unknown): {
+function parseInstallationTokenResponse(value: unknown): {
   expiresAtMs: number;
   token: string;
 } {
-  if (!isRecord(data)) {
+  const parsed = installationTokenResponseSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("GitHub installation token response is invalid");
   }
-  const token = data.token;
+  const data = parsed.data;
+  const token = data["token"];
   if (typeof token !== "string" || !token.trim()) {
     throw new Error("GitHub installation token response missing token");
   }
-  const expiresAt = data.expires_at;
+  const expiresAt = data["expires_at"];
   const expiresAtMs =
     typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
@@ -533,10 +572,11 @@ function parseInstallationTokenResponse(data: unknown): {
 function readInstallationPermissions(
   installation: unknown,
 ): Record<string, "read"> {
-  if (!isRecord(installation) || !isRecord(installation.permissions)) {
+  const parsed = installationPermissionsSchema.safeParse(installation);
+  if (!parsed.success) {
     throw new Error("GitHub installation response missing permissions");
   }
-  return readGrantPermissions(installation.permissions);
+  return readGrantPermissions(parsed.data.permissions);
 }
 
 function decodeGitHubPathSegment(value: string): string | undefined {
@@ -573,14 +613,17 @@ export function githubRepositoryFromUrl(
 export async function resolveUserAccount(
   tokens: PluginStoredTokens,
 ): Promise<PluginProviderAccount> {
-  const account = await githubRequest("https://api.github.com", "/user", {
-    token: tokens.accessToken,
-  });
-  if (!isRecord(account)) {
+  const parsed = userAccountSchema.safeParse(
+    await githubRequest("https://api.github.com", "/user", {
+      token: tokens.accessToken,
+    }),
+  );
+  if (!parsed.success) {
     throw new Error("GitHub user response is invalid");
   }
-  const id = account.id;
-  const login = account.login;
+  const account = parsed.data;
+  const id = account["id"];
+  const login = account["login"];
   if (
     (typeof id !== "number" && typeof id !== "string") ||
     typeof login !== "string" ||
@@ -589,7 +632,7 @@ export async function resolveUserAccount(
     throw new Error("GitHub user response missing id or login");
   }
   const url =
-    typeof account.html_url === "string" ? account.html_url : undefined;
+    typeof account["html_url"] === "string" ? account["html_url"] : undefined;
   return {
     handle: login.trim(),
     id: String(id),
@@ -624,14 +667,11 @@ export async function listVerifiedUserEmails(
   if (!Array.isArray(emails)) {
     throw new Error("GitHub user emails response is invalid");
   }
-  return emails.flatMap((entry) =>
-    isRecord(entry) &&
-    entry.verified === true &&
-    typeof entry.email === "string" &&
-    entry.email.trim()
-      ? [entry.email.trim()]
-      : [],
-  );
+  return emails.flatMap((entry) => {
+    const parsed = verifiedEmailSchema.safeParse(entry);
+    const email = parsed.success ? parsed.data.email.trim() : "";
+    return email ? [email] : [];
+  });
 }
 
 async function tokensWithAccount(
@@ -843,9 +883,12 @@ export async function issueInstallationToken(
         : undefined;
   const repositories =
     "repositories" in options ? options.repositories : undefined;
+  const repositoryIds =
+    "repositoryIds" in options ? options.repositoryIds : undefined;
   const body = {
     ...(permissions ? { permissions } : undefined),
     ...(repositories ? { repositories } : undefined),
+    ...(repositoryIds ? { repository_ids: repositoryIds } : undefined),
   };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",

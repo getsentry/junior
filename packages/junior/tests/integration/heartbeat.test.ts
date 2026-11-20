@@ -4,7 +4,13 @@ import {
   type Destination,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import {
+  getDispatchConversationId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
+import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -19,7 +25,7 @@ import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -33,24 +39,42 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue"
+    "conversationWorkQueue" | "dispatchForIdentity" | "events"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    dispatchForIdentity: createIdentityDispatcher({
+      conversationWorkQueue: () => conversationWorkQueue,
+    }),
+    events: {
+      async publish() {
+        throw new Error("Dispatch tests do not publish events");
+      },
+    },
   });
 }
 
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
     ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        conversationWork: () => ({ queue }),
+      }),
   });
 }
 
@@ -79,7 +103,6 @@ async function persistActiveTurn(
   await persistThreadStateById(conversationId, {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       messages: [],
       processing: {
         activeTurnId,
@@ -97,9 +120,9 @@ describe("plugin heartbeat", () => {
   beforeEach(async () => {
     conversationWorkQueue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ now: TEST_NOW_MS });
-    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "dispatch-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "dispatch-secret";
     setPlugins([]);
     await disconnectStateAdapter();
   });
@@ -108,10 +131,10 @@ describe("plugin heartbeat", () => {
     global.fetch = originalFetch;
     setPlugins([]);
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
-    delete process.env.CRON_SECRET;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    delete process.env["CRON_SECRET"];
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -360,7 +383,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(
       async () => new Response("Accepted", { status: 202 }),
     );
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const schedulerCtx = createTestHeartbeatContext({
       plugin: "scheduler",
@@ -372,6 +395,7 @@ describe("plugin heartbeat", () => {
       destinationVisibility: "private",
       input: "Run the scheduled automation.",
       metadata: { runId: "run-1" },
+      title: " Nightly sync ",
     });
 
     await expect(schedulerCtx.agent.get(result.id)).resolves.toEqual({
@@ -391,6 +415,13 @@ describe("plugin heartbeat", () => {
       metadata: { runId: "run-1" },
       source: { kind: "plugin_dispatch" },
     });
+    // The dispatch Conversation starts with the passed title, so title
+    // generation skips it.
+    await expect(
+      getConversationStore().get({
+        conversationId: getDispatchConversationId({ id: result.id }),
+      }),
+    ).resolves.toMatchObject({ kind: "root", title: "Nightly sync" });
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {
@@ -414,7 +445,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const ctx = createTestHeartbeatContext({
       plugin: "scheduler",
@@ -444,7 +475,7 @@ describe("plugin heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
 
     const ctx = createTestHeartbeatContext({
       plugin: "scheduler",

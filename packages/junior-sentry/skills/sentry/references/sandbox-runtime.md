@@ -1,10 +1,10 @@
 # Sandbox Runtime Guidance
 
-This skill runs in the harness sandbox (`node22`) and commands execute via the `bash` tool.
+This skill runs in the harness sandbox (`node24`) and commands execute via the `bash` tool.
 
 ## What is currently available
 
-- Node runtime in sandbox (`node22` image).
+- Node runtime in sandbox (`node24` image).
 - Writable workspace under `/vercel/sandbox`.
 - Outbound network access (default allow-all unless harness sets a network policy).
 - Skill files are synchronized into `/vercel/sandbox/skills/sentry`.

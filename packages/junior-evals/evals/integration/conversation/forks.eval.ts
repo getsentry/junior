@@ -7,7 +7,7 @@ describe("Conversation Forks", () => {
   test("when a loaded reply is forked, the fork does not know later turns", async ({
     run,
   }) => {
-    const decision = reply("We picked the blue option for the launch banner.");
+    const decision = reply("Done: the launch banner is now blue.");
     const source = await run(webMessage("Thanks, that is all for now."), {
       history: [
         webMessage("Pick an option for the launch banner: blue or green."),

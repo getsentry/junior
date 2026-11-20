@@ -1,14 +1,44 @@
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleHelp,
+  CircleSlash,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
+import { ClampedPreview } from "../components/ClampedPreview";
 import { Detail, DetailList } from "../components/DetailList";
-import { StatusChip, type StatusChipTone } from "../components/StatusChip";
-import { formatTime } from "../format";
+import {
+  StatusChip,
+  statusToneClass,
+  type StatusChipTone,
+} from "../components/StatusChip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { DisplayText } from "../display-text/DisplayText";
+import { OutboundLink } from "../components/OutboundLink";
+import { formatTime } from "../time";
 
-type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
+/** A Conversation's current Brief. */
+export type ConversationBriefReport = NonNullable<
+  ConversationDetailReport["brief"]
+>;
 
 type BriefContent = ConversationBriefReport["content"];
+
+const SUMMARY_PREVIEW_LINES = 4;
 
 const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
   {
@@ -20,27 +50,72 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
     partial: "warning",
   };
 
+type OutcomeStatus = BriefContent["outcome"]["status"];
+
+const outcomeIcons: Record<OutcomeStatus, LucideIcon> = {
+  abandoned: CircleSlash,
+  answered: CircleHelp,
+  blocked: CircleAlert,
+  done: CircleCheck,
+  in_progress: CircleDashed,
+  partial: CircleDot,
+};
+
+/** Show a Brief outcome as a small icon, for a dense list row. */
+export function BriefOutcomeMarker(props: { status: OutcomeStatus }) {
+  const Icon = outcomeIcons[props.status];
+  return (
+    <Icon
+      aria-label={`Brief: ${briefOutcomeLabel(props.status)}`}
+      className={cn(
+        "size-3.5 shrink-0",
+        statusToneClass[outcomeTones[props.status]],
+      )}
+      role="img"
+      strokeWidth={2}
+    />
+  );
+}
+
+/** Name a Brief outcome, such as "In progress". */
+export function briefOutcomeLabel(status: OutcomeStatus): string {
+  const label = displayLabel(status);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Show a Brief outcome as a quiet chip, such as "• Blocked". */
+export function BriefOutcomeChip(props: {
+  className?: string;
+  size?: "compact" | "default";
+  status: OutcomeStatus;
+}) {
+  return (
+    <StatusChip
+      className={props.className}
+      size={props.size ?? "compact"}
+      tone={outcomeTones[props.status]}
+    >
+      {displayLabel(props.status)}
+    </StatusChip>
+  );
+}
+
 /** Show a summary in details, or the durable Brief when a transcript expires. */
 export function ConversationBrief(props: {
   brief: ConversationBriefReport;
   variant?: "summary" | "full";
 }) {
   const { content } = props.brief;
+  const mentions = props.brief.mentions;
   if (props.variant === "summary") {
     return (
-      <div className="grid min-w-0 gap-4">
-        <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-          {content.summary}
-        </p>
-        {content.openDecisions.length > 0 ? (
-          <div className="grid gap-2">
-            <h4 className="m-0 text-sm font-medium text-dashboard-text">
-              Open decisions
-            </h4>
-            <BriefOpenDecisions decisions={content.openDecisions} />
-          </div>
-        ) : null}
-      </div>
+      <ClampedPreview
+        className="leading-6"
+        label="Brief summary"
+        lines={SUMMARY_PREVIEW_LINES}
+      >
+        <DisplayText compact mentions={mentions} text={content.summary} />
+      </ClampedPreview>
     );
   }
   return (
@@ -57,29 +132,20 @@ export function ConversationBrief(props: {
           })}
         </span>
       </div>
-      <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-        {content.summary}
-      </p>
+      <DisplayText mentions={mentions} text={content.summary} />
       <BriefSection title="Intent & outcome">
         <DetailList>
-          <Detail label="Intent">{content.intent}</Detail>
-          <Detail label="Outcome">{content.outcome.text}</Detail>
+          <Detail label="Intent">
+            <DisplayText mentions={mentions} text={content.intent} />
+          </Detail>
+          <Detail label="Outcome">
+            <DisplayText mentions={mentions} text={content.outcome.text} />
+          </Detail>
         </DetailList>
       </BriefSection>
-      {content.decisions.length || content.openDecisions.length ? (
+      {content.decisions.length ? (
         <BriefSection title="Decisions">
-          <DetailList>
-            {content.decisions.length ? (
-              <Detail label="Decisions">
-                <BriefDecisions decisions={content.decisions} />
-              </Detail>
-            ) : null}
-            {content.openDecisions.length ? (
-              <Detail label="Open decisions">
-                <BriefOpenDecisions decisions={content.openDecisions} />
-              </Detail>
-            ) : null}
-          </DetailList>
+          <BriefDecisions decisions={content.decisions} mentions={mentions} />
         </BriefSection>
       ) : null}
       {content.facts.length ||
@@ -89,7 +155,7 @@ export function ConversationBrief(props: {
           <DetailList>
             {content.facts.length ? (
               <Detail label="Facts">
-                <BriefList items={content.facts} />
+                <BriefList items={content.facts} mentions={mentions} />
               </Detail>
             ) : null}
             {content.links.length ? (
@@ -100,14 +166,12 @@ export function ConversationBrief(props: {
                       className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
                       key={`${link.kind}:${link.url}`}
                     >
-                      <a
+                      <OutboundLink
                         className="min-w-0 break-all font-medium text-dashboard-accent-text underline decoration-dashboard-accent/30 underline-offset-2 hover:text-dashboard-accent-text"
                         href={link.url}
-                        rel="noopener noreferrer"
-                        target="_blank"
                       >
                         {link.label}
-                      </a>
+                      </OutboundLink>
                       <span className="text-xs text-dashboard-text-muted">
                         {displayLabel(link.kind)}
                       </span>
@@ -144,20 +208,28 @@ export function ConversationBrief(props: {
 
 function BriefSection(props: { children: ReactNode; title: string }) {
   return (
-    <details className="group min-w-0 border-t border-dashboard-border pt-3">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-dashboard-text [&::-webkit-details-marker]:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+    <Collapsible className="min-w-0 border-t border-dashboard-border pt-3">
+      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 text-left text-sm font-medium text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus">
         <ChevronRight
           aria-hidden="true"
-          className="size-3.5 shrink-0 text-dashboard-text-muted transition-transform group-open:rotate-90"
+          className={cn(
+            dashboardDisclosureChevronClass,
+            "text-dashboard-text-muted",
+          )}
         />
         {props.title}
-      </summary>
-      <div className="mt-3">{props.children}</div>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent hiddenUntilFound>
+        <div className="mt-3">{props.children}</div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
+function BriefDecisions(props: {
+  decisions: BriefContent["decisions"];
+  mentions?: readonly ActorIdentity[] | undefined;
+}) {
   return (
     <ul className="m-0 grid list-none gap-2.5 p-0">
       {props.decisions.map((decision, index) => (
@@ -169,11 +241,22 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
             >
               {decision.kind}
             </StatusChip>
-            <span className="min-w-0">{decision.text}</span>
+            <span className="min-w-0">
+              <DisplayText
+                inline
+                mentions={props.mentions}
+                text={decision.text}
+              />
+            </span>
           </div>
           {decision.by ? (
             <div className="mt-0.5 text-xs text-dashboard-text-muted">
-              by · {decision.by}
+              by ·{" "}
+              <DisplayText
+                inline
+                mentions={props.mentions}
+                text={decision.by}
+              />
             </div>
           ) : null}
         </li>
@@ -182,30 +265,16 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
   );
 }
 
-function BriefOpenDecisions(props: {
-  decisions: BriefContent["openDecisions"];
+function BriefList(props: {
+  items: string[];
+  mentions?: readonly ActorIdentity[] | undefined;
 }) {
-  return (
-    <ul className="m-0 grid list-none gap-2 p-0">
-      {props.decisions.map((decision, index) => (
-        <li key={`${decision.text}:${index}`}>
-          <div>{decision.text}</div>
-          {decision.owner ? (
-            <div className="mt-1 text-xs text-dashboard-text-muted">
-              Owner: {decision.owner}
-            </div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function BriefList(props: { items: string[] }) {
   return (
     <ul className="my-0 grid gap-1.5 pl-4">
       {props.items.map((item, index) => (
-        <li key={`${item}:${index}`}>{item}</li>
+        <li key={`${item}:${index}`}>
+          <DisplayText inline mentions={props.mentions} text={item} />
+        </li>
       ))}
     </ul>
   );

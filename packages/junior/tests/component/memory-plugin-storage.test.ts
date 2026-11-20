@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -10,29 +11,44 @@ import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { closeDb } from "@/chat/db";
+import { readConversationAuxiliaryCostsFromSql } from "@/api/conversations/auxiliary-costs";
+import { closeDb, getDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+  webActorFromUser,
+} from "@/chat/conversations/web-input";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 import {
+  createEventSource,
   createSlackSource,
+  createWebSource,
   defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
     | Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>["sql"]
     | undefined,
-  originalDatabaseUrl: process.env.DATABASE_URL,
+  originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
 
 vi.hoisted(() => {
-  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
+  process.env["DATABASE_URL"] = "postgres://configured.example.test/neon";
 });
 
 vi.mock("@/db/executor", () => ({
@@ -64,11 +80,13 @@ vi.mock("@/chat/pi/client", () => ({
     },
   })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
+    costUsd: 0.0001,
     dimensions: 1,
     model: "test-embedding-model",
     provider: "test-provider",
     vectors: texts.map(() => [1]),
   })),
+  GEN_AI_PROVIDER_NAME: "test-provider",
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
 
@@ -80,9 +98,9 @@ afterEach(async () => {
 
 afterAll(() => {
   if (NEON.originalDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete process.env["DATABASE_URL"];
   } else {
-    process.env.DATABASE_URL = NEON.originalDatabaseUrl;
+    process.env["DATABASE_URL"] = NEON.originalDatabaseUrl;
   }
 });
 
@@ -157,6 +175,7 @@ function memoryToolsFor(args: {
     userId: args.userId,
   };
   return getPluginTools({
+    turnTools: rootTurnTools,
     actor,
     conversationId: args.conversationId,
     destination: {
@@ -376,7 +395,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
     }
   }, 15_000);
 
-  it("reads public memory everywhere and private memory only for its User", async () => {
+  it("reads only public memory in every Conversation", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
     const plugin = memoryPlugin();
     setPlugins([plugin]);
@@ -409,44 +428,22 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
-      const privateMemory = await createMemoryStore(db, {
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800001.000000",
-          visibility: "private",
-        }),
-        userId: viewer.user.id,
-      }).createMemory({
-        content: "Prefers terse status updates in this DM.",
-        idempotencyKey: "component-private-memory",
-        kind: "preference",
-      });
-      const otherPrivateMemory = await createMemoryStore(db, {
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U999" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800002.000000",
-          visibility: "private",
-        }),
-        userId: "other-user",
-      }).createMemory({
-        content: "Only the other User can read this.",
-        idempotencyKey: "component-other-private-memory",
-        kind: "knowledge",
-      });
-      await expect(
-        fixture.sql.query<{ location_id: string | null }>(
-          "SELECT location_id FROM junior_memory_memories WHERE id = $1",
-          [privateMemory.memory.id],
-        ),
-      ).resolves.toEqual([{ location_id: viewer.locationId }]);
+      // Memory wrote private rows before it became public only. Reads skip
+      // them, also for the User who owns them.
+      const privateMemoryId = "legacy-private-memory";
+      await fixture.sql.query(
+        `INSERT INTO junior_memory_memories (
+          id, scope, scope_key, type, subject_type, subject_key, content,
+          source_platform, source_key, observed_at_ms, created_at_ms
+        ) VALUES ($1, 'private', $2, 'preference', 'user', $2, $3, 'slack', $4, $5, $5)`,
+        [
+          privateMemoryId,
+          viewer.user.id,
+          "Prefers terse status updates in this DM.",
+          "slack:T123:D123:1718800001.000000",
+          Date.parse("2026-08-21T12:00:00.000Z"),
+        ],
+      );
 
       const viewerPage = await readPluginUserPage({
         email: "memory-viewer@example.com",
@@ -454,15 +451,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         pluginName: "memory",
         query: { limit: 25 },
       });
-      expect(viewerPage?.records.map((record) => record.id)).toEqual(
-        expect.arrayContaining([
-          publicMemory.memory.id,
-          privateMemory.memory.id,
-        ]),
-      );
-      expect(viewerPage?.records.map((record) => record.id)).not.toContain(
-        otherPrivateMemory.memory.id,
-      );
+      expect(viewerPage?.records.map((record) => record.id)).toEqual([
+        publicMemory.memory.id,
+      ]);
 
       await expect(
         memoryToolsFor({
@@ -470,13 +461,54 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories!.execute!({}, {}),
+        })["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toEqual({
-        memories: [
-          expect.objectContaining({ id: privateMemory.memory.id }),
-          expect.objectContaining({ id: publicMemory.memory.id }),
-        ],
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
         target: "listMemories",
+      });
+
+      // The same User on the dashboard resolves through the web identity.
+      const webActor = webActorFromUser({
+        email: "memory-viewer@example.com",
+        id: viewer.user.id,
+      });
+      const webConversationId = createConversationId({
+        actorEmail: "memory-viewer@example.com",
+        idempotencyKey: "web-memory",
+      });
+      await recordWebConversationActivity({
+        actor: webActor,
+        conversationId: webConversationId,
+        conversationStore: createSqlStore(fixture.sql),
+        nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+        rootVisibility: "private",
+      });
+      await expect(readActorIdentity(webActor)).resolves.toMatchObject({
+        identity: {
+          provider: "junior",
+          providerSubjectId: "memory-viewer@example.com",
+        },
+        user: { id: viewer.user.id },
+      });
+      const webTools = getPluginTools({
+        turnTools: rootTurnTools,
+        actor: webActor,
+        conversationId: webConversationId,
+        destination: { platform: "local", conversationId: webConversationId },
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        resolveActorIdentity: () => readActorIdentity(webActor),
+        source: createWebSource(webConversationId, "private"),
+        userText: "what do you remember about me?",
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        webTools["memory_listMemories"]!.execute!({}, {}),
+      ).resolves.toMatchObject({
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
       });
     } finally {
       await fixture.close();
@@ -503,7 +535,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
 
-        visibility: "private",
+        visibility: "public",
       });
       const userContext = await recordPrivateConversation(fixture, {
         channelId: "C123",
@@ -534,11 +566,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         kind: "knowledge",
       });
 
-      const tools = getPluginTools({
+      const turnContext = {
         conversationId,
         locationId: userContext.locationId,
         destination: {
-          platform: "slack",
+          platform: "slack" as const,
           teamId: "T123",
           channelId: "C123",
         },
@@ -550,13 +582,14 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         actor,
         resolveActorIdentity: () => readActorIdentity(actor),
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-        source,
         userText: "remember memory plugin facts",
-      });
+        turnTools: rootTurnTools,
+      };
+      const tools = getPluginTools({ ...turnContext, source });
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories!.execute!({}, {}),
+        tools["memory_listMemories"]!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -568,7 +601,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
+        tools["memory_searchMemories"]!.execute!(
+          { query: "personal recall" },
+          {},
+        ),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -576,15 +612,81 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           }),
         ],
       });
+      // Junior records the query embedding cost. Memory does not report it.
       await expect(
-        tools.memory_createMemory!.execute!(
+        readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
+      ).resolves.toEqual(
+        new Map([
+          [
+            conversationId,
+            {
+              total: {
+                costUsd: 0.0001,
+                operations: [
+                  {
+                    costUsd: 0.0001,
+                    events: 1,
+                    name: "tool_model_called",
+                    namespace: "memory",
+                  },
+                ],
+              },
+            },
+          ],
+        ]),
+      );
+      await expect(
+        tools["memory_createMemory"]!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",
-          } as never,
+          },
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);
+
+      // An event Turn in the same Conversation has no Source visibility. It
+      // gets the same tool list, so the cached prompt stays valid, but it
+      // cannot write memory.
+      const eventTools = getPluginTools({
+        ...turnContext,
+        source: createEventSource({
+          eventKey: "event-1",
+          eventType: "issue.created",
+          identifier: "getsentry/junior",
+          namespace: "github",
+        }),
+      });
+      const agentToolsFor = (registry: typeof tools) =>
+        createPiAgentTools(registry, new SkillSandbox([], []), {
+          spanContext: {},
+          searchToolsCost: { owner: "none" },
+          codeMode: { countToolCall: () => 1 },
+        });
+      const modelView = (agentTools: ReturnType<typeof agentToolsFor>) =>
+        JSON.stringify(
+          agentTools.map(({ name, description, parameters }) => ({
+            name,
+            description,
+            parameters,
+          })),
+        );
+      const eventAgentTools = agentToolsFor(eventTools);
+      expect(modelView(eventAgentTools)).toBe(modelView(agentToolsFor(tools)));
+      const executeTool = eventAgentTools.find(
+        (candidate) => candidate.name === "executeTool",
+      );
+      await expect(
+        executeTool!.execute("event-create-memory", {
+          tool_name: "memory_createMemory",
+          arguments: { content: "I prefer event-written memory." },
+        }),
+      ).rejects.toThrow(
+        "memory_createMemory is disabled in this Turn. Only a person's message in a public Conversation can write memory.",
+      );
+      await expect(
+        eventTools["memory_listMemories"]!.execute!({}, {}),
+      ).resolves.toMatchObject({ memories: { length: 2 } });
     } finally {
       await fixture.close();
     }

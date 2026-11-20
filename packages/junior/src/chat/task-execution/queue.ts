@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const CONVERSATION_QUEUE_SCHEMA_VERSION = 2;
 
@@ -22,7 +22,7 @@ export type ConversationQueueMessageRejectReason =
   | "signature_mismatch";
 
 export class ConversationQueueMessageRejectedError extends Error {
-  conversationId?: string;
+  conversationId?: string | undefined;
   reason: ConversationQueueMessageRejectReason;
 
   constructor(
@@ -45,7 +45,7 @@ export function isConversationQueueMessageRejectedError(
 }
 
 export interface ConversationQueueSendOptions {
-  delayMs?: number;
+  delayMs?: number | undefined;
   idempotencyKey?: string;
 }
 
@@ -62,4 +62,13 @@ export interface ConversationWorkQueue {
     message: ConversationQueueMessage,
     options?: ConversationQueueSendOptions,
   ): Promise<ConversationQueueSendResult | void>;
+}
+
+/** Build the idempotency key of a wake that one worker event sends. */
+export function nudgeIdempotencyKey(
+  reason: string,
+  conversationId: string,
+  nowMs: number,
+): string {
+  return `${reason}:${conversationId}:${nowMs}`;
 }

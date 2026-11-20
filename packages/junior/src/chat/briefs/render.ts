@@ -33,7 +33,7 @@ export function renderBriefMarkdown(args: {
   generation: GeneratedBrief;
   input: BriefInput;
   model: string;
-  totalCostUsd?: number;
+  totalCostUsd?: number | undefined;
   versionCount: number;
 }): string {
   const { brief, evidence } = args.generation;
@@ -115,7 +115,7 @@ export function renderBriefMarkdown(args: {
       "None.",
     ),
     "",
-    "### Assumed by Junior (not confirmed)",
+    "### Assumed (not confirmed)",
     "",
     list(
       brief.decisions
@@ -124,16 +124,6 @@ export function renderBriefMarkdown(args: {
           (decision) =>
             `${decision.text}${decision.by ? ` — ${decision.by}` : ""}`,
         ),
-      "None.",
-    ),
-    "",
-    "## Open decisions",
-    "",
-    list(
-      brief.openDecisions.map(
-        (decision) =>
-          `${decision.text}${decision.owner ? ` — ${decision.owner}` : ""}`,
-      ),
       "None.",
     ),
     "",

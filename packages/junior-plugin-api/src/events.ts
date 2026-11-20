@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "./object-presentation";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;
@@ -44,7 +44,10 @@ export const resourceTypeSchema = z
     "Canonical plugin-defined resource type, such as issue or pull_request.",
   );
 
+// Plugins declare camelCase filter keys. Tool inputs and results use the
+// snake_case form, so the two convert without a lookup.
 const EVENT_MATCH_FIELD_NAME = /^[a-z][a-zA-Z0-9]*$/;
+const AGENT_EVENT_MATCH_KEY = /^[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)*$/;
 
 /** One exact value a watch or event automation may require on trusted event data. */
 export const eventMatchFieldSchema = z
@@ -52,6 +55,22 @@ export const eventMatchFieldSchema = z
     kind: z.enum(["boolean", "string", "number"]),
     description: z.string().trim().min(1).max(200),
     enum: z.array(z.string().min(1)).min(1).optional(),
+    /**
+     * The event value is a list of `kind` values. A match value matches when
+     * the list includes it.
+     */
+    list: z.literal(true).optional(),
+    /**
+     * The case of the text in event data. Core changes a saved filter value
+     * to this case, so `getsentry/Junior` still matches `getsentry/junior`.
+     */
+    case: z.enum(["lower", "upper"]).optional(),
+    /**
+     * The events that set this field. Leave it out when every event of the
+     * resource type sets it. A filter on this field never matches other
+     * events, so a trigger that selects them is rejected.
+     */
+    events: z.array(eventTypeSchema).min(1).optional(),
   })
   .strict()
   .superRefine((field, context) => {
@@ -60,6 +79,20 @@ export const eventMatchFieldSchema = z
         code: "custom",
         message: 'Event match field enum requires kind "string".',
         path: ["enum"],
+      });
+    }
+    if (field.case && field.kind !== "string") {
+      context.addIssue({
+        code: "custom",
+        message: 'Event match field case requires kind "string".',
+        path: ["case"],
+      });
+    }
+    if (field.list && field.kind === "boolean") {
+      context.addIssue({
+        code: "custom",
+        message: 'Event match field list cannot use kind "boolean".',
+        path: ["list"],
       });
     }
   });
@@ -75,38 +108,162 @@ export const eventMatchFieldsSchema = z
     }
   });
 
-/** Exact trusted values required before a watch or event automation runs. */
-export const eventMatchSchema = z
-  .record(
-    z.string().regex(EVENT_MATCH_FIELD_NAME),
-    z.union([
-      z.boolean(),
-      z.number().finite(),
-      z.string().min(1),
-      z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
-    ]),
-  )
-  .superRefine((match, context) => {
-    if (Object.keys(match).length > EVENT_DATA_MAX_KEYS) {
-      context.addIssue({
-        code: "custom",
-        message: `Event match may include at most ${EVENT_DATA_MAX_KEYS} keys.`,
-      });
-    }
-    for (const [key, value] of Object.entries(match)) {
-      if (!Array.isArray(value)) continue;
-      if (value.some((entry) => typeof entry === "boolean")) {
+function matchSchema(keyPattern: RegExp) {
+  return z
+    .record(
+      z.string().regex(keyPattern),
+      z.union([
+        z.boolean(),
+        z.number().finite(),
+        z.string().min(1),
+        z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
+      ]),
+    )
+    .superRefine((match, context) => {
+      if (Object.keys(match).length > EVENT_DATA_MAX_KEYS) {
         context.addIssue({
           code: "custom",
-          message: `Event match field "${key}" cannot use a boolean list.`,
-          path: [key],
+          message: `Event match may include at most ${EVENT_DATA_MAX_KEYS} keys.`,
         });
       }
-    }
-  });
+      for (const [key, value] of Object.entries(match)) {
+        if (!Array.isArray(value)) continue;
+        if (value.some((entry) => typeof entry === "boolean")) {
+          context.addIssue({
+            code: "custom",
+            message: `Event match field "${key}" cannot use a boolean list.`,
+            path: [key],
+          });
+        }
+      }
+    });
+}
+
+/** Exact trusted values required before a watch or event automation runs. */
+export const eventMatchSchema = matchSchema(EVENT_MATCH_FIELD_NAME);
+
+/**
+ * A match as tool inputs and results write it. Each key is the snake_case
+ * name of a declared field: `pullRequest` is `pull_request`.
+ */
+export const agentEventMatchSchema = matchSchema(AGENT_EVENT_MATCH_KEY);
+
+/** Name a declared filter as tool inputs and results write it. */
+export function agentEventMatchKey(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/** Name a tool-input filter as its plugin declares it. */
+function declaredEventMatchKey(key: string): string {
+  return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function renameMatchKeys<T>(
+  match: Readonly<Record<string, T>>,
+  rename: (key: string) => string,
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(match).map(([key, value]) => [rename(key), value]),
+  );
+}
+
+/** Copy event data or a saved match with snake_case keys, for the agent. */
+export function agentEventKeys<T>(
+  match: Readonly<Record<string, T>>,
+): Record<string, T> {
+  return renameMatchKeys(match, agentEventMatchKey);
+}
+
+/** Copy a tool-input match with the keys that its plugin declares. */
+export function declaredEventKeys<T>(
+  match: Readonly<Record<string, T>>,
+): Record<string, T> {
+  return renameMatchKeys(match, declaredEventMatchKey);
+}
 
 export type EventMatch = z.output<typeof eventMatchSchema>;
 export type EventMatchFields = z.output<typeof eventMatchFieldsSchema>;
+
+function sameValues(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  return (
+    left?.length === right?.length &&
+    (left ?? []).every((value) => right?.includes(value))
+  );
+}
+
+/**
+ * Merge the match fields of resource types that share one parent resource
+ * type, such as a repository. A field in more than one map keeps the first
+ * description and gets the union of the `events` lists. Fields with the same
+ * key must have the same kind, enum, and list values, and each copy must list
+ * its events. Otherwise this throws, because one field cannot describe two
+ * different values.
+ */
+export function mergeEventMatchFields(
+  ...maps: readonly EventMatchFields[]
+): EventMatchFields {
+  const merged: EventMatchFields = {};
+  for (const fields of maps) {
+    for (const [key, field] of Object.entries(fields)) {
+      const current = merged[key];
+      if (!current) {
+        merged[key] = field;
+        continue;
+      }
+      if (
+        current.kind !== field.kind ||
+        current.list !== field.list ||
+        current.case !== field.case ||
+        !sameValues(current.enum, field.enum)
+      ) {
+        throw new Error(
+          `Match field "${key}" has a different kind, case, enum, or list in two maps.`,
+        );
+      }
+      if (!current.events || !field.events) {
+        throw new Error(
+          `Match field "${key}" is in two maps, so each copy must list its events.`,
+        );
+      }
+      merged[key] = {
+        ...current,
+        events: [...new Set([...current.events, ...field.events])],
+      };
+    }
+  }
+  return eventMatchFieldsSchema.parse(merged);
+}
+
+/**
+ * Merge the match fields of every resource type of one source, for a trigger
+ * with no identifier. Such a trigger can get the events of every resource
+ * type. A field with no `events` list is set on every event of its own
+ * resource type, so it gets that list before the merge. This throws like
+ * `mergeEventMatchFields` when two resource types describe one field
+ * differently.
+ */
+export function anyResourceMatchFields(
+  resourceTypes: readonly Pick<
+    PluginEventType,
+    "matchFields" | "supportedEvents"
+  >[],
+): EventMatchFields {
+  return mergeEventMatchFields(
+    ...resourceTypes.map((resourceType) =>
+      Object.fromEntries(
+        Object.entries(resourceType.matchFields ?? {}).map(([key, field]) => [
+          key,
+          field.events
+            ? field
+            : { ...field, events: [...resourceType.supportedEvents] },
+        ]),
+      ),
+    ),
+  );
+}
 
 function stableMatchValue(value: EventMatch[string]): unknown {
   if (!Array.isArray(value)) return value;
@@ -130,7 +287,12 @@ export function stableEventMatchKey(match: EventMatch | undefined): string {
   );
 }
 
-/** Return whether trusted event data matches one exact match object. */
+/**
+ * Return whether trusted event data matches one exact match object. A list
+ * match value matches when the event value equals any entry. A list event
+ * value matches when it includes the match value, or any entry of a list
+ * match value.
+ */
 export function eventMatches(
   match: EventMatch | undefined,
   data: EventData | undefined,
@@ -140,22 +302,66 @@ export function eventMatches(
   for (const [key, expected] of Object.entries(match)) {
     const actual = data[key];
     if (actual === undefined) return false;
-    if (Array.isArray(expected)) {
-      if (!expected.some((value) => Object.is(value, actual))) return false;
-      continue;
+    const actualValues: unknown[] = Array.isArray(actual) ? actual : [actual];
+    const expectedValues: unknown[] = Array.isArray(expected)
+      ? expected
+      : [expected];
+    if (
+      !expectedValues.some((value) =>
+        actualValues.some((entry) => Object.is(value, entry)),
+      )
+    ) {
+      return false;
     }
-    if (!Object.is(expected, actual)) return false;
   }
   return true;
 }
 
-/** The identifier shape of one resource type. */
+/**
+ * Return a match with each text value in the case that its field declares,
+ * so a saved filter has the same case as event data. Values of other fields
+ * do not change.
+ */
+export function normalizeEventMatch(
+  fields: EventMatchFields,
+  match: EventMatch | undefined,
+): EventMatch | undefined {
+  if (!match) return undefined;
+  const toCase = (key: string, value: string | number) => {
+    const fieldCase = fields[key]?.case;
+    if (typeof value !== "string" || !fieldCase) return value;
+    return fieldCase === "lower" ? value.toLowerCase() : value.toUpperCase();
+  };
+  return Object.fromEntries(
+    Object.entries(match).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? value.map((entry) => toCase(key, entry))
+        : typeof value === "boolean"
+          ? value
+          : toCase(key, value),
+    ]),
+  ) as EventMatch;
+}
+
+function isRegExpSource(value: string): boolean {
+  try {
+    new RegExp(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The identifier shape of one resource type. Plain JSON, so API responses can carry it. */
 export const eventIdentifierSchema = z
   .object({
     /** Shown to the agent, such as "owner/repo#number". */
     format: z.string().trim().min(1).max(200),
-    /** Matches a normalized identifier of this resource type. */
-    pattern: z.instanceof(RegExp),
+    /** RegExp source that matches a normalized identifier of this resource type. */
+    pattern: z.string().min(1).refine(isRegExpSource, {
+      message: "Identifier pattern must be a valid regular expression.",
+    }),
   })
   .strict();
 
@@ -166,17 +372,11 @@ export const pluginEventTypeSchema = z
     supportedEvents: z.array(eventTypeSchema).min(1),
     suggestedEvents: z.array(eventTypeSchema).optional(),
     matchFields: eventMatchFieldsSchema.optional(),
-    guidance: z
-      .record(
-        eventTypeSchema,
-        z.string().trim().min(1).max(EVENT_GUIDANCE_MAX_LENGTH),
-      )
-      .optional(),
   })
   .strict()
   .superRefine((resourceType, context) => {
     const supported = new Set<string>();
-    resourceType.supportedEvents.forEach((eventType, index) => {
+    for (const [index, eventType] of resourceType.supportedEvents.entries()) {
       if (supported.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -185,18 +385,11 @@ export const pluginEventTypeSchema = z
         });
       }
       supported.add(eventType);
-    });
-    for (const eventType of Object.keys(resourceType.guidance ?? {})) {
-      if (!supported.has(eventType)) {
-        context.addIssue({
-          code: "custom",
-          message: `Guidance event type "${eventType}" is not supported.`,
-          path: ["guidance", eventType],
-        });
-      }
     }
     const suggested = new Set<string>();
-    resourceType.suggestedEvents?.forEach((eventType, index) => {
+    for (const [index, eventType] of (
+      resourceType.suggestedEvents ?? []
+    ).entries()) {
       if (suggested.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -212,21 +405,113 @@ export const pluginEventTypeSchema = z
         });
       }
       suggested.add(eventType);
-    });
+    }
+    for (const [key, field] of Object.entries(resourceType.matchFields ?? {})) {
+      for (const [index, eventType] of (field.events ?? []).entries()) {
+        if (!supported.has(eventType)) {
+          context.addIssue({
+            code: "custom",
+            message: `Match field "${key}" event type "${eventType}" is not supported.`,
+            path: ["matchFields", key, "events", index],
+          });
+        }
+      }
+    }
   });
+
+/**
+ * The event reach of one event type: which event automation triggers can
+ * select it.
+ *
+ * - `"all"`: a trigger can run for every resource of the source, with no
+ *   identifier and no filter. Use it only for events that carry status facts
+ *   and cause no side effects.
+ * - `{ anyOf }`: a trigger with no identifier must set at least one of these
+ *   filters. Use it when an event carries private text, such as titles or
+ *   comments, or makes Junior act, such as add a reaction.
+ * - `"resource"`: only a trigger for one resource, with an identifier, can
+ *   select the event.
+ */
+export const eventReachSchema = z.union([
+  z.literal("all"),
+  z.literal("resource"),
+  z
+    .object({
+      anyOf: z.array(z.string().regex(EVENT_MATCH_FIELD_NAME)).min(1),
+    })
+    .strict(),
+]);
+
+export type EventReach = z.output<typeof eventReachSchema>;
+
+/** What a source declares once for one of its event types. */
+export const pluginEventDeclarationSchema = z
+  .object({
+    reach: eventReachSchema,
+    /**
+     * App guidance that the agent gets with each Event of this type, for every
+     * Watch and event automation.
+     */
+    guidance: z
+      .string()
+      .trim()
+      .min(1)
+      .max(EVENT_GUIDANCE_MAX_LENGTH)
+      .optional(),
+    /**
+     * How an Event of this type reads after the name of its resource, such
+     * as `is merged` or `gets a new comment`. People read it in a sentence,
+     * such as "When getsentry/junior#12 is merged".
+     */
+    phrase: z.string().trim().min(1).max(80).optional(),
+  })
+  .strict();
+
+export type PluginEventDeclaration = z.output<
+  typeof pluginEventDeclarationSchema
+>;
 
 export const pluginEventsSchema = z
   .object({
     resourceTypes: z.array(pluginEventTypeSchema).min(1),
+    /**
+     * One declaration for each event type that a resource type supports. An
+     * event that two resource types share has one declaration, so its reach
+     * and guidance are the same for both.
+     */
+    events: z.record(eventTypeSchema, pluginEventDeclarationSchema),
     isEnabled: z.function({ input: [], output: z.boolean() }).optional(),
     normalizeIdentifier: z
       .function({ input: [z.string()], output: z.string() })
+      .optional(),
+    /**
+     * The web page of one watched resource, so people can open it. Returns
+     * undefined when the resource has no page.
+     */
+    resourceUrl: z
+      .function({
+        input: [z.object({ identifier: z.string(), resourceType: z.string() })],
+        output: z.string().optional(),
+      })
+      .optional(),
+    /**
+     * The resource that one web page shows, the inverse of `resourceUrl`, so
+     * a link such as a Review item's subject can name an Event resource.
+     * Returns undefined when no resource type of the source has the page.
+     */
+    resourceForUrl: z
+      .function({
+        input: [z.string()],
+        output: z
+          .object({ identifier: z.string(), resourceType: z.string() })
+          .optional(),
+      })
       .optional(),
   })
   .strict()
   .superRefine((registration, context) => {
     const seen = new Set<string>();
-    registration.resourceTypes.forEach((resourceType, index) => {
+    for (const [index, resourceType] of registration.resourceTypes.entries()) {
       if (seen.has(resourceType.type)) {
         context.addIssue({
           code: "custom",
@@ -235,7 +520,53 @@ export const pluginEventsSchema = z
         });
       }
       seen.add(resourceType.type);
-    });
+    }
+    const supported = new Set(
+      registration.resourceTypes.flatMap(
+        (resourceType) => resourceType.supportedEvents,
+      ),
+    );
+    for (const eventType of supported) {
+      if (!registration.events[eventType]) {
+        context.addIssue({
+          code: "custom",
+          message: `Event type "${eventType}" has no declaration in events.`,
+          path: ["events"],
+        });
+      }
+    }
+    let fields: EventMatchFields;
+    try {
+      fields = anyResourceMatchFields(registration.resourceTypes);
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        message: (error as Error).message,
+        path: ["resourceTypes"],
+      });
+      return;
+    }
+    for (const [eventType, declaration] of Object.entries(
+      registration.events,
+    )) {
+      if (!supported.has(eventType)) {
+        context.addIssue({
+          code: "custom",
+          message: `Declared event type "${eventType}" is not supported.`,
+          path: ["events", eventType],
+        });
+      }
+      if (typeof declaration.reach === "string") continue;
+      for (const filter of declaration.reach.anyOf) {
+        if (!fields[filter]?.events?.includes(eventType)) {
+          context.addIssue({
+            code: "custom",
+            message: `Reach filter "${filter}" is not set on "${eventType}".`,
+            path: ["events", eventType, "reach", "anyOf"],
+          });
+        }
+      }
+    }
   });
 
 export type PluginEventType = z.output<typeof pluginEventTypeSchema>;
@@ -260,9 +591,16 @@ export const subscribableResourceSchema = z
   .object({
     identifier: z.string().min(1),
     label: z.string().min(1),
+    /**
+     * Filters that select the events of this resource in an event automation
+     * trigger, such as `{ repo, pull_request }`. A Watch uses `identifier`.
+     * Missing when event automations cannot use this resource.
+     */
+    match: agentEventMatchSchema.optional(),
     namespace: z.string().min(1),
-    suggestedEvents: z.array(eventTypeSchema).optional(),
-    supportedEvents: z.array(eventTypeSchema),
+    // Snake case: the model reads this object in tool results.
+    suggested_events: z.array(eventTypeSchema).optional(),
+    supported_events: z.array(eventTypeSchema),
     type: resourceTypeSchema,
   })
   .strict();
@@ -295,6 +633,43 @@ export const eventPersonSchema = z.union([
 
 export type EventPerson = z.output<typeof eventPersonSchema>;
 
+/**
+ * The account that wrote the content of an Event, such as a commenter or a
+ * reviewer. It is always an account of the publishing plugin's provider.
+ * Core decides from it whether the author is a Trusted author. An Event with
+ * no author is a system Event.
+ */
+export const eventAuthorSchema = z
+  .object({
+    /** Display handle, such as a login. It never proves who the author is. */
+    handle: z.string().min(1),
+    /**
+     * The account id that the provider never changes or gives to another
+     * account, such as the numeric GitHub user id. Set it only when the
+     * provider authenticated that this account wrote the content. Core
+     * matches it to an account that the OAuth account-linking flow linked.
+     */
+    subjectId: z.string().min(1).optional(),
+    /** The account is a bot, not a person. */
+    bot: z.boolean().optional(),
+    /**
+     * The plugin's trusted authors list names this account. Core trusts the
+     * author without a linked account. Core never reads the list itself.
+     */
+    trusted: z.boolean().optional(),
+    /**
+     * The author's own text, without what they quote. Leave it out of
+     * `untrustedText`: core shows it once, as context that names the author.
+     */
+    text: z
+      .string()
+      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
+      .optional(),
+  })
+  .strict();
+
+export type EventAuthor = z.output<typeof eventAuthorSchema>;
+
 export const eventInputSchema = z
   .object({
     objectType: objectTypeSchema.optional(),
@@ -302,6 +677,11 @@ export const eventInputSchema = z
     eventType: eventTypeSchema,
     identifier: z.string().min(1),
     occurredAtMs: z.number().finite(),
+    /**
+     * The Watch that gets this Event completes after delivery. Set it only on
+     * the Event for the exact resource. Never set it on copies for broader
+     * resources, such as a repository, because those Watches must stay active.
+     */
     terminal: z.boolean().optional(),
     trustedSummary: z
       .string()
@@ -309,12 +689,22 @@ export const eventInputSchema = z
       .transform((value) => value.slice(0, EVENT_SUMMARY_MAX_LENGTH)),
     /** Trusted structured facts. Prefer ids and urls over long prose. */
     data: eventDataSchema.optional(),
+    /**
+     * Provider text that is context, never instruction. When `author.text`
+     * is set, this is only the rest, such as what the author quotes.
+     */
     untrustedText: z
       .string()
       .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
       .optional(),
     /** People involved in the change. Watch Events list them as mentions. */
     people: z.array(eventPersonSchema).max(20).optional(),
+    /**
+     * The account that wrote the content. Core decides whether to trust it.
+     * A trusted person writes the Event's Message. `text` is never an
+     * instruction.
+     */
+    author: eventAuthorSchema.optional(),
   })
   .strict();
 
@@ -328,16 +718,27 @@ export const eventSchema = eventInputSchema.extend({
 export type Event = z.output<typeof eventSchema>;
 
 export interface EventPublisher {
-  /** Return whether an active watch or event automation matches this event. */
-  hasMatch?(event: EventInput): Promise<boolean>;
+  /**
+   * Return whether an active watch or event automation matches any of these
+   * events. Pass every copy of a webhook's events in one call, so core reads
+   * event automations once.
+   */
+  hasMatch?(events: EventInput[]): Promise<boolean>;
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: EventInput): Promise<void>;
   /**
    * Return match keys used by active watches or event automations for these
-   * identifiers and event types. Plugins use this to load optional trusted
-   * data only when a filter needs it.
+   * identifiers and event types, and by event automations with no
+   * identifier. Plugins use this to load optional trusted data only when a
+   * filter needs it.
+   *
+   * Pass `data` with values that every copy of the events sets and that the
+   * plugin already has, such as `repo`. An event automation with no
+   * identifier whose filters on those keys fail adds no keys, so a trigger
+   * for one repository does not load data for events of other repositories.
    */
   neededMatchKeys?(input: {
+    data?: EventData;
     eventTypes: string[];
     identifiers: string[];
   }): Promise<string[]>;

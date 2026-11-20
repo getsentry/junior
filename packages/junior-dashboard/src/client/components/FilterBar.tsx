@@ -1,37 +1,8 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
-import { Card } from "./layout/Card";
-import { SearchInput } from "./SearchInput";
-
-/** Lay out labeled filter groups and an optional search field. */
-export function FilterBar(props: {
-  children: ReactNode;
-  className?: string;
-  search?: {
-    label: string;
-    onChange(value: string): void;
-    placeholder: string;
-    value: string;
-  };
-}) {
-  return (
-    <Card className={cn("flex flex-wrap items-end gap-4 p-4", props.className)}>
-      {props.children}
-      {props.search ? (
-        <FilterGroup className="min-w-[16rem] flex-1" label="Search">
-          <SearchInput
-            className="w-full max-w-md"
-            label={props.search.label}
-            onChange={props.search.onChange}
-            placeholder={props.search.placeholder}
-            value={props.search.value}
-          />
-        </FilterGroup>
-      ) : null}
-    </Card>
-  );
-}
+import { Badge } from "./ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 /** Render one labeled control group inside a filter bar. */
 export function FilterGroup(props: {
@@ -69,43 +40,30 @@ export function FilterTabList(props: {
   value: string;
 }) {
   return (
-    <div
-      aria-label={props.ariaLabel}
-      className="grid min-w-0 grid-cols-3 gap-1 border-b border-dashboard-border-subtle sm:flex sm:overflow-x-auto"
-      role="tablist"
-    >
-      {props.items.map((item) => {
-        const selected = props.value === item.value;
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-sans font-medium text-xs transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
-              selected
-                ? "text-dashboard-accent-text after:bg-dashboard-accent"
-                : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
-            )}
+    <Tabs onValueChange={props.onChange} value={props.value}>
+      <TabsList
+        aria-label={props.ariaLabel}
+        className="grid grid-cols-3 sm:flex sm:overflow-x-auto"
+        variant="line"
+      >
+        {props.items.map((item) => (
+          <TabsTrigger
+            className="justify-between sm:shrink-0 sm:justify-start"
             key={item.value || "all"}
-            onClick={() => props.onChange(item.value)}
-            role="tab"
-            type="button"
+            value={item.value}
           >
             {item.label}
             {item.count !== undefined ? (
-              <span
-                className={cn(
-                  "rounded-sm border px-1.5 py-0.5 text-xs",
-                  selected
-                    ? "border-dashboard-accent/20 bg-dashboard-accent/10 text-dashboard-accent-text"
-                    : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
-                )}
+              <Badge
+                className="py-0.5"
+                variant={item.value === props.value ? "accent" : "muted"}
               >
                 {item.count.toLocaleString("en-US")}
-              </span>
+              </Badge>
             ) : null}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

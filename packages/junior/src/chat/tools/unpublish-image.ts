@@ -1,20 +1,27 @@
-import { z } from "zod";
+import * as z from "zod";
 import { unpublishArtifact } from "@/chat/artifacts/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 const outputSchema = juniorToolOutputSchema.extend({
   filename: z.string().min(1),
   unpublished: z.literal(true),
 });
 
-/** Create a tool that stops serving one previously published public image. */
+/**
+ * Create a tool that stops serving one previously published public image.
+ *
+ * @runBuilt unpublishImage
+ */
 export function createUnpublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
 }) {
   return zodTool({
+    exposure: "deferred",
+    source: IMAGES_TOOL_SOURCE,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -31,9 +38,7 @@ export function createUnpublishImageTool(args: {
         ref: z
           .string()
           .min(1)
-          .describe(
-            "Public artifact URL or artifact filename (`<id>.<ext>`).",
-          ),
+          .describe("Public artifact URL or artifact filename (`<id>.<ext>`)."),
       })
       .strict(),
     outputSchema,

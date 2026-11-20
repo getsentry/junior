@@ -9,16 +9,28 @@ import {
   subscribableResourceSchema,
   type SubscribableResource,
   type PluginToolExecuteOptions,
+  type WatchResult,
+  watchResultSchema,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { z } from "zod";
+import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { gitHubIssueSubscribable } from "../events/issue.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import { watchGitHubIssue } from "../events/issue.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+  startedByPerson,
+} from "../tool-support/attribution.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -101,15 +113,17 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
-  facts?: ObjectAnnotation["facts"];
-  description?: string;
-  sourceUpdatedAt?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  description?: string | undefined;
+  sourceUpdatedAt?: string | undefined;
   number: number;
   url: string;
 }
 
 interface GitHubIssueData extends GitHubIssueResult {
+  note?: string;
   subscribable?: SubscribableResource;
+  subscription?: WatchResult;
 }
 
 interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
@@ -117,8 +131,10 @@ interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
 }
 
 const gitHubIssueDataSchema = z.object({
+  note: z.string().optional(),
   number: z.number(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
   url: z.string(),
 });
 
@@ -128,22 +144,33 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
-function gitHubIssueToolResult(
+/**
+ * Next step after an issue is created. Whether Junior does the work is the
+ * requester's decision, so the note asks for a Review item. Only a Turn that
+ * a person started gets it: no one can answer the item in other runs.
+ */
+function implementIssueNote(issue: string): string {
+  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use addReviewItem: question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now", dedupe_key "github-issue-implement:${issue}". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with spawnAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
+}
+
+async function gitHubIssueToolResult(
+  ctx: ToolRegistrationHookContext,
   input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
-  canSubscribe: boolean,
-): GitHubIssueToolResult {
+): Promise<GitHubIssueToolResult> {
   const repo = parseRepo(input.repo);
-  const subscribable = canSubscribe
-    ? gitHubIssueSubscribable({
-        number: result.number,
-        repo: `${repo.owner}/${repo.name}`,
-      })
-    : undefined;
+  const repoName = `${repo.owner}/${repo.name}`;
+  const watch = await watchGitHubIssue(ctx, {
+    number: result.number,
+    repo: repoName,
+  });
   const data = {
+    ...(startedByPerson(ctx)
+      ? { note: implementIssueNote(`${repoName}#${result.number}`) }
+      : undefined),
     number: result.number,
     url: result.url,
-    ...(subscribable ? { subscribable } : undefined),
+    ...watch,
   };
   return {
     objectAnnotations: [
@@ -181,43 +208,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function parseRepo(value: string): { name: string; owner: string } {
-  const repo = nonEmptyString(value, "repo");
-  const parts = repo.split("/");
-  if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return {
-    owner: parts[0].trim(),
-    name: parts[1].trim(),
-  };
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string") {
-      return message;
-    }
-  }
-  if (typeof payload === "string" && payload.trim()) {
-    return payload.trim();
-  }
-  return "GitHub request failed";
-}
-
 function createIssueState(value: unknown): CreateIssueState | undefined {
   if (value === undefined) {
     return undefined;
@@ -252,7 +242,7 @@ async function createGitHubIssueRequest(
   input: CreateGitHubIssueInput,
   ctx: ToolRegistrationHookContext,
   dashboardUrl?: string,
-): Promise<Request> {
+): Promise<{ body: unknown; path: string }> {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
     nonEmptyString(label, "labels entry"),
@@ -260,41 +250,31 @@ async function createGitHubIssueRequest(
   const payload = {
     title: nonEmptyString(input.title, "title"),
     body: appendGitHubFooter(
-      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
+      appendGitHubRequesterAttribution(
+        input.body ?? "",
+        await resolveGitHubRequester(ctx),
+      ),
       conversationId,
       dashboardUrl,
     ),
     ...(labels?.length ? { labels } : undefined),
   };
-  return new Request(
-    `https://api.github.com/repos/${encodeURIComponent(
-      repo.owner,
-    )}/${encodeURIComponent(repo.name)}/issues`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return { path: `${repoPath(repo)}/issues`, body: payload };
 }
 
 async function createGitHubIssue(
   ctx: ToolRegistrationHookContext,
-  request: Request,
+  request: { body: unknown; path: string },
 ): Promise<GitHubIssueResult> {
-  const response = await ctx.egress.fetch({
-    provider: "github",
+  const response = await githubApi(ctx.egress, {
     operation: "github.issue.create",
-    request,
+    method: "POST",
+    ...request,
   });
-  const parsed = await readJsonResponse(response);
+  const parsed = response.body;
   if (!response.ok) {
     throw new GitHubIssueCreateRejectedError(
-      `GitHub issue creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
+      `GitHub issue creation failed with HTTP ${response.status}: ${githubErrorMessage(
         parsed,
       )}`,
       response.status,
@@ -315,104 +295,102 @@ async function createGitHubIssue(
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
-    inputSchema: createIssueToolInputSchema,
-    outputSchema: gitHubIssueOutputSchema,
-    async execute(
-      input: CreateGitHubIssueInput,
-      options: PluginToolExecuteOptions,
-    ) {
-      const parsedInput = parseCreateIssueInput(input);
-      const conversationId = nonEmptyString(
-        ctx.conversationId,
-        "conversationId",
-      );
-      const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
-      const key = `createIssue:${conversationId}:${toolCallId}`;
-      return await ctx.state.withLock(
-        `${key}:lock`,
-        GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
-        async () => {
-          const state = createIssueState(await ctx.state.get(key));
-          if (state?.status === "completed") {
-            const completedInput = state.input ?? parsedInput;
-            const completedResult = {
-              facts:
-                state.facts === undefined
-                  ? undefined
-                  : objectFactsSchema.parse(state.facts),
-              sourceUpdatedAt: state.sourceUpdatedAt,
-              description: state.description,
-              number: state.number,
-              url: state.url,
-            };
-            return gitHubIssueToolResult(
-              completedInput,
-              completedResult,
-              ctx.events.canSubscribe,
-            );
-          }
-          if (state?.status === "pending") {
-            throw new Error(
-              "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
-            );
-          }
-          const request = await createGitHubIssueRequest(
-            conversationId,
-            parsedInput,
-            ctx,
-            ctx.slack?.conversationLink?.url,
-          );
-          const pendingState: CreateIssueState = {
-            status: "pending",
-            createdAtMs: Date.now(),
-            input: parsedInput,
+export const gitHubIssueTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
+  inputSchema: createIssueToolInputSchema,
+  outputSchema: gitHubIssueOutputSchema,
+  async execute(
+    input: z.output<typeof createIssueToolInputSchema>,
+    options: PluginToolExecuteOptions,
+    ctx: ToolRegistrationHookContext,
+  ) {
+    const parsedInput = parseCreateIssueInput(input);
+    const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
+    const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+    const key = `createIssue:${conversationId}:${toolCallId}`;
+    const attempt = await ctx.state.withLock(
+      `${key}:lock`,
+      GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
+      async () => {
+        const state = createIssueState(await ctx.state.get(key));
+        if (state?.status === "completed") {
+          const completedInput = state.input ?? parsedInput;
+          const completedResult = {
+            facts:
+              state.facts === undefined
+                ? undefined
+                : objectFactsSchema.parse(state.facts),
+            sourceUpdatedAt: state.sourceUpdatedAt,
+            description: state.description,
+            number: state.number,
+            url: state.url,
           };
-          await ctx.state.set(
-            key,
-            pendingState,
-            GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+          return await gitHubIssueToolResult(
+            ctx,
+            completedInput,
+            completedResult,
           );
+        }
+        if (state?.status === "pending") {
+          throw new Error(
+            "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
+          );
+        }
+        const request = await createGitHubIssueRequest(
+          conversationId,
+          parsedInput,
+          ctx,
+          ctx.conversationLink?.url,
+        );
+        const pendingState: CreateIssueState = {
+          status: "pending",
+          createdAtMs: Date.now(),
+          input: parsedInput,
+        };
+        await ctx.state.set(
+          key,
+          pendingState,
+          GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+        );
+        try {
+          const result = await createGitHubIssue(ctx, request);
+          Object.assign(pendingState, { status: "completed", ...result });
           try {
-            const result = await createGitHubIssue(ctx, request);
-            Object.assign(pendingState, { status: "completed", ...result });
-            try {
-              await ctx.state.set(
-                key,
-                pendingState,
-                GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
-              );
-            } catch (error) {
-              throw new Error(
-                "GitHub issue was created, but the runtime could not persist the completed issue state.",
-                { cause: error },
-              );
-            }
-            return gitHubIssueToolResult(
-              parsedInput,
-              result,
-              ctx.events.canSubscribe,
+            await ctx.state.set(
+              key,
+              pendingState,
+              GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
             );
           } catch (error) {
-            if (
-              isEgressAuthRequired(error) ||
-              isDefinitiveGitHubIssueCreateRejection(error)
-            ) {
-              await ctx.state.delete(key);
-            }
-            throw error;
+            throw new Error(
+              "GitHub issue was created, but the runtime could not persist the completed issue state.",
+              { cause: error },
+            );
           }
-        },
+          return await gitHubIssueToolResult(ctx, parsedInput, result);
+        } catch (error) {
+          if (
+            isEgressAuthRequired(error) ||
+            isDefinitiveGitHubIssueCreateRejection(error)
+          ) {
+            await ctx.state.delete(key);
+          }
+          throw error;
+        }
+      },
+    );
+    if (!attempt.acquired) {
+      throw new Error(
+        "GitHub issue creation for this tool call is already running; refusing to create a duplicate issue.",
       );
-    },
-  });
-}
+    }
+    return attempt.value;
+  },
+});

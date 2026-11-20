@@ -1,0 +1,59 @@
+id: no-raw-slack-turn-post
+language: TypeScript
+severity: error
+message: "Do not post to Slack with postSlackMessage, chat.postMessage, or a Chat SDK thread, channel, or postChannelMessage post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it. Do not add the file to this rule's ignores; they are only for the Slack outbound boundary."
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  # Slack outbound boundary and its one reply wrapper.
+  - packages/junior/src/chat/slack/outbound.ts
+  - packages/junior/src/chat/slack/reply.ts
+rule:
+  any:
+    - pattern: postSlackMessage($$$)
+    - pattern: $CLIENT.chat.postMessage($$$)
+    - all:
+        - kind: import_specifier
+        - has:
+            kind: identifier
+            regex: ^postSlackMessage$
+    # Chat SDK post on a Thread or Channel: `thread.post`, `args.thread?.post`,
+    # `(thread as Thread).post`, or `chat.channel(id).post`.
+    - all:
+        - kind: call_expression
+        - has:
+            field: function
+            kind: member_expression
+            all:
+              - has: { field: property, regex: ^post$ }
+              - has: { field: object, matches: thread-or-channel }
+        # Thread control acks are not Turn output.
+        - not:
+            has:
+              field: arguments
+              has:
+                kind: identifier
+                regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
+    - all:
+        - kind: call_expression
+        - has:
+            field: function
+            kind: member_expression
+            has: { field: property, regex: ^postChannelMessage$ }
+utils:
+  thread-or-channel:
+    any:
+      - { kind: identifier, regex: ^(thread|channel)$ }
+      - has: { field: property, regex: ^(thread|channel)$ }
+      - has:
+          field: function
+          any:
+            - { kind: identifier, regex: ^(thread|channel)$ }
+            - has: { field: property, regex: ^(thread|channel)$ }
+      # Look through `thread!`, `(thread)`, and `thread as Thread`.
+      - all:
+          - any:
+              - kind: non_null_expression
+              - kind: parenthesized_expression
+              - kind: as_expression
+          - has: { nthChild: 1, matches: thread-or-channel }

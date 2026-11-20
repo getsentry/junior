@@ -1,0 +1,8 @@
+/*
+ * Dashboard stylesheet entry. The client build bundles it into one hashed
+ * file, with the font files next to it, so the page loads no third-party
+ * stylesheet or font. `build:css` writes `dist/tailwind.css` first.
+ */
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/outfit/wght.css";
+@import "../dist/tailwind.css";

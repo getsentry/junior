@@ -321,7 +321,7 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
     }
     if (description.length > SKILL_DESCRIPTION_MAX) {
       errors.push(
-        `${skillFile}: description exceeds ${SKILL_DESCRIPTION_MAX} characters`,
+        `${skillFile}: description exceeds ${SKILL_DESCRIPTION_MAX} characters. Rewrite it shorter: keep what the skill does, when to use it, and when not to use it. Do not cut it off mid-sentence or drop trigger conditions.`,
       );
     }
     if (description.includes("<") || description.includes(">")) {

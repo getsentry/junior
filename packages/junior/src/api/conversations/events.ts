@@ -1,17 +1,21 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationEventModel,
   conversationEventModelCall,
 } from "./event-model";
 import {
   conversationReportEventSchema,
+  conversationReportMessageEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
 } from "../schema/conversation";
@@ -28,11 +32,10 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "turn_routed",
+  "reply_posted",
   "turn_completed",
   "turn_failed",
   "compaction",
-  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -140,7 +143,7 @@ function reportMessageActorIdentity(
   data: Extract<ConversationEvent["data"], { type: "message" }>,
 ): Extract<ConversationReportEventData, { type: "message" }>["actorIdentity"] {
   if (data.role !== "user") return undefined;
-  const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
+  const author = reportingMessageAuthorSchema.safeParse(data.meta?.["author"]);
   if (!author.success) return undefined;
   const actorIdentity = {
     ...(author.data.fullName ? { fullName: author.data.fullName } : undefined),
@@ -301,6 +304,43 @@ export function conversationReportToolResultIds(
   ];
 }
 
+const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
+
+/** Read the Events listed on a message that holds several Events. */
+function reportMessageEvents(
+  meta: Record<string, unknown> | undefined,
+): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
+  const parsed = storedMessageEventsSchema.safeParse(meta?.["events"]);
+  return parsed.success ? { events: parsed.data } : undefined;
+}
+
+const storedReviewItemChangesSchema = z
+  .array(reviewItemChangeRecordSchema)
+  .min(1);
+
+/** Read the Review item changes that a message records. */
+function reportReviewItemChanges(
+  meta: Record<string, unknown> | undefined,
+):
+  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | undefined {
+  const parsed = storedReviewItemChangesSchema.safeParse(
+    meta?.["reviewItemChanges"],
+  );
+  return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
+}
+
+// The report has no `cancelled` state. A cancelled Turn has no reply.
+const TURN_COMPLETED_STATES = {
+  success: "succeeded",
+  no_reply: "no_reply",
+  cancelled: "no_reply",
+  blocked: "blocked",
+} as const satisfies Record<
+  Extract<ConversationEvent["data"], { type: "turn_completed" }>["outcome"],
+  string
+>;
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -331,31 +371,55 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
-        ...(data.meta?.source === "web" || data.meta?.source === "slack"
-          ? { source: data.meta.source }
+        ...(data.meta?.["source"] === "web" || data.meta?.["source"] === "slack"
+          ? { source: data.meta["source"] }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
-        eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
-          .data,
-        ...(typeof data.meta?.eventType === "string"
-          ? { eventType: data.meta.eventType }
+        ...(args.canExposePayload &&
+        data.role === "user" &&
+        data.authorIdentityId &&
+        data.authorIdentityId !== SYSTEM_IDENTITY_ID
+          ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...(typeof data.meta?.explicitMention === "boolean"
-          ? { explicitMention: data.meta.explicitMention }
+        ...(typeof data.meta?.["agentInvocationId"] === "string"
+          ? { agentInvocationId: data.meta["agentInvocationId"] }
+          : undefined),
+        ...(args.canExposePayload
+          ? reportReviewItemChanges(data.meta)
+          : undefined),
+        eventObjectType: objectTypeSchema.safeParse(
+          data.meta?.["eventObjectType"],
+        ).data,
+        ...(typeof data.meta?.["eventType"] === "string"
+          ? { eventType: data.meta["eventType"] }
+          : undefined),
+        ...(typeof data.meta?.["eventNamespace"] === "string"
+          ? { eventNamespace: data.meta["eventNamespace"] }
+          : undefined),
+        ...(typeof data.meta?.["explicitMention"] === "boolean"
+          ? { explicitMention: data.meta["explicitMention"] }
+          : undefined),
+        ...(data.meta?.["quiet"] === true
+          ? { quiet: true as const }
           : undefined),
         ...(args.canExposePayload &&
-        typeof data.meta?.trustedSummary === "string"
-          ? { trustedSummary: data.meta.trustedSummary }
+        typeof data.meta?.["trustedSummary"] === "string"
+          ? { trustedSummary: data.meta["trustedSummary"] }
           : undefined),
+        ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
-        (data.meta?.cards || data.meta?.objectCards)
+        (data.meta?.["cards"] || data.meta?.["objectCards"])
           ? { cards: readMessageCardRefs(data.meta) }
           : undefined),
         ...(args.canExposePayload
           ? {
               text: data.text,
-              ...(data.meta?.attachments
-                ? { attachments: readMessageAttachments(data.meta.attachments) }
+              ...(data.meta?.["attachments"]
+                ? {
+                    attachments: readMessageAttachments(
+                      data.meta["attachments"],
+                    ),
+                  }
                 : undefined),
             }
           : { redacted: true as const }),
@@ -395,18 +459,15 @@ function reportEventData(args: {
         type: "attachments_delivered",
         attachments: data.attachments,
       };
-    case "turn_routed":
+    case "reply_posted":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
       return {
-        type: "turn_routed",
-        turnId: data.turnId,
-        modelProfile: data.modelProfile,
-        modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
-        reasoningLevel: data.reasoningLevel,
-        ...(data.confidence !== undefined
-          ? { confidence: data.confidence }
-          : undefined),
-        source: data.source,
+        type: "reply_posted",
+        plugin: data.plugin,
+        text: data.text,
+        ...(data.url ? { url: data.url } : undefined),
       };
     case "guardian_action_reviewed":
       return {
@@ -422,7 +483,7 @@ function reportEventData(args: {
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
-        state: data.outcome === "success" ? "succeeded" : "no_reply",
+        state: TURN_COMPLETED_STATES[data.outcome],
       };
     case "turn_failed": {
       const eventId = data.eventId;
@@ -444,7 +505,6 @@ function reportEventData(args: {
     case "compaction":
       return {
         type: "compaction",
-        modelProfile: data.modelProfile,
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
@@ -471,6 +531,15 @@ function reportSubagentLabel(
   };
 }
 
+// A child with no row, or a page counted before its kinds are read, shows as
+// a Task: only a Thread links to a page of its own.
+function childKind(
+  threadIds: ReadonlySet<string> | undefined,
+  conversationId: string,
+): "thread" | "task" {
+  return threadIds?.has(conversationId) ? "thread" : "task";
+}
+
 /**
  * Project canonical events into the ordered reporting boundary.
  *
@@ -479,7 +548,11 @@ function reportSubagentLabel(
  */
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
+  /** Child Conversations that subagent events name and that are Threads. */
+  threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
+  /** `turn_started` of the Conversation's first Turn. */
+  firstTurnStart?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -517,6 +590,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -526,6 +600,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
+    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);
@@ -585,6 +660,7 @@ export function projectConversationReportEventPage(args: {
         startedSeq: event.seq,
         startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
+        childKind: childKind(args.threadIds, event.data.childConversationId),
         subagentKind: event.data.subagentKind,
         ...reportSubagentLabel(event.data, args.canExposePayload),
         status: "running",
@@ -600,6 +676,10 @@ export function projectConversationReportEventPage(args: {
           startedSeq: started.seq,
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
+          childKind: childKind(
+            args.threadIds,
+            started.data.childConversationId,
+          ),
           subagentKind: started.data.subagentKind,
           ...reportSubagentLabel(started.data, args.canExposePayload),
           ...(started.data.parentToolCallId
@@ -610,21 +690,6 @@ export function projectConversationReportEventPage(args: {
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }
-    } else if (event.data.type === "handoff") {
-      data = {
-        type: "handoff",
-        modelProfile: event.data.modelProfile,
-        modelId: event.data.modelId,
-        ...(event.data.reasoningLevel
-          ? { reasoningLevel: event.data.reasoningLevel }
-          : undefined),
-        ...(event.data.triggeringToolCallId
-          ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : undefined),
-        ...(args.canExposePayload && event.data.summary
-          ? { summary: event.data.summary }
-          : undefined),
-      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,
@@ -634,6 +699,7 @@ export function projectConversationReportEventPage(args: {
     if (!data) continue;
 
     projected.push(
+      // oxlint-disable-next-line junior/no-response-schema-parse -- Stored read: each stored event payload is checked here, and MCP readers use the result with no other parse.
       conversationReportEventSchema.parse({
         seq: event.seq,
         createdAt: new Date(event.createdAtMs).toISOString(),

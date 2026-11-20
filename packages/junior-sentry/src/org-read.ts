@@ -19,7 +19,7 @@ const LEASE_MS = 60 * 60 * 1000;
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function orgReadToken(): string | undefined {
-  return process.env.SENTRY_READ_TOKEN?.trim() || undefined;
+  return process.env["SENTRY_READ_TOKEN"]?.trim() || undefined;
 }
 
 // `/api/0/users/` requests stay on user OAuth because the token has no user.

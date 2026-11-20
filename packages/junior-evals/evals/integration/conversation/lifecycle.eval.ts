@@ -1,13 +1,24 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
-import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
-import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
+import {
+  slackMention,
+  slackThreadMessage,
+  reply,
+  webMessage,
+} from "@junior-evals/fixture/inputs";
+import {
+  rejectNextModelRequest,
+  rejectNextModelRequestAsTooLong,
+} from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
+  completedToolCalls,
   toolOutput,
 } from "@junior-evals/fixture/results";
+import { savedAgentHistory } from "@junior-evals/fixture/saved-history";
 import { test } from "@junior-evals/fixture/test";
 
 /** Release tools of the eval MCP server. */
@@ -33,6 +44,13 @@ const DEPLOY_LOG = Array.from(
   (_, index) =>
     `2026-03-01T04:${String(index % 60).padStart(2, "0")}:00Z step ${String(index + 1).padStart(4, "0")} ok checksum ${String(index * 7919).padStart(12, "0")} region iad1`,
 ).join("\n");
+// 30,000 CJK characters. Junior estimates them by size at about 7,500
+// tokens, so the history is under the compaction limit at Turn start. The
+// provider counts about 57,000 tokens, so the measured usage of the next model
+// call is over it.
+const CJK_EXPORT = Array.from({ length: 30_000 }, (_, index) =>
+  String.fromCodePoint(0x4e00 + ((index * 7919) % 20_000)),
+).join("");
 
 describe("Lifecycle and Resilience", () => {
   test("when the first human message lands, store a conversation title", async ({
@@ -45,8 +63,39 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.title).toMatch(/leak/i);
   });
 
-  // A Slack turn compacts history before the agent starts. A web turn
-  // compacts it in the agent, before the first model request.
+  test("when the first message links a tracked issue, name the conversation after the issue", async ({
+    agent,
+  }) => {
+    // The plugin stands in for a provider that reads the linked issue.
+    const issueTracker = defineJuniorPlugin({
+      manifest: {
+        name: "eval-issue-tracker",
+        displayName: "Eval Issue Tracker",
+        description: "Eval issue titles",
+      },
+      hooks: {
+        conversationTitleContext: ({ text }) =>
+          text.includes("tracker.example.test/acme/app/issues/1583")
+            ? ["acme/app#1583: Checkout button freezes on Safari"]
+            : undefined,
+      },
+    });
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([issueTracker]),
+    });
+
+    const conversation = await run(
+      slackMention(
+        "Fix this https://tracker.example.test/acme/app/issues/1583. For now, reply with exactly: on it",
+      ),
+    );
+
+    expect(conversation.title).toMatch(/1583/);
+    expect(conversation.title).toMatch(/safari|checkout/i);
+  });
+
+  // Both surfaces compact history in the agent, before the first model
+  // request, with the agent model and its cached request prefix.
   test.for([
     { surface: "a Slack thread", message: slackMention },
     { surface: "a web conversation", message: webMessage },
@@ -80,6 +129,139 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
+  test("when the final response puts the context over the compaction limit, reply once without compacting", async ({
+    agent,
+  }) => {
+    // An 8,000 token context window sets the compaction limit at 7,200 tokens
+    // and the input limit at 7,600 tokens. The system prompt and tools alone
+    // are over the input limit, so the context is over it at Turn start. A
+    // summary replaces only the message history and cannot get under it, so
+    // the Turn sends the request without one. The measured usage of the reply
+    // is over the limit too. No model request follows the reply.
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+  });
+
+  test("when a noReply call puts the context over the compaction limit, end the Turn without compacting", async ({
+    agent,
+  }) => {
+    // Junior compacts after each model call, before Pi stops the run. A
+    // compaction after a batch that ends the run drops the noReply call, and
+    // a retry calls the model again.
+    const { run } = await agent({
+      limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+    });
+    const conversation = await run(
+      slackMention(
+        "That was the whole export. Nothing for you to do with it, so stay silent.",
+      ),
+      {
+        history: [
+          slackMention(`Glossary export for the thread record:\n${CJK_EXPORT}`),
+          reply("Noted."),
+        ],
+      },
+    );
+
+    expect(completedToolCalls("noReply", conversation)).toHaveLength(1);
+    expect(conversation.replies).toHaveLength(0);
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+  });
+
+  // The measured usage of the first model call is over the compaction limit,
+  // so Junior compacts in that step. The replacement ends with the steered
+  // mention, so Pi must not add it again. Without tool calls, or with only a
+  // `noReply` call, the step ends the run, and Pi stops without a model call
+  // for the steering. The empty-output retry answers it.
+  test.for([
+    {
+      step: "answers",
+      prompt: "In one sentence, say what the export is for.",
+      steeredText: "also say that Dana owns the rollback",
+      noReplyCalls: 0,
+    },
+    {
+      step: "ends with noReply",
+      prompt:
+        "That was the whole export. Nothing for you to do with it, so stay silent.",
+      steeredText:
+        "Actually, do reply: say in one sentence that Dana owns the rollback.",
+      noReplyCalls: 1,
+    },
+  ])(
+    "when a steered mention arrives in a step that $step and compacts the context, the next model call gets it once",
+    async ({ prompt, steeredText, noReplyCalls }, { agent }) => {
+      const { run } = await agent({
+        limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+      });
+      const conversation = await run(slackMention(prompt), {
+        history: [
+          slackMention(`Glossary export for the thread record:\n${CJK_EXPORT}`),
+          reply("Noted."),
+        ],
+        onProgress: sendDuringFirstModelRequest([slackMention(steeredText)]),
+      });
+
+      expect(conversation.turns.map((turn) => turn.status)).toEqual([
+        "succeeded",
+      ]);
+      expect(conversation.compactions).toBeGreaterThan(0);
+      expect(completedToolCalls("noReply", conversation)).toHaveLength(
+        noReplyCalls,
+      );
+      expect(
+        conversation.replies.filter((message) => /Dana/.test(message.text)),
+      ).toHaveLength(1);
+      const steered = (
+        await savedAgentHistory(conversation.conversationId)
+      ).filter(
+        (item) =>
+          item.type === "user_message" && item.text.includes(steeredText),
+      );
+      expect(steered).toHaveLength(1);
+    },
+  );
+
+  test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
+    agent,
+  }) => {
+    // The same 8,000 token context window: the context is over the input
+    // limit at Turn start, so the Turn sends the request without a summary.
+    // Injected fault: the provider rejects the request as too long.
+    rejectNextModelRequestAsTooLong();
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // The fixed copy of a rejected request. It does not yet say that the
+    // conversation is too large for the model.
+    expect(
+      conversation.replies.map((reply) =>
+        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+      ),
+    ).toEqual([
+      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
+    ]);
+  });
+
   test("when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between", async ({
     agent,
   }) => {
@@ -96,8 +278,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs:
-          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
       },
     });
     let sentWhilePaused = false;
@@ -120,7 +301,7 @@ describe("Lifecycle and Resilience", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The final reply reports that the remote release status is shipped.",
+          "The final response reports that the remote release status is shipped.",
           "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
         ],
         fail: [
@@ -153,6 +334,56 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.replies[0]!.text).toContain("Owner: Dana");
   });
 
+  test("when a person says stop while a continued turn runs, stop the turn without a reply", async ({
+    agent,
+  }) => {
+    // The release push stalls past the turn deadline, so the turn pauses and
+    // continues in a new worker run. The person says `stop` during the first
+    // model request of that run. The worker checks for a stop every 500 ms,
+    // and a replayed response returns at once, so the hook holds the request
+    // for three checks. The run must see the stop before any later step.
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([evalOperation]),
+      limits: {
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
+      },
+    });
+    let paused = false;
+    let sentStop = false;
+    const conversation = await run(
+      slackMention(
+        "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
+      ),
+      {
+        onProgress: async (progress, { send }) => {
+          if (progress.type === "paused") {
+            paused = true;
+            return;
+          }
+          if (progress.type === "model_request" && paused && !sentStop) {
+            sentStop = true;
+            await send(slackThreadMessage("stop"));
+            await new Promise((resolve) => setTimeout(resolve, 1_500));
+          }
+        },
+      },
+    );
+
+    expect(sentStop).toBe(true);
+    // The only post is the stop acknowledgement. Without the fix, the
+    // continued run ignores the stop, succeeds, and posts the release status.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      "Stopped.",
+    ]);
+    expect(
+      completedMcpToolCalls(
+        "mcp__eval-operation__release-status",
+        conversation,
+      ),
+    ).toHaveLength(0);
+  });
+
   test("when the model provider rejects a request, Junior posts a safe failure reply and answers the next message", async ({
     run,
   }) => {
@@ -162,6 +393,8 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // A failed Turn waits on its starter.
+    expect(conversation.status).toBe("needs_input");
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("content policy"),
     ]);
@@ -175,6 +408,9 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    // A Turn that succeeds after a failure clears it, and Slack delivery
+    // reads the answer.
+    expect(next.status).toBe("done");
     expect(next.replies).toHaveLength(1);
     expect(next.replies[0]!.text).toMatch(/maple/i);
   });

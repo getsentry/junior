@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readPeopleListFromSql } from "@/api/people/list.query";
@@ -8,12 +8,27 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { actorProfileReportSchema, apiErrorSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorConversations, juniorIdentities } from "@/db/schema";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+} from "@/chat/conversations/web-input";
+import {
+  juniorConversationMetrics,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { seedDisplayNameBackfill, seedPeople } from "./fixture";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import {
+  recordTurn,
+  seedDisplayNameBackfill,
+  seedPeople,
+  turnActorIdentityId,
+} from "./fixture";
 
 describe("people profile API", () => {
   test("validates and decodes profile identifiers", async () => {
@@ -103,6 +118,7 @@ describe("people profile API", () => {
         .db()
         .update(juniorConversations)
         .set({
+          kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
         })
@@ -111,32 +127,36 @@ describe("people profile API", () => {
         .db()
         .update(juniorConversations)
         .set({
+          kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
         })
         .where(
           eq(juniorConversations.conversationId, ownerChildConversationId),
         );
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 300, usage: { totalTokens: 3 } })
-        .where(eq(juniorConversations.conversationId, rootConversationId));
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 700, usage: { totalTokens: 7 } })
-        .where(eq(juniorConversations.conversationId, childConversationId));
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 500, usage: { totalTokens: 5 } })
-        .where(
-          eq(juniorConversations.conversationId, ownerChildConversationId),
-        );
+      // Each Turn records its own Actor. The child participant's Turn is
+      // theirs, not the root owner's.
+      const owner = { email: "owner@example.com", slackUserId: "U-owner" };
+      const child = { email: "child@example.com", slackUserId: "U-child" };
+      for (const [conversationId, actor, durationMs, totalTokens] of [
+        [rootConversationId, owner, 300, 3],
+        [childConversationId, child, 700, 7],
+        [ownerChildConversationId, owner, 500, 5],
+      ] as const) {
+        const nowMs = Date.now();
+        await store.recordExecution({
+          actorIdentityId: await turnActorIdentityId(fixture, actor),
+          conversationId,
+          createdAtMs: nowMs,
+          execution: { runId: `${conversationId}:turn`, status: "idle" },
+          lastActivityAtMs: nowMs,
+          metrics: { durationMs, usage: { totalTokens } },
+          updatedAtMs: nowMs,
+        });
+      }
 
       const rootReport = await readPeopleProfileFromSql("owner@example.com", {
-        viewer: testViewer("owner@example.com"),
+        viewer: await signedInViewer("owner@example.com"),
       });
       expect(rootReport.recentConversations).toHaveLength(2);
       expect(rootReport.recentConversations).toEqual(
@@ -153,28 +173,29 @@ describe("people profile API", () => {
           }),
         ]),
       );
+      // Turns in a child count toward its root Conversation, once.
       expect(rootReport).toMatchObject({
         locations: expect.arrayContaining([
-          expect.objectContaining({ durationMs: 1_500, tokens: 15 }),
+          expect.objectContaining({ durationMs: 800, tokens: 8 }),
         ]),
         surfaces: [
           expect.objectContaining({
-            conversations: 2,
-            durationMs: 1_500,
-            tokens: 15,
+            conversations: 1,
+            durationMs: 800,
+            tokens: 8,
           }),
         ],
         totals: {
-          conversations: 2,
-          durationMs: 1_500,
-          tokens: 15,
+          conversations: 1,
+          durationMs: 800,
+          tokens: 8,
         },
       });
       expect(rootReport.activityDays).toContainEqual(
         expect.objectContaining({
-          conversations: 2,
-          durationMs: 1_500,
-          tokens: 15,
+          conversations: 1,
+          durationMs: 800,
+          tokens: 8,
         }),
       );
       const directory = await readPeopleListFromSql();
@@ -183,13 +204,11 @@ describe("people profile API", () => {
           (person) => person.actor.email === "owner@example.com",
         ),
       ).toMatchObject({
-        conversations: 2,
-        durationMs: 1_500,
-        tokens: 15,
+        windows: { 90: { conversations: 1, durationMs: 800 } },
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
-        viewer: testViewer("OWNER@example.com"),
+        viewer: await signedInViewer("OWNER@example.com"),
       });
 
       expect(report.recentConversations).toEqual([
@@ -206,7 +225,7 @@ describe("people profile API", () => {
       });
       expect(report.recentConversations[0]).not.toHaveProperty("locationId");
       const detail = await readConversationDetail(childConversationId, {
-        viewer: testViewer("owner@example.com"),
+        viewer: await signedInViewer("owner@example.com"),
       });
       expect(detail).toMatchObject(report.recentConversations[0] ?? {});
 
@@ -232,10 +251,16 @@ describe("people profile API", () => {
         .update(juniorConversations)
         .set({ rootConversationId })
         .where(eq(juniorConversations.conversationId, malformedConversationId));
+      await recordTurn(fixture, {
+        actor: { email: "malformed@example.com", slackUserId: "U-malformed" },
+        atMs: Date.now(),
+        conversationId: malformedConversationId,
+        runId: "malformed-turn",
+      });
 
       const malformed = await readPeopleProfileFromSql(
         "malformed@example.com",
-        { viewer: testViewer("owner@example.com") },
+        { viewer: await signedInViewer("owner@example.com") },
       );
       expect(malformed.recentConversations).toEqual([
         expect.objectContaining({
@@ -302,8 +327,8 @@ describe("people profile API", () => {
         report.recentConversations.map((item) => item.conversationId),
       ).toEqual(["slack:C4:456", "slack:C1:123"]);
       expect(report.recentConversations.map((item) => item.status)).toEqual([
-        "failed",
-        "active",
+        "needs_input",
+        "working",
       ]);
       expect(report.recentConversations[0]).toMatchObject({
         channelName: "Private Conversation",
@@ -352,6 +377,62 @@ describe("people profile API", () => {
     }
   });
 
+  test("includes dashboard conversations without a Slack subject", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+
+    try {
+      await migrateSchema(fixture.sql);
+      const webActor = {
+        email: "web@example.com",
+        fullName: "Web Example",
+        platform: "web",
+        userId: "web@example.com",
+      } as const;
+      const webConversationId = createConversationId({
+        actorEmail: "web@example.com",
+        idempotencyKey: "web-profile",
+      });
+      await recordWebConversationActivity({
+        actor: webActor,
+        conversationId: webConversationId,
+        conversationStore: store,
+        nowMs: Date.parse("2026-06-15T11:00:00.000Z"),
+      });
+
+      await store.recordExecution({
+        actorIdentityId: await resolveActorIdentityId(fixture.sql, webActor),
+        conversationId: webConversationId,
+        createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        execution: { runId: "web-turn", status: "idle" },
+        lastActivityAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        metrics: { durationMs: 0 },
+        updatedAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+      });
+
+      const report = await readPeopleProfileFromSql("web@example.com");
+      expect(report.totals.conversations).toBe(1);
+      expect(report.actor).toEqual({
+        email: "web@example.com",
+        fullName: "Web Example",
+      });
+      expect(report.surfaces.map((item) => item.label)).toEqual(["API"]);
+      expect(report.recentConversations[0]?.actorIdentity).toEqual({
+        email: "web@example.com",
+        fullName: "Web Example",
+      });
+      const directory = await readPeopleListFromSql();
+      expect(directory.people.map((person) => person.actor)).toEqual([
+        { email: "web@example.com", fullName: "Web Example" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
   test("aggregates every actor conversation and bounds only recent rows", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
@@ -363,7 +444,11 @@ describe("people profile API", () => {
       const nowMs = Date.parse("2026-06-15T11:00:00.000Z");
       await store.recordActivity({
         conversationId: "slack:C1:seed",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         actor: {
           email: "aggregate@example.com",
           fullName: "Aggregate Example",
@@ -374,7 +459,11 @@ describe("people profile API", () => {
         source: "slack",
         nowMs,
       });
-      const [identity] = await fixture.sql.db().select().from(juniorIdentities);
+      const [identity] = await fixture.sql
+        .db()
+        .select()
+        .from(juniorIdentities)
+        .where(eq(juniorIdentities.providerSubjectId, "U-aggregate"));
       expect(identity).toBeDefined();
 
       const now = new Date(nowMs);
@@ -384,12 +473,27 @@ describe("people profile API", () => {
           conversationId: `slack:C1:aggregate:${index}`,
           destination: null,
           destinationId: null,
-          durationMs: 2,
           createdAt: now,
           lastActivityAt: now,
           updatedAt: now,
-          usage: { totalTokens: 3 },
         }),
+      );
+      // Each Conversation has one Turn by the same Actor.
+      const metrics = conversations.flatMap(({ conversationId }) =>
+        (
+          [
+            ["duration_ms", 2],
+            ["total_tokens", 3],
+          ] as const
+        ).map(([metric, value]) => ({
+          actorIdentityId: identity?.id,
+          conversationId,
+          metric,
+          occurredAt: now,
+          runId: `${conversationId}:turn`,
+          updatedAt: now,
+          value,
+        })),
       );
       for (let offset = 0; offset < conversations.length; offset += 500) {
         await fixture.sql
@@ -397,10 +501,21 @@ describe("people profile API", () => {
           .insert(juniorConversations)
           .values(conversations.slice(offset, offset + 500));
       }
+      for (let offset = 0; offset < metrics.length; offset += 1_000) {
+        await fixture.sql
+          .db()
+          .insert(juniorConversationMetrics)
+          .values(metrics.slice(offset, offset + 1_000));
+      }
 
-      const report = await readPeopleProfileFromSql("aggregate@example.com");
+      // The seed Conversation has no Turn, so it does not count.
+      // Aggregates in one round, then the recent rows' access and usage.
+      const report = await expectSqlBudget(
+        () => readPeopleProfileFromSql("aggregate@example.com"),
+        { statements: 10, serialRounds: 2 },
+      );
       expect(report.totals).toMatchObject({
-        conversations: 5_001,
+        conversations: 5_000,
         durationMs: 10_000,
         tokens: 15_000,
       });
@@ -408,18 +523,21 @@ describe("people profile API", () => {
       expect(
         report.activityDays.find((day) => day.date === "2026-06-15"),
       ).toMatchObject({
-        conversations: 5_001,
+        conversations: 5_000,
         durationMs: 10_000,
         tokens: 15_000,
       });
       const directory = await readPeopleListFromSql();
       expect(directory.people).toEqual([
         expect.objectContaining({
-          conversations: 5_001,
-          durationMs: 10_000,
-          tokens: 15_000,
           actor: expect.objectContaining({
             email: "aggregate@example.com",
+          }),
+          windows: expect.objectContaining({
+            90: expect.objectContaining({
+              conversations: 5_000,
+              durationMs: 10_000,
+            }),
           }),
         }),
       ]);

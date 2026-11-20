@@ -1,14 +1,14 @@
 import {
   type PluginEgress,
   definePluginTool,
-  PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubReleaseSourceSubscribable } from "../events/release.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const inputSchema = z
   .object({
@@ -25,15 +25,15 @@ const inputSchema = z
   .strict();
 const releaseSchema = z
   .object({
-    createdAt: z.string(),
+    created_at: z.string(),
     draft: z.boolean(),
-    htmlUrl: z.string(),
+    html_url: z.string(),
     id: z.number(),
     name: z.string().nullable(),
     prerelease: z.boolean(),
-    publishedAt: z.string().nullable(),
-    tagName: z.string(),
-    targetCommitish: z.string(),
+    published_at: z.string().nullable(),
+    tag_name: z.string(),
+    target_commitish: z.string(),
   })
   .strict();
 const releaseSourceSchema = z
@@ -46,7 +46,7 @@ const releaseSourceSchema = z
   .strict();
 type ReleaseSource = z.output<typeof releaseSourceSchema>;
 interface Result extends PluginToolOutput, ReleaseSource {
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
   target: "getRelease";
 }
 const outputSchema = pluginToolOutputSchema.merge(
@@ -69,132 +69,93 @@ const providerReleaseSchema = z
   })
   .passthrough();
 
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-/** Read a provider response without assuming its error body is JSON. */
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function repositoryUrl(repo: { name: string; owner: string }, path: string) {
-  return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/${path}`;
-}
-
 function mapRelease(
   providerRelease: z.output<typeof providerReleaseSchema>,
 ): z.output<typeof releaseSchema> {
   return {
-    createdAt: providerRelease.created_at,
+    created_at: providerRelease.created_at,
     draft: providerRelease.draft,
-    htmlUrl: providerRelease.html_url,
+    html_url: providerRelease.html_url,
     id: providerRelease.id,
     name: providerRelease.name,
     prerelease: providerRelease.prerelease,
-    publishedAt: providerRelease.published_at,
-    tagName: providerRelease.tag_name,
-    targetCommitish: providerRelease.target_commitish,
+    published_at: providerRelease.published_at,
+    tag_name: providerRelease.tag_name,
+    target_commitish: providerRelease.target_commitish,
   };
 }
 
 /** Read release metadata and expose its stable subscription identity. */
-export function createGitHubGetReleaseTool(ctx: {
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
+export const gitHubGetReleaseTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub release for an exact repository, optionally limited to one tag. The result remains subscribable when no release exists yet, so use it before waiting for a published release. Omit the tag to watch every published release in the repository.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
     },
-    description:
-      "Get a GitHub release for an exact repository, optionally limited to one tag. The result remains subscribable when no release exists yet, so use it before waiting for a published release. Omit the tag to watch every published release in the repository.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const tag = input.tag?.trim() || undefined;
-      let release: z.output<typeof releaseSchema> | null = null;
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const tag = input.tag?.trim() || undefined;
+    let release: z.output<typeof releaseSchema> | null = null;
 
-      if (tag) {
-        const response = await ctx.egress.fetch({
-          provider: "github",
-          operation: "github.release.get",
-          request: new Request(
-            repositoryUrl(repo, `releases/tags/${encodeURIComponent(tag)}`),
-            {
-              headers: {
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-              },
-            },
-          ),
-        });
-        const body = await readJson(response);
-        if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(body));
-        } else if (response.status !== 404) {
-          throw new Error(
-            `GitHub release lookup failed with HTTP ${response.status}`,
-          );
-        }
-        // 404 keeps release null so the tag remains subscribable before publish.
-      } else {
-        // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
-        // push access cannot surface a draft as the current release.
-        const response = await ctx.egress.fetch({
-          provider: "github",
-          operation: "github.release.latest",
-          request: new Request(repositoryUrl(repo, "releases/latest"), {
-            headers: {
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          }),
-        });
-        const body = await readJson(response);
-        if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(body));
-        } else if (response.status === 404) {
-          // Missing repo and "no published release yet" both 404. Keep the
-          // repository-wide source subscribable either way.
-          release = null;
-        } else {
-          throw new Error(
-            `GitHub release lookup failed with HTTP ${response.status}`,
-          );
-        }
+    if (tag) {
+      const response = await githubApi(ctx.egress, {
+        operation: "github.release.get",
+        path: `${repoPath(repo)}/releases/tags/${encodeURIComponent(tag)}`,
+      });
+      if (response.ok) {
+        release = mapRelease(providerReleaseSchema.parse(response.body));
+      } else if (response.status !== 404) {
+        throw new Error(
+          `GitHub release lookup failed with HTTP ${response.status}`,
+        );
       }
+      // 404 keeps release null so the tag remains subscribable before publish.
+    } else {
+      // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
+      // push access cannot surface a draft as the current release.
+      const response = await githubApi(ctx.egress, {
+        operation: "github.release.latest",
+        path: `${repoPath(repo)}/releases/latest`,
+      });
+      if (response.ok) {
+        release = mapRelease(providerReleaseSchema.parse(response.body));
+      } else if (response.status === 404) {
+        // Missing repo and "no published release yet" both 404. Keep the
+        // repository-wide source subscribable either way.
+        release = null;
+      } else {
+        throw new Error(
+          `GitHub release lookup failed with HTTP ${response.status}`,
+        );
+      }
+    }
 
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubReleaseSourceSubscribable({
-            repo: repo.ref,
-            tag,
-          })
-        : undefined;
-      const data: ReleaseSource = {
-        release,
-        repo: repo.ref,
-        tag: tag ?? null,
-        ...(subscribable ? { subscribable } : undefined),
-      };
-      return {
-        target: "getRelease",
-        ...data,
-      };
-    },
-  });
-}
+    const subscribable = gitHubReleaseSourceSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      repo: repo.ref,
+      tag,
+    });
+    const data: ReleaseSource = {
+      release,
+      repo: repo.ref,
+      tag: tag ?? null,
+      ...(subscribable ? { subscribable } : undefined),
+    };
+    return {
+      target: "getRelease",
+      ...data,
+    };
+  },
+});

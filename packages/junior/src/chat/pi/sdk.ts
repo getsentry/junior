@@ -10,10 +10,13 @@ export {
   getModels,
   isRetryableAssistantError,
   registerApiProvider,
+  type Api,
   type CacheRetention,
   type Message,
   type Model,
+  type StreamOptions,
   type ThinkingLevel,
+  type Tool,
 } from "@earendil-works/pi-ai/compat";
 
 export {

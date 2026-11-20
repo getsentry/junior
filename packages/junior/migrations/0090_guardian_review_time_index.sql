@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_guardian_review_time_idx" ON "junior_conversation_events" USING btree ("created_at") WHERE "junior_conversation_events"."type" = 'guardian_action_reviewed';

@@ -5,6 +5,8 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
+import * as z from "zod";
+import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
   Location,
@@ -17,9 +19,12 @@ import type {
 import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginTurnEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -47,41 +52,36 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
-import { getPlugins } from "./agent-hooks";
+import { getRegistrations } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
-  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import { mapBounded } from "@/chat/fan-out";
+
+// Plugin task messages that one run sends at once.
+const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: (message: PluginTaskQueueMessage) => Promise<void>;
-}
+/**
+ * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
+ * by default, or an in-process queue.
+ */
+export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const textPartSchema = z.object({ type: z.literal("text"), text: z.string() });
 
 function textPart(value: unknown): string | undefined {
-  if (
-    isRecord(value) &&
-    value.type === "text" &&
-    typeof value.text === "string"
-  ) {
-    return value.text;
-  }
-  return undefined;
+  return textPartSchema.safeParse(value).data?.text;
 }
 
 function messageText(message: PiMessage): string {
@@ -96,15 +96,14 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  const record = message as Record<string, unknown>;
+  const record = message as PiMessage & Record<string, unknown>;
   const parts = [
     messageText(message),
-    record.output,
-    record.result,
-    record.stdout,
-    record.stderr,
-    record.toolResult,
+    record["output"],
+    record["result"],
+    record["stdout"],
+    record["stderr"],
+    record["toolResult"],
   ].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
@@ -112,17 +111,22 @@ function toolResultText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
@@ -414,9 +418,16 @@ function taskPluginContext(
 ): PluginTaskContext {
   const pluginName = plugin.manifest.name;
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
+  const onCost = createPluginModelCostRecorder({
+    conversationId: sessionParams.conversationId,
+    pluginName,
+    source: "task",
+    turnId: sessionParams.sessionId,
+  });
   return {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName, {
+      onCost,
       signal: options.signal,
     }),
     events: createPluginConversationEvents({
@@ -428,21 +439,28 @@ function taskPluginContext(
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     model: createPluginModel(pluginName, plugin.model, {
+      onCost,
       signal: options.signal,
     }),
     name: message.name,
     plugin: { name: pluginName },
+    cache: createPluginCache(pluginName),
     run: {
       async load() {
         return await loadPluginRun(sessionParams);
       },
     },
     state: createPluginState(pluginName),
+    turnEvents: createPluginTurnEventReader({
+      conversationId: sessionParams.conversationId,
+      plugin,
+      turnId: sessionParams.sessionId,
+    }),
   };
 }
 
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -455,13 +473,10 @@ function findPluginTask(message: PluginTaskQueueMessage) {
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
-  options: ScheduleSessionCompletedPluginTasksOptions = {},
+  send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = [
-    ...getPlugins(),
-    ...coreTaskRegistrations(),
-  ].flatMap((plugin) =>
+  const taskRegistrations = getRegistrations().flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
   if (taskRegistrations.length === 0) {
@@ -474,33 +489,49 @@ export async function scheduleSessionCompletedPluginTasks(
   if (!record || record.state !== "completed") {
     throw new Error("Completed plugin task session record is not ready");
   }
-  const send = options.send ?? sendVercelPluginTask;
   const messages = taskRegistrations.map(({ name, plugin }) => ({
     name,
     params: coreParams,
     plugin: plugin.manifest.name,
   }));
-  await Promise.all(
-    messages.map(async (message) => {
+  await mapBounded(
+    messages,
+    async (message) => {
       await send(message);
-    }),
+    },
+    PLUGIN_MESSAGE_SEND_CONCURRENCY,
   );
 }
 
-/** Execute one parsed plugin task request. */
+/**
+ * Execute one parsed plugin task request in a `plugin.task` span. The span
+ * includes the lock wait, because both delay the work that runs the task.
+ */
 export async function processPluginTask(
   message: PluginTaskQueueMessage,
   options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
-  await withPluginTaskLock(pluginTaskId(message), async () => {
-    const resolved = findPluginTask(message);
-    if (!resolved?.task) {
-      throw new Error(
-        `Plugin task "${message.plugin}.${message.name}" is not registered`,
-      );
-    }
-    await resolved.task.run(
-      taskPluginContext(resolved.plugin, message, options),
-    );
-  });
+  const params = pluginTaskParamsSchema.parse(message.params);
+  await withSpan(
+    `plugin.task ${message.plugin}.${message.name}`,
+    "plugin.task",
+    { conversationId: params.conversationId },
+    () =>
+      withPluginTaskLock(pluginTaskId(message), async () => {
+        const resolved = findPluginTask(message);
+        if (!resolved?.task) {
+          throw new Error(
+            `Plugin task "${message.plugin}.${message.name}" is not registered`,
+          );
+        }
+        await resolved.task.run(
+          taskPluginContext(resolved.plugin, message, options),
+        );
+      }),
+    {
+      "app.ai.turn.session_id": params.sessionId,
+      "app.plugin.name": message.plugin,
+      "app.plugin.task": message.name,
+    },
+  );
 }

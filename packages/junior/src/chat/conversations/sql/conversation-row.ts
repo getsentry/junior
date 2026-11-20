@@ -1,6 +1,9 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { ConversationKind } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
+import { nextDetailVersion } from "./detail-version";
 
 /**
  * Establish the conversation metadata row on first contact for content writes
@@ -28,6 +31,8 @@ export async function ensureConversationRow(
     lastActivityAt: at,
     updatedAt: at,
     executionStatus: "idle",
+    // A first-contact row has no parent, and a parent cannot be added later.
+    kind: "root",
   });
   if (options.activity === "preserve") {
     await insert.onConflictDoNothing({
@@ -41,6 +46,38 @@ export async function ensureConversationRow(
       lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
       updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
       transcriptPurgedAt: null,
+      detailVersion: nextDetailVersion,
     },
   });
+}
+
+const CONVERSATION_KINDS: ReadonlySet<string> = new Set<ConversationKind>([
+  "root",
+  "automation",
+  "thread",
+  "task",
+]);
+
+// TODO(dcramer): Read `kind` as stored after the NOT NULL contract, and drop
+// the null fallback in both readers below.
+
+/** Decode a stored kind. A null kind comes from a writer of an older deploy. */
+export function conversationKindFromRow(row: {
+  kind: ConversationKind | null;
+  parentConversationId: string | null;
+}): ConversationKind {
+  // Keep this fallback the same as `conversationKindSql`.
+  const kind = row.kind ?? (row.parentConversationId ? "task" : "root");
+  if (!CONVERSATION_KINDS.has(kind)) {
+    throw new Error("Conversation record kind is invalid");
+  }
+  return kind;
+}
+
+/** SQL for the kind of a row, with the same null fallback as `conversationKindFromRow`. */
+export function conversationKindSql(conversation: {
+  kind: AnyPgColumn;
+  parentConversationId: AnyPgColumn;
+}): SQL<ConversationKind> {
+  return sql<ConversationKind>`coalesce(${conversation.kind}, case when ${conversation.parentConversationId} is null then 'root' else 'task' end)`;
 }

@@ -15,7 +15,9 @@ import {
   type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import {
+  logAudit,
   logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
@@ -28,6 +30,11 @@ import {
   serviceAccountOnly,
 } from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
@@ -44,7 +51,6 @@ import {
 
 const MAX_TOOL_RESULT_TOKENS = 10_000;
 const MAX_TOOL_RESULT_BYTES = 32 * 1024;
-const CHARS_PER_ESTIMATED_TOKEN = 4;
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
   // Raw MCP tool names are only provider-scoped. Prefix the provider for the
@@ -62,8 +68,8 @@ function summarizeStructuredContent(value: unknown): string | undefined {
 function summarizeResourcePart(part: {
   type: "resource";
   resource:
-    | { uri: string; text: string; mimeType?: string }
-    | { uri: string; blob: string; mimeType?: string };
+    | { uri: string; text: string; mimeType?: string | undefined }
+    | { uri: string; blob: string; mimeType?: string | undefined };
 }): string {
   if ("text" in part.resource) {
     return part.resource.text;
@@ -189,7 +195,7 @@ function boundMcpContent(
     .map((part) => part.text)
     .join("\n\n");
   const originalBytes = utf8Bytes(text);
-  const originalTokens = Math.ceil(text.length / CHARS_PER_ESTIMATED_TOKEN);
+  const originalTokens = estimateTextTokens(text);
   if (
     originalTokens <= MAX_TOOL_RESULT_TOKENS &&
     originalBytes <= MAX_TOOL_RESULT_BYTES
@@ -199,7 +205,7 @@ function boundMcpContent(
 
   const warning = `\n\nWarning: truncated output (original token count: ${originalTokens}; original bytes: ${originalBytes})\n\n`;
   const remainingChars =
-    MAX_TOOL_RESULT_TOKENS * CHARS_PER_ESTIMATED_TOKEN - warning.length;
+    textCharsForTokens(MAX_TOOL_RESULT_TOKENS) - warning.length;
   const remainingBytes = MAX_TOOL_RESULT_BYTES - utf8Bytes(warning);
   const head = prefixWithin(
     text,
@@ -218,20 +224,22 @@ function boundMcpContent(
   ];
 }
 
+// Keep the full text. The tool pipeline cuts long model-facing results and
+// saves the full text to a file, so the text is not lost here.
 function toModelVisibleMcpContent(
   result: PluginMcpToolCallResult,
 ): Array<TextContent | ImageContent> {
   const content = toAgentToolContent(result);
   if (content.some((part) => part.type === "image")) {
-    return boundMcpContent(content);
+    return content;
   }
 
   const structured = summarizeStructuredContent(result.structuredContent);
   if (structured) {
-    return boundMcpContent([{ type: "text", text: structured }]);
+    return [{ type: "text", text: structured }];
   }
 
-  return boundMcpContent(content);
+  return content;
 }
 
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
@@ -298,6 +306,8 @@ export interface McpToolManagerOptions {
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /** Run attributes, such as the Source, for each tool call audit event. */
+  auditAttributes?: Record<string, string>;
   fetch?: typeof fetch;
   onAuthorizationRequired?: (
     provider: string,
@@ -364,6 +374,8 @@ export class McpToolManager {
     Promise<PluginMcpClient>
   >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
+  /** Clients of forgotten providers. `close()` still owns their transports. */
+  private readonly forgottenClients: PluginMcpClient[] = [];
 
   private readonly options: McpToolManagerOptions;
 
@@ -446,21 +458,21 @@ export class McpToolManager {
   }
 
   async close(): Promise<void> {
-    let firstError: unknown;
-
-    for (const client of [
-      ...this.clientsByProvider.values(),
-      ...this.actorClientsByProvider.values(),
-    ]) {
-      try {
-        await client.close();
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
+    const limit = pLimit(FAN_OUT_CONCURRENCY);
+    const closed = await Promise.allSettled(
+      [
+        ...this.clientsByProvider.values(),
+        ...this.actorClientsByProvider.values(),
+        ...this.forgottenClients,
+      ].map((client) => limit(() => client.close())),
+    );
+    const firstError: unknown = closed.find(
+      (result) => result.status === "rejected",
+    )?.reason;
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();
+    this.forgottenClients.length = 0;
     this.serviceAccountProviders.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
@@ -612,7 +624,7 @@ export class McpToolManager {
     }
     if (serviceAccountOnly(plugin.manifest)) {
       throw new McpToolError(
-        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+        `${plugin.manifest.displayName} tool ${toolName} is not available: the shared ${plugin.manifest.displayName} account cannot use it`,
       );
     }
     const existing = this.actorClientsByProvider.get(provider);
@@ -622,6 +634,29 @@ export class McpToolManager {
     const actorClient = await this.newClient(plugin);
     this.actorClientsByProvider.set(provider, actorClient);
     return actorClient;
+  }
+
+  /**
+   * Record a completed tool call, with the account that made it.
+   * Arguments stay out: the conversation history keeps them.
+   */
+  private logToolCallAudit(
+    plugin: PluginDefinition,
+    toolName: string,
+    attributes: Record<string, string>,
+  ): void {
+    const usedServiceAccount =
+      this.serviceAccountProviders.has(plugin.manifest.name) &&
+      serviceAccountAllows(plugin.manifest, { tool: toolName });
+    logAudit("mcp.tool_call.completed", {
+      ...this.options.auditAttributes,
+      ...attributes,
+      "mcp.method.name": "tools/call",
+      "app.plugin.name": plugin.manifest.name,
+      "app.credential.account": usedServiceAccount
+        ? "service_account"
+        : "actor",
+    });
   }
 
   private toManagedTool(
@@ -642,7 +677,7 @@ export class McpToolManager {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
-      parameters: tool.inputSchema as Record<string, unknown>,
+      parameters: tool.inputSchema,
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),
@@ -697,6 +732,12 @@ export class McpToolManager {
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }
+              this.logToolCallAudit(plugin, tool.name, {
+                "gen_ai.tool.name": managedToolName,
+                ...(options?.toolCallId
+                  ? { "gen_ai.tool.call.id": options.toolCallId }
+                  : undefined),
+              });
 
               const resultAttribute = serializeMcpPayload(
                 result,
@@ -769,7 +810,10 @@ export class McpToolManager {
               };
               setSpanAttributes(errorAttributes);
               if (error instanceof McpToolError) {
-                logWarn("mcp.tool_call.failed", errorAttributes);
+                logWarn("mcp.tool_call.failed", {
+                  ...this.options.auditAttributes,
+                  ...errorAttributes,
+                });
               }
               throw error;
             }
@@ -816,6 +860,15 @@ export class McpToolManager {
   }
 
   private forgetProvider(provider: string): void {
+    for (const clients of [
+      this.clientsByProvider,
+      this.actorClientsByProvider,
+    ]) {
+      const client = clients.get(provider);
+      if (client) {
+        this.forgottenClients.push(client);
+      }
+    }
     this.clientsByProvider.delete(provider);
     this.actorClientsByProvider.delete(provider);
     this.serviceAccountProviders.delete(provider);

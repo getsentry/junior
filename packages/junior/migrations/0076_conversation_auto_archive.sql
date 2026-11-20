@@ -1,0 +1,5 @@
+ALTER TABLE "junior_conversation_participants" ADD COLUMN "auto_archive" boolean;--> statement-breakpoint
+ALTER TABLE "junior_users" ADD COLUMN "auto_archive_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "junior_users" ADD COLUMN "auto_archive_grace_hours" integer DEFAULT 24 NOT NULL;--> statement-breakpoint
+CREATE INDEX "junior_conversation_participants_auto_archive_idx" ON "junior_conversation_participants" USING btree ("user_id") WHERE "junior_conversation_participants"."auto_archive" and "junior_conversation_participants"."archived_at" is null;--> statement-breakpoint
+CREATE INDEX "junior_conversation_participants_unarchived_activity_idx" ON "junior_conversation_participants" USING btree ("user_id","last_message_at","root_conversation_id") WHERE "junior_conversation_participants"."archived_at" is null;

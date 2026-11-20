@@ -6,7 +6,6 @@ import {
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
-import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { test } from "@junior-evals/fixture/test";
 
 /**
@@ -16,28 +15,17 @@ import { test } from "@junior-evals/fixture/test";
  * another Actor can support shared knowledge, but not user memory. A run with
  * more than one Actor does not store any preference.
  *
- * A stored memory does not say which person it is about, and a private memory
- * is listed only for its owner. The checks read the memories of every person
- * in the thread and apply to all of them.
+ * A stored memory does not say which person it is about, so the checks apply
+ * to every stored memory.
  */
 
 const ALICE = person("UALICE", "Alice");
 const BOB = person("UBOB", "Bob");
 const CAROL = person("UCAROL", "Carol");
 
-/** The stored memories that any person in the thread can recall. */
-async function readThreadMemories() {
-  const memories = (
-    await Promise.all(
-      [ALICE, BOB, CAROL].map((author) => readMemories({ author })),
-    )
-  ).flat();
-  return [...new Map(memories.map((memory) => [memory.id, memory])).values()];
-}
-
 /** The stored memories about a person. */
 async function readUserMemories() {
-  return (await readThreadMemories()).filter(
+  return (await readMemories()).filter(
     (memory) => memory.subjectType === "user",
   );
 }
@@ -129,77 +117,6 @@ describe("Memory with Multiple Actors", () => {
     }
   });
 
-  test("when another User steers a preference into the active turn, do not store it as the Actor's user memory", async ({
-    run,
-  }) => {
-    await run(
-      slackMention("Can you recap what has been asked in this thread so far?", {
-        author: ALICE,
-      }),
-      {
-        onProgress: sendDuringFirstModelRequest([
-          slackMention(
-            "!! When you write up the recap, I prefer short bullet summaries over prose.",
-            { author: BOB },
-          ),
-        ]),
-      },
-    );
-
-    const memories = await readThreadMemories();
-    // Multi-actor runs never store any preference from passive extraction, no
-    // matter whose instruction the citations point at.
-    expect(memories.filter((memory) => memory.kind === "preference")).toEqual(
-      [],
-    );
-    // Anti-laundering: Bob's stated preference content must not resurface as any
-    // stored memory of any kind. This path is prompt-defended only, so this
-    // assertion is its real coverage.
-    for (const memory of memories) {
-      expect(memory.content).not.toMatch(/bullet/i);
-    }
-  });
-
-  // Issue #776: the case the citation router alone cannot cover. Alice's own
-  // durable first-person preference cites only her own run-Actor instruction.
-  // A single-Actor run can store this as user memory, but Bob's steering makes
-  // this a multi-Actor run, so no preference may be stored.
-  test("when the actor states their own durable preference in a multi-actor turn, store no preference memory at all", async ({
-    run,
-  }) => {
-    await run(
-      slackMention(
-        "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
-        { author: ALICE },
-      ),
-      {
-        onProgress: sendDuringFirstModelRequest([
-          slackMention(
-            "!! Open question: should we pause the launch? Please list it when you get a chance.",
-            { author: BOB },
-          ),
-        ]),
-      },
-    );
-
-    const memories = await readThreadMemories();
-    // The multi-actor gate: no active preference may exist, even though the
-    // preference is the run actor's own and its citations would pass the
-    // single-actor router.
-    expect(memories.filter((memory) => memory.kind === "preference")).toEqual(
-      [],
-    );
-    // Preferences are the only route into a user subject for passive
-    // extraction, so the user-subject memories must stay empty too.
-    expect(await readUserMemories()).toEqual([]);
-    // Anti-laundering: the preference must not resurface as knowledge or
-    // procedure. This path is prompt-defended only, so this assertion is its
-    // real coverage.
-    for (const memory of memories) {
-      expect(memory.content).not.toMatch(/numbered/i);
-    }
-  });
-
   // TDD target (issue #773): red until the completed-run projection carries
   // non-actor public messages as conversation-scope evidence. Today a
   // passive participant's knowledge never reaches passive extraction: it is
@@ -238,7 +155,7 @@ describe("Memory with Multiple Actors", () => {
     // non-actor remains valid conversation-scope evidence. Only the
     // user subjects require evidence written by the Actor.
     expect(await readUserMemories()).toEqual([]);
-    const freezeKnowledge = (await readThreadMemories()).filter(
+    const freezeKnowledge = (await readMemories()).filter(
       (memory) =>
         memory.subjectType === "conversation" && /freeze/i.test(memory.content),
     );

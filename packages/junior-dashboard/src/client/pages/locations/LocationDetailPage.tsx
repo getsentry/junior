@@ -9,18 +9,16 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import {
-  formatCompactNumber,
-  formatRelativeTime,
-  peoplePath,
-} from "../../format";
+import { formatCompactNumber, peoplePath } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationActivityChart } from "./LocationActivityChart";
+import { SectionTitle } from "../../components/layout/SectionTitle";
+import { formatRelativeTime } from "../../time";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
   const params = useParams();
-  const query = useLocationDetailData(params.locationId);
+  const query = useLocationDetailData(params["locationId"]);
   return <LocationDetailPageContent data={query.data} error={query.error} />;
 }
 
@@ -97,9 +95,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             <MapPin aria-hidden="true" size={16} />
           </span>
           <div>
-            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-              People seen here
-            </h3>
+            <SectionTitle>People seen here</SectionTitle>
             <p className="mt-1 mb-0 font-mono text-xs text-dashboard-text-muted">
               Verified contributors across persisted conversations.
             </p>

@@ -20,10 +20,14 @@ describe("Dashboard Authorization", () => {
     const paused = await run(webMessage("/eval-auth Look up the budget."));
     expect(turnStates(paused)).toEqual(["started"]);
     expect(paused.authorizationPrompt).toEqual(expect.any(String));
+    // A sign-in wait waits on the person.
+    expect(paused.status).toBe("needs_input");
 
     const resumed = await paused.continue(completeAuth("eval-auth"));
     expect(turnStates(resumed)).toEqual(["succeeded"]);
     expect(resumed.authorizationPrompt).toBeUndefined();
+    // The starter has not read the answer yet.
+    expect(resumed.status).toBe("needs_input");
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
   });
 
@@ -55,7 +59,9 @@ describe("Dashboard Authorization", () => {
     const next = await paused.continue(
       webMessage("Never mind the budget. What is 17 + 25?"),
     );
-    expect(turnStates(next).at(-1)).toBe("succeeded");
+    // The new message supersedes the Turn that waits for sign-in. That Turn
+    // ends without a reply, and the new Turn answers.
+    expect(turnStates(next).sort()).toEqual(["no_reply", "succeeded"]);
     expect(next.replies.at(-1)?.text).toContain("42");
     expect(next.authorizationPrompt).toBeUndefined();
   });

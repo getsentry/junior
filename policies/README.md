@@ -14,10 +14,9 @@ Do not use policies for:
 - copied schemas, commands, or test inventories
 - public product docs
 
-Put feature architecture and non-obvious rules in the owning package or module
-`README.md`. Code, runtime schemas, exported types, and tests define the real
-contract. Temporary plans live under `../openspec/changes/` and cannot override
-policy.
+Put module intent and invariants in code comments next to the code. Follow
+`documentation.md`. Code, runtime schemas, exported types, and tests define the real
+contract.
 
 Keep policies short. Use ASD-STE100 English: common words, active voice, short
 sentences, and one idea per sentence. Keep required domain terms from

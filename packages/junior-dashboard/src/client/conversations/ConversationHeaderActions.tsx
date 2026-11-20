@@ -1,217 +1,293 @@
-import type { ReactNode } from "react";
 import {
-  Archive,
-  ArchiveRestore,
+  Fragment,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from "react";
+import {
   Info,
-  PanelRight,
+  Maximize2,
   MessagesSquare,
   ScrollText,
   Search,
   X,
 } from "lucide-react";
 
-import { Button, ToggleButton } from "../components/Button";
-import { IconButtonTooltip } from "../components/Tooltip";
+import { Button } from "../components/ui/button";
+import { useInboxUi } from "../uiShell";
+import {
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import { Kbd } from "../components/ui/kbd";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
+import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { ShareConversationButton } from "./ShareConversationButton";
+import { OutboundLink } from "../components/OutboundLink";
+import {
+  useConversationMenuItems,
+  type ConversationMenu,
+  type ConversationMenuItem,
+} from "./conversationMenuItems";
 
-export type ConversationArchiveAction = {
-  archived: boolean;
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  pending: boolean;
-};
-
-/** Show conversation actions in the header or mobile menu. */
+/**
+ * Render the conversation `⋯` menu rows, with search and details there on
+ * mobile too. A toggle or a row whose label shows its result keeps the menu
+ * open. Every other row closes it.
+ */
 export function ConversationHeaderActions(props: {
-  archive: ConversationArchiveAction;
-  conversationId: string;
-  copyAction?: ReactNode;
-  detailsOpen: boolean;
-  /** `bar` is the desktop icon row. `menu` stacks actions for mobile overflow. */
-  layout?: "bar" | "menu";
+  /** Turn every row off, such as before the Conversation exists. */
+  disabled?: boolean | undefined;
+  menu: ConversationMenu;
   onDetailsClick(): void;
   onSearchClick(): void;
-  onViewChange(value: TranscriptViewMode): void;
+  placement: "desktop" | "mobile";
   searchOpen: boolean;
-  view: TranscriptViewMode;
+  /** Present on desktop, where Zen mode exists. */
+  zen?: { active: boolean; onToggle(): void; shortcut: string };
 }) {
-  const layout = props.layout ?? "bar";
-  if (layout === "menu") {
-    return (
-      <div className="grid gap-0.5">
-        <MenuActionButton
-          label={props.searchOpen ? "Hide search" : "Search transcript"}
+  const groups = useConversationMenuItems(props.menu);
+  const { zen } = props;
+  const mobile = props.placement === "mobile";
+  // The new UI has no search button in the desktop header, so its menu
+  // holds search on every screen.
+  const inbox = useInboxUi();
+  // Search, details, and the app menu need the page, so the sidebar row menu
+  // does not show them. Every other row comes from `useConversationMenuItems`.
+  return (
+    <>
+      {(mobile || inbox) && !props.menu.eventLogOpen ? (
+        <DropdownMenuItem
+          disabled={props.disabled}
           onClick={props.onSearchClick}
-          pressed={props.searchOpen}
         >
           {props.searchOpen ? (
-            <X aria-hidden="true" size={16} strokeWidth={2} />
+            <X aria-hidden="true" />
           ) : (
-            <Search aria-hidden="true" size={16} strokeWidth={2} />
+            <Search aria-hidden="true" />
           )}
-        </MenuActionButton>
-        <MenuActionButton
-          label="Conversation"
-          onClick={() => props.onViewChange("rich")}
-          pressed={props.view === "rich"}
+          {props.searchOpen ? "Hide search" : "Search transcript"}
+        </DropdownMenuItem>
+      ) : null}
+      {zen ? (
+        <DropdownMenuItem
+          aria-label="Zen mode"
+          disabled={props.disabled}
+          onClick={zen.onToggle}
         >
-          <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
-        <MenuActionButton
-          label="Event log"
-          onClick={() => props.onViewChange("raw")}
-          pressed={props.view === "raw"}
-        >
-          <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
-        <ShareConversationButton
-          key={props.conversationId}
-          conversationId={props.conversationId}
-          layout="menu"
-        />
-        {props.copyAction}
-        <ArchiveConversationButton {...props.archive} layout="menu" />
-        <MenuActionButton
-          label="Conversation details"
+          <Maximize2 aria-hidden="true" />
+          Zen mode
+          <kbd className="ml-auto rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
+            {zen.shortcut}
+          </kbd>
+        </DropdownMenuItem>
+      ) : null}
+      {mobile ? (
+        <DropdownMenuItem
+          disabled={props.disabled}
           onClick={props.onDetailsClick}
-          pressed={props.detailsOpen}
         >
-          <Info aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
-      </div>
+          <Info aria-hidden="true" />
+          Conversation details
+        </DropdownMenuItem>
+      ) : null}
+      {groups.map((items, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <DropdownMenuSeparator /> : null}
+          {items.map((item) => (
+            <ConversationMenuRow
+              disabled={props.disabled}
+              item={item}
+              key={item.key}
+            />
+          ))}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function ConversationMenuRow(props: {
+  disabled?: boolean | undefined;
+  item: ConversationMenuItem;
+}) {
+  const { item } = props;
+  // A link row needs the loaded detail, so `disabled` never applies to it.
+  if (item.href) {
+    return (
+      <DropdownMenuLinkItem render={<OutboundLink href={item.href} />}>
+        <item.icon aria-hidden="true" />
+        {item.label}
+      </DropdownMenuLinkItem>
     );
   }
-
   return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <TranscriptSearchToggle
-        onClick={props.onSearchClick}
-        open={props.searchOpen}
-      />
-      {props.copyAction}
-      <ArchiveConversationButton {...props.archive} layout="bar" />
-      <Button
-        aria-label="Conversation details"
-        aria-pressed={props.detailsOpen}
-        className="ml-2"
-        onClick={props.onDetailsClick}
+    <>
+      <DropdownMenuItem
+        closeOnClick={!item.stayOpen && !item.toggle}
+        disabled={props.disabled || item.disabled}
+        onClick={item.onClick}
       >
-        <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
-        Details
-      </Button>
-    </div>
+        <item.icon aria-hidden="true" />
+        {item.label}
+      </DropdownMenuItem>
+      {item.feedback === undefined ? null : (
+        <span className="sr-only" role="status">
+          {item.feedback}
+        </span>
+      )}
+    </>
   );
 }
 
 /** Switch between the conversation and event log. */
 export function TranscriptViewToggle(props: {
-  labelled?: boolean;
   onChange(value: TranscriptViewMode): void;
   value: TranscriptViewMode;
 }) {
   return (
-    <div
+    <ToggleGroup
       aria-label="Transcript view"
-      className={
-        props.labelled
-          ? "inline-flex items-center gap-6"
-          : "inline-flex items-center gap-0.5 rounded-md border border-dashboard-border bg-dashboard-overlay-soft p-0.5"
-      }
-      role="group"
+      className="inline-flex gap-0.5 rounded-md border border-dashboard-border bg-dashboard-overlay-soft p-0.5"
+      onValueChange={([next]) => {
+        if (next) props.onChange(next);
+      }}
+      value={[props.value]}
     >
-      <ViewModeButton
-        active={props.value === "rich"}
-        label="Conversation"
-        labelled={props.labelled}
-        onClick={() => props.onChange("rich")}
-      >
+      <ViewModeItem label="Conversation" value="rich">
         <MessagesSquare aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-      <ViewModeButton
-        active={props.value === "raw"}
-        label="Event log"
-        labelled={props.labelled}
-        onClick={() => props.onChange("raw")}
-      >
+      </ViewModeItem>
+      <ViewModeItem label="Event log" value="raw">
         <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-    </div>
+      </ViewModeItem>
+    </ToggleGroup>
   );
 }
 
-function ViewModeButton(props: {
-  active: boolean;
+function ViewModeItem(props: {
   children: ReactNode;
   label: string;
-  labelled?: boolean;
-  onClick(): void;
-}) {
-  const button = (
-    <ToggleButton
-      aria-label={props.label}
-      className={cn(
-        "!no-underline",
-        props.labelled
-          ? "relative flex h-11 items-center gap-2 rounded-none px-0 py-0 text-sm after:absolute after:inset-x-0 after:bottom-0 after:h-0.5"
-          : "grid size-7 place-items-center rounded-md px-0 py-0",
-        props.active &&
-          (props.labelled
-            ? "text-dashboard-text after:bg-dashboard-text-solid"
-            : "bg-dashboard-fill-hover text-dashboard-text"),
-      )}
-      onClick={props.onClick}
-      pressed={props.active}
-      variant="text"
-    >
-      {props.children}
-      {props.labelled ? props.label : null}
-    </ToggleButton>
-  );
-  return props.labelled ? (
-    button
-  ) : (
-    <IconButtonTooltip label={props.label}>{button}</IconButtonTooltip>
-  );
-}
-
-/** Shared icon control used by conversation and subagent transcript headers. */
-export function HeaderIconButton(props: {
-  children: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
+  value: TranscriptViewMode;
 }) {
   return (
-    <IconButtonTooltip label={props.label}>
-      <Button
-        aria-label={props.label}
-        aria-pressed={props.pressed}
-        className={cn(
-          "text-dashboard-text-muted",
-          props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
-        )}
-        onClick={props.onClick}
-        size="icon"
-      >
-        {props.children}
-      </Button>
-    </IconButtonTooltip>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ToggleGroupItem
+            aria-label={props.label}
+            className="size-7 min-w-0 border-0 px-0 data-pressed:border-0 data-pressed:bg-dashboard-fill-hover"
+            value={props.value}
+          >
+            {props.children}
+          </ToggleGroupItem>
+        }
+      />
+      <TooltipContent size="compact">{props.label}</TooltipContent>
+    </Tooltip>
   );
 }
 
-/** Toggle transcript search visibility with the shared header icon control. */
+/**
+ * Shared icon control used by conversation and subagent transcript headers.
+ * Other props go to the button, so a menu trigger can render it.
+ */
+export function HeaderIconButton({
+  children,
+  className,
+  controls,
+  expanded,
+  keyShortcuts,
+  label,
+  pressed,
+  shortcut,
+  tooltip,
+  tooltipDisabled,
+  ...buttonProps
+}: Omit<ComponentProps<typeof Button>, "children" | "size"> & {
+  children: ReactNode;
+  controls?: string;
+  expanded?: boolean;
+  /** `aria-keyshortcuts` value for the shortcut. */
+  keyShortcuts?: string | undefined;
+  label: string;
+  pressed?: boolean;
+  ref?: Ref<HTMLButtonElement>;
+  /** Shortcut text shown in the tooltip, such as `⌘F`. */
+  shortcut?: string | undefined;
+  /** Tooltip text when the label alone does not say enough. */
+  tooltip?: ReactNode;
+  /** Hide the tooltip, such as while the menu this button opens covers it. */
+  tooltipDisabled?: boolean;
+}) {
+  return (
+    <Tooltip disabled={tooltipDisabled}>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-controls={controls}
+            aria-expanded={expanded}
+            aria-keyshortcuts={keyShortcuts}
+            aria-label={label}
+            aria-pressed={pressed}
+            className={cn(
+              "text-dashboard-text-muted data-popup-open:bg-dashboard-fill-strong data-popup-open:text-dashboard-text",
+              pressed && "bg-dashboard-fill-strong text-dashboard-text",
+              className,
+            )}
+            size="icon"
+            variant="ghost"
+            {...buttonProps}
+          >
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent
+        className={tooltip ? "max-w-64" : undefined}
+        size={tooltip ? "default" : "compact"}
+      >
+        {tooltip ?? label}
+        {shortcut ? (
+          <Kbd className="ml-1.5" variant="plain">
+            {shortcut}
+          </Kbd>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Toggle transcript search with the header icon control or ⌘F / Ctrl+F. */
 export function TranscriptSearchToggle(props: {
+  inputRef: RefObject<HTMLInputElement | null>;
   onClick(): void;
   open: boolean;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useTranscriptFindShortcut({
+    anchorRef: buttonRef,
+    inputRef: props.inputRef,
+    onOpen: props.onClick,
+    open: props.open,
+  });
   return (
     <HeaderIconButton
+      ref={buttonRef}
+      keyShortcuts={props.open ? undefined : "Meta+F Control+F"}
       label={props.open ? "Hide search" : "Search transcript"}
       onClick={props.onClick}
       pressed={props.open}
+      shortcut={props.open ? undefined : platformShortcut("f")}
     >
       {props.open ? (
         <X aria-hidden="true" size={15} strokeWidth={2} />
@@ -219,66 +295,5 @@ export function TranscriptSearchToggle(props: {
         <Search aria-hidden="true" size={15} strokeWidth={2} />
       )}
     </HeaderIconButton>
-  );
-}
-
-function MenuActionButton(props: {
-  children: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
-}) {
-  return (
-    <button
-      aria-label={props.label}
-      aria-pressed={props.pressed}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none",
-        props.pressed && "bg-dashboard-fill-strong",
-      )}
-      onClick={props.onClick}
-      type="button"
-    >
-      {props.children}
-      <span>{props.label}</span>
-    </button>
-  );
-}
-
-function ArchiveConversationButton(
-  props: ConversationArchiveAction & { layout: "bar" | "menu" },
-) {
-  const label = props.pending
-    ? "Saving archive state"
-    : props.archived
-      ? "Unarchive"
-      : "Archive";
-  const Icon = props.archived ? ArchiveRestore : Archive;
-  if (props.layout === "menu") {
-    return (
-      <button
-        aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={props.disabled}
-        onClick={props.onClick}
-        type="button"
-      >
-        <Icon aria-hidden="true" size={16} strokeWidth={2} />
-        <span>{label}</span>
-      </button>
-    );
-  }
-  return (
-    <IconButtonTooltip label={label}>
-      <Button
-        aria-label={label}
-        className="hidden shrink-0 text-dashboard-text-muted md:grid"
-        disabled={props.disabled}
-        onClick={props.onClick}
-        size="icon"
-      >
-        <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      </Button>
-    </IconButtonTooltip>
   );
 }

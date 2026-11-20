@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -9,7 +10,7 @@ import {
 } from "../../../fixtures/agent-runner";
 import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 const TEST_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -28,6 +29,8 @@ function testSlackSource(threadTs: string) {
 function makeDiagnostics() {
   return {
     assistantMessageCount: 0,
+    // A real agent run reports its failure and sets the event ID.
+    eventId: "0123456789abcdef0123456789abcdef",
     modelId: "fake-agent-model",
     outcome: "execution_failure" as const,
     toolCalls: [],
@@ -54,7 +57,7 @@ function successfulAgentRun(text: string) {
 
 describe("Slack resume result handling", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     vi.resetModules();
     await disconnectStateAdapter();
   });
@@ -62,9 +65,9 @@ describe("Slack resume result handling", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     if (ORIGINAL_STATE_ADAPTER === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+      process.env["JUNIOR_STATE_ADAPTER"] = ORIGINAL_STATE_ADAPTER;
     }
   });
 
@@ -76,6 +79,7 @@ describe("Slack resume result handling", () => {
 
     await expect(
       resumeSlackTurn({
+        sendPluginTask: sendVercelPluginTask,
         messageText: "Resume the failed turn",
         channelId: "C123",
         threadTs: "1700000000.009",
@@ -135,6 +139,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "Continue the original request",
       conversationId: "slack:C123:1700000000.015",
       turnId: "turn-invalid-resume-actor",
@@ -156,7 +161,7 @@ describe("Slack resume result handling", () => {
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([
       expect.stringContaining(
@@ -172,6 +177,7 @@ describe("Slack resume result handling", () => {
     const conversationId = "agent-dispatch:resume-binding";
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId,
       turnId: "turn-resume-dispatch-binding",
@@ -195,8 +201,10 @@ describe("Slack resume result handling", () => {
     });
 
     const posts = getCapturedSlackApiCalls("chat.postMessage");
-    expect(posts.map((call) => call.params.text)).toEqual(["Done."]);
-    expect(JSON.stringify(posts[0]?.params.blocks)).toContain(conversationId);
+    expect(posts.map((call) => call.params["text"])).toEqual(["Done."]);
+    expect(JSON.stringify(posts[0]?.params["blocks"])).toContain(
+      conversationId,
+    );
     // A later message in the thread reaches the Conversation of the dispatch.
     await expect(
       getConversationStore().getConversationIdByProviderConversation({
@@ -212,6 +220,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId: "conversation-auth-pause",
       turnId: "turn-auth-pause",
@@ -247,7 +256,7 @@ describe("Slack resume result handling", () => {
     ]);
     expect(
       JSON.stringify(
-        getCapturedSlackApiCalls("chat.postMessage")[0]?.params.blocks,
+        getCapturedSlackApiCalls("chat.postMessage")[0]?.params["blocks"],
       ),
     ).toContain("conversation-auth-pause");
   });
@@ -256,6 +265,7 @@ describe("Slack resume result handling", () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "Continue the original request",
       conversationId: "slack:C123:1700000000.006",
       turnId: "turn-resume-execution-failure",
@@ -293,6 +303,7 @@ describe("Slack resume result handling", () => {
 
     await expect(
       resumeSlackTurn({
+        sendPluginTask: sendVercelPluginTask,
         messageText: "continue this turn",
         conversationId: "slack:C123:1700000000.011",
         turnId: "turn-resume-commit-fail",
@@ -324,7 +335,7 @@ describe("Slack resume result handling", () => {
     expect(onFailure).not.toHaveBeenCalled();
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([expect.stringContaining("Final resumed answer")]);
   });
@@ -334,6 +345,7 @@ describe("Slack resume result handling", () => {
     const onFailure = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
+      sendPluginTask: sendVercelPluginTask,
       messageText: "continue this turn",
       conversationId: "slack:C123:1700000000.014",
       turnId: "turn-resume-suspend-fail",
@@ -363,7 +375,7 @@ describe("Slack resume result handling", () => {
     expect(onFailure).toHaveBeenCalledOnce();
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(
-        (call) => call.params.text,
+        (call) => call.params["text"],
       ),
     ).toEqual([
       expect.stringContaining(

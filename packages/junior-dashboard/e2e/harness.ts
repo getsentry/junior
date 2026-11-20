@@ -6,8 +6,67 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
+import type * as DashboardApp from "../src/app";
+
+// The built dashboard. A plain string keeps the type check from needing a
+// build; `DashboardApp` gives it the source's types.
+const BUILT_APP = "../dist/app.js";
+
+/**
+ * Add the mailbox that a first detail read asks for, so a mocked detail report
+ * answers that read the way the server does. The mailbox is empty by default.
+ */
+export function withRequestedMailbox<T extends { conversationId: string }>(
+  route: Route,
+  report: T,
+  mailbox: unknown = {
+    conversationId: report.conversationId,
+    generatedAt: NOW,
+    messages: [],
+  },
+): T {
+  const { searchParams } = new URL(route.request().url());
+  return searchParams.get("mailbox") === "true"
+    ? { ...report, mailbox }
+    : report;
+}
+
+/** The Conversation ids that a versions poll asks tokens for. */
+export function requestedConversationIds(route: Route): string[] {
+  const ids = new URL(route.request().url()).searchParams.get(
+    "conversationIds",
+  );
+  return ids ? ids.split(",") : [];
+}
+
+/**
+ * Answer the versions poll with one tree token for each requested
+ * Conversation, so a mocked detail that sends the same token refreshes when
+ * it moves, as on the server. Mock details send no token, so the others do
+ * not refresh. The other tokens stay fixed.
+ */
+export async function routeConversationVersion(
+  page: Page,
+  conversationVersion: () => string,
+): Promise<void> {
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({
+      json: {
+        conversationDetails: Object.fromEntries(
+          requestedConversationIds(route).map((id) => [
+            id,
+            conversationVersion(),
+          ]),
+        ),
+        conversations: "mock",
+        reviewItems: "mock",
+        spend: "mock",
+      },
+    }),
+  );
+}
 
 export type DashboardE2eServer = {
   baseURL: string;
@@ -24,8 +83,12 @@ export type DashboardE2eServer = {
  * `startDashboardE2eServer` sets `DATABASE_URL`.
  */
 export async function resetDashboardMockState(): Promise<void> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  const { resetMockDashboardState } = await import("../dist/app.js");
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+  const { resetMockDashboardState }: typeof DashboardApp = await import(
+    BUILT_APP
+  );
   resetMockDashboardState();
 }
 
@@ -43,7 +106,8 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   }
 
   const method = req.method ?? "GET";
-  return new Request(url, {
+  // Node needs `duplex` to stream a request body; the DOM types lack it.
+  const init: RequestInit & { duplex?: "half" } = {
     body:
       method === "GET" || method === "HEAD"
         ? undefined
@@ -51,24 +115,28 @@ function requestFromNode(req: IncomingMessage, baseURL: string): Request {
     duplex: method === "GET" || method === "HEAD" ? undefined : "half",
     headers,
     method,
-  });
+  };
+  return new Request(url, init);
 }
 
 async function writeResponse(res: ServerResponse, response: Response) {
   res.statusCode = response.status;
-  response.headers.forEach((value, name) => {
+  for (const [name, value] of response.headers) {
     res.setHeader(name, value);
-  });
+  }
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { basePath?: string; componentGallery?: boolean } = {},
+  options: { authRequired?: boolean; basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
-  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
-  const { createDashboardApp } = await import("../dist/app.js");
+  process.env["DATABASE_URL"] ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+  const { createDashboardApp }: typeof DashboardApp = await import(BUILT_APP);
   const app = createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["example.com"],
     auth: {
       async getSession() {
@@ -87,15 +155,14 @@ export async function startDashboardE2eServer(
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    authRequired: options.authRequired,
     basePath: options.basePath,
-    componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
 
   let baseURL = "http://127.0.0.1";
   const server = createServer((req, res) => {
-    void app
-      .fetch(requestFromNode(req, baseURL))
+    void Promise.resolve(app.fetch(requestFromNode(req, baseURL)))
       .then((response) => writeResponse(res, response))
       .catch((error) => {
         res.statusCode = 500;
@@ -116,6 +183,9 @@ export async function startDashboardE2eServer(
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
+        // The page is still open and keeps reusing keep-alive connections.
+        // Without this, close waits on them until the test times out.
+        server.closeAllConnections();
       }),
   };
 }
@@ -135,10 +205,10 @@ export async function mockDashboardApis(
     await route.fulfill({
       json: [
         {
-          description: "Personal facts Junior remembers about you.",
+          description: "Public memories Junior can use across conversations.",
           id: "memories",
           label: "Memories",
-          navigation: "primary",
+          navigation: "profile",
           pluginDisplayName: "Memory",
           pluginName: "memory",
         },
@@ -150,19 +220,35 @@ export async function mockDashboardApis(
     async (route) => {
       await route.fulfill({
         json: {
+          events: [
+            {
+              memoryIds: ["memory-checkout-runbook"],
+              seq: 2,
+              source: "recalled",
+              turnId: "active-turn",
+            },
+            {
+              memoryIds: ["captured-memory-1", "captured-memory-2"],
+              seq: 13,
+              source: "captured",
+              turnId: "qa-turn",
+            },
+          ],
           memories: [
             {
-              capturedAt: "2026-08-07T07:01:00.000Z",
+              content:
+                "Checkout latency investigations start with the deployment comparison dashboard.",
+              id: "memory-checkout-runbook",
+              visibility: "public",
+            },
+            {
               content: "Use pnpm for repository commands.",
               id: "captured-memory-1",
-              kind: "preference",
               visibility: "private",
             },
             {
-              capturedAt: "2026-08-07T07:01:00.000Z",
               content: "Dashboard transcript events should remain expandable.",
               id: "captured-memory-2",
-              kind: "knowledge",
               visibility: "public",
             },
           ],
@@ -188,7 +274,6 @@ export async function mockDashboardApis(
             observedAt: "2026-07-29T09:14:00.000Z",
             origin: "automatic",
             sourcePlatform: "slack",
-            visibility: "private",
           }
         : id === "memory-2"
           ? {
@@ -199,7 +284,6 @@ export async function mockDashboardApis(
               observedAt: "2026-07-27T16:42:00.000Z",
               origin: "explicit",
               sourcePlatform: "slack",
-              visibility: "public",
             }
           : id === "memory-3"
             ? {
@@ -210,7 +294,6 @@ export async function mockDashboardApis(
                 observedAt: "2026-07-24T11:08:00.000Z",
                 origin: "automatic",
                 sourcePlatform: "slack",
-                visibility: "public",
               }
             : id === "memory-search"
               ? {
@@ -221,7 +304,6 @@ export async function mockDashboardApis(
                   observedAt: "2026-07-30T12:00:00.000Z",
                   origin: "explicit",
                   sourcePlatform: "slack",
-                  visibility: "private",
                 }
               : undefined;
     if (!memory) {
@@ -234,8 +316,7 @@ export async function mockDashboardApis(
     await route.fulfill({ json: memory });
   });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
-    const filter = new URL(route.request().url()).searchParams.get("filter");
-    const allRecords = [
+    const records = [
       {
         actions: [
           {
@@ -252,7 +333,6 @@ export async function mockDashboardApis(
           { label: "Type", value: "Preference" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Private" },
           { label: "Remembered", value: "Jul 29, 2026, 9:14 AM" },
         ],
       },
@@ -264,7 +344,6 @@ export async function mockDashboardApis(
           { label: "Type", value: "Knowledge" },
           { label: "Learned", value: "Explicit" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 27, 2026, 4:42 PM" },
         ],
       },
@@ -276,19 +355,10 @@ export async function mockDashboardApis(
           { label: "Type", value: "Procedure" },
           { label: "Learned", value: "Automatic" },
           { label: "Source", value: "Slack" },
-          { label: "Visibility", value: "Public" },
           { label: "Remembered", value: "Jul 24, 2026, 11:08 AM" },
         ],
       },
     ];
-    const records = allRecords.filter((record) => {
-      const metadata = Object.fromEntries(
-        record.metadata.map((item) => [item.label, item.value]),
-      );
-      if (filter === "private") return metadata.Visibility === "Private";
-      if (filter === "public") return metadata.Visibility === "Public";
-      return true;
-    });
     await route.fulfill({
       json: {
         type: "list",
@@ -314,61 +384,6 @@ export async function mockDashboardApis(
       });
       return;
     }
-    const automation = {
-      createdAt: "2026-07-28T16:00:00.000Z",
-      createdBy: "Morgan",
-      createdByEmail: "dev@example.com",
-      destination: {
-        channelId: "C123",
-        label: "#project-updates",
-        teamId: "T123",
-        visibility: "public" as const,
-      },
-      id,
-      instruction:
-        kind === "scheduled"
-          ? "Send the weekly project summary"
-          : "Summarize the closed issue",
-      kind,
-      credentialMode: "creator",
-      ownedByViewer: true,
-      runs:
-        kind === "scheduled"
-          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
-          : { 1: 0, 7: 1, 30: 4, 90: 7 },
-      outcomes:
-        kind === "scheduled"
-          ? [
-              {
-                action: "send_message" as const,
-                destination: {
-                  channelId: "C123",
-                  platform: "slack" as const,
-                  teamId: "T123",
-                },
-              },
-            ]
-          : [],
-      title:
-        kind === "scheduled"
-          ? "Weekly project summary"
-          : "Closed issue summary",
-      totalRuns: kind === "scheduled" ? 48 : 7,
-      ...(kind === "scheduled"
-        ? {
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            schedule: "Every Monday at 9:00 AM",
-            timezone: "America/Los_Angeles",
-            status: "active" as const,
-          }
-        : {
-            events: ["issue.closed"],
-            resource: "Issue · ACME-42",
-            source: "github",
-            triggerAvailable: true,
-            status: "active",
-          }),
-    };
     const executionDays = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
@@ -376,6 +391,7 @@ export async function mockDashboardApis(
       return {
         blocked: index % 13 === 0 ? 1 : 0,
         completed: index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0,
+        costUsd: index % 2 === 0 ? 0.21 : 0,
         date,
         failed: index % 9 === 0 ? 1 : 0,
       };
@@ -395,11 +411,16 @@ export async function mockDashboardApis(
             totalTokens: 1_200,
           },
           {
+            automationVersion: 3,
             conversationId: "slack:CQA123:1770003600.000200",
             costUsd: 0.18,
+            credentialMode: "creator",
             durationMs: 18_000,
+            error: "Slack rejected the result message: channel_not_found.",
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
+            scheduledFor: "2026-08-05T15:59:00.000Z",
+            startedAt: "2026-08-05T15:59:42.000Z",
             status: "failed",
             title: "Ship notes for the release train",
             totalTokens: 480,
@@ -410,7 +431,6 @@ export async function mockDashboardApis(
             status: "blocked",
           },
         ],
-        automation,
         truncated: false,
       },
     });
@@ -421,8 +441,7 @@ export async function mockDashboardApis(
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);
       return {
         date: date.toISOString().slice(0, 10),
-        personal: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
-        public:
+        count:
           index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
       };
     });
@@ -447,10 +466,8 @@ export async function mockDashboardApis(
           embedded: 201,
           explicit: 20,
           knowledge: 154,
-          personal: 24,
           preference: 12,
           procedure: 44,
-          public: 186,
         },
       },
     });
@@ -501,6 +518,7 @@ export async function mockDashboardApis(
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
@@ -521,6 +539,7 @@ export async function mockDashboardApis(
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
         },
+        defaultVcpus: 4,
         workspaces: [{ ...workspace, snapshot: null }],
       },
     });
@@ -589,11 +608,6 @@ export async function mockDashboardApis(
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
             firstSeenAt: "2026-03-15T00:00:00.000Z",
             lastSeenAt: "2026-06-12T00:00:00.000Z",
             actor: {

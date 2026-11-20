@@ -12,7 +12,13 @@
  */
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
-import { getActiveTraceId, logException } from "@/chat/logging";
+import {
+  getActiveTraceContext,
+  logException,
+  logWarn,
+  withSpan,
+  type SetSpanAttributes,
+} from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -30,21 +36,31 @@ import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
+  getStoredTurnFields,
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
+  TurnAlreadyFinishedError,
   upsertTurnRecord,
   type AgentDispatchOutcome,
+  type StoredTurnFields,
   type TurnPauseReason,
   type TurnRecord,
   type TurnSummary,
   type AgentTurnSurface,
 } from "./turn-cursor";
 
-export type { AgentDispatchOutcome, TurnRecord, TurnSummary, AgentTurnSurface };
+export type {
+  AgentDispatchOutcome,
+  StoredTurnFields,
+  TurnRecord,
+  TurnSummary,
+  AgentTurnSurface,
+};
 export {
   abandonTurnRecord,
   failTurnRecord,
+  getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
   recordTurnSummary,
@@ -60,7 +76,7 @@ export type TurnCheckpoint =
   | {
       resumed: false;
       sliceId: 1;
-      record?: TurnRecord;
+      record?: TurnRecord | undefined;
     };
 
 /**
@@ -73,28 +89,30 @@ interface TurnCheckpointWrite {
   turnId: string;
   messages: PiMessage[];
   /** Required for running/paused; optional for completed/failed (falls back to stored). */
-  sliceId?: number;
+  sliceId?: number | undefined;
   // --- SQL dual-write / restore only ---
-  actor?: Actor;
-  channelName?: string;
-  credentialSubject?: CredentialSubject;
-  destination?: Destination;
-  destinationVisibility?: ConversationPrivacy;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
-  source?: Source;
-  surface?: AgentTurnSurface;
-  turnStartMessageIndex?: number;
+  actor?: Actor | undefined;
+  channelName?: string | undefined;
+  credentialSubject?: CredentialSubject | undefined;
+  destination?: Destination | undefined;
+  destinationVisibility?: ConversationPrivacy | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
+  source?: Source | undefined;
+  surface?: AgentTurnSurface | undefined;
+  turnStartMessageIndex?: number | undefined;
   /** Tool calls charged to this turn; survives history replacement. */
-  cumulativeToolCallCount?: number;
+  cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
-  turnLimitWrappedUp?: boolean;
-  trailingMessageProvenance?: ConversationMessageProvenance[];
-  turnContexts?: PluginTurnContext[];
-  durationMs?: number;
-  usage?: AgentTurnUsage;
-  errorMessage?: string;
-  resultMessageId?: string;
+  turnLimitWrappedUp?: boolean | undefined;
+  /** Times recovery resumed this turn after a lost worker; survives later writes. */
+  lostWorkerResumeCount?: number | undefined;
+  trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
+  turnContexts?: PluginTurnContext[] | undefined;
+  durationMs?: number | undefined;
+  usage?: AgentTurnUsage | undefined;
+  errorMessage?: string | undefined;
+  resultMessageId?: string | undefined;
 }
 
 type ProgressCheckpointArgs =
@@ -174,17 +192,35 @@ export function saveTurnCheckpoint(args: TerminalCheckpointArgs): Promise<void>;
 export async function saveTurnCheckpoint(
   args: SaveTurnCheckpointArgs,
 ): Promise<TurnRecord | undefined | void> {
-  if (args.mode === "running") {
-    return await saveRunning(args);
-  }
-  if (args.mode === "paused") {
-    return await savePaused(args);
-  }
-  await saveDone(args);
-  return undefined;
+  // A resumed turn continues the trace from the caller's span, not from the
+  // save span.
+  const traceContext = getActiveTraceContext();
+  // The agent loop waits for running saves after each tool step.
+  return await withSpan(
+    "turn.checkpoint.save",
+    "turn.checkpoint.save",
+    {},
+    async (setSpanAttributes) => {
+      if (args.mode === "running") {
+        return await saveRunning(args, traceContext, setSpanAttributes);
+      }
+      if (args.mode === "paused") {
+        return await savePaused(args, traceContext, setSpanAttributes);
+      }
+      await saveDone(args, traceContext);
+      return undefined;
+    },
+    { "app.turn.checkpoint.mode": args.mode },
+  );
 }
 
-function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
+type TraceContext = ReturnType<typeof getActiveTraceContext>;
+
+function sharedWrite(
+  args: TurnCheckpointWrite,
+  traceContext: TraceContext,
+  latest?: TurnRecord,
+) {
   return {
     conversationId: args.conversationId,
     turnId: args.turnId,
@@ -197,18 +233,22 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       dispatchId: args.dispatchId ?? latest?.dispatchId,
       source: args.source,
       surface: args.surface ?? latest?.surface,
-      traceId: getActiveTraceId() ?? latest?.traceId,
+      traceContext: latest?.traceContext ?? traceContext,
       turnStartMessageIndex:
         args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      lostWorkerResumeCount:
+        args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),
   };
 }
 
 async function saveRunning(
   args: Extract<SaveTurnCheckpointArgs, { mode: "running" }>,
+  traceContext: TraceContext,
+  setSpanAttributes: SetSpanAttributes,
 ): Promise<TurnRecord | undefined> {
   if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
     return undefined;
@@ -216,8 +256,9 @@ async function saveRunning(
   try {
     const latest = await getTurnRecord(args.conversationId, args.turnId);
     return await upsertTurnRecord({
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
+        storedProjection: latest?.storedProjection,
         trailingMessageProvenance: args.trailingMessageProvenance,
         turnContexts: args.turnContexts,
       }),
@@ -228,8 +269,17 @@ async function saveRunning(
       state: "running",
     });
   } catch (error) {
-    // Quiet only branch races on best-effort running checkpoints.
-    if (!(error instanceof AgentHistoryBranchError)) {
+    // Quiet only branch races and late workers on best-effort running
+    // checkpoints. The span keeps the reason: a resume that must save its
+    // input fails on it.
+    if (error instanceof TurnAlreadyFinishedError) {
+      setSpanAttributes({
+        "app.turn.checkpoint.rejected": error.name,
+        "app.turn.previous_state": error.state,
+      });
+    } else if (error instanceof AgentHistoryBranchError) {
+      setSpanAttributes({ "app.turn.checkpoint.rejected": error.name });
+    } else {
       logException(error, "agent.turn.checkpoint.running.failed", {
         "app.ai.resume_conversation_id": args.conversationId,
         "app.ai.resume_session_id": args.turnId,
@@ -242,6 +292,8 @@ async function saveRunning(
 
 async function savePaused(
   args: Extract<SaveTurnCheckpointArgs, { mode: "paused" }>,
+  traceContext: TraceContext,
+  setSpanAttributes: SetSpanAttributes,
 ): Promise<TurnRecord | undefined> {
   // Yield keeps the current slice; auth/timeout/retry advance it.
   const keepSlice = args.reason === "yield";
@@ -268,7 +320,7 @@ async function savePaused(
     }
 
     const base = {
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
         cumulativeDurationMs: addDurationMs(
           latest?.cumulativeDurationMs,
@@ -308,6 +360,14 @@ async function savePaused(
     if (error instanceof TurnSliceLimitExceededError) {
       throw error;
     }
+    // A late worker cannot pause a finished Turn. Callers see an unsaved pause.
+    if (error instanceof TurnAlreadyFinishedError) {
+      setSpanAttributes({
+        "app.turn.checkpoint.rejected": error.name,
+        "app.turn.previous_state": error.state,
+      });
+      return undefined;
+    }
     logException(error, "agent.turn.checkpoint.paused.failed", {
       "app.ai.resume_conversation_id": args.conversationId,
       "app.ai.resume_session_id": args.turnId,
@@ -321,6 +381,7 @@ async function savePaused(
 
 async function saveDone(
   args: Extract<SaveTurnCheckpointArgs, { mode: "completed" | "failed" }>,
+  traceContext: TraceContext,
 ): Promise<void> {
   let latest: TurnRecord | undefined;
   await persistWithRetry(async () => {
@@ -334,7 +395,7 @@ async function saveDone(
   }
   await persistWithRetry(async () => {
     await upsertTurnRecord({
-      ...sharedWrite(args, latest),
+      ...sharedWrite(args, traceContext, latest),
       ...definedProps({
         cumulativeDurationMs: addDurationMs(
           latest?.cumulativeDurationMs,
@@ -350,4 +411,53 @@ async function saveDone(
       state: args.mode,
     });
   });
+}
+
+/** Recovery resumes a turn at most once after its worker stops checking in. */
+const MAX_LOST_WORKER_RESUMES = 1;
+/**
+ * Saved on the paused turn when recovery resumes it. The resumed run replaces
+ * it at its first save.
+ */
+export const LOST_WORKER_RESUME_MESSAGE =
+  "Turn lost its worker; resuming from its last boundary";
+
+/** True when a resumed turn lost its worker again before it saved anything. */
+export function lostWorkerBeforeFirstSave(turn: TurnRecord): boolean {
+  return (
+    turn.errorMessage === LOST_WORKER_RESUME_MESSAGE &&
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
+  );
+}
+
+/**
+ * Pause a turn whose worker stopped checking in, so it resumes from its last
+ * save. Returns false when the turn already used its resume or has no slice
+ * left.
+ */
+export async function pauseLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+  if (
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
+    // Past the slice limit, the save fails the turn without a reply.
+    turn.sliceId + 1 > botConfig.maxSlicesPerTurn
+  ) {
+    return false;
+  }
+  const paused = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "retry",
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    sliceId: turn.sliceId,
+    messages: turn.piMessages,
+    lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
+    errorMessage: LOST_WORKER_RESUME_MESSAGE,
+  });
+  if (!paused) return false;
+  logWarn("agent.turn.lost_worker.resumed", {
+    "app.ai.conversation_id": turn.conversationId,
+    "app.ai.session_id": turn.turnId,
+    "app.ai.resume_slice_id": paused.sliceId,
+  });
+  return true;
 }

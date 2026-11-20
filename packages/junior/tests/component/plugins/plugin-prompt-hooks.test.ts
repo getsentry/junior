@@ -9,8 +9,8 @@ import {
 } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -32,7 +32,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -47,7 +50,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }) {
       captured.systemPrompt = input.initialState.systemPrompt;
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -56,7 +66,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -75,6 +86,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       captured.promptContextMessages.push([...this.state.messages]);
       captured.promptMessages.push(message);
       this.state.messages.push(message);
+      // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+      // the next model call.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });
@@ -114,8 +130,9 @@ vi.mock("@/chat/pi/client", () => ({
 import {
   defineJuniorPlugin,
   definePromptContext,
+  type PromptContextContribution,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -169,9 +186,9 @@ describe("plugin prompt hook composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 
@@ -206,6 +223,17 @@ describe("plugin prompt hook composition", () => {
       }),
       renderPrompt: ({ memories }) => memories[0]!.content,
     });
+    // A plain method that reads `this`, not a definePromptContext closure.
+    const note: PromptContextContribution = {
+      context: {
+        kind: "note",
+        version: 1,
+        content: { note: "Run the tests." },
+      },
+      renderPrompt() {
+        return String(this.context.content["note"]);
+      },
+    };
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -219,6 +247,7 @@ describe("plugin prompt hook composition", () => {
               recall({
                 memories: [{ id: "memory-1", content: "Use pnpm." }],
               }),
+              note,
             ];
           },
         },
@@ -237,7 +266,11 @@ describe("plugin prompt hook composition", () => {
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "Use pnpm.",
     );
-    const stored = await getConversationEventStore().loadByIdempotencyKey(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
+      "Run the tests.",
+    );
+    const eventStore = getConversationEventStore();
+    const stored = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
       `turn:${turnId}:context:memory:0`,
     );
@@ -250,6 +283,18 @@ describe("plugin prompt hook composition", () => {
       content: {
         memories: [{ id: "memory-1", content: "Use pnpm." }],
       },
+    });
+    const storedMethod = await eventStore.loadByIdempotencyKey(
+      LOCAL_DESTINATION.conversationId,
+      `turn:${turnId}:context:memory:1`,
+    );
+    expect(storedMethod?.data).toEqual({
+      type: "turn_context",
+      turnId,
+      pluginName: "memory",
+      kind: "note",
+      version: 1,
+      content: { note: "Run the tests." },
     });
   });
 

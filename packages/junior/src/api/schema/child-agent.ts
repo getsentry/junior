@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { AGENT_INVOCATION_STATUSES } from "@/db/schema/agent-invocations";
+import * as z from "zod";
+import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
   conversationAuxiliaryCostsSchema,
@@ -12,15 +12,19 @@ import {
  * Viewers who cannot see private content get the status, time, and usage, but
  * not the name, task, title, or error. Usage covers the child Conversation and
  * all its own child agents, like the detail of that child Conversation.
+ * Archived children stay in the report.
  */
 export const conversationChildAgentSchema = z
   .object({
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
+    /** When the child was archived for everyone, or null. */
+    archivedAt: z.string().datetime().nullable(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string().min(1),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     error: z.string().min(1).optional(),
+    kind: z.enum(["thread", "task"]),
     name: z.string().min(1).optional(),
     redacted: z.literal(true).optional(),
     status: z.enum(AGENT_INVOCATION_STATUSES),

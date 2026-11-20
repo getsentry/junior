@@ -6,9 +6,13 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
-  getAgentInvocation,
+} from "@/chat/agent-invocations/create";
+import {
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
@@ -17,6 +21,10 @@ import {
   createAgentInvocationWorker,
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
+import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+import { turnRequestText } from "@/chat/agent/prompt";
+import { commitMessages } from "@/chat/conversations/projection";
+import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -29,6 +37,7 @@ import type {
   InboxAttempt,
 } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
@@ -62,7 +71,7 @@ describe("agent invocation worker", () => {
     vi.restoreAllMocks();
   });
 
-  it("stops a stranded running child without starting another agent run", async () => {
+  it("stops a stranded running child that already used its resume", async () => {
     const fixture = await prepareParentConversation();
     const state = getStateAdapter();
     await state.connect();
@@ -107,6 +116,7 @@ describe("agent invocation worker", () => {
           },
         ] as PiMessage[],
         turnId,
+        lostWorkerResumeCount: 1,
         sliceId: 1,
         source: { kind: "agent_invocation" },
         state: "running",
@@ -163,7 +173,7 @@ describe("agent invocation worker", () => {
     }
   });
 
-  it("stops open child agents when a stop comes after the child saved its result", async () => {
+  it("stops open child agents when the child is stopped during its run", async () => {
     const fixture = await prepareParentConversation();
     try {
       const created = await createAgentInvocation({
@@ -178,7 +188,12 @@ describe("agent invocation worker", () => {
       const stopRequest = new AbortController();
       const worker = createAgentInvocationWorker({
         run: async () => {
-          // The stop request arrives after the run finished.
+          // A person stops the child as its run finishes. This harness has no
+          // stop check, so abort the signal that the check would abort.
+          await stopConversation({
+            conversationId: created.childConversationId,
+            queue: createConversationWorkQueueTestAdapter(),
+          });
           stopRequest.abort(new Error("Conversation work stopped"));
           return {
             status: "completed" as const,
@@ -192,7 +207,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Partial result",
+              reply: { text: "Partial result", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },
@@ -215,8 +231,8 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
 
-      // The open helper would have reported for the child. The stop ends the
-      // helper, so the child's own result reports now.
+      // The open helper would have reported for the child. The stop ended the
+      // helper before the child saved, so the child's own result reports.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
@@ -242,6 +258,7 @@ describe("agent invocation worker", () => {
         ...INVOCATION_INPUT,
         agentName: "researcher",
         idempotencyKey: "steer-task",
+        parentToolCallId: "call-steer-task",
       });
       await markAgentInvocationRunning(created.invocationId);
       const { invocation: message, queued } =
@@ -270,6 +287,7 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
@@ -285,8 +303,10 @@ describe("agent invocation worker", () => {
       // The runner drains steering messages, as the agent does before its
       // next model call.
       const steered: AgentSteeringMessage[][] = [];
+      const provenances: unknown[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
+          provenances.push(run.instruction.provenance);
           await run.durability?.drainSteeringMessages?.(async (messages) => {
             steered.push(messages);
           });
@@ -302,7 +322,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Checked both paths.",
+              reply: { text: "Checked both paths.", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },
@@ -338,13 +359,16 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is labeled as agent-written and has no Actor.
+      // The parent's task and messages are the child's instructions, with no
+      // Actor.
+      expect(provenances).toEqual([agentInstructionProvenance]);
       expect(steered).toEqual([
         [
           expect.objectContaining({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: expect.stringMatching(
-              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+              /^<parent-agent-task>\n[\s\S]*Also check the retry path\.\n<\/parent-agent-task>$/,
             ),
           }),
         ],
@@ -387,6 +411,142 @@ describe("agent invocation worker", () => {
           },
         ],
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("starts a fork child with the parent history before the spawn call", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const usage = {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      };
+      const assistant = (content: unknown[], timestamp: number): PiMessage =>
+        ({
+          role: "assistant",
+          content,
+          api: "responses",
+          provider: "openai",
+          model: "gpt-5.3",
+          usage,
+          stopReason: content.some(
+            (part) => (part as { type: string }).type === "toolCall",
+          )
+            ? "toolUse"
+            : "stop",
+          timestamp,
+        }) as PiMessage;
+      const readRound: PiMessage[] = [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Compare the two retry paths." }],
+          timestamp: 1,
+        },
+        assistant(
+          [
+            {
+              type: "toolCall",
+              id: "call-read",
+              name: "readFile",
+              arguments: { path: "retry.ts" },
+            },
+          ],
+          2,
+        ),
+        {
+          role: "toolResult",
+          toolCallId: "call-read",
+          toolName: "readFile",
+          content: [{ type: "text", text: "export const RETRIES = 3;" }],
+          isError: false,
+          timestamp: 3,
+        },
+      ];
+      await commitMessages({
+        conversationId: PARENT_CONVERSATION_ID,
+        messages: [
+          ...readRound,
+          assistant(
+            [
+              {
+                type: "toolCall",
+                id: "call-fork",
+                name: "spawnAgent",
+                arguments: {
+                  fork: true,
+                  task: "Check the other path.",
+                },
+              },
+            ],
+            4,
+          ),
+        ],
+      });
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        fork: true,
+        idempotencyKey: "fork-task",
+        input: "Check the other path.",
+        parentToolCallId: "call-fork",
+      });
+      const histories: (readonly PiMessage[])[] = [];
+      const requests: string[] = [];
+      const worker = createAgentInvocationWorker({
+        run: async (run) => {
+          histories.push(run.history ?? []);
+          requests.push(turnRequestText(run));
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "The other path retries twice.",
+            },
+          };
+        },
+      });
+      const message = buildAgentInvocationInboundMessage(created);
+
+      await expect(
+        worker(
+          {
+            attempt: {
+              ack: vi.fn(async () => {}),
+              conversationId: created.childConversationId,
+              drain: vi.fn(),
+              isFinalAttempt: false,
+              messages: [message],
+            },
+            checkIn: vi.fn(),
+            conversationId: created.childConversationId,
+            shouldYield: () => false,
+          } satisfies ConversationWorkerContext,
+          created.invocationId,
+        ),
+      ).resolves.toEqual({ status: "completed" });
+
+      // The fork reads what the parent read, but not the unanswered spawn
+      // call, which a model request would reject.
+      expect(histories).toEqual([
+        readRound.map((item) => expect.objectContaining(item)),
+      ]);
+      expect(agentInvocationInputText(created)).toContain(FORK_INSTRUCTIONS);
+      // Context such as memory recall follows the parent's task, without
+      // the tag and the fork instructions around it.
+      expect(requests).toEqual(["Check the other path."]);
     } finally {
       await fixture.close();
     }

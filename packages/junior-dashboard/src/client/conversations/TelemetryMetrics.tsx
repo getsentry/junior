@@ -6,8 +6,6 @@ import type {
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatRuntime,
-  formatTime,
   formatTokenSummary,
   summarizeCost,
   summarizeModelCost,
@@ -27,6 +25,7 @@ import {
   type UsageCardSection,
   type UsageCardSplit,
 } from "./UsageCard";
+import { formatRuntime, formatTime } from "../time";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -90,7 +89,7 @@ function agentSplitLines(
     { value: "By agent", valueStyle: "heading" },
     { label: "this agent", value: format(total - subagents) },
     {
-      label: plural("subagent", childAgentTotals.count),
+      label: plural("child conversation", childAgentTotals.count),
       value: format(subagents),
     },
   ];
@@ -115,7 +114,6 @@ function modelHeading(
 /** Rows shown before the rest of a list rolls into one "N more" line. */
 const MODEL_LIMIT = 4;
 const AUXILIARY_LIMIT = 3;
-const DETAILS_FOOTER = "Full breakdown in Details";
 
 type RankedRow = UsageCardRow & { amount: number };
 
@@ -222,7 +220,6 @@ function tokenCard(
   compactionCount: number | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps {
   const models = modelRows(
     modelUsage,
@@ -232,7 +229,6 @@ function tokenCard(
     formatCompactNumber,
   );
   return {
-    footer: detailsHint && models.length ? DETAILS_FOOTER : undefined,
     note: compactionCount ? plural("compaction", compactionCount) : undefined,
     sections: models.length
       ? [
@@ -278,7 +274,6 @@ function costCard(
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps | undefined {
   const total = totalConversationCost(summary, auxiliaryCosts);
   if (!total) return undefined;
@@ -315,10 +310,6 @@ function costCard(
     });
   }
   return {
-    footer:
-      detailsHint && (models.length || operations.length)
-        ? DETAILS_FOOTER
-        : undefined,
     sections,
     split: agentSplit(
       childAgentTotals,
@@ -336,11 +327,28 @@ export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
+    "junior/conversation_embedding": "Conversation embedding",
+    "junior/cache_warmup": "Cache warmup",
+    "junior/compaction": "Compaction",
+    "junior/conversation_catch_up": "Catch-up",
+    "junior/conversation_search_embedding": "Conversation search",
+    "junior/conversation_title": "Conversation title",
     "junior/guardian_action_reviewed": "Guardian",
+    "junior/image_generation": "Image generation",
+    "junior/image_prompt_enrichment": "Image prompt",
     "junior/passive_reply_routed": "Passive reply routing",
+    "junior/review_item_reply_match": "Review reply matching",
+    "junior/run_title": "Run title",
+    "junior/task_title": "Task title",
+    "junior/tool_search_rerank": "Tool search",
+    "junior/transcription": "Transcription",
     "junior/turn_routed": "Thinking routing",
+    "junior/vision_summary": "Image summary",
+    "junior/web_search": "Web search",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
+    "memory/task_model_called": "Memory extraction",
+    "memory/user_prompt_model_called": "Memory recall",
   };
   const key = `${operation.namespace}/${operation.name}`;
   return (
@@ -352,14 +360,13 @@ export function auxiliaryOperationLabel(
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
-  auxiliaryCosts?: ConversationAuxiliaryCosts;
-  childAgentTotals?: ConversationChildAgentTotals;
-  /** Point to the Details drawer, which has the full breakdown. */
-  detailsHint?: boolean;
+  auxiliaryCosts?: ConversationAuxiliaryCosts | undefined;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: CostUsageSummary | undefined;
+  tooltipPlacement?: "above" | "below" | undefined;
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -375,12 +382,11 @@ export function CostMetric(props: {
     props.auxiliaryCosts,
     props.liveModelId,
     props.childAgentTotals,
-    Boolean(props.detailsHint),
   );
   return (
     <MetricValue
       align={props.align}
-      tooltipPlacement="above"
+      tooltipPlacement={props.tooltipPlacement ?? "above"}
       tooltip={
         !card && props.liveModelId
           ? [modelHeading(props.liveModelId, props.liveModelId)]
@@ -396,13 +402,11 @@ export function CostMetric(props: {
 /** Render total token usage with a hoverable breakdown. */
 export function TokenMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
-  compactionCount?: number;
-  /** Point to the Details drawer, which has the full breakdown. */
-  detailsHint?: boolean;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
+  compactionCount?: number | undefined;
   live?: boolean;
-  liveModelId?: string;
-  modelUsage?: ConversationModelUsage[];
+  liveModelId?: string | undefined;
+  modelUsage?: ConversationModelUsage[] | undefined;
   summary: TokenUsageSummary | undefined;
 }) {
   if (!props.summary) return null;
@@ -417,7 +421,6 @@ export function TokenMetric(props: {
             props.compactionCount,
             props.liveModelId,
             props.childAgentTotals,
-            Boolean(props.detailsHint),
           )}
         />
       }
@@ -432,7 +435,7 @@ export function TokenMetric(props: {
 /** Render a duration value with start/end timestamps in the tooltip. */
 export function DurationMetric(props: {
   align?: "left" | "right";
-  childAgentTotals?: ConversationChildAgentTotals;
+  childAgentTotals?: ConversationChildAgentTotals | undefined;
   durationMs?: number;
   endedAt?: string;
   label: string;
@@ -469,7 +472,7 @@ export function SubagentsMetric(props: {
   childAgentTotals: ConversationChildAgentTotals | undefined;
 }) {
   if (!props.childAgentTotals) return null;
-  const label = plural("subagent", props.childAgentTotals.count);
+  const label = plural("child conversation", props.childAgentTotals.count);
   return (
     <MetricValue
       tooltip={[

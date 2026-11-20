@@ -21,16 +21,17 @@
  * `crypto.randomUUID` stays real on purpose. Sandbox names and workspace
  * snapshot names come from it, and Vercel Sandbox reuses a sandbox by name.
  * Repeated UUIDs would share sandboxes between runs and pull requests. The
- * `uuid` value of the model rule in `recording-rules.ts` replaces UUIDs in
+ * `uuid` value of the model rule in `roach.json` replaces UUIDs in
  * requests instead.
  */
 import { relative } from "node:path";
 import { beforeEach } from "vitest";
-import { EVAL_START_MS, installEvalClock } from "./eval-clock";
+import { installTestClock } from "@sentry/junior-testing/clock";
+import { EVAL_START_MS } from "./eval-clock";
 
-process.env.TZ = "UTC";
+process.env["TZ"] = "UTC";
 
-const evalClock = installEvalClock();
+const evalClock = installTestClock();
 
 // Install one generator per worker and only reseed it per test. Code that a
 // test runs can make `Math.random` read-only, so a later assignment throws.

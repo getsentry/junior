@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import {
   getSlackClient,
@@ -6,7 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 10;
@@ -31,9 +31,7 @@ function optionalUnixTimestampParam(description: string) {
 }
 
 /** Normalize an optional bound after input parse (or raw test execute paths). */
-function normalizeOptionalUnixTimestamp(
-  value: unknown,
-): number | undefined {
+function normalizeOptionalUnixTimestamp(value: unknown): number | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -51,7 +49,10 @@ const searchMessageSchema = z.object({
   channel_name: z.string().min(1).optional().describe("Channel name."),
   message_ts: z.string().min(1).describe("Message timestamp."),
   content: z.string().describe("Message text."),
-  is_author_bot: z.boolean().optional().describe("Whether the author is a bot."),
+  is_author_bot: z
+    .boolean()
+    .optional()
+    .describe("Whether the author is a bot."),
   permalink: z.string().url().describe("Message permalink."),
 });
 
@@ -77,7 +78,10 @@ const searchFileSchema = z.object({
 const searchChannelSchema = z.object({
   channel_id: z.string().min(1).describe("Channel ID."),
   channel_name: z.string().min(1).optional().describe("Channel name."),
-  is_private: z.boolean().optional().describe("Whether the channel is private."),
+  is_private: z
+    .boolean()
+    .optional()
+    .describe("Whether the channel is private."),
   is_member: z.boolean().optional().describe("Whether the bot is a member."),
   topic: z.string().min(1).optional().describe("Channel topic."),
   purpose: z.string().min(1).optional().describe("Channel purpose."),
@@ -162,22 +166,20 @@ const slackSearchMessageWireSchema = z
     is_author_bot: optionalWireBoolean,
     permalink: z.string().url(),
   })
-  .transform(
-    (value): SearchMessage => ({
-      channel_id: value.channel_id,
-      message_ts: value.message_ts,
-      content: value.content,
-      permalink: value.permalink,
-      ...(value.author_name ? { author_name: value.author_name } : undefined),
-      ...(value.author_user_id
-        ? { author_user_id: value.author_user_id }
-        : undefined),
-      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
-      ...(value.is_author_bot !== undefined
-        ? { is_author_bot: value.is_author_bot }
-        : undefined),
-    }),
-  );
+  .transform((value): SearchMessage => ({
+    channel_id: value.channel_id,
+    message_ts: value.message_ts,
+    content: value.content,
+    permalink: value.permalink,
+    ...(value.author_name ? { author_name: value.author_name } : undefined),
+    ...(value.author_user_id
+      ? { author_user_id: value.author_user_id }
+      : undefined),
+    ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+    ...(value.is_author_bot !== undefined
+      ? { is_author_bot: value.is_author_bot }
+      : undefined),
+  }));
 
 /** Slack wire shape for one search file. */
 const slackSearchFileWireSchema = z
@@ -217,13 +219,20 @@ const slackSearchFileWireSchema = z
         ? { user_name: value.user_name ?? value.username }
         : undefined),
       ...(value.channel_id ? { channel_id: value.channel_id } : undefined),
-      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+      ...(value.channel_name
+        ? { channel_name: value.channel_name }
+        : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
       ...((value.content ?? value.preview)
         ? { content: value.content ?? value.preview }
         : undefined),
     };
   });
+
+/** Read the channel ID from a Slack archive permalink such as `/archives/C123`. */
+function channelIdFromPermalink(permalink: string | undefined) {
+  return permalink?.match(/\/archives\/([A-Z0-9]+)(?:[/?#]|$)/)?.[1];
+}
 
 /** Slack wire shape for one search channel. */
 const slackSearchChannelWireSchema = z
@@ -239,7 +248,9 @@ const slackSearchChannelWireSchema = z
     permalink: optionalWireUrl,
   })
   .transform((value): SearchChannel | undefined => {
-    const channelId = value.channel_id ?? value.id;
+    // Slack's channel hits carry the ID only in the permalink.
+    const channelId =
+      value.channel_id ?? value.id ?? channelIdFromPermalink(value.permalink);
     if (!channelId) {
       return undefined;
     }
@@ -251,7 +262,9 @@ const slackSearchChannelWireSchema = z
       ...(value.is_private !== undefined
         ? { is_private: value.is_private }
         : undefined),
-      ...(value.is_member !== undefined ? { is_member: value.is_member } : undefined),
+      ...(value.is_member !== undefined
+        ? { is_member: value.is_member }
+        : undefined),
       ...(value.topic ? { topic: value.topic } : undefined),
       ...(value.purpose ? { purpose: value.purpose } : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
@@ -282,7 +295,9 @@ const slackSearchUserWireSchema = z
         ? { user_name: value.user_name ?? value.name ?? value.username }
         : undefined),
       ...(value.real_name ? { real_name: value.real_name } : undefined),
-      ...(value.display_name ? { display_name: value.display_name } : undefined),
+      ...(value.display_name
+        ? { display_name: value.display_name }
+        : undefined),
       ...(value.title ? { title: value.title } : undefined),
       ...(value.permalink ? { permalink: value.permalink } : undefined),
     };
@@ -346,65 +361,62 @@ function normalizeContentTypes(
   return [...new Set(selected)];
 }
 
+export const slackPublicSearchToolDefinition = zodToolDefinition({
+  description:
+    "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    query: z.string().trim().min(1).max(500).describe("Slack search query."),
+    content_types: z
+      .array(z.enum(CONTENT_TYPES))
+      .min(1)
+      .max(4)
+      .nullable()
+      .describe("Content types to include. Omit or use null for messages.")
+      .optional(),
+    after: optionalUnixTimestampParam("Unix timestamp lower bound.").nullable(),
+    before: optionalUnixTimestampParam(
+      "Unix timestamp upper bound.",
+    ).nullable(),
+    cursor: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe(
+        "Cursor for the next result page. Omit or use null for the first page.",
+      )
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .nullable()
+      .describe("Maximum results to return; Slack allows at most 20.")
+      .optional(),
+    sort: z
+      .enum(["score", "timestamp"])
+      .nullable()
+      .describe("Rank by relevance or timestamp.")
+      .optional(),
+    sort_dir: z
+      .enum(["asc", "desc"])
+      .nullable()
+      .describe("Sort direction.")
+      .optional(),
+  }),
+  outputSchema: publicSearchOutputSchema,
+});
+
 /** Create the public-channel Slack search tool. */
 export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
   return zodTool({
-    description:
-      "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      query: z
-        .string()
-        .trim()
-        .min(1)
-        .max(500)
-        .describe("Slack search query."),
-      content_types: z
-        .array(z.enum(CONTENT_TYPES))
-        .min(1)
-        .max(4)
-        .nullable()
-        .describe("Content types to include. Omit or use null for messages.")
-        .optional(),
-      after: optionalUnixTimestampParam(
-        "Unix timestamp lower bound.",
-      ).nullable(),
-      before: optionalUnixTimestampParam(
-        "Unix timestamp upper bound.",
-      ).nullable(),
-      cursor: z
-        .string()
-        .min(1)
-        .nullable()
-        .describe(
-          "Cursor for the next result page. Omit or use null for the first page.",
-        )
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(20)
-        .nullable()
-        .describe("Maximum results to return; Slack allows at most 20.")
-        .optional(),
-      sort: z
-        .enum(["score", "timestamp"])
-        .nullable()
-        .describe("Rank by relevance or timestamp.")
-        .optional(),
-      sort_dir: z
-        .enum(["asc", "desc"])
-        .nullable()
-        .describe("Sort direction.")
-        .optional(),
-    }),
-    outputSchema: publicSearchOutputSchema,
+    ...slackPublicSearchToolDefinition,
     execute: async ({
       query,
       content_types,

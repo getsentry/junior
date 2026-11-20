@@ -4,6 +4,7 @@
  * Update this schema first, then regenerate packaged migrations with
  * `pnpm --filter @sentry/junior-memory db:generate`.
  */
+import { embeddingVector } from "@sentry/junior-plugin-api/embeddings";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -15,7 +16,6 @@ import {
   primaryKey,
   text,
   uniqueIndex,
-  vector,
 } from "drizzle-orm/pg-core";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
@@ -84,6 +84,12 @@ export const juniorMemoryMemories = pgTable(
       .where(
         sql`${table.idempotencyKey} IS NOT NULL AND ${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),
+    // Finds the archived memory that a retried write would re-create.
+    index("junior_memory_memories_archived_idempotency_idx")
+      .on(table.scope, table.scopeKey, table.idempotencyKey)
+      .where(
+        sql`${table.idempotencyKey} IS NOT NULL AND ${table.archivedAtMs} IS NOT NULL AND ${table.archiveReason} <> 'expired'`,
+      ),
     check(
       "junior_memory_memories_scope_check",
       sql`${table.scope} IN ('private', 'public')`,
@@ -115,37 +121,42 @@ export const juniorMemoryEmbeddings = pgTable(
   "junior_memory_embeddings",
   {
     memoryId: text("memory_id")
-      .primaryKey()
+      .notNull()
       .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     dimensions: integer("dimensions").notNull(),
     metric: text("metric", { enum: MEMORY_EMBEDDING_METRICS }).notNull(),
     contentHash: text("content_hash").notNull(),
-    embedding: vector("embedding", {
-      dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-    }).notNull(),
+    embedding: embeddingVector("embedding").notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
+    // One vector per memory per model, so a new model can be backfilled while
+    // reads still use the old one.
+    primaryKey({ columns: [table.memoryId, table.provider, table.model] }),
     index("junior_memory_embeddings_model_idx").on(
       table.provider,
       table.model,
       table.dimensions,
       table.metric,
     ),
-    // Cosine ANN for vector recall/search. Ops must match cosineDistance (<=>).
-    // Keep this unfiltered so planners can use HNSW before scope/status joins.
-    index("junior_memory_embeddings_embedding_hnsw_idx")
-      .using("hnsw", table.embedding.op("vector_cosine_ops"))
-      .with({ m: 16, ef_construction: 64 }),
+    // Cosine ANN for 1024-dimensional vectors. Queries must use the same cast
+    // and a literal dimensions filter to use it. 1536-dimensional vectors have
+    // no ANN index: one can only be built after the embedding column becomes
+    // untyped, and building it over existing rows in that migration would
+    // lock the table for too long. Add it with a CONCURRENTLY prebuild later.
+    index("junior_memory_embeddings_embedding_1024_hnsw_idx")
+      .using("hnsw", sql`(${table.embedding}::vector(1024)) vector_cosine_ops`)
+      .with({ m: 16, ef_construction: 64 })
+      .where(sql`${table.dimensions} = 1024`),
     check(
       "junior_memory_embeddings_metric_check",
       sql`${table.metric} IN ('cosine')`,
     ),
     check(
       "junior_memory_embeddings_dimensions_check",
-      sql`${table.dimensions} = ${sql.raw(String(MEMORY_EMBEDDING_DIMENSIONS))}`,
+      sql`${table.dimensions} IN (${sql.raw(MEMORY_EMBEDDING_DIMENSIONS.join(", "))}) AND vector_dims(${table.embedding}) = ${table.dimensions}`,
     ),
   ],
 );
@@ -177,7 +188,7 @@ export const juniorMemorySignals = pgTable(
     ),
     check(
       "junior_memory_signals_signal_check",
-      sql`${table.signal} IN ('duplicate')`,
+      sql`${table.signal} IN ('duplicate', 'contradicted', 'superseded')`,
     ),
   ],
 );

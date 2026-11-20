@@ -2,9 +2,8 @@
 
 ## Intent
 
-Comments are for non-obvious intent, module ownership, rules, and tradeoffs.
-
-They are not there to narrate obvious code.
+Comments record non-obvious intent, module ownership, rules, and tradeoffs.
+They do not narrate obvious code.
 
 ## Policy
 
@@ -28,8 +27,6 @@ They are not there to narrate obvious code.
 
 ## Exceptions
 
-- Do not comment obvious transformations or control flow.
-- Do not add comments that simply restate the code in English.
-- Small obvious leaf helpers do not need comments.
+- Small obvious leaf helpers need no comment. Do not restate code in English.
 - If there is no concrete condition for removing a compatibility path, prefer
   a hard cutover instead of adding the path.
