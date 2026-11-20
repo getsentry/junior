@@ -493,6 +493,46 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
+  it("ends the markers of a stopped child's waiting tasks, and keeps the stop when a message replays", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      await message(harness, childId, "call-2");
+      await expect(mailboxTexts(harness, childId)).resolves.toHaveLength(2);
+      await expect(
+        createStopAgentTool(slackParentConversationId).execute!(
+          { conversation_id: childId },
+          {},
+        ),
+      ).resolves.toMatchObject({ stopped: true });
+
+      // The stop drops both waiting tasks, so their markers end.
+      const events = await loadSubagentEvents(slackParentConversationId);
+      const started = events.flatMap((event) =>
+        event.type === "subagent_started" ? [event.subagentInvocationId] : [],
+      );
+      expect(started).toHaveLength(2);
+      expect(
+        events.flatMap((event) =>
+          event.type === "subagent_ended" && event.outcome === "aborted"
+            ? [event.subagentInvocationId]
+            : [],
+        ),
+      ).toEqual(expect.arrayContaining(started));
+
+      // A replay of the dropped message is not new work.
+      vi.setSystemTime(1_800_000_001_000);
+      await message(harness, childId, "call-2");
+      await expect(getConversationStoppedAtMs(childId)).resolves.toEqual(
+        expect.any(Number),
+      );
+      await expect(mailboxTexts(harness, childId)).resolves.toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("runs a grandchild's new task after a tree stop, and not its task from before the stop", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

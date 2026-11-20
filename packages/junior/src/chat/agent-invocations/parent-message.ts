@@ -162,6 +162,8 @@ export async function appendParentMessage(
       await releaseInboundMessage({ message, state: options.state });
     }
   } else {
+    // A replay is not new work, even after a stop dropped it: a drop keeps
+    // the id, so check it before the stop ends.
     if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
       return;
     }

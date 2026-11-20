@@ -188,6 +188,8 @@ export async function recordChildAgentEnded(
       ? []
       : (work?.messages.map((message) => message.inboundMessageId) ?? []),
   );
+  // `inboundMessageIds` holds every id the mailbox got, waiting ones too,
+  // and a drop keeps them.
   const taken = (work?.execution.inboundMessageIds ?? []).filter(
     (id) => !waiting.has(id),
   );
