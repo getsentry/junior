@@ -67,7 +67,7 @@ Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to decl
 | `workload-identity-provider` | `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>`                         |
 | `service-account`            | Email of the service account that Junior impersonates.                                                         |
 | `token`                      | `service-account-jwt`, `id-token`, or `access-token`.                                                          |
-| `audience`                   | For `service-account-jwt` and `id-token`. An `https` URL on one of `domains`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
+| `audience`                   | For `service-account-jwt` and `id-token`. An `https` URL on the one host in `domains`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
 | `scopes`                     | For `access-token`. A list of Google API scopes.                                                               |
 
 Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
@@ -77,7 +77,7 @@ Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-A
 All plugins federate as the same Vercel deployment. So a manifest can name any service account or app that the deployment can use, and plugin manifests are trusted operator config. Junior limits where each token can go:
 
 - Junior sends a token only to the plugin's own `domains`, and two plugins cannot list the same domain.
-- The `audience` of a `service-account-jwt` or `id-token` must be on one of the plugin's `domains`. Another plugin cannot get a token for your service.
+- A `service-account-jwt` or `id-token` goes only to the host of its `audience`, so `domains` must list only that host. Another plugin cannot get a token for your service.
 - An `access-token` works on every Google API that the service account can use. So all `domains` must be Google API hosts (`*.googleapis.com`).
 - Two plugins cannot use the same service account, or the same Azure tenant and client ID.
 

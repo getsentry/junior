@@ -155,8 +155,8 @@ function audienceHost(audience: string): string | undefined {
  * All plugins federate as the same Vercel principal, so a manifest can name
  * any service account that principal can impersonate. Egress sends the token
  * only to the plugin's own `domains`, and no two plugins can own one domain.
- * So a JWT or ID token must name one of those domains as its audience, and a
- * Google access token can go only to Google APIs.
+ * So a JWT or ID token goes only to the host of its audience, and a Google
+ * access token can go only to Google APIs.
  */
 export function assertWorkloadIdentityTokenTarget(
   credentials: WorkloadIdentityCredentials,
@@ -177,10 +177,12 @@ export function assertWorkloadIdentityTokenTarget(
     }
     return;
   }
+  // A JWT or ID token is a replayable bearer token for its audience, so it
+  // must go only to the audience host.
   const host = audienceHost(gcp.audience);
-  if (!host || !credentials.domains.includes(host)) {
+  if (!host || credentials.domains.some((domain) => domain !== host)) {
     throw new Error(
-      `${prefix}.gcp.audience must be an https URL whose host is in credentials.domains`,
+      `${prefix}.gcp.audience must be an https URL on the only host in credentials.domains`,
     );
   }
 }

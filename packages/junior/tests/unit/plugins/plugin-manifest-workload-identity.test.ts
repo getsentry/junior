@@ -75,7 +75,20 @@ describe("workload identity manifest", () => {
         "    audience: https://other.example.com/*",
       ]),
       error:
-        "Plugin example credentials.gcp.audience must be an https URL whose host is in credentials.domains",
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
+    },
+    {
+      name: "a JWT for a domain that is not the audience host",
+      lines: [
+        "credentials:",
+        "  type: workload-identity",
+        "  domains:",
+        "    - app.example.com",
+        "    - other.example.com",
+        ...GCP,
+      ],
+      error:
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
     },
     {
       name: "an ID token audience that is not an https URL",
@@ -85,7 +98,7 @@ describe("workload identity manifest", () => {
         "    audience: app.example.com",
       ]),
       error:
-        "Plugin example credentials.gcp.audience must be an https URL whose host is in credentials.domains",
+        "Plugin example credentials.gcp.audience must be an https URL on the only host in credentials.domains",
     },
     {
       name: "an access token for a host that is not a Google API",
