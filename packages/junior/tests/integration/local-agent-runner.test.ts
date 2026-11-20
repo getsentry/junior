@@ -405,7 +405,7 @@ describe("local agent runner", () => {
     );
 
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]?.text).toContain("temporary connection problem");
+    expect(delivered[0]?.text).toContain("is returning errors right now");
     expect(delivered[0]?.text).not.toContain("raw-error-sentinel");
     const lifecycle = await loadLifecycleEvents(conversationId!);
     expect(lifecycle.at(-1)?.data).toMatchObject({
