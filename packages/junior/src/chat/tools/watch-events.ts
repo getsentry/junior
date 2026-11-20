@@ -12,8 +12,6 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/chat/conversations/event-access";
-import { acceptsConversationWatch } from "@/chat/conversations/kind-behavior";
-import { getConversationStore } from "@/chat/db";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
@@ -115,19 +113,14 @@ function ttlMs(input: Input): number {
 }
 
 /**
- * A Watch on a Conversation reads its status, so the target must be a
- * top-level Conversation that the watcher may read. "Not found", "no
- * access", and "not top-level" get the same error.
+ * A Watch on a Conversation reads its status, so the watcher must be able to
+ * read it. "Not found" and "no access" get the same error.
  */
 async function requireWatchableConversation(
   watcherConversationId: string,
   conversationId: string,
 ): Promise<void> {
-  const [readable, target] = await Promise.all([
-    canReadConversation(watcherConversationId, conversationId),
-    getConversationStore().get({ conversationId }),
-  ]);
-  if (!readable || !target || !acceptsConversationWatch(target.kind)) {
+  if (!(await canReadConversation(watcherConversationId, conversationId))) {
     throw new ToolInputError(
       `Conversation is not accessible: ${conversationId}`,
     );

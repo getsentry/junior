@@ -251,8 +251,7 @@ describe("Lead", () => {
     ).resolves.toMatchObject({ subscription_status: "active" });
     await watch(lead.conversationId, started.conversation_id);
     await watch(boWork.conversationId, started.conversation_id);
-    // A private Conversation in another tree and Destination is not. A
-    // child agent and a missing Conversation get the same error.
+    // Any kind may be watched, so a child agent of that root is too.
     const child = getUnnamedAgentConversationId(
       getAgentInvocationId(started.conversation_id, "lead-watch-child"),
     );
@@ -262,10 +261,13 @@ describe("Lead", () => {
       parentConversationId: started.conversation_id,
       source: "internal",
     });
+    await watch(lead.conversationId, child);
+    await watch(boWork.conversationId, child);
+    // A private Conversation in another tree and Destination is not. A
+    // missing Conversation gets the same error.
     for (const [watcher, target] of [
       [lead.conversationId, boLead.conversationId],
       [boWork.conversationId, lead.conversationId],
-      [lead.conversationId, child],
       [lead.conversationId, "local:web:missing"],
     ] as const) {
       await expect(watch(watcher, target)).rejects.toThrow(
@@ -326,14 +328,13 @@ describe("Lead", () => {
       failureCode: "agent_run_failed",
       turnId: "root-turn-5",
     });
-    // Only top-level Conversations are watched, so a child's action item
-    // reports its root as waiting.
+    // A child agent's status reaches the Watches on that child.
     await publishConversationStatus(
       child,
       { type: "waiting", reviewItemId: "lead-watch-item" },
       { queue: harness.queue, state: harness.state },
     );
-    // An update that makes a notice an action reports the root as waiting.
+    // An update that makes a notice an action reports a wait.
     const addItem = createAddReviewItemTool(
       {
         conversationId: started.conversation_id,

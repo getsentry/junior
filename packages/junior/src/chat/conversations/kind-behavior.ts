@@ -277,23 +277,6 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation" || kind === "lead";
 }
 
-/**
- * Return whether other Conversations may watch a Conversation of this kind.
- * A child agent reports to its parent, so only top-level work reports its
- * status to Watches.
- */
-export function acceptsConversationWatch(kind: ConversationKind): boolean {
-  switch (kind) {
-    case "root":
-    case "automation":
-    case "lead":
-      return true;
-    case "task":
-    case "thread":
-      return false;
-  }
-}
-
 /** Return whether a person sent input from this Source. */
 export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";
