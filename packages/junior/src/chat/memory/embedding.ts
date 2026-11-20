@@ -46,8 +46,8 @@ export function hashEmbeddedContent(content: string): string {
 /** Reject a query vector of a size that no stored vector can have. */
 function assertStoredSize(embedding: MemoryEmbedding): void {
   if (
-    !(MEMORY_EMBEDDING_DIMENSIONS as readonly number[]).includes(
-      embedding.vector.length,
+    !MEMORY_EMBEDDING_DIMENSIONS.some(
+      (size) => size === embedding.vector.length,
     )
   ) {
     throw new Error("Unsupported embedding vector size.");
@@ -98,12 +98,15 @@ export function sameEmbeddingModel(
   embedding: MemoryEmbedding,
   columns: EmbeddingModelColumns = juniorMemoryEmbeddings,
 ): SQL {
-  return and(
+  const condition = and(
     eq(columns.provider, embedding.provider),
     eq(columns.model, embedding.model),
     sql`${columns.dimensions} = ${vectorSize(embedding)}`,
     eq(columns.metric, EMBEDDING_METRIC),
-  ) as SQL;
+  );
+  // `and` returns undefined only when it gets no conditions.
+  if (!condition) throw new Error("Embedding model match has no conditions.");
+  return condition;
 }
 
 /** The only vector size with an HNSW index (migration 0013). */

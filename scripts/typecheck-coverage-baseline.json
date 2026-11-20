@@ -93,6 +93,5 @@
   "packages/junior-sentry/tests/webhook.test.ts",
   "packages/junior-vercel/tests/actions.test.ts",
   "packages/junior-vercel/tests/deployment.test.ts",
-  "packages/junior-vercel/tests/webhook.test.ts",
-  "packages/junior/tests/component/memory/storage.test.ts"
+  "packages/junior-vercel/tests/webhook.test.ts"
 ]

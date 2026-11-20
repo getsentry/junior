@@ -1,3 +1,4 @@
+import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
@@ -227,6 +228,52 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
 /** Return whether a person sent input from this Source. */
 export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";
+}
+
+/** Narrow a Source to one that a person sent input from. */
+export function isPersonSource(
+  source: Source,
+): source is Extract<Source, { kind: "slack" | "web" }> {
+  return isPersonInput(source.kind);
+}
+
+/**
+ * Return the chat platform of a Source that a person writes from, or
+ * undefined for a runtime Source, such as an event or an Automation.
+ */
+export function personSourcePlatform(
+  source: Source,
+): "slack" | "local" | "web" | undefined {
+  switch (source.kind) {
+    case "slack":
+    case "local":
+    case "web":
+      return source.kind;
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return undefined;
+  }
+}
+
+/** Return a short label that names a Source, such as `slack:T1:C1`. */
+export function sourceLabel(source: Source): string {
+  switch (source.kind) {
+    case "slack":
+      return `slack:${source.teamId}:${source.channelId}`;
+    case "web":
+    case "local":
+      return `${source.kind}:${source.conversationId}`;
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return source.kind;
+  }
 }
 
 /**
