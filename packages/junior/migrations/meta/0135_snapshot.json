@@ -1,5 +1,5 @@
 {
-  "id": "20e40d7e-ab06-4f40-9fc8-9a22151b21fa",
+  "id": "b191232a-5f1c-4476-ba39-f26b0e01c8bc",
   "prevId": "34948016-a9a1-442a-b126-dbc8ada7eda7",
   "version": "7",
   "dialect": "postgresql",
@@ -1561,6 +1561,18 @@
           "primaryKey": true,
           "notNull": true
         },
+        "additions": {
+          "name": "additions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_files": {
+          "name": "changed_files",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1573,6 +1585,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
+        },
+        "deletions": {
+          "name": "deletions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "draft": {
           "name": "draft",
@@ -1742,21 +1760,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_code_changes_search_idx": {
-          "name": "junior_code_changes_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        },
         "junior_code_changes_open_idx": {
           "name": "junior_code_changes_open_idx",
           "columns": [
@@ -1856,21 +1859,6 @@
           "isUnique": true,
           "concurrently": false,
           "method": "btree",
-          "with": {}
-        },
-        "junior_code_repositories_search_idx": {
-          "name": "junior_code_repositories_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', translate(\"name\", '/', ' '))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
           "with": {}
         }
       },

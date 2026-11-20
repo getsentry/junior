@@ -446,6 +446,8 @@ type SidebarAnnotationIconName = NonNullable<
 
 /** The open and success green, as GitHub shows an open pull request. */
 export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The closed and removed red, as GitHub shows a closed pull request. */
+export const CLOSED_TONE_CLASS = "text-[#f85149] light:text-[#cf222e]";
 /** The attention amber. It reads on both themes, so use it for icons only. */
 export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
 
@@ -461,7 +463,7 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Draft",
   },
   "circle-x": {
-    className: "text-[#f85149] light:text-[#cf222e]",
+    className: CLOSED_TONE_CLASS,
     Icon: CircleX,
     label: "Closed",
   },

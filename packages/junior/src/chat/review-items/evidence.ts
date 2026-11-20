@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import { savedUserInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 /**
  * One source that an agent cites for a Review item: a link or a
@@ -28,7 +28,7 @@ export type ReviewItemEvidence = z.output<typeof reviewItemEvidenceSchema>;
  * The question of a Review item with the evidence for its answer. Evidence
  * is part of the question, so it is stored in the `request` column.
  */
-export const reviewItemRequestSchema = userInputRequestSchema.safeExtend({
+export const reviewItemRequestSchema = savedUserInputRequestSchema.safeExtend({
   evidence: z.array(reviewItemEvidenceSchema).optional(),
 });
 

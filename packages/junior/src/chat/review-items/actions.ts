@@ -12,7 +12,9 @@ import {
   canActOnReviewItem,
   canUserReadReviewItem,
   isOnlyAssignee,
+  isPluginReviewItem,
 } from "./access";
+import { answerPluginReviewItem } from "./plugin-answer";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
   closeReviewItem,
@@ -180,6 +182,15 @@ export async function actOnReviewItem(args: {
   }
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
+  }
+  // The plugin that added the item does the work, so its answer starts no
+  // Turn. A retry of the same answer calls the plugin again.
+  if (action === "submit" && isPluginReviewItem(closed)) {
+    await answerPluginReviewItem({
+      delivery: args.delivery,
+      item: closed,
+      nowMs,
+    });
   }
   await deliverReviewItemChange({
     change: reviewItemChange(action, user),

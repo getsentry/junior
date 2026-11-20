@@ -175,6 +175,11 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Attention**: what Junior takes from a person with a reply, a question, a
+  Slack post or DM, a Review item, a review request, a push, or an Inbox
+  count. A Watch Event goes to the agent and takes none. Not
+  "notification". **Notice**: a Review item that names a step for a
+  person but asks no question.
 - **Dismiss**: close a Review item without an answer. The one UI word for
   removing an item, on a row, a card, or many FYIs at once. Not Clear or
   Done. Archive is for a Conversation.

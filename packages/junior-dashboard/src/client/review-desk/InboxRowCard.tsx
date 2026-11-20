@@ -15,7 +15,10 @@ import { Pill } from "./inboxAsks";
 import { inboxItemKind, textRepeatsHead } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
-import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import {
+  ReviewItemSubjectPreview,
+  SubjectMergeConflict,
+} from "./ReviewItemSubjectPreview";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
@@ -154,6 +157,7 @@ export function InboxRowCard(props: {
           />
         ) : null}
       </ReviewItemObjects>
+      {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
       {props.notices.map((notice) => (
         <FoldedNotice
           key={notice.id}
