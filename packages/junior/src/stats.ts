@@ -1,3 +1,12 @@
+/**
+ * Named counters in `junior_stats` (daily) and `junior_hourly_stats`
+ * (hourly, kept for `HOURLY_STATS_RETENTION_MS`).
+ *
+ * These tables hold only pre-aggregated counters with a small, fixed set of
+ * keys: a name is a model, provider, reason, or similar label. They never
+ * hold per-event rows or keys that grow with use, such as Conversation, run,
+ * or user ids. Detail that needs those belongs in telemetry.
+ */
 import {
   and,
   asc,
@@ -64,21 +73,20 @@ export function utcHour(ms: number): string {
 
 /**
  * Add amounts to daily named counters in one statement. An amount without a
- * `date` adds to the day of `nowMs`. Zero amounts add no row. With `hourly`,
- * the amounts without a `date` also add to the hour of `nowMs`, in a second
- * statement.
+ * `date` adds to the day of `nowMs`. Zero amounts add no row.
  */
 export async function addStats(
   amounts: Array<StatKey & { count: number; date?: string }>,
-  options: { nowMs?: number; hourly?: boolean } = {},
+  options: { nowMs?: number } = {},
 ): Promise<void> {
-  const nowMs = options.nowMs ?? Date.now();
-  const date = utcDate(nowMs);
-  const counted = amounts.filter((amount) => amount.count !== 0);
-  if (!counted.length) return;
-  const daily = getDb()
+  const date = utcDate(options.nowMs ?? Date.now());
+  const values = amounts
+    .filter((amount) => amount.count !== 0)
+    .map((amount) => ({ ...amount, date: amount.date ?? date }));
+  if (!values.length) return;
+  await getDb()
     .insert(juniorStats)
-    .values(counted.map((amount) => ({ ...amount, date: amount.date ?? date })))
+    .values(values)
     .onConflictDoUpdate({
       target: [
         juniorStats.date,
@@ -90,39 +98,41 @@ export async function addStats(
         count: sql`${juniorStats.count} + excluded.${sql.identifier(juniorStats.count.name)}`,
       },
     });
-  const hour = new Date(utcHour(nowMs));
-  const hourly = options.hourly
-    ? counted
-        .filter((amount) => amount.date === undefined)
-        .map(({ namespace, metric, name, count }) => ({
-          hour,
-          namespace,
-          metric,
-          name,
-          count,
-        }))
-    : [];
-  await Promise.all([
-    daily,
-    ...(hourly.length
-      ? [
-          getDb()
-            .insert(juniorHourlyStats)
-            .values(hourly)
-            .onConflictDoUpdate({
-              target: [
-                juniorHourlyStats.hour,
-                juniorHourlyStats.namespace,
-                juniorHourlyStats.metric,
-                juniorHourlyStats.name,
-              ],
-              set: {
-                count: sql`${juniorHourlyStats.count} + excluded.${sql.identifier(juniorHourlyStats.count.name)}`,
-              },
-            }),
-        ]
-      : []),
-  ]);
+}
+
+/**
+ * Add amounts to the hourly counters of the UTC hour of `nowMs` in one
+ * statement. Zero amounts add no row.
+ */
+export async function addHourlyStats(
+  amounts: Array<StatKey & { count: number }>,
+  options: { nowMs?: number } = {},
+): Promise<void> {
+  const hour = new Date(utcHour(options.nowMs ?? Date.now()));
+  const values = amounts
+    .filter((amount) => amount.count !== 0)
+    .map(({ namespace, metric, name, count }) => ({
+      hour,
+      namespace,
+      metric,
+      name,
+      count,
+    }));
+  if (!values.length) return;
+  await getDb()
+    .insert(juniorHourlyStats)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [
+        juniorHourlyStats.hour,
+        juniorHourlyStats.namespace,
+        juniorHourlyStats.metric,
+        juniorHourlyStats.name,
+      ],
+      set: {
+        count: sql`${juniorHourlyStats.count} + excluded.${sql.identifier(juniorHourlyStats.count.name)}`,
+      },
+    });
 }
 
 /**

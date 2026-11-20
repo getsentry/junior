@@ -8,6 +8,7 @@ import {
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
 import { WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -114,6 +115,7 @@ describe("cache warming recorded savings", () => {
           cacheWrite: 60_000 - cacheRead,
         },
       });
+      await recorder.stop();
     };
     try {
       const startedAtMs = Date.now();
@@ -202,5 +204,44 @@ describe("cache warming recorded savings", () => {
       }
       await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }
+  });
+  it("writes the prompt cache of a failed run once, when it stops", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2031-03-02T12:00:00.000Z"));
+    const modelCache = async () =>
+      cacheWarmingHourlyReportSchema.parse(
+        await (
+          await createJuniorApi().request(
+            "http://localhost/api/cache-warming/hourly?start=2031-03-02T12:00:00Z&end=2031-03-02T13:00:00Z",
+          )
+        ).json(),
+      ).totals.modelCache;
+    const recorder = createCacheWarmingRecorder(
+      conversationId,
+      turnOf(true),
+      definitionsKey,
+    );
+    const call = async (cacheRead: number) => {
+      void recorder.wrap((() => undefined) as never)(model, context, {});
+      await recorder.record({
+        ...finalReply,
+        stopReason: "toolUse",
+        usage: {
+          ...finalReply.usage,
+          cacheRead,
+          cacheWrite: 60_000 - cacheRead,
+        },
+      });
+    };
+    await call(0);
+    await call(60_000);
+    expect((await modelCache()).calls).toBe(0);
+    // The run fails before its final response. The agent stops the recorder
+    // in a finally block, which writes both calls in one statement.
+    await expectSqlBudget(() => recorder.stop(), {
+      statements: 1,
+      serialRounds: 1,
+    });
+    expect(await modelCache()).toMatchObject({ calls: 2, fullRewrites: 1 });
   });
 });

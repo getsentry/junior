@@ -8,8 +8,8 @@ import {
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
 import {
+  createModelCacheCounter,
   recordBreakerEvent,
-  recordModelCallCache,
   recordWarmupSkipped,
 } from "@/chat/cache-warming/counters";
 import { connectedState } from "@/chat/cache-warming/request";
@@ -23,7 +23,7 @@ import {
 } from "@/chat/cache-warming/savings";
 import { closeDb, getDb } from "@/chat/db";
 import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
-import { pruneHourlyStats, readHourlyStats } from "@/stats";
+import { pruneHourlyStats, readHourlyStats, readStats } from "@/stats";
 
 const BASE_URL = "https://junior.example.com";
 const ADMIN = "admin@example.com";
@@ -33,6 +33,15 @@ const OUTCOMES_KEY = "junior:cache_warming:breaker:anthropic:outcomes";
 const EVENTS_KEY = "junior:cache_warming:breaker:anthropic:events";
 const MODEL_ID = "anthropic/claude-opus-5.5";
 const HOUR = 60 * 60 * 1_000;
+
+// One agent run that makes these model calls.
+async function recordRun(
+  calls: Array<{ input: number; cacheRead: number; cacheWrite: number }>,
+) {
+  const counter = createModelCacheCounter();
+  for (const usage of calls) counter.add(MODEL_ID, usage);
+  await counter.write();
+}
 
 // The viewer resolves once here, so a SQL budget counts only the route.
 async function authenticatedApi(email: string) {
@@ -228,15 +237,21 @@ describe("cache warming API", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const person = await authenticatedApi(PERSON);
     const at = (iso: string) => vi.setSystemTime(new Date(iso));
-    const call = (cacheRead: number, cacheWrite: number) =>
-      recordModelCallCache(MODEL_ID, { input: 1_000, cacheRead, cacheWrite });
+    const call = (cacheRead: number, cacheWrite: number) => ({
+      input: 1_000,
+      cacheRead,
+      cacheWrite,
+    });
 
     at("2031-06-03T10:20:00.000Z");
-    await call(90_000, 9_000);
+    await recordRun([call(90_000, 9_000)]);
     at("2031-06-10T09:10:00.000Z");
-    // A provider that drops its cache shows as a full rewrite.
-    await call(0, 99_000);
-    await call(90_000, 9_000);
+    // A run writes its calls once, when it ends. A provider that drops its
+    // cache shows as a full rewrite.
+    await expectSqlBudget(
+      () => recordRun([call(0, 99_000), call(90_000, 9_000)]),
+      { statements: 1, serialRounds: 1 },
+    );
     await recordWarmup(MODEL_ID, {
       costUsd: 0.1,
       refreshed: true,
@@ -258,7 +273,21 @@ describe("cache warming API", () => {
       true,
       1,
     );
-    await call(90_000, 9_000);
+    await recordRun([call(90_000, 9_000)]);
+    // Only the savings counters have daily rows.
+    expect(
+      new Set(
+        (await readStats("2031-06-10", "2031-06-10")).map(
+          (stat) => `${stat.namespace}.${stat.metric}`,
+        ),
+      ),
+    ).toEqual(
+      new Set([
+        "cache_warming.warmup_cost_micro_usd",
+        "cache_warming.idle_periods",
+        "cache_warming.oracle_savings_micro_usd",
+      ]),
+    );
 
     // One read of both windows.
     const response = await expectSqlBudget(
@@ -357,11 +386,7 @@ describe("cache warming API", () => {
     const nowMs = Date.parse("2031-07-20T12:00:00.000Z");
     for (const days of [16, 14]) {
       vi.setSystemTime(nowMs - days * 24 * HOUR);
-      await recordModelCallCache(MODEL_ID, {
-        input: 1,
-        cacheRead: 0,
-        cacheWrite: 0,
-      });
+      await recordRun([{ input: 1, cacheRead: 0, cacheWrite: 0 }]);
     }
     await pruneHourlyStats(nowMs);
     const hours = await readHourlyStats(

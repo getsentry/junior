@@ -67,7 +67,7 @@ import {
   type ConnectedState,
   type ModelRequest,
 } from "./request";
-import { recordModelCallCache, recordWarmupSkipped } from "./counters";
+import { createModelCacheCounter, recordWarmupSkipped } from "./counters";
 import {
   idlePeriodSavings,
   recordIdlePeriodSavings,
@@ -496,7 +496,10 @@ export interface CacheWarmingRecorder {
    * that request, as a final response would.
    */
   answerToolEnded(toolName: string): void;
-  /** Stop the warmups of this run. Call it when the run ends. */
+  /**
+   * Stop the warmups of this run and write its prompt cache counters. Call
+   * it when the run ends, also when it fails.
+   */
   stop(): Promise<void>;
 }
 
@@ -528,6 +531,7 @@ export function createCacheWarmingRecorder(
   let idleEnded = false;
   let warmupsStopped: Promise<void> | undefined;
   const toolWait = createToolWaitWarmer(conversationId);
+  const modelCache = createModelCacheCounter();
   return {
     wrap:
       (base = streamSimple) =>
@@ -564,7 +568,7 @@ export function createCacheWarmingRecorder(
       if (!request) return;
       // Cache health counts with warming off too, so the two can be compared.
       if (message.stopReason !== "error" && message.stopReason !== "aborted") {
-        await recordModelCallCache(request.model.id, message.usage);
+        modelCache.add(request.model.id, message.usage);
       }
       if (!getChatConfig().cacheWarmingEnabled) return;
       try {
@@ -604,6 +608,8 @@ export function createCacheWarmingRecorder(
       answerToolEnding = ANSWER_TOOL_ENDINGS[toolName];
     },
     stop: async () => {
+      // One write for the run, also when it failed or was cut off.
+      const modelCacheWritten = modelCache.write();
       try {
         await toolWait.end(answerToolEnding !== undefined);
       } catch (error) {
@@ -614,22 +620,24 @@ export function createCacheWarmingRecorder(
       }
       // The answer tool call stopped the run, so no final response came. Its
       // request holds the prefix that the next Turn reads.
-      if (!answerToolEnding || !lastCall) return;
-      try {
-        await recordModelCall(
-          conversationId,
-          turn,
-          definitionsKey,
-          lastCall.request,
-          lastCall.message,
-          answerToolEnding,
-        );
-      } catch (error) {
-        logWarn("cache_warming.model_call.record_failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
+      if (answerToolEnding && lastCall) {
+        try {
+          await recordModelCall(
+            conversationId,
+            turn,
+            definitionsKey,
+            lastCall.request,
+            lastCall.message,
+            answerToolEnding,
+          );
+        } catch (error) {
+          logWarn("cache_warming.model_call.record_failed", {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
+        }
       }
+      await modelCacheWritten;
     },
   };
 }

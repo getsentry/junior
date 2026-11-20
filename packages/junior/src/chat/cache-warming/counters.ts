@@ -1,6 +1,7 @@
 /**
- * Daily and hourly `junior_stats` counters of cache warming outcomes and of
- * the prompt cache of agent model calls, for the System page.
+ * Hourly counters of cache warming outcomes and of the prompt cache of agent
+ * model calls, for the System page. They diagnose recent hours, so unlike
+ * the savings counters they have no daily rows.
  *
  * The savings counters (`savings.ts`) say what warming saved. These say why:
  * how warmups ended, and whether agent calls read the cache at all. A cache
@@ -9,7 +10,7 @@
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { logWarn } from "@/chat/logging";
-import { addStats, type Stat, type StatKey } from "@/stats";
+import { addHourlyStats, addStats, type Stat, type StatKey } from "@/stats";
 
 type Usage = AssistantMessage["usage"];
 
@@ -59,17 +60,26 @@ export function isFullRewrite(
   );
 }
 
+const HOURLY_ONLY_METRICS = new Set<string>(Object.values(OUTCOME_METRICS));
+const hourlyOnly = (amount: StatKey) =>
+  amount.namespace === MODEL_CACHE_NAMESPACE ||
+  HOURLY_ONLY_METRICS.has(amount.metric);
+
 /**
- * Add amounts to the daily and hourly counters in one batch. The counters
- * only report, so a failure to write them is logged and does not change
- * warming or the run.
+ * Add amounts to the hourly counters, and the savings amounts also to the
+ * daily counters, in at most one statement each. The counters only report,
+ * so a failure to write them is logged and does not change warming or the
+ * run.
  */
 export async function addCacheCounters(
   amounts: Array<StatKey & { count: number }>,
 ): Promise<void> {
   if (!process.env["DATABASE_URL"]) return;
   try {
-    await addStats(amounts, { hourly: true });
+    await Promise.all([
+      addStats(amounts.filter((amount) => !hourlyOnly(amount))),
+      addHourlyStats(amounts),
+    ]);
   } catch (error) {
     logWarn("cache_warming.stats.record_failed", {
       "exception.message":
@@ -103,27 +113,55 @@ export async function recordBreakerEvent(
   ]);
 }
 
-/** Count the prompt cache usage of one finished agent model call. */
-export async function recordModelCallCache(
-  modelId: string,
-  usage: Pick<Usage, "input" | "cacheRead" | "cacheWrite">,
-): Promise<void> {
-  const counts = {
-    [MODEL_CACHE_METRICS.calls]: 1,
-    [MODEL_CACHE_METRICS.inputTokens]:
-      usage.input + usage.cacheRead + usage.cacheWrite,
-    [MODEL_CACHE_METRICS.cacheWriteTokens]: usage.cacheWrite,
-    [MODEL_CACHE_METRICS.cacheReadTokens]: usage.cacheRead,
-    [MODEL_CACHE_METRICS.fullRewrites]: isFullRewrite(usage) ? 1 : 0,
+/** Prompt cache counters of the agent model calls of one run. */
+export interface ModelCacheCounter {
+  /** Add the usage of one finished agent model call. */
+  add(
+    modelId: string,
+    usage: Pick<Usage, "input" | "cacheRead" | "cacheWrite">,
+  ): void;
+  /**
+   * Write what was added since the last write, in one batch, to the hour
+   * that the write happens in. Call it once when the run ends.
+   */
+  write(): Promise<void>;
+}
+
+/**
+ * Create the prompt cache counter of one agent run. It adds up in memory, so
+ * a run writes its counters once instead of on each model call.
+ */
+export function createModelCacheCounter(): ModelCacheCounter {
+  const totals = new Map<string, Map<string, number>>();
+  return {
+    add(modelId, usage) {
+      const counts = {
+        [MODEL_CACHE_METRICS.calls]: 1,
+        [MODEL_CACHE_METRICS.inputTokens]:
+          usage.input + usage.cacheRead + usage.cacheWrite,
+        [MODEL_CACHE_METRICS.cacheWriteTokens]: usage.cacheWrite,
+        [MODEL_CACHE_METRICS.cacheReadTokens]: usage.cacheRead,
+        [MODEL_CACHE_METRICS.fullRewrites]: isFullRewrite(usage) ? 1 : 0,
+      };
+      const model = totals.get(modelId) ?? new Map<string, number>();
+      totals.set(modelId, model);
+      for (const [metric, count] of Object.entries(counts)) {
+        model.set(metric, (model.get(metric) ?? 0) + count);
+      }
+    },
+    async write() {
+      const amounts = [...totals].flatMap(([name, model]) =>
+        [...model].map(([metric, count]) => ({
+          namespace: MODEL_CACHE_NAMESPACE,
+          metric,
+          name,
+          count,
+        })),
+      );
+      totals.clear();
+      await addCacheCounters(amounts);
+    },
   };
-  await addCacheCounters(
-    Object.entries(counts).map(([metric, count]) => ({
-      namespace: MODEL_CACHE_NAMESPACE,
-      metric,
-      name: modelId,
-      count,
-    })),
-  );
 }
 
 type Counter = Pick<Stat, "count" | "metric" | "name" | "namespace">;
