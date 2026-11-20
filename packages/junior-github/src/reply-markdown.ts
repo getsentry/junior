@@ -20,6 +20,15 @@ const SHA = "[0-9a-f]{7,40}";
 const START = "(?<![\\w.\\-/@&<\\\\])";
 const END = "(?![\\w-])";
 
+// A repository named in prose, such as "all in getsentry/sentry". Only the
+// configured owner makes `a/b` a repository, and not a path such as
+// `src/index.ts` or a word such as "and/or". A trailing period ends the
+// sentence.
+const PROSE_REPOSITORY_PATTERN = new RegExp(
+  `${START}(?<owner>${LOGIN})\\/(?<repo>[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)(?![\\w/-])`,
+  "g",
+);
+
 // Alternatives are ordered so that a qualified reference wins at one position.
 const TEXT_REFERENCE_PATTERN = new RegExp(
   [
@@ -82,9 +91,14 @@ function readSpans(text: string): Span[] {
 
 /**
  * Return the distinct repositories that the text names in qualified
- * references or GitHub issue, pull request, and commit URLs.
+ * references, GitHub issue, pull request, and commit URLs, or prose that
+ * names a repository of the configured owner.
  */
-function namedRepositories(text: string, spans: Span[]): Repository[] {
+function namedRepositories(
+  text: string,
+  spans: Span[],
+  configuredOwner: string | undefined,
+): Repository[] {
   const repositories = new Map<string, Repository>();
   const add = (owner: string | undefined, name: string | undefined) => {
     if (owner && name) {
@@ -101,6 +115,14 @@ function namedRepositories(text: string, spans: Span[]): Repository[] {
       for (const { groups } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
         add(groups?.["issueOwner"], groups?.["issueRepo"]);
         add(groups?.["commitOwner"], groups?.["commitRepo"]);
+      }
+      if (!configuredOwner) continue;
+      for (const { groups } of source.matchAll(PROSE_REPOSITORY_PATTERN)) {
+        if (
+          groups?.["owner"]?.toLowerCase() === configuredOwner.toLowerCase()
+        ) {
+          add(groups["owner"], groups["repo"]);
+        }
       }
     }
   }
@@ -153,16 +175,20 @@ function linkifyTextReferences(
     if (!repository) {
       return reference;
     }
+    // The label names the repository, so a reader sees which one a bare
+    // reference resolved to.
+    const { owner, name } = repository;
     if (groups["bareIssue"]) {
-      return `[${reference}](${issueUrl(repository.owner, repository.name, groups["bareIssue"])})`;
+      const issue = groups["bareIssue"];
+      return `[${owner}/${name}#${issue}](${issueUrl(owner, name, issue)})`;
     }
     if (groups["userCommit"]) {
       // `user@sha` names a commit in the user's fork of the repository.
-      const label = `${groups["user"]}@${groups["userCommit"].slice(0, 7)}`;
-      return `[${label}](${commitUrl(groups["user"]!, repository.name, groups["userCommit"])})`;
+      const sha = groups["userCommit"];
+      return `[${groups["user"]}/${name}@${sha.slice(0, 7)}](${commitUrl(groups["user"]!, name, sha)})`;
     }
     const sha = groups["bareCommit"]!;
-    return `[${sha.slice(0, 7)}](${commitUrl(repository.owner, repository.name, sha)})`;
+    return `[${owner}/${name}@${sha.slice(0, 7)}](${commitUrl(owner, name, sha)})`;
   });
 }
 
@@ -172,7 +198,9 @@ function linkifyTextReferences(
  * `owner/repo#123`, `owner/repo@sha`, and GitHub issue, pull request,
  * discussion, and commit URLs always become links. `#123`, `GH-123`,
  * `user@sha`, and full SHAs need a repository: the one that the text names,
- * else the `repo` config value when the text names none. `@login` becomes the
+ * also as a plain `owner/repo` of the configured owner, else the `repo`
+ * config value when the text names none. Their link labels name the
+ * repository. `@login` becomes the
  * `mention` of the known person with that GitHub login. Other logins become
  * GitHub profile links when the text is GitHub text, or names a repository.
  * Chat `@name` words are often people who are not GitHub accounts. Set
@@ -187,14 +215,20 @@ export function linkifyGitHubReferences(
     mention?: (login: string) => string | undefined;
   } = {},
 ): string {
+  const config = options.config ?? {};
+  const configured = configuredRepository(config);
   const spans = readSpans(text);
-  const named = namedRepositories(text, spans);
+  const named = namedRepositories(
+    text,
+    spans,
+    configured?.owner ?? config["org"]?.trim(),
+  );
   const context = {
     linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
     repository:
       named.length === 0
-        ? configuredRepository(options.config ?? {})
+        ? configured
         : named.length === 1
           ? named[0]
           : undefined,

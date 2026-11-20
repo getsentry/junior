@@ -110,11 +110,11 @@ describe("GitHub reply markdown", () => {
     ).toBe(
       [
         "[PR](https://github.com/getsentry/junior/pull/3313) replaces",
-        "[#3300](https://github.com/getsentry/junior/issues/3300) and",
-        "[GH-3301](https://github.com/getsentry/junior/issues/3301)",
-        "([#3302](https://github.com/getsentry/junior/issues/3302)), see",
-        `[2c1fefa](https://github.com/getsentry/junior/commit/${sha}) and`,
-        `[byk@2c1fefa](https://github.com/byk/junior/commit/${sha})`,
+        "[getsentry/junior#3300](https://github.com/getsentry/junior/issues/3300) and",
+        "[getsentry/junior#3301](https://github.com/getsentry/junior/issues/3301)",
+        "([getsentry/junior#3302](https://github.com/getsentry/junior/issues/3302)), see",
+        `[getsentry/junior@2c1fefa](https://github.com/getsentry/junior/commit/${sha}) and`,
+        `[byk/junior@2c1fefa](https://github.com/byk/junior/commit/${sha})`,
       ].join(" "),
     );
   });
@@ -124,24 +124,54 @@ describe("GitHub reply markdown", () => {
       linkifyGitHubReferences("see #12", {
         config: { repo: "getsentry/junior" },
       }),
-    ).toBe("see [#12](https://github.com/getsentry/junior/issues/12)");
+    ).toBe(
+      "see [getsentry/junior#12](https://github.com/getsentry/junior/issues/12)",
+    );
     expect(
       linkifyGitHubReferences("see GH-12", {
         config: { org: "getsentry", repo: "junior" },
       }),
-    ).toBe("see [GH-12](https://github.com/getsentry/junior/issues/12)");
+    ).toBe(
+      "see [getsentry/junior#12](https://github.com/getsentry/junior/issues/12)",
+    );
     expect(
       linkifyGitHubReferences("getsentry/sentry#1 and #2", {
         config: { repo: "getsentry/junior" },
       }),
     ).toBe(
-      "[getsentry/sentry#1](https://github.com/getsentry/sentry/issues/1) and [#2](https://github.com/getsentry/sentry/issues/2)",
+      "[getsentry/sentry#1](https://github.com/getsentry/sentry/issues/1) and [getsentry/sentry#2](https://github.com/getsentry/sentry/issues/2)",
     );
     expect(
       linkifyGitHubReferences("getsentry/sentry#1, getsentry/relay#2, #3", {
         config: { repo: "getsentry/junior" },
       }),
     ).toContain(", #3");
+  });
+
+  it("reads a repository of the configured owner from prose", () => {
+    const config = { org: "getsentry", repo: "junior" };
+    expect(
+      linkifyGitHubReferences(
+        "Open, all in getsentry/sentry: #131833 and #131843.",
+        { config },
+      ),
+    ).toBe(
+      "Open, all in getsentry/sentry: [getsentry/sentry#131833](https://github.com/getsentry/sentry/issues/131833) and [getsentry/sentry#131843](https://github.com/getsentry/sentry/issues/131843).",
+    );
+    // Paths, other owners, and words with a slash name no repository.
+    expect(
+      linkifyGitHubReferences(
+        "see src/index.ts, getsentry/junior/src, and/or acme/web for #12",
+        { config },
+      ),
+    ).toBe(
+      "see src/index.ts, getsentry/junior/src, and/or acme/web for [getsentry/junior#12](https://github.com/getsentry/junior/issues/12)",
+    );
+    expect(
+      linkifyGitHubReferences("getsentry/sentry and getsentry/relay: #3", {
+        config,
+      }),
+    ).toBe("getsentry/sentry and getsentry/relay: #3");
   });
 
   it("links Enterprise Managed User logins", () => {
@@ -158,7 +188,7 @@ describe("GitHub reply markdown", () => {
         "ada_acme/junior#12 and https://github.com/ada_acme/junior/issues/13 fix #14",
       ),
     ).toBe(
-      "[ada_acme/junior#12](https://github.com/ada_acme/junior/issues/12) and [ada_acme/junior#13](https://github.com/ada_acme/junior/issues/13) fix [#14](https://github.com/ada_acme/junior/issues/14)",
+      "[ada_acme/junior#12](https://github.com/ada_acme/junior/issues/12) and [ada_acme/junior#13](https://github.com/ada_acme/junior/issues/13) fix [ada_acme/junior#14](https://github.com/ada_acme/junior/issues/14)",
     );
   });
 
@@ -168,7 +198,7 @@ describe("GitHub reply markdown", () => {
         "a < b in getsentry/junior#1 for @byk, Vec<T> #2, cc <@U123>",
       ),
     ).toBe(
-      "a < b in [getsentry/junior#1](https://github.com/getsentry/junior/issues/1) for [@byk](https://github.com/byk), Vec<T> [#2](https://github.com/getsentry/junior/issues/2), cc <@U123>",
+      "a < b in [getsentry/junior#1](https://github.com/getsentry/junior/issues/1) for [@byk](https://github.com/byk), Vec<T> [getsentry/junior#2](https://github.com/getsentry/junior/issues/2), cc <@U123>",
     );
   });
 
@@ -242,7 +272,9 @@ describe("GitHub reply markdown", () => {
         platform: "slack",
         text: "#1509",
       }),
-    ).toBe("[#1509](https://github.com/getsentry/junior/issues/1509)");
+    ).toBe(
+      "[getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509)",
+    );
     // GitHub text: every `@name` is a GitHub account. The dashboard keeps
     // bare links, because it shows them as cards.
     expect(
