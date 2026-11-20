@@ -58,9 +58,9 @@ how the dashboard groups and acts on its rows.
   the Automation. The alert closes and does not open again. An event
   Automation runs only on its events, so its alert offers only Pause.
 - A dismissed Automation alert hides every alert of that Automation, also
-  for a new failure or a new run, until the Automation recovers: it is not
-  blocked, its last run succeeded, and its trigger is available. The next
-  problem then adds a new alert. An alert that core closes on recovery
+  for a new failure or a new run, until the Automation recovers: it is
+  active, its last run succeeded, and its trigger is available. A pause is
+  no recovery. The next problem then adds a new alert. An alert that core closes on recovery
   hides nothing.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open Plan item

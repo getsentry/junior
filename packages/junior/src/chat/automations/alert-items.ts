@@ -50,7 +50,7 @@ import {
 // offers Run again and Pause, which core takes (`answerAutomationAlert`).
 // An alert that a person closed does not open again. When a person
 // dismisses an alert, no alert of that Automation shows again until it
-// recovers: it is not blocked, its last run succeeded, and its trigger is
+// recovers: it is active, its last run succeeded, and its trigger is
 // available.
 
 type AutomationRow = {
@@ -246,10 +246,11 @@ export async function syncAutomationAlert(
       )
       .limit(1);
     const hidden = closedByPerson !== undefined;
-    // Recovered: not blocked, its last run succeeded, and it needs no alert,
-    // so its trigger is available.
+    // Recovered: active, its last run succeeded, and it needs no alert, so
+    // its trigger is available. A paused Automation needs no alert, but its
+    // problem can still be there, so a pause is no recovery.
     const recovered =
-      !needed && row.status !== "blocked" && row.lastRunStatus === "completed";
+      !needed && row.status === "active" && row.lastRunStatus === "completed";
     if (recovered && hidden) {
       await tx
         .update(juniorAutomations)

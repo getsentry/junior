@@ -14,7 +14,9 @@ import {
   createEventAutomation,
   deleteEventAutomation,
   getEventAutomation,
+  setEventAutomationStatus,
 } from "@/chat/event-automations/store";
+import { automationRevision } from "@/chat/automations/revision";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import {
   readScheduledAutomation,
@@ -483,6 +485,19 @@ describe("Automation alerts", () => {
     await heartbeat();
     const [lost] = await asCreator.alerts("event_digest");
     expect((await asCreator.dismiss(lost!.id)).status).toBe(200);
+    await heartbeat();
+    expect(await asCreator.alerts("event_digest")).toEqual([]);
+    // A pause needs no alert, but it is no recovery: the trigger still
+    // cannot work after a resume.
+    for (const status of ["paused", "active"] as const) {
+      const current = await getEventAutomation(getDb(), "event_digest");
+      await setEventAutomationStatus(
+        getDb(),
+        "event_digest",
+        status,
+        automationRevision(current!),
+      );
+    }
     await heartbeat();
     expect(await asCreator.alerts("event_digest")).toEqual([]);
     vi.setSystemTime(NOW_MS + HOUR_MS);
