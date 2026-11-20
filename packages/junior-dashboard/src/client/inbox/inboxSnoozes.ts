@@ -27,7 +27,7 @@ interface SnoozedRead {
 }
 
 /**
- * Snooze Review items on the server, so a snooze holds in every browser. A
+ * Snooze Inbox items on the server, so a snooze holds in every browser. A
  * row snoozes its item, and a stack's Snooze its root's items. An item
  * wakes at its time, or when its root Conversation adds an item; the
  * versions poll then refreshes the lists. The server hides snoozed rows

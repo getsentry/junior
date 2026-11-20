@@ -297,7 +297,7 @@ function CommandPaletteBody(props: {
  * With no typed text: recent rows of that tab, then the most recently
  * active conversations, actions, and pages. With typed text: matches of
  * each kind, ranked; conversations and pages put the group with the best
- * match first, then Review items, automations, and server matches outside
+ * match first, then Inbox items, automations, and server matches outside
  * the feed. The open conversation is never a row.
  */
 function paletteItems(input: {
