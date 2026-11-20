@@ -315,6 +315,8 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 state: github.merged ? "MERGED" : github.state.toUpperCase(),
                 timelineItems: {
                   nodes: [
+                    // GitHub returns null for a deleted or hidden item.
+                    null,
                     ...(github.comments ?? []).map((comment) => ({
                       __typename: "IssueComment",
                       author: graphqlActor(comment.login),

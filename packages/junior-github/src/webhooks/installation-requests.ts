@@ -349,6 +349,17 @@ export async function loadRepositoryRole(
 }
 
 const timestampSchema = z.iso.datetime({ offset: true });
+
+// GitHub can return a null node for a deleted or hidden item, so the
+// connection lists drop them.
+function nodesSchema<T extends z.ZodType>(node: T) {
+  return z
+    .array(node.nullable())
+    .transform((items) =>
+      items.filter((item): item is NonNullable<typeof item> => item !== null),
+    );
+}
+
 const actorSchema = z
   .object({ __typename: z.string(), login: z.string().min(1) })
   .nullable();
@@ -357,7 +368,7 @@ const reviewsSchema = z.object({
     hasPreviousPage: z.boolean(),
     startCursor: z.string().nullable(),
   }),
-  nodes: z.array(
+  nodes: nodesSchema(
     z.object({
       author: actorSchema,
       commit: z.object({ oid: z.string().min(1) }).nullable(),
@@ -376,7 +387,7 @@ const nextActionSchema = z.object({
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
         commits: z.object({
-          nodes: z.array(
+          nodes: nodesSchema(
             z.object({ commit: z.object({ committedDate: timestampSchema }) }),
           ),
         }),
@@ -384,12 +395,12 @@ const nextActionSchema = z.object({
         isDraft: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
-          nodes: z.array(z.object({ requestedReviewer: userLoginSchema })),
+          nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
         }),
         reviews: reviewsSchema,
         state: z.enum(["CLOSED", "MERGED", "OPEN"]),
         timelineItems: z.object({
-          nodes: z.array(
+          nodes: nodesSchema(
             z.discriminatedUnion("__typename", [
               z.object({
                 __typename: z.literal("IssueComment"),
