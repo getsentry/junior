@@ -5,6 +5,11 @@ init:
 	rbenv install --skip-existing
 	rbenv exec bundle install
 
+# Put the match development certificate and profile on this Mac, for device builds.
+.PHONY: signing
+signing:
+	rbenv exec bundle exec fastlane match development
+
 # Generate Junior.xcodeproj from project.yml.
 .PHONY: xcodegen
 xcodegen:

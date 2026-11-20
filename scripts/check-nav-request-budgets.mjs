@@ -7,7 +7,7 @@ const DASHBOARD = "packages/junior-dashboard";
 // The classic and the Inbox shells each build their own primary nav.
 const NAV_FILES = [
   `${DASHBOARD}/src/client/primaryNav.ts`,
-  `${DASHBOARD}/src/client/inbox/primaryNav.ts`,
+  `${DASHBOARD}/src/client/shell/primaryNav.ts`,
 ];
 const E2E_DIRECTORY = `${DASHBOARD}/e2e`;
 const BUDGET_CALL = "expectRequestBudget(";
@@ -44,8 +44,8 @@ function budgetCalls(source) {
 
 /**
  * Return the paths that a spec loads inside `expectRequestBudget`, such as
- * `/` for `page.goto(dashboard.baseURL)` and `/review` for
- * ``page.goto(`${dashboard.baseURL}/review`)``.
+ * `/` for `page.goto(dashboard.baseURL)` and `/inbox` for
+ * ``page.goto(`${dashboard.baseURL}/inbox`)``.
  */
 export function budgetedPaths(source) {
   return budgetCalls(source).flatMap((call) =>

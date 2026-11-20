@@ -5,6 +5,7 @@ import {
 } from "@/chat/attachments/storage";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
+import { reportTableSizes } from "@/db/table-size";
 import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
 
 /**
@@ -21,9 +22,14 @@ export async function GET(
   }
 
   try {
-    const result = await runRetentionPurge(getSqlExecutor(), {
+    const executor = getSqlExecutor();
+    const result = await runRetentionPurge(executor, {
       attachmentStorage: options.attachmentStorage ?? getAttachmentStorage(),
       nowMs: Date.now(),
+    });
+    // Best-effort telemetry: a failure must not fail the purge response.
+    await reportTableSizes(executor).catch((error: unknown) => {
+      logException(error, "db.table_size.failed");
     });
     return Response.json(result, { status: 200 });
   } catch (error) {

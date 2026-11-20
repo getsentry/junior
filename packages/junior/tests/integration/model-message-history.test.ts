@@ -270,11 +270,56 @@ describe("model message history", () => {
     const delta = newText(second, third);
     expect(deltas(delta)).toBe(1);
     expect(delta).toContain(
-      `- #${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
+      `- TODO-${send!.id} (cancelled, assignee self, changed by person@example.com): Send the brief`,
     );
     expect(delta).not.toContain("Draft the brief");
     // The block stays in history, so the next Turn does not send it again.
     await agent.run("fourth");
     expect(deltas(newText(third, agent.snapshot()))).toBe(0);
+  });
+  it("sends the open plan items again after a few Turns without a plan change", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: Array.from({ length: 7 }, (_, index) => `Reply ${index}.`),
+    });
+    await agent.run("first");
+    const self = { conversationId: agent.conversationId() };
+    const {
+      items: [open],
+    } = await changePlan(getSqlExecutor(), {
+      conversationId: agent.conversationId(),
+      nowMs: Date.now(),
+      change: {
+        add: [
+          {
+            title: "Renumber the migration",
+            status: "pending",
+            assignee: self,
+          },
+          { title: "Merge the runner", status: "done", assignee: self },
+        ],
+        update: [],
+        remove: [],
+      },
+    });
+    const turnText = new Map<string, string>();
+    for (const input of ["second", "third", "fourth", "fifth", "sixth"]) {
+      const before = agent.snapshot();
+      await agent.run(input);
+      turnText.set(
+        input,
+        JSON.stringify(agent.snapshot().messages.slice(before.messages.length)),
+      );
+    }
+    // The review is a plan block, so it waits for the next interval.
+    expect(
+      [...turnText]
+        .filter(([, text]) => text.includes("<plan>"))
+        .map(([input]) => input),
+    ).toEqual(["fourth"]);
+    expect(turnText.get("fourth")).toContain(
+      `- #${open!.id} (pending, assignee self): Renumber the migration`,
+    );
+    expect(turnText.get("fourth")).not.toContain("Merge the runner");
   });
 });

@@ -45,7 +45,7 @@ import {
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
 import { DisplayText } from "../display-text/DisplayText";
-import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
+import { ReviewItemChangeLabel } from "../inbox/ReviewItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";

@@ -28,7 +28,6 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "memory:memories": Brain,
   "my-profile": UserRound,
   prs: GitPullRequest,
-  review: Inbox,
   settings: Settings,
   snoozed: Clock3,
   system: Gauge,

@@ -79,6 +79,7 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
 
@@ -388,6 +389,12 @@ export async function completeText(params: {
               const vercelId = response.headers["x-vercel-id"];
               if (vercelId) {
                 setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
+            },
+            onProviderStreamEvent: (event) => {
+              const routing = gatewayRoutingAttributes(event);
+              if (routing) {
+                setSpanAttributes(routing);
               }
             },
           },

@@ -24,6 +24,7 @@ import {
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
 } from "@/chat/pi/client";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
   type ConversationPrivacy,
@@ -251,6 +252,25 @@ function traceRequestPayload(
   };
 }
 
+// Wraps `onProviderStreamEvent`, which Pi calls with each raw provider stream
+// event. It records how AI Gateway routed the request.
+function traceGatewayRouting(
+  span: Sentry.Span,
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
+  const onProviderStreamEvent = options?.onProviderStreamEvent;
+  return {
+    ...options,
+    onProviderStreamEvent: async (event, model) => {
+      const attributes = gatewayRoutingAttributes(event);
+      if (attributes) {
+        span.setAttributes(attributes);
+      }
+      await onProviderStreamEvent?.(event, model);
+    },
+  };
+}
+
 // A pi-ai event stream has one consumer. This relay is the consumer of the
 // provider stream: it shows each event to `onEvent` as the event arrives, then
 // pushes the same event object to the stream that the agent loop reads. The
@@ -350,7 +370,10 @@ export function createTracedStreamFn(
           base(
             model,
             context,
-            traceRequestPayload(span, traceResponseHeaders(span, options)),
+            traceGatewayRouting(
+              span,
+              traceRequestPayload(span, traceResponseHeaders(span, options)),
+            ),
           ),
         ),
       );

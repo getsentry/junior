@@ -11,6 +11,7 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { ObjectCard } from "../conversations/ObjectCard";
 import { peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
+import { ChangeSize } from "./ChangeSize";
 import { InlineError } from "./InlineError";
 import type { Person } from "../person";
 import { formatRelativeTime, formatTime } from "../time";
@@ -66,11 +67,20 @@ function MergedChanges(props: { changes: PersonCardReport["mergedChanges"] }) {
               ) : (
                 <span className="min-w-0 truncate text-sm">{title}</span>
               )}
-              <span className="min-w-0 truncate text-dashboard-text-muted">
-                {change.repository}#{change.number} ·{" "}
-                <time dateTime={at} title={formatTime(at)}>
-                  merged {formatRelativeTime(at)}
-                </time>
+              {/* The size is outside the truncated text, so it stays whole. */}
+              <span className="flex min-w-0 items-baseline gap-1 text-dashboard-text-muted">
+                <span className="min-w-0 truncate">
+                  {change.repository}#{change.number} ·{" "}
+                  <time dateTime={at} title={formatTime(at)}>
+                    merged {formatRelativeTime(at)}
+                  </time>
+                </span>
+                {change.size ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <ChangeSize className="text-xs" size={change.size} />
+                  </>
+                ) : null}
               </span>
             </li>
           );

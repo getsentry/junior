@@ -95,7 +95,7 @@ export interface GitHubPullRequestSubscriptionConfig {
  * Junior maintains the pull requests it creates. The pull request is its own
  * work, so it answers and fixes review feedback without asking first.
  * GitHub already tells people about reviews, approvals, merges, and closes,
- * and the review desk shows the next action. So the Watch gets approvals,
+ * and the Inbox shows the next action. So the Watch gets approvals,
  * merges, and closes only as Quiet Events, and posts in the thread only when
  * a person must act.
  */

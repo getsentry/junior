@@ -28,18 +28,18 @@ test("reads only the paths that a spec loads inside a budget", () => {
         { requests: 7, serialRounds: 1 },
       );
       await expectRequestBudget(page, async () => {
-        await page.goto(\`\${dashboard.baseURL}/review?item=\${id}\`, {
+        await page.goto(\`\${dashboard.baseURL}/inbox?item=\${id}\`, {
           waitUntil: "networkidle",
         });
       }, { requests: 9, serialRounds: 2 });
     `),
-    ["/", "/review"],
+    ["/", "/inbox"],
   );
 });
 
 test("accepts a budgeted route and a route with a reason", () => {
   assert.deepEqual(
-    checkNavRequestBudgets(["/", "/review", "/code"], ["/", "/review/item-1"], {
+    checkNavRequestBudgets(["/", "/inbox", "/code"], ["/", "/inbox/item-1"], {
       "/code": "Its spec checks the change list.",
     }),
     [],

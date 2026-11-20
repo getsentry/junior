@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { ReviewItemChangeRow } from "../inbox/ReviewItemChangeRow";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";

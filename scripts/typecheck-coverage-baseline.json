@@ -35,7 +35,7 @@
   "packages/junior-dashboard/e2e/people.spec.ts",
   "packages/junior-dashboard/e2e/personal-tokens.spec.ts",
   "packages/junior-dashboard/e2e/read-position-fixture.ts",
-  "packages/junior-dashboard/e2e/review-desk.spec.ts",
+  "packages/junior-dashboard/e2e/inbox.spec.ts",
   "packages/junior-dashboard/e2e/screenshot.ts",
   "packages/junior-dashboard/e2e/settings.spec.ts",
   "packages/junior-dashboard/e2e/system.spec.ts",

@@ -253,7 +253,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const [path, name] of [
       ["/", "New conversation"],
-      ["/review", "New conversation"],
+      ["/inbox", "New conversation"],
       ["/automations", "New automation"],
     ] as const) {
       await page.goto(`${dashboard.baseURL}${path}`);
@@ -264,8 +264,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     // New on Automations starts the ask in a new conversation.
     await page.getByRole("button", { name: "New automation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
-    await expect(page.getByLabel("Start a conversation")).toHaveValue(
+    await expect(page.getByLabel("Start a conversation")).toHaveText(
       /^Set up an automation that /,
+      { useInnerText: true },
     );
   });
 

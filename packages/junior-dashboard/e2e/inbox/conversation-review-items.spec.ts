@@ -116,7 +116,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A closed item's link opens Done, with its row expanded. The link is
     // the shared review item path, which the new UI maps.
     const link = answer.getByRole("link", { name: answered.title });
-    await expect(link).toHaveAttribute("href", `/review?item=${answered.id}`);
+    await expect(link).toHaveAttribute("href", `/inbox?item=${answered.id}`);
     await link.click();
     await expect(page).toHaveURL(/\/\?view=done$/);
     await expect(
@@ -234,7 +234,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Go back keeps the draft and the picks.
     await confirm.getByRole("button", { name: "Go back" }).click();
     await expect(confirm).toBeHidden();
-    await expect(composer).toHaveValue("Friday works.");
+    await expect(composer).toHaveText("Friday works.", { useInnerText: true });
     await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
     expect(messages).toEqual([]);
 

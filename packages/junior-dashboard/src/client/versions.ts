@@ -13,7 +13,7 @@ import {
 } from "./conversations/queries";
 import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
-import { REVIEW_ITEMS_QUERY_KEY } from "./review-desk/queries";
+import { REVIEW_ITEMS_QUERY_KEY } from "./inbox/queries";
 import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
@@ -67,11 +67,12 @@ function movedFeedInputs(previous: string, next: string) {
 }
 
 /**
- * List the Conversations whose idle detail is on screen, the open one first,
- * up to the cap of one read. A live detail polls by itself, and a detail
- * with no data has nothing to compare.
+ * List the Conversations whose idle detail is on screen, up to the cap of one
+ * read, with the open one kept when there are more. A live detail polls by
+ * itself, and a detail with no data has nothing to compare. The ids are
+ * sorted, so the same screen asks with the same URL.
  */
-function onScreenConversationIds(
+export function onScreenConversationIds(
   client: QueryClient,
   openConversationId: string | undefined,
 ) {
@@ -94,7 +95,7 @@ function onScreenConversationIds(
     if (conversationId === openConversationId) ids.unshift(conversationId);
     else ids.push(conversationId);
   }
-  return ids.slice(0, VERSIONS_CONVERSATION_LIMIT);
+  return ids.slice(0, VERSIONS_CONVERSATION_LIMIT).sort();
 }
 
 /**
