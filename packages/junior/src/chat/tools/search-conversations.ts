@@ -51,10 +51,10 @@ const conversationMatchSchema = z
         "Pass it to searchConversationEvents to read its history. For a root conversation, pass it to messageAgent to message its agent.",
       ),
     kind: z
-      .enum(["root", "automation", "thread", "task"])
+      .enum(["root", "automation", "lead", "thread", "task"])
       .optional()
       .describe(
-        "root or automation: a root conversation. thread or task: a child agent.",
+        "root, automation, or lead: a top-level conversation. thread or task: a child agent.",
       ),
     root_conversation_id: z
       .string()

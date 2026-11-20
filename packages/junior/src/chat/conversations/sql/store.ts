@@ -23,6 +23,7 @@ import type {
   ConversationSource,
   ConversationStatus,
   ConversationStore,
+  TopLevelConversationKind,
 } from "../store";
 import {
   juniorConversations,
@@ -314,7 +315,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination | undefined;
-  kind?: "root" | "automation" | undefined;
+  kind?: TopLevelConversationKind | undefined;
   nowMs: number;
   source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
@@ -468,7 +469,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
-    kind?: "root" | "automation";
+    kind?: TopLevelConversationKind;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;

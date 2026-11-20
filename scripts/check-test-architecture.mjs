@@ -133,8 +133,8 @@ const AGENT_TEST_RULES = [
 // A kind or person-Source branch outside `kind-behavior.ts`.
 const KIND_BRANCH_PATTERNS = [
   // Conversation kind compared to a value, in either order.
-  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation)["']/g,
-  /["'](?:root|thread|task|automation)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
+  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation|lead)["']/g,
+  /["'](?:root|thread|task|automation|lead)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
   // A person Source check. Narrowing a Source union to use the narrowed
   // Source, such as `source.kind === "slack" ? source.threadTs`, is not one.
   /\bsource(?:\.kind)?\s*(?:===|!==)\s*["'](?:slack|web)["'](?!\s*(?:\?|&&)\s*(?:\{\s*\.\.\.)?(?:[\w$]+\??\.)*source\b)/g,

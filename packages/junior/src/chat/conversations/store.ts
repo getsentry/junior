@@ -16,11 +16,23 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root and an Automation run have no
- * parent. A Thread is a child that people can message. A Task is a child that
- * only its parent messages. A Conversation never changes kind.
+ * Where a Conversation sits in its tree. A root, an Automation run, and a
+ * Lead have no parent. A Thread is a child that people can message. A Task
+ * is a child that only its parent messages. A Conversation never changes
+ * kind.
  */
-export type ConversationKind = "root" | "automation" | "thread" | "task";
+export type ConversationKind =
+  | "root"
+  | "automation"
+  | "lead"
+  | "thread"
+  | "task";
+
+/** The kind of a Conversation that has no parent. */
+export type TopLevelConversationKind = Exclude<
+  ConversationKind,
+  ChildConversationKind
+>;
 
 /** The kind of a Conversation that has a parent. */
 export type ChildConversationKind = "thread" | "task";
@@ -206,7 +218,7 @@ export interface ConversationStore {
      * Kind of a new Conversation. Default `root`. An existing Conversation
      * keeps its kind.
      */
-    kind?: "root" | "automation";
+    kind?: TopLevelConversationKind;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved
