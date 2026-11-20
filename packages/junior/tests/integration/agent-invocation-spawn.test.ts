@@ -20,7 +20,6 @@ import {
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
@@ -32,7 +31,6 @@ import {
 } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   recoverPendingAgentInvocationMailboxAppends,
@@ -40,7 +38,6 @@ import {
 } from "@/chat/agent-dispatch/heartbeat";
 import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createEventSource,
   createLocalSource,
@@ -162,100 +159,6 @@ describe("agent invocation spawn and result delivery", () => {
           agentName: "researcher",
         }),
       ).rejects.toThrow("idempotency key was reused with different input");
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("derives spawn authority from the parent run and replays one tool call", async () => {
-    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
-    // Row-only: it reads the Agent invocation and its dashboard marker.
-    // child-agent-writes-without-agent-invocation.test.ts checks the same
-    // authority and replay for a child with no Agent invocation.
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "child-agents-without-agent-invocations": false,
-    });
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    try {
-      const request = {
-        conversationId: parentConversationId,
-        turnId: "parent-turn",
-        instruction: { text: "Delegate the investigation." },
-        actor: { platform: "local", userId: "local-user" },
-        credentialContext: {
-          actor: { type: "user", userId: "local-user" },
-        },
-        destination,
-        source: createLocalSource(parentConversationId),
-      } satisfies AgentRun;
-      const spawnAgent = bindSpawnAgent(request, {
-        conversationStore,
-        queue,
-      });
-      expect(spawnAgent).toBeDefined();
-      const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
-      const input = tool.prepareArguments({
-        task: "Inspect the failing checks.",
-        title: "Failing checks",
-        name: "reviewer",
-        reasoning_level: "high",
-      });
-
-      const first = await tool.execute!(input, { toolCallId: "call-1" });
-      const replay = await tool.execute!(input, { toolCallId: "call-1" });
-
-      expect(replay).toEqual(first);
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationId(parentConversationId, "parent-turn:call-1"),
-        ),
-      ).resolves.toMatchObject({
-        childConversationId: first.conversation_id,
-        actor: { platform: "local", userId: "local-user" },
-        agentName: "reviewer",
-        credentialContext: {
-          actor: { type: "user", userId: "local-user" },
-        },
-        destination,
-        input: "Inspect the failing checks.",
-        parentConversationId,
-        reasoningLevel: "high",
-        title: "Failing checks",
-      });
-      expect(queue.sentRecords()).toHaveLength(1);
-      // The parent log gets one dashboard marker for the replayed tool call.
-      await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual([
-        {
-          type: "subagent_started",
-          subagentInvocationId: getAgentInvocationId(
-            parentConversationId,
-            "parent-turn:call-1",
-          ),
-          subagentKind: "agent",
-          childConversationId: first.conversation_id,
-          agentName: "reviewer",
-          parentToolCallId: "call-1",
-          task: "Inspect the failing checks.",
-          title: "Failing checks",
-          reasoningLevel: "high",
-        },
-      ]);
-      await expect(
-        tool.execute!(
-          tool.prepareArguments({
-            task: "Start overlapping work.",
-            name: "reviewer",
-            reasoning_level: "high",
-          }),
-          { toolCallId: "call-2" },
-        ),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message:
-          'A child agent named "reviewer" already exists. Use messageAgent to give it more work, or choose a different name.',
-      });
     } finally {
       await fixture.close();
     }

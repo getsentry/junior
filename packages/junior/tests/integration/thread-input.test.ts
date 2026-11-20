@@ -5,7 +5,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
@@ -59,7 +58,6 @@ import {
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 /** Give the Thread more work from its parent agent, like messageAgent. */
 async function sendParentMessage(harness: Harness, toolCallId: string) {
@@ -491,10 +489,6 @@ describe("Thread input", () => {
   });
 
   it("runs the parent's input apart from a person's in a Thread with no Agent invocation", async () => {
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "child-agents-without-agent-invocations": true,
-    });
     const harness = await createHarness();
     try {
       const threadId = await spawnThread(harness, "call-spawn");

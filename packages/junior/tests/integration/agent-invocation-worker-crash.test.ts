@@ -20,7 +20,6 @@ import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import {
   createDeliverToParent,
   enqueueChildResultToParent,
@@ -51,7 +50,6 @@ import {
   parentConversationId,
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createConversationWorkHarness,
   runHeartbeatAfterLeasesExpire,
@@ -315,10 +313,6 @@ describe("agent invocation worker crash", () => {
   ])(
     "tells only a Task's parent when every try of a child with no Agent invocation is killed ($kind)",
     async ({ kind, notices }) => {
-      setExperimentalFeatures({
-        ...SUITE_EXPERIMENTAL,
-        "child-agents-without-agent-invocations": true,
-      });
       vi.useFakeTimers({
         now: 1_800_000_000_000,
         toFake: ["Date", "setInterval", "clearInterval"],
@@ -370,10 +364,6 @@ describe("agent invocation worker crash", () => {
   );
 
   it("reports a Task's replaced result when its Thread with no Agent invocation is killed on every try", async () => {
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "child-agents-without-agent-invocations": true,
-    });
     vi.useFakeTimers({
       now: 1_800_000_000_000,
       toFake: ["Date", "setInterval", "clearInterval"],

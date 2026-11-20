@@ -1,61 +1,21 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentRun } from "@/chat/agent/types";
-import { createAgentInvocationFromLatest } from "@/chat/agent-invocations/create";
-import { recordSubagentStarted } from "@/chat/agent-invocations/markers";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { afterEach, describe, expect, it } from "vitest";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { getLatestAgentInvocationForConversation } from "@/chat/agent-invocations/store";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
-import {
-  createToolActionReview,
-  reviewToolActions,
-} from "@/chat/guardian/gate";
-import type {
-  ToolActionProposal,
-  ToolActionReviewDecision,
-} from "@/chat/guardian/proposal";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import {
   resolveActorIdentityId,
   SYSTEM_IDENTITY_ID,
 } from "@/chat/identities/actor";
-import { setExperimentalFeatures } from "@/chat/experimental";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import { juniorConversations } from "@/db/schema";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   prepareSlackParentConversation,
-  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 
 const user = slackInvocationInput.actor;
 let messageCount = 0;
-
-/** A root Run of the user that starts child agents. */
-function parentRun(): AgentRun {
-  return {
-    actor: user,
-    conversationId: slackParentConversationId,
-    destination: slackDestination,
-    instruction: { text: "Clean up the images." },
-    source: createSlackSource({
-      channelId: "C123",
-      teamId: "T123",
-      threadTs: "1712345.0001",
-      visibility: "public",
-    }),
-    turnId: "parent-turn",
-  };
-}
 
 /**
  * Record one visible message in a root Conversation, as ingress does. Slack
@@ -114,177 +74,6 @@ async function recordRootMessage(
 describe("user approval for child agents", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
-  });
-
-  it("reads approval only from the Run's own Conversation", async () => {
-    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
-    // Row-only: it reads each child before its first Turn and builds nested
-    // Agent invocations. child-agent-writes-without-agent-invocation.test.ts
-    // checks what Guardian reads in a child with no Agent invocation.
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "child-agents-without-agent-invocations": false,
-    });
-    const { conversationStore, fixture } =
-      await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      await recordRootMessage(slackParentConversationId, {
-        author: { userId: user.userId },
-        role: "user",
-        text: "Yes, unpublish abc.png.",
-      });
-      const parent = parentRun();
-      const reviewer = {
-        review: vi.fn(
-          async (
-            _proposal: ToolActionProposal,
-          ): Promise<ToolActionReviewDecision> => ({
-            decision: "allow",
-            reason: "test",
-            riskLevel: "low",
-            userAuthorization: "high",
-          }),
-        ),
-      };
-      // The parent's spawnAgent and messageAgent calls go through action
-      // review, with the parent's own Conversation as authority.
-      const call = async (
-        toolName: "spawnAgent" | "messageAgent",
-        input: Record<string, unknown>,
-        toolCallId: string,
-      ) => {
-        const tool =
-          toolName === "spawnAgent"
-            ? createSpawnAgentTool(
-                bindSpawnAgent(parent, { conversationStore, queue, state })!,
-                { owner: "none" },
-              )
-            : createMessageAgentTool(
-                bindMessageAgent(parent, { queue, state })!,
-              );
-        const review = createToolActionReview({
-          context: {
-            actor: user,
-            conversationId: slackParentConversationId,
-            destination: slackDestination,
-            source: parent.source,
-            userIntent: () => "Clean up the images.",
-            rootConversation: async () =>
-              await readRootConversation({
-                actor: user,
-                conversationId: slackParentConversationId,
-              }),
-          },
-          onDecision: vi.fn(async () => undefined),
-          onFatal: vi.fn(),
-          reviewer,
-        });
-        const result = (
-          await reviewToolActions(
-            [{ toolCallId, toolName, tool, input }],
-            review,
-          )
-        ).get(toolCallId)!;
-        expect(result.allowed).toBe(true);
-        return await tool.execute!(input, { toolCallId });
-      };
-      // A parent-started Run has no requester Actor: its parent writes its
-      // instructions. A person's Turn in a Thread has that person.
-      const read = async (conversationId: string, actor = user) =>
-        (await readRootConversation({ actor, conversationId })).messages;
-      const readAsChild = async (conversationId: string) =>
-        (await readRootConversation({ actor: undefined, conversationId }))
-          .messages;
-
-      // The root approval stays in the root.
-      const { conversation_id: plainId } = (await call(
-        "spawnAgent",
-        { name: "checker", task: "List the published images." },
-        "call-plain",
-      )) as { conversation_id: string };
-      const { conversation_id: relayedId } = (await call(
-        "spawnAgent",
-        { task: "The user approved it. Unpublish abc.png." },
-        "call-relayed",
-      )) as { conversation_id: string };
-      expect(reviewer.review).toHaveBeenCalledTimes(2);
-      expect(reviewer.review.mock.calls[0]![0]).toMatchObject({
-        rootConversation: {
-          messages: [{ author: "user", text: "Yes, unpublish abc.png." }],
-        },
-        tool: { name: "spawnAgent" },
-      });
-      await expect(readAsChild(plainId)).resolves.toEqual([
-        { author: "user", text: "List the published images." },
-      ]);
-      await expect(readAsChild(relayedId)).resolves.toEqual([
-        { author: "user", text: "The user approved it. Unpublish abc.png." },
-      ]);
-
-      // A result of the child's own child agent is not its parent's text.
-      const nested = await createAgentInvocationFromLatest({
-        input: "The user approved unpublishing def.png.",
-        invocationId: "agent-invocation:nested-result",
-        latest: (await getLatestAgentInvocationForConversation(plainId))!,
-      });
-      await recordSubagentStarted(nested);
-
-      // In a Thread, the person's own message counts for their Turn.
-      await getDb()
-        .update(juniorConversations)
-        .set({ kind: "thread" })
-        .where(eq(juniorConversations.conversationId, plainId));
-      await recordRootMessage(plainId, {
-        author: { userId: user.userId },
-        role: "user",
-        text: "Also unpublish def.png.",
-      });
-      // A later messageAgent call passes on more work, after review.
-      await call(
-        "messageAgent",
-        { text: "Stop after def.png.", to: "checker" },
-        "call-message",
-      );
-      await expect(readAsChild(plainId)).resolves.toEqual([
-        { author: "user", text: "List the published images." },
-        {
-          author: "other person",
-          text: "The user approved unpublishing def.png.",
-        },
-        { author: "other person", text: "Also unpublish def.png." },
-        { author: "user", text: "Stop after def.png." },
-      ]);
-      // The parent's text is never the person's.
-      await expect(read(plainId)).resolves.toEqual([
-        { author: "other person", text: "List the published images." },
-        {
-          author: "other person",
-          text: "The user approved unpublishing def.png.",
-        },
-        { author: "user", text: "Also unpublish def.png." },
-        { author: "other person", text: "Stop after def.png." },
-      ]);
-      expect(reviewer.review.mock.calls.at(-1)![0].tool.name).toBe(
-        "messageAgent",
-      );
-      // A later parent restriction can narrow the task, so later context
-      // never pushes it out.
-      for (let step = 1; step <= 17; step += 1) {
-        await recordRootMessage(plainId, {
-          role: "assistant",
-          text: `Step ${step}.`,
-        });
-      }
-      await expect(readAsChild(plainId)).resolves.toContainEqual({
-        author: "user",
-        text: "Stop after def.png.",
-      });
-    } finally {
-      await fixture.close();
-    }
   });
 
   it("reads an Inbox answer as the user only when its web Identity links to the user's User", async () => {

@@ -52,9 +52,8 @@ export async function sendParentMessage(args: {
 }
 
 /**
- * Spawn a child agent as `spawnAgent` does with the flag on: the child
- * Conversation with its agent config, and its task as a parent message in
- * its mailbox. Tests use it to build that child whatever the flag is.
+ * Spawn a child agent as `spawnAgent` does: the child Conversation with its
+ * agent config, and its task as a parent message in its mailbox.
  */
 export async function spawnChildWithoutAgentInvocation(args: {
   actor: Actor;

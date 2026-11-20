@@ -12,7 +12,6 @@ import {
   markAgentInvocationMailboxAppended,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
@@ -35,7 +34,6 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const parentRun = slackParentRun();
@@ -101,97 +99,90 @@ describe("Thread spawn and archive", () => {
     await disconnectStateAdapter();
   });
 
-  it.each([false, true])(
-    "spawns a Thread when the parent asks for one and a Task by default (without Agent invocations: %s)",
-    async (withoutAgentInvocations) => {
-      setExperimentalFeatures({
-        ...SUITE_EXPERIMENTAL,
-        "child-agents-without-agent-invocations": withoutAgentInvocations,
+  it("spawns a Thread when the parent asks for one and a Task by default", async () => {
+    const harness = await createHarness();
+    let titleRequests = 0;
+    mockTitleModel("Generated rollout title", {
+      onRequest: () => {
+        titleRequests++;
+      },
+    });
+    try {
+      const tool = createSpawnAgentTool(
+        bindSpawnAgent(parentRun, {
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+        { owner: "none" },
+      );
+      const thread = await tool.execute!(
+        tool.prepareArguments({
+          kind: "thread",
+          task: "Own the rollout plan.",
+          title: "Rollout plan",
+        }),
+        { toolCallId: "call-thread" },
+      );
+      const task = await tool.execute!(
+        tool.prepareArguments({
+          kind: null,
+          task: "Check the failing test.",
+          title: "Failing test",
+        }),
+        { toolCallId: "call-task" },
+      );
+
+      await expect(
+        harness.conversationStore.get({
+          conversationId: thread.conversation_id,
+        }),
+      ).resolves.toMatchObject({
+        kind: "thread",
+        parentConversationId: slackParentConversationId,
+        title: "Rollout plan",
       });
-      const harness = await createHarness();
-      let titleRequests = 0;
-      mockTitleModel("Generated rollout title", {
-        onRequest: () => {
-          titleRequests++;
-        },
+      await expect(
+        harness.conversationStore.get({
+          conversationId: task.conversation_id,
+        }),
+      ).resolves.toMatchObject({ kind: "task", title: "Failing test" });
+      // A passed title skips title generation.
+      expect(titleRequests).toBe(0);
+
+      // A Thread without a title gets a generated one.
+      const untitled = await tool.execute!(
+        tool.prepareArguments({
+          kind: "thread",
+          task: "Own the rollout follow-ups.",
+        }),
+        { toolCallId: "call-untitled-thread" },
+      );
+      expect(titleRequests).toBe(1);
+      await expect(
+        harness.conversationStore.get({
+          conversationId: untitled.conversation_id,
+        }),
+      ).resolves.toMatchObject({
+        kind: "thread",
+        title: "Generated rollout title",
       });
-      try {
-        const tool = createSpawnAgentTool(
-          bindSpawnAgent(parentRun, {
-            conversationStore: harness.conversationStore,
-            queue: harness.queue,
-            state: harness.state,
-          })!,
-          { owner: "none" },
-        );
-        const thread = await tool.execute!(
+      // A child never changes kind: a replay of the same spawn as a Task
+      // is refused.
+      await expect(
+        tool.execute!(
           tool.prepareArguments({
-            kind: "thread",
+            kind: null,
             task: "Own the rollout plan.",
             title: "Rollout plan",
           }),
           { toolCallId: "call-thread" },
-        );
-        const task = await tool.execute!(
-          tool.prepareArguments({
-            kind: null,
-            task: "Check the failing test.",
-            title: "Failing test",
-          }),
-          { toolCallId: "call-task" },
-        );
-
-        await expect(
-          harness.conversationStore.get({
-            conversationId: thread.conversation_id,
-          }),
-        ).resolves.toMatchObject({
-          kind: "thread",
-          parentConversationId: slackParentConversationId,
-          title: "Rollout plan",
-        });
-        await expect(
-          harness.conversationStore.get({
-            conversationId: task.conversation_id,
-          }),
-        ).resolves.toMatchObject({ kind: "task", title: "Failing test" });
-        // A passed title skips title generation.
-        expect(titleRequests).toBe(0);
-
-        // A Thread without a title gets a generated one.
-        const untitled = await tool.execute!(
-          tool.prepareArguments({
-            kind: "thread",
-            task: "Own the rollout follow-ups.",
-          }),
-          { toolCallId: "call-untitled-thread" },
-        );
-        expect(titleRequests).toBe(1);
-        await expect(
-          harness.conversationStore.get({
-            conversationId: untitled.conversation_id,
-          }),
-        ).resolves.toMatchObject({
-          kind: "thread",
-          title: "Generated rollout title",
-        });
-        // A child never changes kind: a replay of the same spawn as a Task
-        // is refused.
-        await expect(
-          tool.execute!(
-            tool.prepareArguments({
-              kind: null,
-              task: "Own the rollout plan.",
-              title: "Rollout plan",
-            }),
-            { toolCallId: "call-thread" },
-          ),
-        ).rejects.toThrow("idempotency key was reused with different input");
-      } finally {
-        await harness.close();
-      }
-    },
-  );
+        ),
+      ).rejects.toThrow("idempotency key was reused with different input");
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("counts a Thread toward the cap only while it has open work", async () => {
     const harness = await createHarness();

@@ -3,18 +3,11 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { getConversationWorkState } from "@/chat/task-execution/store";
-import { getAgentBinding } from "./bindings";
 import { spawnChildAgent } from "./create";
 import { AgentDepthLimitError } from "./errors";
-import {
-  getAgentInvocationId,
-  getAgentInvocationMessageId,
-  getUnnamedAgentConversationId,
-} from "./ids";
+import { getAgentInvocationId } from "./ids";
 import { getAgentInvocation } from "./store";
 import { createAndEnqueueAgentInvocation } from "./work";
 
@@ -46,46 +39,6 @@ async function assertCanStartChildAgent(
   ) {
     throw new AgentDepthLimitError(maxAgentDepth);
   }
-}
-
-/**
- * Return the child of a spawn that already ran without an agent invocation.
- * Its idempotency key keys the task in the child's mailbox. A spawn with an
- * agent invocation replays through that row instead.
- */
-async function findSpawnedChildAgent(args: {
-  agentName?: string;
-  idempotencyKey: string;
-  parentConversationId: string;
-  state?: StateAdapter | undefined;
-}): Promise<string | undefined> {
-  const invocationId = getAgentInvocationId(
-    args.parentConversationId,
-    args.idempotencyKey,
-  );
-  if (await getAgentInvocation(invocationId)) {
-    return undefined;
-  }
-  const childConversationId = args.agentName
-    ? (
-        await getAgentBinding({
-          name: args.agentName,
-          parentConversationId: args.parentConversationId,
-        })
-      )?.childConversationId
-    : getUnnamedAgentConversationId(invocationId);
-  if (!childConversationId) {
-    return undefined;
-  }
-  const work = await getConversationWorkState({
-    conversationId: childConversationId,
-    state: args.state,
-  });
-  return work?.execution.inboundMessageIds.includes(
-    getAgentInvocationMessageId(invocationId),
-  )
-    ? childConversationId
-    : undefined;
 }
 
 /** Bind a Run's Actor and credentials to new Agent invocations. */
@@ -128,35 +81,22 @@ export function bindSpawnAgent(
         : undefined),
       ...(input.title ? { title: input.title } : undefined),
     };
-    // A spawn that already wrote an Agent invocation replays through it.
+    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7). A spawn
+    // that wrote an Agent invocation before this release replays through it.
     if (
-      isExperimentalFeatureEnabled("child-agents-without-agent-invocations") &&
-      !(await getAgentInvocation(
+      await getAgentInvocation(
         getAgentInvocationId(run.conversationId, idempotencyKey),
-      ))
+      )
     ) {
-      return await spawnChildAgent(
-        { ...createInput, parentTurnId: run.turnId },
-        { ...options, queue },
-      );
+      const invocation = await createAndEnqueueAgentInvocation(createInput, {
+        ...options,
+        queue,
+      });
+      return { childConversationId: invocation.childConversationId };
     }
-    // With the flag off, a spawn that ran without an Agent invocation replays
-    // as it ran.
-    const spawned = await findSpawnedChildAgent({
-      ...(input.name ? { agentName: input.name } : undefined),
-      idempotencyKey,
-      parentConversationId: run.conversationId,
-      state: options.state,
-    });
-    if (spawned) {
-      return { childConversationId: spawned };
-    }
-    const invocation = await createAndEnqueueAgentInvocation(createInput, {
-      ...options,
-      queue,
-    });
-    return {
-      childConversationId: invocation.childConversationId,
-    };
+    return await spawnChildAgent(
+      { ...createInput, parentTurnId: run.turnId },
+      { ...options, queue },
+    );
   };
 }

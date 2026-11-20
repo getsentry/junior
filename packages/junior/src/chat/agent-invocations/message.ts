@@ -6,7 +6,6 @@ import type {
   MessageAgentInput,
 } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
@@ -100,12 +99,10 @@ export function bindMessageAgent(
       parentConversationId: run.conversationId,
       parentToolCallId: call.toolCallId,
     };
-    // A child that has an Agent invocation keeps getting its work as Agent
+    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7). A child
+    // that has an Agent invocation keeps getting its work as Agent
     // invocations, so one child's work never runs on both paths.
-    if (
-      isExperimentalFeatureEnabled("child-agents-without-agent-invocations") &&
-      !(await getLatestAgentInvocationForConversation(childConversationId))
-    ) {
+    if (!(await getLatestAgentInvocationForConversation(childConversationId))) {
       const { delivery } = await messageChildAgent(
         { ...message, parentTurnId: run.turnId },
         { ...options, queue },

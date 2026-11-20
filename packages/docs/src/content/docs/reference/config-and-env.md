@@ -235,14 +235,6 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
-    // Off by default. spawnAgent and messageAgent queue a child's work in
-    // the child's own conversation instead of a separate task record. While
-    // a conversation is stopped, its messageAgent calls to children with no
-    // task record return `noted` and start no work, and its spawnAgent calls
-    // fail. A message to a child that has a task record still starts work.
-    // If you turn this off again, later messages to children created while
-    // it was on use task records.
-    "child-agents-without-agent-invocations": true,
   },
 });
 ```
@@ -256,6 +248,9 @@ A child agent is a Task by default: only its parent gives it work. The model
 can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
 Threads alike. The model can archive a finished Thread with `archiveAgent`.
+
+A stopped conversation gives its child agents no new work: its `messageAgent`
+calls return `noted` and start nothing, and its `spawnAgent` calls fail.
 
 By default, a child agent of the root Conversation can start its own child
 agents, and those cannot start more. Set `limits.maxAgentDepth` to change how

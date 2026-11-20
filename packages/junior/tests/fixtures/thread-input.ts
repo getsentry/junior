@@ -247,11 +247,6 @@ export async function startThread(
   return created.childConversationId;
 }
 
-/**
- * Spawn a named Thread from the parent's Turn, as `spawnAgent` does. With
- * `child-agents-without-agent-invocations` on, it writes no Agent
- * invocation.
- */
 /** The Run of the shared Slack parent Turn that spawns and messages children. */
 export function slackParentRun(overrides: Partial<AgentRun> = {}): AgentRun {
   return {

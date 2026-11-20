@@ -1,5 +1,5 @@
 import type { StateAdapter } from "chat";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentBinding } from "@/chat/agent-invocations/bindings";
 import { MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT } from "@/chat/agent-invocations/create";
 import {
@@ -34,7 +34,6 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
@@ -51,7 +50,6 @@ import {
   runHeartbeatAfterLeasesExpire,
 } from "../fixtures/conversation-work";
 import { readProxyProperty } from "../fixtures/proxy-property";
-import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 import {
   createHarness,
   finishRun,
@@ -119,13 +117,6 @@ async function mailboxTexts(harness: Harness, conversationId: string) {
 }
 
 describe("spawn and messageAgent without Agent invocations", () => {
-  beforeEach(() => {
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "child-agents-without-agent-invocations": true,
-    });
-  });
-
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
