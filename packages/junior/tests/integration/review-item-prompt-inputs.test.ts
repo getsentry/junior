@@ -1,3 +1,4 @@
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import type { User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -20,7 +21,6 @@ import { getReviewItem } from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { webTurnInputs } from "@/chat/task-execution/mailbox-input";
 import { getConversation } from "@/chat/task-execution/store";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import {
   closeConversationFixture,
   createConversationFixture,

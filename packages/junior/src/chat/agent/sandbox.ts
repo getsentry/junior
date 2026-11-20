@@ -26,8 +26,8 @@ import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { writeSandboxGeneratedFiles } from "@/chat/tools/sandbox/generated-files";
-import type { GeneratedFileRef } from "@/chat/tools/sandbox/file-uploads";
+import { writeSandboxGeneratedFiles } from "@/chat/sandbox/generated-files";
+import type { GeneratedFileRef } from "@/chat/sandbox/file-uploads";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {

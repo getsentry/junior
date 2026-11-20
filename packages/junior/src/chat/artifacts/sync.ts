@@ -16,7 +16,7 @@ import { logException, logWarn } from "@/chat/logging";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
-import { inferMimeType } from "@/chat/tools/sandbox/file-uploads";
+import { inferMimeType } from "@/chat/sandbox/file-uploads";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
 

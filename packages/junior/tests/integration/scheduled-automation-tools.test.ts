@@ -11,7 +11,7 @@ import {
   automationToolContext,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   claimDueScheduledRun,
   markScheduledRunFailed,
@@ -25,10 +25,10 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import type { ToolExecuteOptions } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";

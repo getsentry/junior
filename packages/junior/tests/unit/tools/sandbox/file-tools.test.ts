@@ -1,13 +1,11 @@
+import { sliceFileContent } from "@/chat/tool-support/text-range-result";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import {
-  editFile,
-  prepareEditFileArguments,
-} from "@/chat/tools/sandbox/edit-file";
-import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
-import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { prepareTextReplacementArguments } from "@/chat/tool-support/text-edits";
+import { editFile } from "@/chat/sandbox/edit-file";
+import type { SandboxFileSystem } from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 
 function workspacePath(filePath: string): string {
@@ -268,7 +266,7 @@ describe("sandbox file tools", () => {
 
   it("prepares common edit argument variants", () => {
     expect(
-      prepareEditFileArguments({
+      prepareTextReplacementArguments({
         path: "src/app.ts",
         oldText: "before",
         newText: "after",

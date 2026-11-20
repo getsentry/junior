@@ -76,9 +76,9 @@ import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
   AnyToolDefinition,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { createPluginWatches } from "@/chat/plugins/watches";
 
@@ -88,7 +88,7 @@ import {
   readIdentityById,
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";

@@ -21,7 +21,7 @@ import type { AutomationDestination } from "./creator";
 import type { TaskCandidate } from "./read";
 import { automationSkillNameSchema, type AutomationTask } from "./task";
 import type { SkillMetadata } from "@/chat/skills";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const automationResultSchema = z.discriminatedUnion("type", [
   compactTaskResultSchema,

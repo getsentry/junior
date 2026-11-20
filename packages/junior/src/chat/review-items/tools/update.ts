@@ -1,0 +1,227 @@
+import * as z from "zod";
+import { getDb } from "@/chat/db";
+import { deliverReviewItemChange } from "@/chat/review-items/changes";
+import {
+  canAgentChangeReviewItem,
+  PLUGIN_REVIEW_ITEM_KEY_PREFIX,
+  readReviewItemAgentScope,
+  requireReviewItemAssignees,
+  requireReviewItemLinks,
+} from "@/chat/review-items/access";
+import { resolveAssignees } from "@/chat/review-items/assignees";
+import {
+  closeReviewItem,
+  updateReviewItemContent,
+  type ReviewItem,
+} from "@/chat/review-items/store";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import {
+  INBOX_TOOL_SOURCE,
+  assigneesSchema,
+  bodySchema,
+  conversationIdsSchema,
+  itemResult,
+  readableItem,
+  reviewItemDelivery,
+  titleSchema,
+  type ReviewItemToolContext,
+  type ReviewItemToolServices,
+} from "@/chat/review-items/tool-support";
+
+// A close of an item that was already closed changes nothing. The flag
+// tells the model that this call did not close it.
+function alreadyClosedResult(item: ReviewItem) {
+  return { already_closed: true, item: itemResult(item) };
+}
+
+export const updateReviewItemToolDefinition = zodToolDefinition({
+  description:
+    "Change an open Review item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. A close of a closed item changes nothing and returns how it closed. You cannot submit the answer to an action item: only an assignee can.",
+  exposure: "deferred",
+  source: INBOX_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  inputSchema: z
+    .object({
+      id: z.string().trim().min(1),
+      title: titleSchema.nullable().optional(),
+      body: bodySchema.nullable().optional(),
+      assignees: assigneesSchema
+        .nullable()
+        .optional()
+        .describe("Replaces every assignee."),
+      conversation_ids: conversationIdsSchema
+        .nullable()
+        .optional()
+        .describe(
+          "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
+        ),
+      status: z
+        .enum(["done", "dismissed"])
+        .nullable()
+        .optional()
+        .describe("Close the item, for example when its pull request merged."),
+      reason: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .nullable()
+        .optional()
+        .describe("Why the item closed. Required with `status`."),
+    })
+    .strict(),
+  outputSchema: juniorToolOutputSchema,
+});
+
+/**
+ * Create the tool that changes or closes a Review item. A close tells the
+ * other linked Conversations.
+ */
+export function createUpdateReviewItemTool(
+  context: ReviewItemToolContext,
+  services: ReviewItemToolServices,
+) {
+  return zodTool({
+    ...updateReviewItemToolDefinition,
+    execute: async (input) => {
+      const db = getDb();
+      const scope = await readReviewItemAgentScope(context);
+      const item = await readableItem(input.id, scope);
+      const changesContent =
+        input.title || input.body || input.assignees || input.conversation_ids;
+      // A retry of the same agent close finds the item closed. It still sends
+      // the close: the message has a key, so only missing messages go.
+      const retriesClose =
+        item.status !== "open" &&
+        !changesContent &&
+        !item.closedBy &&
+        input.status === item.status &&
+        input.reason === item.closeReason;
+      const closesOnly = !changesContent && input.status && input.reason;
+      if (item.status !== "open" && !retriesClose && !closesOnly) {
+        throw new ToolInputError(`Review item ${item.id} is already closed.`);
+      }
+      if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          "A plugin added this item. Only the plugin or a person can change it.",
+        );
+      }
+      if (!canAgentChangeReviewItem(item, scope)) {
+        throw new ToolInputError(
+          "This Conversation cannot change this item. A public item changes only from a public Conversation. A private item changes only from the Conversation or Automation that added it.",
+        );
+      }
+      // The first close wins, even with another status: a person's answer
+      // or dismiss stays on record.
+      if (item.status !== "open" && !retriesClose) {
+        return alreadyClosedResult(item);
+      }
+      if (input.status && !input.reason) {
+        throw new ToolInputError("Give a `reason` when you close an item.");
+      }
+      if (changesContent) {
+        // The Conversation that added the item always stays linked.
+        const conversationIds = [
+          ...new Set([
+            item.addedByConversationId,
+            ...(input.conversation_ids ?? item.conversationIds),
+          ]),
+        ];
+        // This tool never changes visibility.
+        const visibility = item.visibility;
+        await requireReviewItemLinks({
+          allowedIds: new Set([
+            context.conversationId,
+            item.addedByConversationId,
+            ...item.conversationIds,
+          ]),
+          conversationIds,
+          scope,
+          tenant: item.tenant,
+          visibility,
+        });
+        const assignees = input.assignees
+          ? await resolveAssignees(
+              db,
+              input.assignees,
+              item.tenant,
+              services.findMentionedUserId,
+            )
+          : {
+              everyone: item.assignedToEveryone,
+              userIds: item.assignees.map((assignee) => assignee.userId),
+            };
+        if (input.assignees) {
+          await requireReviewItemAssignees({
+            assignees,
+            automationId: item.automationId,
+            conversationIds: [
+              context.conversationId,
+              item.addedByConversationId,
+            ],
+            scope,
+            visibility,
+          });
+        }
+        const updated = await updateReviewItemContent(db, {
+          assignedToEveryone: assignees.everyone,
+          assigneeUserIds: assignees.userIds,
+          body: input.body ?? item.body,
+          conversationIds,
+          id: item.id,
+          kind: item.kind,
+          nowMs: Date.now(),
+          title: input.title ?? item.title,
+          visibility,
+          ...(item.request ? { request: item.request } : undefined),
+          ...(item.subject ? { subject: item.subject } : undefined),
+        });
+        if (!updated) {
+          throw new ToolInputError(`Review item ${item.id} is already closed.`);
+        }
+      }
+      if (input.status && input.reason) {
+        const nowMs = Date.now();
+        const closed =
+          retriesClose ||
+          (await closeReviewItem(db, {
+            id: item.id,
+            nowMs,
+            reason: input.reason,
+            status: input.status,
+          }));
+        if (!closed) {
+          if (changesContent) {
+            throw new ToolInputError(
+              `Review item ${item.id} is already closed.`,
+            );
+          }
+          return alreadyClosedResult(await readableItem(item.id, scope));
+        }
+        const closedItem = await readableItem(item.id, scope);
+        await deliverReviewItemChange({
+          change: { kind: "closed", reason: input.reason },
+          delivery: reviewItemDelivery(services),
+          exceptConversationId: context.conversationId,
+          item: closedItem,
+          nowMs,
+        });
+        return { item: itemResult(closedItem) };
+      }
+      const changed = await readableItem(item.id, scope);
+      await deliverReviewItemChange({
+        delivery: reviewItemDelivery(services),
+        item: changed,
+        nowMs: Date.now(),
+      });
+      return { item: itemResult(changed) };
+    },
+  });
+}

@@ -1,3 +1,4 @@
+import { createSearchReviewItemsTool } from "@/chat/review-items/tools/search";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
@@ -8,7 +9,7 @@ import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
 import { runBestEffort } from "@/chat/logging";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
-import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import { readSandboxFileUpload } from "@/chat/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
@@ -27,18 +28,15 @@ import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createReplyTool } from "@/chat/tools/runtime/reply";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
-import {
-  createAddReviewItemTool,
-  createSearchReviewItemsTool,
-  createUpdateReviewItemTool,
-} from "@/chat/tools/review-items";
+import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
@@ -61,23 +59,24 @@ import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
 import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
 import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
-import {
-  createUserLookupTool,
-  userLookupIdentityProviders,
-} from "@/chat/tools/user-lookup";
+import { createUserLookupTool } from "@/chat/tools/user-lookup";
+import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
-import type { AnyToolDefinition, ToolRegistry } from "@/chat/tools/definition";
+import type {
+  AnyToolDefinition,
+  ToolRegistry,
+} from "@/chat/tool-support/definition";
 import {
   coreToolSlots,
   enabledMode,
   type RunBuiltToolSlot,
   type StaticToolName,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 import {
   automationToolContext,
   automationToolsDisabledReason,
@@ -103,7 +102,7 @@ import type {
   ToolHooks,
   ToolRuntimeContext,
   ToolState,
-} from "@/chat/tools/types";
+} from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -482,7 +481,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
     return createSendFilesTool(
       run.state,
       (input) => readSandboxFileUpload(run.context.workspace, input),
-      { attachments },
+      attachments,
     );
   },
   loadAttachment: (run) => {

@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { tool } from "@/chat/tools/definition";
+import { tool } from "@/chat/tool-support/definition";
 
 describe("planToolExposure", () => {
   it("separates model, catalog, and script tools", () => {

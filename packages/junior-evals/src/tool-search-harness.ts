@@ -24,7 +24,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const CONVERSATION_ID = "local:eval:tool-search";

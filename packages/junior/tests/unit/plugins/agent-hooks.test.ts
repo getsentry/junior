@@ -46,10 +46,10 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createTools } from "@/chat/tools";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type {
   SandboxCommandInput,
   SandboxSession,

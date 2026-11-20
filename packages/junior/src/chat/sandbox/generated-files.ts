@@ -3,7 +3,7 @@ import type { FileUpload } from "chat";
 import {
   sandboxGeneratedFilePath,
   type GeneratedFileRef,
-} from "@/chat/tools/sandbox/file-uploads";
+} from "@/chat/sandbox/file-uploads";
 
 /** Workspace operations needed to make generated files visible to later tools. */
 export interface GeneratedFileWorkspace {

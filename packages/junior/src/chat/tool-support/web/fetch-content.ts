@@ -1,7 +1,7 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import { MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { readResponseBytes } from "@/chat/tools/web/network";
+import { MAX_FETCH_BYTES } from "@/chat/tool-support/web/constants";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { readResponseBytes } from "@/chat/tool-support/web/network";
 
 // ---------------------------------------------------------------------------
 // Content extraction (HTML → markdown, JSON formatting)

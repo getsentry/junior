@@ -90,6 +90,9 @@ const BM25_B = 0.75;
 // k = 60, a tool call at rank 1 then scores below an event at rank 61.
 const TOOL_CALL_WEIGHT = 0.5;
 
+/** Events that a search returns when the call sets no limit. */
+export const DEFAULT_EVENT_SEARCH_LIMIT = 25;
+
 /** One event search. The bounds and types only make the result smaller. */
 export interface ConversationEventTextSearch {
   afterSeq?: number;

@@ -1,3 +1,4 @@
+import { ATTACHMENT_DIR } from "@/chat/sandbox/paths";
 import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -19,8 +20,7 @@ import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { logWarn } from "@/chat/logging";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { ATTACHMENT_DIR } from "@/chat/tools/load-attachment";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Deferred tool catalog source for speech transcription. */
 const AUDIO_TOOL_SOURCE = {

@@ -7,9 +7,9 @@ import {
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { createOperationKey } from "@/chat/tools/idempotency";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolState } from "@/chat/tools/types";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 export const slackListAddItemsToolDefinition = zodToolDefinition({

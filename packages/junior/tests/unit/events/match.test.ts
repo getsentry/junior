@@ -14,7 +14,7 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const catalog: EventCatalog = {
   github: eventCatalogEntry({

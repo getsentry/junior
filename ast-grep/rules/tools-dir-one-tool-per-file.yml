@@ -1,8 +1,7 @@
 # A `tools` directory holds only model-facing tools, one tool per file:
 # `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Helpers, schemas, and
-# shared types go in a feature module outside `tools`. The `ignores` entries
-# are files that broke this rule when it was added. Remove an entry when you
-# fix its file. Do not add entries.
+# shared types go in a module outside `tools`. `policies/tool-design.md` owns
+# the layout.
 id: tools-dir-one-tool-per-file
 language: TypeScript
 severity: error
@@ -10,9 +9,6 @@ message: A file in a tools directory defines one tool. Move each other tool to i
 files:
   - packages/*/src/**/tools/**/*.ts
   - apps/**/src/**/tools/**/*.ts
-ignores:
-  - packages/junior-vercel/src/tools/actions.ts
-  - packages/junior/src/chat/tools/review-items.ts
 utils:
   tool-call:
     any:

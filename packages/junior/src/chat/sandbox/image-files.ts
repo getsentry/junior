@@ -2,11 +2,11 @@ import {
   detectImageMediaType,
   type InputImageType,
 } from "@/chat/attachments/media";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   normalizeSandboxPath,
   SandboxFileNotFoundError,
-} from "@/chat/tools/sandbox/file-uploads";
+} from "@/chat/sandbox/file-uploads";
 
 /**
  * Read a sandbox image for a model request. The file signature, not the file

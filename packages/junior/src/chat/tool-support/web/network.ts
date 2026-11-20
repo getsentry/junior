@@ -7,8 +7,8 @@ import {
   FETCH_ACCEPT,
   FETCH_TIMEOUT_MS,
   USER_AGENT,
-} from "@/chat/tools/web/constants";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/web/constants";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map((chunk) => Number.parseInt(chunk, 10));

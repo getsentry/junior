@@ -1,4 +1,5 @@
 /** Shared setup for the Conversation status and tree state tests. */
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { expect } from "vitest";
@@ -22,7 +23,6 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { createWatch } from "@/chat/events/store";
 import {
   juniorConversationBriefs,

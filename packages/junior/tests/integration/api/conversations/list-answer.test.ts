@@ -6,7 +6,7 @@ import { conversationFeedSchema, reviewItemListSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
-import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
+import type { UserInputRequest } from "@/chat/review-items/user-input-request";
 import { juniorConversationParticipants } from "@/db/schema";
 import {
   closeConversationFixture,

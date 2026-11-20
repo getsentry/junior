@@ -1,3 +1,4 @@
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import {
   defineJuniorPlugin,
   type Identity,
@@ -35,7 +36,6 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 import {

@@ -2,11 +2,11 @@ import {
   hasEventCatalogEntries,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { createListWatchesTool } from "@/chat/tools/list-watches";
 import { createSearchEventTypesTool } from "@/chat/tools/search-event-types";
 import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 
