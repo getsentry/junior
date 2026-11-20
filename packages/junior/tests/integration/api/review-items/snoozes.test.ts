@@ -1,6 +1,7 @@
 import type { Event } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONTENT_VERSION_HEADER } from "@/api/schema";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
@@ -128,6 +129,19 @@ describe("snoozes", () => {
     expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
     expect(await feedWaitingIds(ana.id)).toEqual([ROOT]);
     const versionBefore = await asAna.versions();
+    // The versions poll reads the count again with the token of the copy
+    // it holds. An unchanged count comes back empty.
+    const countRead = await asAna.request("/review-items/count");
+    expect(countRead.headers.get("cache-control")).toBe("private, no-store");
+    const readCountAgain = () =>
+      asAna.request("/review-items/count", {
+        [CONTENT_VERSION_HEADER]: countRead.headers.get(
+          CONTENT_VERSION_HEADER,
+        )!,
+      });
+    const unchanged = await readCountAgain();
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
 
     // A row snooze is one snooze per open item in it.
     const created = await asAna.snooze(
@@ -137,6 +151,7 @@ describe("snoozes", () => {
     expect(created.status).toBe(201);
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    expect((await readCountAgain()).status).toBe(200);
     expect(await feedWaitingIds(ana.id)).toEqual([]);
     const snoozed = await asAna.snoozed();
     expect(snoozed.count).toBe(2);

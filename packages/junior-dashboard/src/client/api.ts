@@ -59,7 +59,7 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
-import { readRevalidated, revalidatedJsonQuery } from "./revalidation";
+import { readRevalidated } from "./revalidation";
 import { readResponseJson } from "./sentry";
 import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemPluginsData } from "./types";
@@ -533,10 +533,12 @@ export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
     enabled,
     queryKey: ["dashboard", "personal-spend"],
-    queryFn: revalidatedJsonQuery(
-      personalSpendReportSchema,
-      "/api/people/me/spend",
-    ),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        personalSpendReportSchema,
+        "/api/people/me/spend",
+        signal,
+      ),
     retry: false,
     staleTime: 0,
   });
