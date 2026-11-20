@@ -268,11 +268,8 @@ function aiSdkSpanCallbacks<TEndEvent>(
 ) {
   return {
     onStart: () => setSpanAttributes(attributes),
-    ...(endAttributes
-      ? {
-          onEnd: (event: TEndEvent) => setSpanAttributes(endAttributes(event)),
-        }
-      : undefined),
+    onEnd: (event: TEndEvent) =>
+      setSpanAttributes(endAttributes?.(event) ?? {}),
   };
 }
 
@@ -507,16 +504,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
             ? { telemetry: { functionId: params.promptName } }
             : undefined),
           ...aiSdkSpanCallbacks({
-            ...(params.promptName
-              ? { "gen_ai.prompt.name": params.promptName }
-              : undefined),
+            "gen_ai.prompt.name": params.promptName,
             "gen_ai.provider.auth_mode": credential.mode,
-            ...(params.thinkingLevel
-              ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-              : undefined),
-            ...(maxOutputTokens !== undefined
-              ? { "gen_ai.request.max_tokens": maxOutputTokens }
-              : undefined),
+            "gen_ai.request.reasoning.level": params.thinkingLevel,
+            "gen_ai.request.max_tokens": maxOutputTokens,
           }),
         }),
     );
@@ -584,9 +575,7 @@ export async function completeDecision<
             : undefined),
           ...aiSdkSpanCallbacks(
             {
-              ...(params.promptName
-                ? { "gen_ai.prompt.name": params.promptName }
-                : undefined),
+              "gen_ai.prompt.name": params.promptName,
               "gen_ai.provider.auth_mode": credential.mode,
             },
             (event: Experimental_DecideEndEvent) =>
@@ -662,9 +651,9 @@ export async function embedTexts(params: {
             (event: EmbedEndEvent) => {
               const first = event.embedding[0];
               return {
-                ...(Array.isArray(first)
-                  ? { "gen_ai.embeddings.dimension.count": first.length }
-                  : undefined),
+                "gen_ai.embeddings.dimension.count": Array.isArray(first)
+                  ? first.length
+                  : undefined,
                 ...inputCostAttributes(
                   embeddingCostUsd(params.modelId, event.usage.tokens),
                 ),
@@ -816,9 +805,7 @@ export async function searchWeb(params: {
       ? { telemetry: { functionId: params.promptName } }
       : undefined),
     ...aiSdkSpanCallbacks({
-      ...(params.promptName
-        ? { "gen_ai.prompt.name": params.promptName }
-        : undefined),
+      "gen_ai.prompt.name": params.promptName,
       "gen_ai.provider.auth_mode": credential.mode,
     }),
   });
