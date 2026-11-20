@@ -9,6 +9,7 @@ struct ConversationScreen: View {
   @State private var showDetails = false
   @State private var shareURL: URL?
   @State private var atBottom = true
+  @State private var width: CGFloat = 0
 
   init(conversationId: String) {
     _model = State(initialValue: ConversationModel(conversationId: conversationId))
@@ -22,6 +23,13 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .background(Tokens.bgElevated)
+        .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+    }
+    // Measured around the panel, so opening it does not change where it shows.
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .task { await model.open(app) }
     .task(id: app.isActive) {
       // Follow every 2s while a Turn runs or messages wait, and every 15s
@@ -38,16 +46,24 @@ struct ConversationScreen: View {
         showDetails = true
       }
     }
-    .sheet(isPresented: $showDetails) {
-      if let state = model.state {
-        ConversationDetailsSheet(state: state)
-          .presentationDetents([.fraction(0.85), .large])
-          .presentationDragIndicator(.visible)
-          .presentationBackground(Tokens.bgElevated)
-      }
+    .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Tokens.bgElevated)
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+  }
+
+  /// Room for the details panel beside a transcript at least 400pt wide;
+  /// narrower screens get the sheet.
+  private var detailsBeside: Bool { width >= 720 }
+
+  @ViewBuilder private var details: some View {
+    if let state = model.state {
+      ConversationDetailsSheet(state: state) { showDetails = false }
     }
   }
 
