@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
-import { captureMessage } from "@/chat/sentry";
+import { captureMessage, metrics } from "@/chat/sentry";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import {
   MINUTE_MS,
@@ -46,6 +46,15 @@ const breakerOutcomesKey = (provider: string) =>
 const breakerOpenKey = (provider: string) =>
   `${KEY_PREFIX}:breaker:${provider}:open`;
 const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
+// The System page counts breaker changes from this metric. A breaker that
+// closes when its pause ends records nothing.
+const countBreakerEvent = (provider: string, event: "opened" | "closed") =>
+  metrics.count("cache_warming.breaker", 1, {
+    attributes: {
+      "app.cache_warming.breaker_event": event,
+      "app.cache_warming.provider": provider,
+    },
+  });
 
 /** One model request of an agent run, as the provider received it. */
 export interface ModelRequest {
@@ -202,8 +211,10 @@ export async function closeBreaker(
   provider: string,
 ): Promise<boolean> {
   if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  const open = (await state.get<boolean>(breakerOpenKey(provider))) === true;
   await state.delete(breakerOutcomesKey(provider));
   await state.delete(breakerOpenKey(provider));
+  if (open) countBreakerEvent(provider, "closed");
   return true;
 }
 
@@ -234,6 +245,7 @@ async function countOutcome(
     ))
   ) {
     await state.delete(breakerOutcomesKey(provider));
+    countBreakerEvent(provider, "opened");
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],
