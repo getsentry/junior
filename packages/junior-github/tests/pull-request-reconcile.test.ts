@@ -180,8 +180,19 @@ describe("daily reconcile of open pull requests", () => {
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
+    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+      assigneeIdentityIds: ["identity-jane"],
+      body: "GitHub asks you to review #949.",
+      dedupeKey: "pull-request-action:getsentry/junior#949",
+      title: "Review requested · #949",
+      waitsOnAssignees: true,
+    });
     await h.heartbeat(now);
-    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
+    // No webhook closes the ask after a missed close, so the close does.
+    expect(h.closedNotices).toEqual([
+      "merge-conflict:getsentry/junior#949",
+      "pull-request-action:getsentry/junior#949",
+    ]);
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
       [946, 947, 949, 951],
@@ -368,7 +379,7 @@ describe("daily reconcile of open pull requests", () => {
     const desk = h.reviewItems.forConversation("slack:C1:1.0");
     vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
       ...desk,
-      close: () => Promise.reject(new Error("The review desk is down")),
+      close: () => Promise.reject(new Error("The Inbox is down")),
     });
     await h.heartbeat(now);
     const state949 = async () =>

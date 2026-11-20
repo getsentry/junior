@@ -6,7 +6,7 @@
 #   scripts/sim.sh boot                      boot one and print its UDID; the caller deletes it
 #
 # A shot is `name|path|theme`, for example `home|/|dark` or
-# `inbox|/review|light`. The path is a dashboard route; the app opens it.
+# `inbox|/inbox|light`. The path is a dashboard route; the app opens it.
 #
 # Machine rules (one simulator can take ~10 GB): take a machine-wide lock,
 # wait for no other booted simulator and for idle CPU, build before booting,

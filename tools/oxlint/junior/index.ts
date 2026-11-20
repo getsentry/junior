@@ -6,6 +6,7 @@ import { noHandBuiltPromptTagsRule } from "./rules/no-hand-built-prompt-tags.ts"
 import { noPromptTagMatchingRule } from "./rules/no-prompt-tag-matching.ts";
 import { noPromptTextEscapesRule } from "./rules/no-prompt-text-escapes.ts";
 import { noRawSqlQueriesRule } from "./rules/no-raw-sql-queries.ts";
+import { noResponseSchemaParseRule } from "./rules/no-response-schema-parse.ts";
 import { noReadOnlyObjectAnnotationsRule } from "./rules/no-read-only-object-annotations.ts";
 import { noRecordTypeGuardRule } from "./rules/no-record-type-guard.ts";
 import { noRegexUrlParsingRule } from "./rules/no-regex-url-parsing.ts";
@@ -29,6 +30,7 @@ const juniorPlugin = definePlugin({
     "no-raw-sql-queries": noRawSqlQueriesRule,
     "no-read-only-object-annotations": noReadOnlyObjectAnnotationsRule,
     "no-record-type-guard": noRecordTypeGuardRule,
+    "no-response-schema-parse": noResponseSchemaParseRule,
     "no-regex-url-parsing": noRegexUrlParsingRule,
     "no-service-fallback": noServiceFallbackRule,
     "no-value-switch": noValueSwitchRule,

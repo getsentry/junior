@@ -1,7 +1,7 @@
 import JuniorKit
 import SwiftUI
 
-/// Route `/review?item=…` on a phone (`ReviewItemView.tsx`): the item, its
+/// Route `/inbox?item=…` on a phone (`ReviewItemView.tsx`): the item, its
 /// question, and the Conversations it came from. The public API reads Review
 /// items; answering one happens on the web.
 struct ReviewItemScreen: View {

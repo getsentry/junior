@@ -23,6 +23,7 @@ import {
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
 import { objectPreviewImageSchema } from "./object-preview-image";
+import { ACTIVITY_PREVIEW_MAX_LENGTH } from "./activity-preview-text";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -249,7 +250,7 @@ export const conversationActivityPreviewSchema = z
     createdAt: z.string().datetime(),
     mentions: z.array(actorIdentitySchema).optional(),
     role: z.enum(["assistant", "user"]),
-    text: z.string().min(1),
+    text: z.string().min(1).max(ACTIVITY_PREVIEW_MAX_LENGTH),
   })
   .strict();
 
@@ -853,8 +854,7 @@ export const conversationEventPageSchema = z
 
 /**
  * Carries the detail version token in both directions. A custom header, not
- * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
- * validators itself, after the function had already built the full report.
+ * `ETag`, for the reason on `CONTENT_VERSION_HEADER`.
  */
 export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
 

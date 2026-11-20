@@ -60,13 +60,25 @@ export async function loadConversationSlackTenantIds(
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
   const tenants = new Map<string, string>();
   for (const row of rows) {
-    const sessionSource = parseSessionSource(row.sessionSource);
-    const tenantId =
-      row.providerTenantId?.trim() ||
-      (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined);
+    const tenantId = conversationSlackTenantId(row);
     if (tenantId) tenants.set(row.conversationId, tenantId);
   }
   return tenants;
+}
+
+/**
+ * Return the Slack workspace that owns a conversation, from its Destination
+ * tenant or its stored Slack session source.
+ */
+export function conversationSlackTenantId(row: {
+  providerTenantId: string | null | undefined;
+  sessionSource: unknown;
+}): string | undefined {
+  const sessionSource = parseSessionSource(row.sessionSource);
+  return (
+    row.providerTenantId?.trim() ||
+    (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined)
+  );
 }
 
 async function findIdentityIdByProviderSubject(

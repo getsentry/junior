@@ -47,8 +47,8 @@ import {
 // bundled chunk, not the original module).
 registerApiProvider({
   api: "anthropic-messages",
-  stream: streamAnthropic,
-  streamSimple: streamSimpleAnthropic,
+  stream: withEnabledGatewayProviders(streamAnthropic),
+  streamSimple: withEnabledGatewayProviders(streamSimpleAnthropic),
 });
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
@@ -79,7 +79,9 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
+import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
@@ -387,6 +389,12 @@ export async function completeText(params: {
               const vercelId = response.headers["x-vercel-id"];
               if (vercelId) {
                 setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
+            },
+            onProviderStreamEvent: (event) => {
+              const routing = gatewayRoutingAttributes(event);
+              if (routing) {
+                setSpanAttributes(routing);
               }
             },
           },

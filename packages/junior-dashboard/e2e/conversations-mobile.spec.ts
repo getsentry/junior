@@ -37,7 +37,7 @@ test("records focused mobile conversation composer", async ({
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await composer.focus();
   await page.evaluate(
     ({ height, offsetTop }) => {
@@ -207,7 +207,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   releaseCreate();
   await expect(page).toHaveURL(/\/conversations\/.+/);
   await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
-  const reply = page.getByPlaceholder("Message Junior…");
+  const reply = page.locator('[aria-placeholder="Message Junior…"]');
   await reply.focus();
   await expectFocusedComposerAtVisualViewportBottom(reply, 844);
 });
@@ -227,7 +227,9 @@ test.describe("on a touch screen", () => {
     await composer.fill("First line");
     await composer.press("Enter");
     await composer.pressSequentially("Second line");
-    await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(composer).toHaveText("First line\nSecond line", {
+      useInnerText: true,
+    });
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
@@ -520,7 +522,7 @@ test("opens and closes a conversation on mobile", async ({
     )
     .toBeLessThanOrEqual(1);
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await expect(composer).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   await composer.focus();
@@ -781,7 +783,7 @@ test("opens and closes a conversation on mobile", async ({
   await composer.fill("Keep the mobile composer ready");
   await composer.press("Enter");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expect
     .poll(() =>
       transcript.evaluate(

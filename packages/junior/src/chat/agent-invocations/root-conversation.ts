@@ -10,7 +10,7 @@
  * A message counts as the user only when its stored author Identity is one
  * of the Identities of the person behind the Run's Actor: every Identity of
  * their User, or only the Actor's own Identity when it has no User. So a
- * review desk answer from the person's web Identity counts in a Slack thread.
+ * Inbox answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the

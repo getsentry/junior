@@ -221,6 +221,41 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   }
 
+  test("on a phone, an archive toast keeps its Undo in reach", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.route("**/api/conversations/*/archive", (route) =>
+      route.fulfill({
+        json: {
+          archivedAt: route.request().postDataJSON().archived
+            ? "2026-08-21T16:45:00.000Z"
+            : null,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
+
+    const undoNotice = page
+      .getByRole("region", { name: "Notifications" })
+      .getByRole("dialog", { name: "Conversation archived" });
+    const restoreRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" &&
+        request.url().endsWith("/archive") &&
+        request.postDataJSON().archived === false,
+    );
+    await undoNotice
+      .getByRole("button", { name: "Undo archive for Dashboard QA edge cases" })
+      .click();
+    await restoreRequest;
+    await expect(undoNotice).toHaveCount(0);
+  });
+
   test("confirms a child archive and archives its children too", async ({
     page,
     dashboard,

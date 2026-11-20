@@ -144,7 +144,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     async function startConversation(message: string) {
       await page.goto(`${dashboard.baseURL}/conversations/new`);
-      await page.getByPlaceholder("Message Junior…").fill(message);
+      await page.locator('[aria-placeholder="Message Junior…"]').fill(message);
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
     }
@@ -318,7 +318,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.goto(`${dashboard.baseURL}/conversations/new`);
-    const composer = page.getByPlaceholder("Message Junior…");
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
     await expect(composer).toHaveAttribute("autocorrect", "off");
     await expect(composer).toHaveAttribute("autocapitalize", "off");
     await expect(composer).toHaveAttribute("spellcheck", "false");

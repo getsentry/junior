@@ -1,0 +1,48 @@
+# Inbox
+
+The Inbox is where work waits for a person. Junior adds a Review item: an action that asks a question, or a notice that only tells. Each assignee sees it in the Inbox and in its linked Conversations, and the first answer lets the work continue. Intent and rules: `design/inbox.md`.
+
+## Sub-features
+
+- `ask` Junior asks the user. The item shows in the Inbox and in the Conversation, with one control per choice and `Dismiss`.
+- `first-answer-closes` The first answer or dismiss closes the item everywhere, and the Inbox shows who closed it.
+- `answer-resumes` An answer reaches the Conversation and Junior continues the work. A dismiss starts no Turn.
+- `thread-reply` An assignee answers with a reply in the Slack thread, and the item closes. A reply that only acknowledges leaves it open.
+- `groups` Open actions show under "Needs you" and notices under "FYI". A closed item shows only in search.
+- `count` The `Inbox` link and the tab title show the number of open actions for the viewer.
+- `take` A user takes an item assigned to Everyone, and becomes its only assignee.
+- `dedupe` A second item with the same dedupe key updates the open item, and no second item shows.
+- `close-with-reason` Junior closes an item that no longer applies, and the Inbox shows who closed it and why.
+- `waiting` The open question docks above the message box, and a typed message answers it.
+
+## How to get to it (user POV)
+
+- Ask Junior in a dashboard Conversation or in Slack to ask you something, or to add a notice.
+- Dashboard: `Inbox` in the `Primary` navigation (`/inbox`), its search, and `/inbox?item=<id>`.
+- Dashboard: the "Asked" card in the transcript, and the question docked above the message box.
+- Slack: the item card in each linked thread, and a reply in that thread.
+
+## Driving it with browse.mjs
+
+Preconditions:
+
+- `instance.mjs launch` (no `--mock`) started a new instance, and `instance.mjs doctor` passes.
+- `E=$RUN_DIR/evidence/inbox`. Run the first bullet before the others: its count steps need an Inbox with no other open action.
+
+- **Ask (`ask`, `count`, `groups`).** Send the request and wait for the Turn. Run `node $S/browse.mjs --out $E/ask --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Ask me in the Inbox, titled "Pick the deploy day", whether to deploy on Tuesday or Wednesday. Wait for my answer, then tell me which day you will plan for.' --press Enter --idle --expect 'role=region[name="Asked Pick the deploy day"] >> text=Waiting on you' --snap asked --goto /inbox --expect 'role=region[name="Needs you"] >> role=link[name=/^Pick the deploy day/]' --title '(1) ' --expect 'role=link[name="Inbox 1"]' --snap inbox`. The transcript shows the "Asked" card. The Inbox lists the item under "Needs you", and the count is 1.
+- **Answer in the Inbox (`ask`, `first-answer-closes`).** Open the item and choose `Wednesday`. Run `node $S/browse.mjs --out $E/answer --timeout 300000 --goto /inbox --click 'role=region[name="Needs you"] >> role=link[name=/^Pick the deploy day/]' --expect 'role=region[name="Answer"] >> role=button[name="Dismiss"]' --snap form --click 'role=region[name="Answer"] >> role=button[name="Wednesday"]' --expect 'role=region[name="Outcome"] >> text=dev@example.com closed this' --snap answered --goto /inbox --absent 'role=navigation[name="Review items"] >> role=link[name=/^Pick the deploy day/]' --snap desk`. The form has one button per choice, `Other…`, and `Dismiss`. After one click, the Outcome region names the viewer, and the item leaves the Inbox.
+- **Work resumes (`answer-resumes`).** Open the Conversation again. Run `node $S/browse.mjs --out $E/resume --timeout 300000 --goto "$(cat $E/ask/asked.url.txt)" --expect 'role=region[name="Asked Pick the deploy day"] >> text=Answered by dev@example.com' --expect 'role=region[name="Answered Pick the deploy day"]' --idle --snap resumed`. The answer shows as a message from the viewer, and a new reply from Junior follows it and names Wednesday.
+- **Typed answer (`waiting`).** Run `node $S/browse.mjs --out $E/waiting --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Ask me in the Inbox, titled "Approve the rollout", whether to roll out payments-v42 now, with the options Approve and Hold. Wait for my answer.' --press Enter --idle --expect 'role=region[name="Question: Approve the rollout"]' --snap docked --fill 'role=textbox[name="Continue this conversation"]=Hold until Monday, the EU team is out.' --press Enter --absent 'role=region[name="Question: Approve the rollout"]' --expect 'role=region[name="Asked Approve the rollout"] >> text=Answered by dev@example.com' --idle --snap typed --goto /inbox --absent 'role=navigation[name="Review items"] >> role=link[name=/^Approve the rollout/]' --snap desk`. The question docks above the message box, the typed message closes it, and the Inbox no longer lists it.
+- **Notice and close (`groups`, `close-with-reason`).** Add a notice, then ask Junior to close it. Run `node $S/browse.mjs --out $E/notice --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Add an Inbox notice for me, titled "Backup finished", that says the nightly backup finished. It needs no answer.' --press Enter --idle --expect 'role=region[name="Added Backup finished"]' --snap added --goto /inbox --expect 'role=region[name="FYI"] >> role=link[name=/^Backup finished/]' --snap fyi --back added --fill 'role=textbox[name="Continue this conversation"]=The Backup finished notice no longer applies. Close it with the reason: Backup report filed in the ops log.' --press Enter --idle --snap closed --goto /inbox --absent 'role=navigation[name="Review items"] >> role=link[name=/^Backup finished/]' --fill 'role=searchbox[name="Search review items"]=Backup finished' --click 'role=list[name="Search results"] >> role=link[name=/^Backup finished/]' --expect 'role=region[name="Outcome"] >> text=/An agent \w+ this/' --expect 'role=region[name="Outcome"] >> text=Backup report filed in the ops log.' --snap outcome`. The notice shows under "FYI". After the close, only search finds it, and its Outcome names an agent and the reason.
+- **Take and dismiss (`take`, `answer-resumes`).** Run `node $S/browse.mjs --out $E/take --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Add a review item assigned to everyone, titled "Ship today", that asks whether to ship today, with the options Yes and No.' --press Enter --idle --expect 'role=region[name="Question: Ship today"] >> role=button[name="Take"]' --snap everyone --goto /inbox --absent 'role=navigation[name="Review items"] >> role=link[name=/^Ship today/]' --snap desk-before --back everyone --click 'role=region[name="Question: Ship today"] >> role=button[name="Take"]' --expect 'role=region[name="Question: Ship today"] >> role=button[name="Yes"]' --snap taken --goto /inbox --expect 'role=region[name="Needs you"] >> role=link[name=/^Ship today/]' --snap desk-after --back everyone --click 'role=region[name="Question: Ship today"] >> role=button[name="Dismiss"]' --absent 'role=region[name="Question: Ship today"]' --idle --absent 'role=region[name="Answered Ship today"]' --snap dismissed`. An item for Everyone is not under "Needs you" until the viewer takes it. After `Take`, the choices show. A dismiss closes it and adds no answer and no Turn.
+- **Dedupe (`dedupe`).** Run `node $S/browse.mjs --out $E/dedupe --timeout 300000 --goto / --fill 'role=textbox[name="Start a conversation"]=Add an Inbox notice for me, titled "Dedupe check 1", with the dedupe key verify-junior:dedupe. It needs no answer.' --press Enter --idle --snap first --fill 'role=textbox[name="Continue this conversation"]=Add that notice again with the same dedupe key verify-junior:dedupe, but titled "Dedupe check 2".' --press Enter --idle --snap second --goto /inbox --expect 'role=region[name="FYI"] >> role=link[name=/^Dedupe check 2/]' --fill 'role=searchbox[name="Search review items"]=Dedupe check' --expect 'role=list[name="Search results"] >> role=link[name=/^Dedupe check 2/]' --absent 'role=list[name="Search results"] >> role=link[name=/^Dedupe check 1/]' --snap search`. Search finds one item, with the second title.
+- **Slack thread reply (`thread-reply`, and the Slack card of `ask` and `first-answer-closes`).** In a Slack thread, ask Junior the `Pick the deploy day` question, then reply `Wednesday` in the thread. The card shows the item closed, and `/inbox` search shows it closed by the reply. Then repeat with the reply `thanks, looking`. The item stays open.
+
+## Gotchas
+
+- Item titles come from the prompt. When Junior picks another title, the `--expect` steps fail. Report it as a failed drive, and do not loosen the selector.
+- The answer form depends on the question that Junior writes. One choice field gets a button per choice, and one click answers. Two or more fields get radios, text boxes, and `Send`, with a count such as `0 of 2 answered`. When the `form` snapshot shows that shape, the drive fails at the click: report it, and do not change the prompt to pass.
+- An item assigned to Everyone does not show under "Needs you" and does not count, until a person takes it.
+- `--absent` also passes when the element never showed. Pair it with an `--expect` of the state before it.
+- Slack steps need a Slack workspace with the app installed (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`) and a public tunnel to `/api/webhooks/slack` (`CLOUDFLARE_TUNNEL_TOKEN`). This skill has no Slack harness, so a person or a Slack user token sends the messages.
+- `--mock` serves a fixed copy of the Review items API, and its composer runs no agent. It proves only what the Inbox shows. Use a live instance.

@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
@@ -140,6 +141,30 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
+    // The preview holds only the first 400 chars of the message, so give
+    // the row a short one with a mention and a pull request.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{
+            conversationId: string;
+            activityPreview?: { text: string };
+          }>;
+        };
+        for (const row of feed.conversations) {
+          if (
+            row.conversationId === RELEASE_CONVERSATION_ID &&
+            row.activityPreview
+          ) {
+            row.activityPreview.text =
+              "<@U123> asks for a review of https://github.com/getsentry/payments/pull/91";
+          }
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = page
       .getByRole("region", { name: "Conversations" })
@@ -278,7 +303,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
+        // Request the full page because this test changes it.
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONTENT_VERSION_HEADER]: "",
+          },
+        });
         const feed = (await response.json()) as {
           conversations: Array<{ displayTitle: string }>;
         };

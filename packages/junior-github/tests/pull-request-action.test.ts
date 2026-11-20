@@ -156,7 +156,7 @@ function mockGitHub(github: GitHubState, requests: string[]) {
             (login) => ({ login }),
           ),
           state: github.state,
-          title: "Add the review desk notice",
+          title: "Add the Inbox notice",
           user: { id: BOT_USER_ID },
         });
       },
@@ -254,7 +254,7 @@ function route(
           }
           if (failures.close > 0) {
             failures.close -= 1;
-            throw new Error("review desk is down");
+            throw new Error("Inbox is down");
           }
           calls.push({ conversationId, input, kind: "close" });
         },
@@ -394,7 +394,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Ready to merge · #946",
@@ -472,9 +472,11 @@ describe("next action item", () => {
 
       github.merged = true;
       github.state = "closed";
-      // The close fails once. A webhook that arrives during the failed
-      // check is not lost: the check runs again and closes the notice.
-      failures.close = 1;
+      // Each merge delivery closes the notice before its check, and both
+      // closes fail. The check's close fails too. A webhook that arrives
+      // during the failed check is not lost: the check runs again and
+      // closes the notice.
+      failures.close = 3;
       let releaseMerge!: () => void;
       github.holdNextPullRead = new Promise((resolve) => {
         releaseMerge = resolve;
@@ -484,7 +486,11 @@ describe("next action item", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       releaseMerge();
       await Promise.all([failing, queued]);
-      expect(errors).toEqual(["GitHub pull request action failed"]);
+      expect(errors).toEqual([
+        "GitHub ended pull request item close failed",
+        "GitHub ended pull request item close failed",
+        "GitHub pull request action failed",
+      ]);
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
@@ -504,7 +510,7 @@ describe("next action item", () => {
         "upsert",
         "close",
       ]);
-      expect(errors).toHaveLength(1);
+      expect(errors).toHaveLength(3);
     } finally {
       await fixture.close();
     }
@@ -580,7 +586,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Review requested · #946",
@@ -680,7 +686,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Review requested · #946",
