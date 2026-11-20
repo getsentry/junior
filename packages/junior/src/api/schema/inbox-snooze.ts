@@ -47,8 +47,10 @@ export const inboxSnoozeResourceQuerySchema = z
  */
 export const inboxSnoozeCreateSchema = inboxSnoozeSubjectSchema
   .extend({
-    // Bound the trigger rows that one request writes for each item.
-    triggers: z.array(inboxSnoozeTriggerSchema).min(1).max(10).optional(),
+    // Bound the trigger rows that one request writes for each item. The
+    // bound fits every Event of one page, which the dialog lets a person
+    // pick: a GitHub pull request has 13.
+    triggers: z.array(inboxSnoozeTriggerSchema).min(1).max(30).optional(),
     wakeAt: z.string().datetime().optional(),
   })
   .strict()

@@ -258,6 +258,25 @@ describe("snoozes", () => {
     expect(await publisher().hasMatch([event])).toBe(false);
   });
 
+  it("takes every Event of its subject at once", async () => {
+    await useGitHubEvents();
+    const ana = await user("ana@example.com");
+    await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    const asAna = api(fixture, ana);
+    const [subject] = (await asAna.subjects()) as {
+      resource: { events: string[] };
+    }[];
+    const events = subject?.resource.events ?? [];
+    expect(events.length).toBeGreaterThan(10);
+
+    const snoozed = await asAna.snoozeOn(
+      { conversationId: ROOT },
+      events.map((eventType) => ({ eventType, outcome: "wake" as const })),
+    );
+    expect(snoozed.status).toBe(201);
+    expect((await asAna.inbox()).count).toBe(0);
+  });
+
   it("wakes on an Event of another pull request that the viewer names", async () => {
     await useGitHubEvents();
     useGitHubRepository(["ana-gh"]);
