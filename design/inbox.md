@@ -53,10 +53,15 @@ how the dashboard groups and acts on its rows.
 - An Automation alert follows its Automation's Destination: a public
   channel makes it visible to the workspace. Only core changes or closes
   it, and a person can dismiss it.
+- A failed-run Automation alert offers Run again and Pause, and core takes
+  the step. Run again starts a run now, as a manual run does. Pause pauses
+  the Automation. The alert closes and does not open again. An event
+  Automation runs only on its events, so its alert offers only Pause.
 - A dismissed Automation alert hides every alert of that Automation, also
   for a new failure or a new run, until the Automation recovers: it is not
-  blocked and its last run succeeded. The next problem then adds a new
-  alert. An alert that core closes on recovery hides nothing.
+  blocked, its last run succeeded, and its trigger is available. The next
+  problem then adds a new alert. An alert that core closes on recovery
+  hides nothing.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open Plan item
   for a person, or an answer that its starter has not read.

@@ -17,6 +17,11 @@ import {
   registeredEventTriggerProblems,
 } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import {
+  reviewItemRequestSchema,
+  type ReviewItemRequest,
+} from "@/chat/review-items/evidence";
+import { USER_INPUT_LIMITS } from "@/chat/tools/runtime/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
 import { AUTOMATION_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";
@@ -41,9 +46,12 @@ import {
 // the enabled plugins cannot serve, or a last run that failed or blocked.
 // These are the rules of the `attention` scope in `collection.ts`. Core adds,
 // changes, and closes the alert at each write that can change them. A
-// different alert closes the old item and adds a new one. When a person
+// different alert closes the old item and adds a new one. A failed-run alert
+// offers Run again and Pause, which core takes (`answerAutomationAlert`).
+// An alert that a person closed does not open again. When a person
 // dismisses an alert, no alert of that Automation shows again until it
-// recovers: it is not blocked, and its last run succeeded.
+// recovers: it is not blocked, its last run succeeded, and its trigger is
+// available.
 
 type AutomationRow = {
   kind: "scheduled" | "event";
@@ -72,10 +80,43 @@ function triggerProblems(
   );
 }
 
+/** Field id of the step that a person picks on a failed-run alert. */
+export const AUTOMATION_ALERT_STEP_FIELD_ID = "step";
+
+/** The steps of a failed-run alert, by the label that the person picks. */
+export const AUTOMATION_ALERT_STEPS = {
+  Pause: "pause",
+  "Run again": "run",
+} as const;
+
+type AutomationAlertStepLabel = keyof typeof AUTOMATION_ALERT_STEPS;
+
+/** The request that shows a failed-run alert's steps as buttons. */
+function stepsRequest(
+  body: string,
+  steps: readonly AutomationAlertStepLabel[],
+): ReviewItemRequest {
+  return reviewItemRequestSchema.parse({
+    question: body.slice(0, USER_INPUT_LIMITS.maxQuestionChars),
+    fields: [
+      {
+        id: AUTOMATION_ALERT_STEP_FIELD_ID,
+        kind: "choice",
+        label: "Next step",
+        options: steps.map((label) => ({ label })),
+      },
+    ],
+  });
+}
+
 /** The alert that an Automation needs now, if any, as the Inbox orders them. */
-function automationAlert(
-  row: AutomationRow,
-): { body: string; identity: unknown[] } | undefined {
+function automationAlert(row: AutomationRow):
+  | {
+      body: string;
+      identity: unknown[];
+      steps?: AutomationAlertStepLabel[];
+    }
+  | undefined {
   if (
     row.status === "paused" ||
     row.status === "completed" ||
@@ -104,6 +145,9 @@ function automationAlert(
     return {
       body: `Last run ${row.lastRunStatus}${error ? `: ${error}` : "."}`,
       identity: ["run", row.lastRunId],
+      // Only a scheduled Automation can run now. An event one runs when a
+      // matching event arrives.
+      steps: row.kind === "scheduled" ? ["Run again", "Pause"] : ["Pause"],
     };
   }
   return undefined;
@@ -180,9 +224,11 @@ export async function syncAutomationAlert(
         ? "A newer alert replaced it."
         : "The Automation no longer needs attention.",
     });
-    // A person dismissed an alert after the Automation last recovered, so
-    // its alerts stay hidden. An alert that core closed hides nothing.
-    const [dismissed] = await tx
+    // Since the Automation last recovered, a person dismissed one of its
+    // alerts, so they stay hidden, or a person closed this same alert, such
+    // as with Run again, so it stays closed. An alert that core closed
+    // hides nothing.
+    const [closedByPerson] = await tx
       .select({ id: juniorReviewItems.id })
       .from(juniorReviewItems)
       .where(
@@ -192,11 +238,16 @@ export async function syncAutomationAlert(
           row.alertRecoveredAtMs === null
             ? undefined
             : gt(juniorReviewItems.closedAt, new Date(row.alertRecoveredAtMs)),
+          or(
+            eq(juniorReviewItems.status, "dismissed"),
+            key ? eq(juniorReviewItems.dedupeKey, key) : undefined,
+          ),
         ),
       )
       .limit(1);
-    const hidden = dismissed !== undefined;
-    // Recovered: not blocked, its last run succeeded, and it needs no alert.
+    const hidden = closedByPerson !== undefined;
+    // Recovered: not blocked, its last run succeeded, and it needs no alert,
+    // so its trigger is available.
     const recovered =
       !needed && row.status !== "blocked" && row.lastRunStatus === "completed";
     if (recovered && hidden) {
@@ -238,6 +289,9 @@ export async function syncAutomationAlert(
       body: alert.body,
       conversationIds: [],
       kind: "action",
+      ...(alert.steps
+        ? { request: stepsRequest(alert.body, alert.steps) }
+        : undefined),
       title:
         row.title ??
         fallbackShortTitle(
@@ -322,6 +376,7 @@ export async function syncAutomationAlerts(
           eq(juniorReviewItems.status, "open"),
           and(
             eq(juniorAutomations.status, "active"),
+            eq(juniorReviewItems.status, "dismissed"),
             isNotNull(juniorReviewItems.closedByUserId),
             or(
               isNull(juniorAutomations.alertRecoveredAtMs),

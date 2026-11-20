@@ -13,9 +13,13 @@ import { juniorReviewItems } from "@/db/schema";
 import {
   createEventAutomation,
   deleteEventAutomation,
+  getEventAutomation,
 } from "@/chat/event-automations/store";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import {
+  readScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
   closeConversationFixture,
@@ -45,6 +49,7 @@ type Alert = {
   id: string;
   kind: string;
   owner: { id: string; kind: string };
+  request?: { fields: { options: { label: string }[] }[] };
   status: string;
   title: string;
   visibility: string;
@@ -127,6 +132,16 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
       );
       return { body: await response.json(), status: response.status };
     },
+    /** Pick one step of an alert, such as Run again. */
+    step: (id: string, label: string) =>
+      app.request(`http://localhost/api/review-items/${id}/actions`, {
+        body: JSON.stringify({
+          action: "submit",
+          answer: { values: { step: [label] } },
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
     dismiss: (id: string) =>
       app.request(`http://localhost/api/review-items/${id}/actions`, {
         body: JSON.stringify({ action: "dismiss" }),
@@ -283,6 +298,86 @@ describe("Automation alerts", () => {
     });
     expect(await asCreator.todoAlerts()).toEqual(["Daily digest"]);
     expect(await asCreator.badge()).toBe(1);
+  });
+
+  it("runs again or pauses an Automation from its failed-run alert", async () => {
+    const creator = await user("creator@example.com");
+    const asCreator = alertApi(fixture, creator);
+    const task = scheduled(creator);
+    await saveScheduledAutomation(getDb(), task);
+    const steps = (alert: Alert | undefined) =>
+      alert?.request?.fields[0]?.options.map((option) => option.label);
+
+    await recordAutomationExecution(task.id, {
+      errorMessage: "Slack rejected the message.",
+      executionId: "run-1",
+      nowMs: NOW_MS,
+      status: "failed",
+    });
+    const [failed] = await asCreator.alerts(task.id);
+    expect(steps(failed)).toEqual(["Run again", "Pause"]);
+
+    // Run again queues a run now, as a manual run does, and closes the
+    // alert. Only a new problem opens another one.
+    expect((await asCreator.step(failed!.id, "Run again")).status).toBe(200);
+    expect(await readScheduledAutomation(getDb(), task.id)).toMatchObject({
+      runNowAtMs: NOW_MS,
+      status: "active",
+    });
+    expect((await asCreator.item(failed!.id)).body).toMatchObject({
+      status: "done",
+    });
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+
+    // Pause pauses it, so no alert opens.
+    await recordAutomationExecution(task.id, {
+      executionId: "run-2",
+      nowMs: NOW_MS + 1,
+      status: "failed",
+    });
+    const [again] = await asCreator.alerts(task.id);
+    expect(again!.id).not.toBe(failed!.id);
+    expect((await asCreator.step(again!.id, "Pause")).status).toBe(200);
+    expect(await readScheduledAutomation(getDb(), task.id)).toMatchObject({
+      status: "paused",
+    });
+    expect(await asCreator.alerts(task.id)).toEqual([]);
+    expect(await asCreator.todoAlerts()).toEqual([]);
+
+    // An event Automation runs only on its events, so it can only pause.
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await createEventAutomation(getDb(), {
+      id: "event_digest",
+      createdAtMs: NOW_MS,
+      createdBy: { slackUserId: `U-${creator.email}` },
+      creatorIdentityId: task.creatorIdentityId,
+      credentialMode: "creator",
+      destination: PUBLIC_CHANNEL,
+      destinationVisibility: "public",
+      outcomes: [],
+      task: { kind: "instruction", instruction: "Post a digest of the PR." },
+      title: "PR digest",
+      trigger: {
+        namespace: "github",
+        resourceType: "pull_request",
+        identifier: "GETSENTRY/JUNIOR#42",
+        label: "PR 42",
+        events: ["pull_request.merged"],
+      },
+    });
+    await recordAutomationExecution("event_digest", {
+      executionId: "event-run-1",
+      nowMs: NOW_MS,
+      status: "failed",
+    });
+    const [eventAlert] = await asCreator.alerts("event_digest");
+    expect(steps(eventAlert)).toEqual(["Pause"]);
+    expect((await asCreator.step(eventAlert!.id, "Pause")).status).toBe(200);
+    expect(await getEventAutomation(getDb(), "event_digest")).toMatchObject({
+      status: "paused",
+    });
+    expect(await asCreator.alerts("event_digest")).toEqual([]);
   });
 
   it("keeps the alert of a private Destination from other people", async () => {

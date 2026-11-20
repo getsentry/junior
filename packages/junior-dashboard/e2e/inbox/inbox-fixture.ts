@@ -292,6 +292,29 @@ export function automationAlert(automationId: string, title: string) {
   };
 }
 
+/**
+ * The alert of a scheduled Automation whose last run failed, with the steps
+ * that core takes: Run again and Pause.
+ */
+export function failedRunAlert(automationId: string, title: string) {
+  return {
+    ...automationAlert(automationId, title),
+    body: "Last run failed.",
+    id: `alert-run-${automationId}`,
+    request: {
+      question: "Last run failed.",
+      fields: [
+        {
+          id: "step",
+          kind: "choice",
+          label: "Next step",
+          options: [{ label: "Run again" }, { label: "Pause" }],
+        },
+      ],
+    },
+  };
+}
+
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
   status: string;

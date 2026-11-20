@@ -6,10 +6,12 @@ import { automationReport } from "./automation-fixture";
 import {
   automationAlert,
   expandRow,
+  failedRunAlert,
   license,
   mockReviewItems,
   rowHead,
 } from "./inbox-fixture";
+import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // The mock Conversation whose asks include a release review and notes.
@@ -592,6 +594,57 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.reload();
     await expect(rowHead(todo, license.title)).toBeVisible();
     await expect(rowHead(todo, alert.title)).toHaveCount(0);
+  });
+
+  test("a failed-run alert sends Run again to the server", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = failedRunAlert("scheduled-1", "Weekly project summary");
+    const actions = await mockReviewItems(page, { open: [alert, license] });
+    const automation = {
+      ...automationReport.automations.find(({ id }) => id === "scheduled-1")!,
+      lastRunStatus: "failed" as const,
+    };
+    await page.route("**/api/automations/scheduled-1", (route) =>
+      route.fulfill({ json: automation }),
+    );
+    await page.route("**/api/automations/scheduled-1/executions", (route) =>
+      route.fulfill({
+        json: {
+          executionDays: [],
+          executions: [
+            {
+              error: "Slack rejected the result message: channel_not_found.",
+              executedAt: "2026-08-06T16:00:00.000Z",
+              executionId: "scheduled-1-run-1",
+              status: "failed",
+            },
+          ],
+          truncated: false,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expandRow(rowHead(todo, alert.title));
+    await expect(todo.getByRole("button", { name: "Pause" })).toBeVisible();
+    // Core takes the step and reads no words, so there is no Other….
+    await expect(todo.getByRole("button", { name: "Other…" })).toHaveCount(0);
+    await expect(
+      todo.getByText("Slack rejected the result message: channel_not_found."),
+    ).toBeVisible();
+    await screenshot(page, "inbox-automation-alert-failed-run", {
+      lightTheme: true,
+    });
+    await todo.getByRole("button", { name: "Run again" }).click();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(actions).toEqual([
+      {
+        body: { action: "submit", answer: { values: { step: ["Run again"] } } },
+        id: alert.id,
+      },
+    ]);
   });
 
   test("an Automations card gives a failed run's error as its reason", async ({

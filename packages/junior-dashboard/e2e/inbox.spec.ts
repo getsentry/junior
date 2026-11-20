@@ -1,6 +1,7 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { expectRequestBudget } from "./request-budget";
 import type { Page } from "@playwright/test";
+import { failedRunAlert } from "./inbox/inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -505,6 +506,37 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
     page.getByRole("link", { name: new RegExp(answered.title) }),
   ).toHaveCount(0);
   await screenshot(page, "review-desk-empty", { view: "desktop" });
+});
+
+test("a failed-run alert sends Pause to the server", async ({
+  dashboard,
+  page,
+}) => {
+  const alert = {
+    ...base,
+    body: "Last run failed.",
+    id: "item-run-alert",
+    owner: { id: "scheduled-1", kind: "automation" },
+    request: failedRunAlert("scheduled-1", "Weekly project summary").request,
+    rootConversationId: undefined,
+    title: "Weekly project summary",
+  };
+  const actions = await mockReviewItems(page, { open: [alert] });
+  await page.goto(`${dashboard.baseURL}/inbox`);
+  await page.getByRole("link", { name: /Weekly project summary/ }).click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(detail.getByRole("button", { name: "Run again" })).toBeVisible();
+  // Core takes the step and reads no words, so there is no Other….
+  await expect(detail.getByRole("button", { name: "Other…" })).toHaveCount(0);
+  await detail.getByRole("button", { name: "Pause" }).click();
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        body: { action: "submit", answer: { values: { step: ["Pause"] } } },
+        id: alert.id,
+      },
+    ]);
 });
 
 test("an Automation alert names its Automation as its source", async ({

@@ -39,8 +39,10 @@ result to a Slack Destination.
 - A block pauses the Automation until someone resumes it.
 - When an Automation needs its creator, core adds an Automation alert to
   their Inbox: for a block, a trigger that no enabled plugin serves, or a
-  failed or blocked last run. It closes when the Automation recovers. A
-  dismissed alert hides its alerts until the Automation recovers.
+  failed or blocked last run. A failed-run alert offers Run again and
+  Pause. It closes when the Automation recovers: it is not blocked, its
+  last run succeeded, and its trigger is available. A dismissed alert hides
+  its alerts until the Automation recovers.
 - An event filter limits noise. It is not access control.
 
 ## Gaps
@@ -51,10 +53,6 @@ result to a Slack Destination.
   providers have no Junior access yet. This breaks "acts as Junior": a run
   can fail when the creator is not connected, and an edit by someone else
   switches it back to Junior's credentials.
-- A failed run adds an alert to the creator's Inbox To do, even when the
-  reason names no step for them, such as a run that did not finish in 24 hours.
-  Slack does not tell them. This breaks "tells the creator only when they
-  have a step to take".
 - When an Automation reaches the limit of automated Turns in a row, Junior
   posts a pause notice to the Destination. This breaks "posts nothing unless
   it chooses to" and "never posts a failure to the Destination".

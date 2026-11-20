@@ -590,6 +590,18 @@ export function seeds(nowMs: number): MockItemSeed[] {
       body: "Last run failed.",
       createdAt: at(DAY),
       id: "qa-alert-operations-digest",
+      // A failed-run alert offers the steps that core takes.
+      request: {
+        question: "Last run failed.",
+        fields: [
+          {
+            id: "step",
+            kind: "choice",
+            label: "Next step",
+            options: [{ label: "Run again" }, { label: "Pause" }],
+          },
+        ],
+      },
       status: "open",
       title: "Daily operations digest",
     },

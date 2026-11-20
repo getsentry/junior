@@ -309,6 +309,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
   return plugin || undefined;
 }
 
+/** Return whether the item is an Automation alert. Core takes its answer. */
+export function isAutomationAlertItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return item.dedupeKey.startsWith(AUTOMATION_REVIEW_ITEM_KEY_PREFIX);
+}
+
 /** Return whether a plugin added the item. Its answer goes to the plugin. */
 export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
   return reviewItemPlugin(item.dedupeKey) !== undefined;
