@@ -854,8 +854,7 @@ export const conversationEventPageSchema = z
 
 /**
  * Carries the detail version token in both directions. A custom header, not
- * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
- * validators itself, after the function had already built the full report.
+ * `ETag`, for the reason on `CONTENT_VERSION_HEADER`.
  */
 export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
 
