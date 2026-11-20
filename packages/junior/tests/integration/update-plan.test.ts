@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getSqlExecutor } from "@/chat/db";
 import { setPlanItemStatusByUser } from "@/chat/plan/store";
+import { parsePlanItemRef } from "@/chat/plan/tool-output";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -165,7 +166,7 @@ describe("updatePlan", () => {
       // no later plan delta can show it.
       await setPlanItemStatusByUser(getSqlExecutor(), {
         conversationId: parentConversationId,
-        id: approval!.id,
+        id: parsePlanItemRef(approval!.id),
         nowMs: Date.now(),
         status: "done",
         userId: reviewer.id,
@@ -206,6 +207,11 @@ describe("updatePlan", () => {
           add: [{ title: "Run the checks", status: "in_progress" }],
         }),
       ).rejects.toThrow(/one item in_progress/);
+      // Ids are `TODO-<n>`, so a reply cannot pass one off as a GitHub `#12`.
+      expect(items[0]!.id).toMatch(/^TODO-\d+$/);
+      await expect(harness.updatePlan({ remove: ["#12"] })).rejects.toThrow(
+        /TODO-12/,
+      );
       await expect(harness.updatePlan({})).resolves.toEqual({ items });
     } finally {
       await harness.close();
