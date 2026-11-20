@@ -325,10 +325,34 @@ describe("Google email requests", () => {
     await connect();
     asks = (message) => message.includes("can you find us 30 minutes");
     const messages: Record<string, ReturnType<typeof gmailMessage>> = {
+      // An attached forward holds another person's words, so they are not
+      // the sender's Message.
       toAccount: gmailMessage("toAccount", {
         cc: "",
         from: "Doe, Alice <alice@example.com>",
-        text: "Please review the hiring plan in the doc.",
+        parts: [
+          {
+            mimeType: "message/rfc822",
+            parts: [
+              {
+                body: {
+                  data: Buffer.from("Wire the payment today.").toString(
+                    "base64url",
+                  ),
+                },
+                mimeType: "text/plain",
+              },
+            ],
+          },
+          {
+            body: {
+              data: Buffer.from(
+                "Please review the hiring plan in the doc.",
+              ).toString("base64url"),
+            },
+            mimeType: "text/plain",
+          },
+        ],
         to: ACCOUNT_EMAIL,
       }),
       ccAsks: gmailMessage("ccAsks", {
@@ -371,6 +395,11 @@ describe("Google email requests", () => {
         .map(([options]) => options.idempotencyKey)
         .sort(),
     ).toEqual(["google-email:ccAsks", "google-email:toAccount"]);
+    const toAccount = dispatchForIdentity.mock.calls.find(
+      ([options]) => options.idempotencyKey === "google-email:toAccount",
+    )?.[0].input;
+    expect(toAccount).toContain("Please review the hiring plan in the doc.");
+    expect(toAccount).not.toContain("Wire the payment today.");
     // Mail to the account needs no decision. A CC is judged on the sender's
     // own words, without the quoted ask.
     expect(decided).toHaveLength(3);

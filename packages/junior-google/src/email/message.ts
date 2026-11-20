@@ -129,9 +129,18 @@ function allParts(part: GmailPart): GmailPart[] {
   return [part, ...(part.parts ?? []).flatMap(allParts)];
 }
 
-/** Read the first plain-text body part that is not an attachment. */
+/**
+ * Parts of the sender's own body. An attached email (`message/rfc822`), such
+ * as a forward, holds another person's words, so its parts are skipped.
+ */
+function ownParts(part: GmailPart): GmailPart[] {
+  if (part.mimeType?.toLowerCase() === "message/rfc822") return [];
+  return [part, ...(part.parts ?? []).flatMap(ownParts)];
+}
+
+/** Read the sender's first plain-text body part that is not an attachment. */
 function plainText(payload: GmailPart): string | undefined {
-  const part = allParts(payload).find(
+  const part = ownParts(payload).find(
     (item) =>
       item.mimeType?.toLowerCase() === "text/plain" &&
       !item.filename &&
