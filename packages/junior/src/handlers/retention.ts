@@ -30,7 +30,11 @@ export async function GET(
       attachmentStorage: options.attachmentStorage ?? getAttachmentStorage(),
       nowMs,
     });
-    await pruneHourlyStats(nowMs);
+    // Best effort: a failure must not fail the purge response, or the
+    // scheduler retries a purge batch that already ran. The next run prunes.
+    await pruneHourlyStats(nowMs).catch((error: unknown) => {
+      logException(error, "stats.hourly_prune.failed");
+    });
     // Best-effort telemetry: a failure must not fail the purge response.
     await reportTableSizes(executor).catch((error: unknown) => {
       logException(error, "db.table_size.failed");
