@@ -57,10 +57,8 @@ import {
   type ToolActionRejectionMarker,
 } from "@/chat/guardian/history";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
-import {
-  createCodeModeTool,
-  type CodeModeToolOptions,
-} from "@/chat/codemode/tool";
+import type { CodeModeToolOptions } from "@/chat/codemode/bridge";
+import { createCodeModeTool } from "@/chat/tools/codemode";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
