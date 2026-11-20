@@ -5,7 +5,6 @@ import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
-const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const packagesRoot = path.resolve(__dirname, "..");
 
 // Read plugins from source, so tool specs never come from a stale build.
@@ -27,19 +26,9 @@ export default defineConfig({
       "@": path.resolve(juniorPackageRoot, "src"),
       "@sentry/junior-github": pluginSource("junior-github"),
       "@sentry/junior-google": pluginSource("junior-google"),
-      "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-      // Before the package root, which would also match this subpath.
-      "@sentry/junior-plugin-api/embeddings": path.resolve(
-        pluginApiPackageRoot,
-        "src/embeddings.ts",
-      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",
-      ),
-      "@sentry/junior-search": path.resolve(
-        packagesRoot,
-        "junior-search/src/index.ts",
       ),
       "@sentry/junior-vercel": pluginSource("junior-vercel"),
     },

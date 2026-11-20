@@ -17,6 +17,7 @@ import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { apiRoutePrefix } from "@/chat/plugins/core-registrations";
 
 /** Admin pages are hidden from everyone except Junior admins. */
 function viewerCanSeePage(
@@ -51,7 +52,7 @@ function actionBelongsToPlugin(href: string, pluginName: string): boolean {
   return (
     parsed.origin === "http://junior.local" &&
     parsed.pathname === href &&
-    parsed.pathname.startsWith(`/api/plugins/${pluginName}/`) &&
+    parsed.pathname.startsWith(`${apiRoutePrefix(pluginName)}/`) &&
     !parsed.search &&
     !parsed.hash
   );
