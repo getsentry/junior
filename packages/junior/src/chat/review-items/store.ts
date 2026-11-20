@@ -765,7 +765,8 @@ function reviewItemNeedsUserNow(userId: string): SQL {
 
 /**
  * Count the open Review items that need a User (`reviewItemNeedsUser`), one
- * row per subject URL, with the ones that ask with a form as `decisions`.
+ * row per subject URL, with the ones that ask with a form as `decisions`
+ * and the Automation alerts as `automations`.
  * The nav count and the Inbox bundle counts all read this one query. A
  * snoozed item does not count until it wakes.
  */
@@ -773,10 +774,19 @@ export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
   userId: string,
 ): Promise<
-  Array<{ decisions: number; subjectUrl: string | null; total: number }>
+  Array<{
+    automations: number;
+    decisions: number;
+    subjectUrl: string | null;
+    total: number;
+  }>
 > {
   return await db
     .select({
+      automations:
+        sql<number>`count(*) filter (where ${eq(juniorReviewItems.ownerKind, "automation")})`.mapWith(
+          Number,
+        ),
       decisions: count(juniorReviewItems.request),
       subjectUrl: juniorReviewItems.subjectUrl,
       total: count(),

@@ -46,7 +46,6 @@ import {
   type ReviewItemPosition,
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
-import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
@@ -391,21 +390,21 @@ export function createReviewItemRoutes(services: {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
       const db = getDb();
-      // One query counts the badge and both bundles. The snoozed and
-      // Automation counts run only when the request asks for them, so the
+      // One query counts the badge, both bundles, and the Automation alerts.
+      // The snoozed count runs only when the request asks for it, so the
       // classic dashboard pays for one query.
-      const [subjects, snoozed, automations] = await Promise.all([
+      const [subjects, snoozed] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
-        query.include.includes("automations")
-          ? countOwnedAutomationsNeedingAttention(viewer)
-          : undefined,
       ]);
+      // The Automations badge counts the alerts that its To do lists.
+      let automations = 0;
       const linkTypes = readObjectLinkTypes();
       let codeChanges = 0;
       let decisions = 0;
       let needsViewer = 0;
       for (const subject of subjects) {
+        automations += subject.automations;
         needsViewer += subject.total;
         decisions += subject.decisions;
         if (
@@ -416,7 +415,9 @@ export function createReviewItemRoutes(services: {
         }
       }
       return jsonResponse(reviewItemCountSchema, {
-        ...(automations === undefined ? undefined : { automations }),
+        ...(query.include.includes("automations")
+          ? { automations }
+          : undefined),
         codeChanges,
         decisions,
         needsViewer,

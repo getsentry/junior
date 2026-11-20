@@ -907,6 +907,9 @@ function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
 export function readMockReviewItemCounts(nowMs: number) {
   const needsViewer = mockItemsNeedingViewer(nowMs);
   return {
+    // Like the server: the alerts that the Automations To do lists.
+    automations: needsViewer.filter((item) => item.owner.kind === "automation")
+      .length,
     decisions: needsViewer.filter((item) => item.request).length,
     needsViewer: needsViewer.length,
     codeChanges: needsViewer.filter(

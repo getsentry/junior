@@ -313,10 +313,12 @@ export async function syncAutomationAlerts(
         eq(juniorReviewItems.ownerKind, "automation"),
         eq(juniorAutomations.kind, "event"),
         // An open alert, or a dismiss that hides alerts until a recovery
-        // that a fixed trigger can bring without a run.
+        // that a fixed trigger can bring without a run. Only an active
+        // Automation can recover so; any other status waits for a write.
         or(
           eq(juniorReviewItems.status, "open"),
           and(
+            eq(juniorAutomations.status, "active"),
             isNotNull(juniorReviewItems.closedByUserId),
             or(
               isNull(juniorAutomations.alertRecoveredAtMs),

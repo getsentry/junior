@@ -106,6 +106,13 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
         (item) => item.owner.id === automationId && item.status === "open",
       );
     },
+    /** The Automations badge count. */
+    badge: async () => {
+      const response = await app.request(
+        "http://localhost/api/review-items/count?include=automations",
+      );
+      return ((await response.json()) as { automations: number }).automations;
+    },
     /** The alerts in the viewer's To do, as the Automations page lists them. */
     todoAlerts: async () => {
       const response = await app.request(
@@ -239,6 +246,8 @@ describe("Automation alerts", () => {
     });
     expect(await asCreator.alerts(task.id)).toEqual([]);
     expect(await asCreator.todoAlerts()).toEqual([]);
+    // The Automations badge counts what its To do lists.
+    expect(await asCreator.badge()).toBe(0);
 
     // A resume and a run that completes recover it. The next problem opens a
     // fresh alert.
@@ -273,6 +282,7 @@ describe("Automation alerts", () => {
       status: "failed",
     });
     expect(await asCreator.todoAlerts()).toEqual(["Daily digest"]);
+    expect(await asCreator.badge()).toBe(1);
   });
 
   it("keeps the alert of a private Destination from other people", async () => {

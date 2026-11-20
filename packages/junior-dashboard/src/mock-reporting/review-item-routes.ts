@@ -11,8 +11,7 @@ import {
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
 } from "@sentry/junior/api/schema";
-import { mockAutomationCollection } from "./automation-collection";
-import { NOW_MS, readMockAutomationList } from "./fixtures";
+import { NOW_MS } from "./fixtures";
 import {
   actOnMockReviewItem,
   readMockReviewItem,
@@ -55,19 +54,15 @@ export function addMockReviewItemRoutes(
       }).filter((item) => !owner || item.owner.kind === owner),
     });
   });
-  app.get("/review-items/count", (c) =>
-    jsonResponse(reviewItemCountSchema, {
+  app.get("/review-items/count", (c) => {
+    const { automations, ...counts } = readMockReviewItemCounts(NOW_MS);
+    return jsonResponse(reviewItemCountSchema, {
       ...(c.req.query("include")?.split(",").includes("automations")
-        ? {
-            automations: mockAutomationCollection(
-              readMockAutomationList(),
-              new URLSearchParams({ owner: "me", scope: "attention" }),
-            ).total,
-          }
+        ? { automations }
         : undefined),
-      ...readMockReviewItemCounts(NOW_MS),
-    }),
-  );
+      ...counts,
+    });
+  });
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,
