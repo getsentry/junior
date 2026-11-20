@@ -26,8 +26,11 @@ import {
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
-type TraceAttributeValue = string | number | boolean | string[];
-type TraceAttributes = Record<string, TraceAttributeValue>;
+// Sentry drops attributes whose value is undefined.
+type TraceAttributes = Record<
+  string,
+  string | number | boolean | string[] | undefined
+>;
 type PiAiOptions = NonNullable<Parameters<typeof Sentry.piAiIntegration>[0]>;
 type PiAiSpanResult = Parameters<NonNullable<PiAiOptions["onSpanEnd"]>>[2];
 
@@ -77,132 +80,81 @@ function activePiAiChatSpan(): Sentry.Span | undefined {
   return attributes["sentry.origin"] === PI_AI_SPAN_ORIGIN ? span : undefined;
 }
 
-// Pi folds `Context.systemPrompt` and `Context.tools` into a leading system
-// message before it calls the provider. Split it off again, so the counts
-// describe the conversation messages only.
-function splitTranscript(messages: Message[]): {
-  systemPrompt: string | undefined;
-  messages: Message[];
-} {
-  const initial = getInitialSystemMessage(messages);
-  return initial
-    ? {
-        systemPrompt: getSystemMessageText(initial),
-        messages: messages.slice(1),
-      }
-    : { systemPrompt: undefined, messages };
-}
-
 // The `piAiIntegration` span has the request, response, usage, and cost. These
 // are the Junior facts that it does not have.
 function buildStartAttributes(messages: Message[]): TraceAttributes {
-  const transcript = splitTranscript(messages);
+  // Pi folds `Context.systemPrompt` and `Context.tools` into a leading system
+  // message. Skip it, so the counts describe the conversation messages only.
+  const system = getInitialSystemMessage(messages);
+  const transcript = system ? messages.slice(1) : messages;
   return {
     ...getLogContextAttributesForSpan("gen_ai.chat"),
     "app.conversation.privacy": getCurrentConversationPrivacy() ?? "private",
-    ...(hasCompactedConversationContext(transcript.messages)
-      ? { "gen_ai.conversation.compacted": true }
-      : undefined),
-    ...toGenAiMessagesTraceAttributes("gen_ai.input", transcript.messages),
-    ...(transcript.systemPrompt
-      ? {
-          "gen_ai.system_instructions.content_chars":
-            transcript.systemPrompt.length,
-        }
-      : undefined),
+    "gen_ai.conversation.compacted":
+      hasCompactedConversationContext(transcript) || undefined,
+    ...toGenAiMessagesTraceAttributes("gen_ai.input", transcript),
+    "gen_ai.system_instructions.content_chars": system
+      ? getSystemMessageText(system).length
+      : undefined,
   };
 }
 
 function buildEndAttributes(message: AssistantMessage): TraceAttributes {
-  const attributes: TraceAttributes = {
-    ...toGenAiMessagesTraceAttributes("gen_ai.output", [message]),
-  };
-  // The 1h-retention part of the cache write. The 5m part is the rest of
-  // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
-  // because Sentry scrubs keys that contain it.
-  if (message.usage.cacheWrite1h !== undefined) {
-    attributes["app.ai.usage.cache_write_1h"] = message.usage.cacheWrite1h;
-  }
-  // Per-call ratio, because metric monitors cannot divide two sums. The
-  // prompt cache detector reads it.
-  const { input, cacheRead, cacheWrite } = message.usage;
+  const { input, cacheRead, cacheWrite, cacheWrite1h } = message.usage;
   const inputTokens = input + cacheRead + cacheWrite;
-  if (inputTokens > 0) {
-    attributes["gen_ai.usage.cache_hit_ratio"] = cacheRead / inputTokens;
-  }
-  if (message.stopReason === "error") {
-    const providerError = createAssistantProviderError(message);
-    Object.assign(attributes, getProviderErrorAttributes(providerError));
-    attributes["error.type"] = providerError.kind;
-  }
-  return attributes;
+  const providerError =
+    message.stopReason === "error"
+      ? createAssistantProviderError(message)
+      : undefined;
+  return {
+    ...toGenAiMessagesTraceAttributes("gen_ai.output", [message]),
+    // The 1h-retention part of the cache write. The 5m part is the rest of
+    // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
+    // because Sentry scrubs keys that contain it.
+    "app.ai.usage.cache_write_1h": cacheWrite1h,
+    // Per-call ratio, because metric monitors cannot divide two sums. The
+    // prompt cache detector reads it.
+    "gen_ai.usage.cache_hit_ratio":
+      inputTokens > 0 ? cacheRead / inputTokens : undefined,
+    ...(providerError && {
+      ...getProviderErrorAttributes(providerError),
+      "error.type": providerError.kind,
+    }),
+  };
 }
 
-// Wraps `onResponse`, which Pi calls when the response headers arrive. It
-// records the Vercel edge request id (its POP chain) and the event loop
-// utilization since the request started. High utilization means a busy event
-// loop could have delayed the request on Junior's side.
-function traceResponseHeaders(
+// Wraps the Pi hooks of one request:
+// - `onPayload` gets the provider request body. It records the cache prefix
+//   hashes and returns the wrapped hook's result, so the body is unchanged.
+// - `onResponse` gets the response headers. It records the Vercel edge request
+//   id (its POP chain) and the event loop utilization since the request
+//   started. High utilization means Junior's busy event loop could have
+//   delayed the request.
+// - `onProviderStreamEvent` gets each raw stream event. It records how AI
+//   Gateway routed the request.
+function traceRequestHooks(
   span: Sentry.Span,
   options: SimpleStreamOptions | undefined,
 ): SimpleStreamOptions {
   const eventLoopStart = performance.eventLoopUtilization();
-  const onResponse = options?.onResponse;
-  return {
-    ...options,
-    onResponse: async (response, model) => {
-      try {
-        const vercelId = response.headers["x-vercel-id"];
-        if (vercelId) {
-          span.setAttribute("app.ai.gateway.vercel_id", vercelId);
-        }
-        const { utilization } =
-          performance.eventLoopUtilization(eventLoopStart);
-        span.setAttribute(
-          "app.ai.event_loop.utilization",
-          Math.round(utilization * 1000) / 1000,
-        );
-      } catch {
-        // Diagnostic only.
-      }
-      await onResponse?.(response, model);
-    },
-  };
-}
-
-// Wraps `onPayload`, which Pi calls with the provider request body before it
-// sends it. It records the cache prefix hashes of that body. It returns the
-// result of the wrapped hook, so it never changes the payload itself.
-function traceRequestPayload(
-  span: Sentry.Span,
-  options: SimpleStreamOptions,
-): SimpleStreamOptions {
-  const onPayload = options.onPayload;
   return {
     ...options,
     onPayload: async (payload, model) => {
-      const nextPayload = await onPayload?.(payload, model);
+      const nextPayload = await options?.onPayload?.(payload, model);
       span.setAttributes(requestPrefixAttributes(nextPayload ?? payload));
       return nextPayload;
     },
-  };
-}
-
-// Wraps `onProviderStreamEvent`, which Pi calls with each raw provider stream
-// event. It records how AI Gateway routed the request.
-function traceGatewayRouting(
-  span: Sentry.Span,
-  options: SimpleStreamOptions,
-): SimpleStreamOptions {
-  const onProviderStreamEvent = options.onProviderStreamEvent;
-  return {
-    ...options,
+    onResponse: async (response, model) => {
+      const { utilization } = performance.eventLoopUtilization(eventLoopStart);
+      span.setAttributes({
+        "app.ai.gateway.vercel_id": response.headers["x-vercel-id"],
+        "app.ai.event_loop.utilization": Math.round(utilization * 1000) / 1000,
+      });
+      await options?.onResponse?.(response, model);
+    },
     onProviderStreamEvent: async (event, model) => {
-      const attributes = gatewayRoutingAttributes(event);
-      if (attributes) {
-        span.setAttributes(attributes);
-      }
-      await onProviderStreamEvent?.(event, model);
+      span.setAttributes(gatewayRoutingAttributes(event) ?? {});
+      await options?.onProviderStreamEvent?.(event, model);
     },
   };
 }
@@ -255,13 +207,6 @@ export function withChatSpanAttributes(
     if (telemetry?.endAttributes) {
       endAttributesBySpan.set(span, telemetry.endAttributes);
     }
-    return base(
-      model,
-      context,
-      traceGatewayRouting(
-        span,
-        traceRequestPayload(span, traceResponseHeaders(span, options)),
-      ),
-    );
+    return base(model, context, traceRequestHooks(span, options));
   };
 }

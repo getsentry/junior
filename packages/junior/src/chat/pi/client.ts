@@ -304,9 +304,6 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
-  const promptAttributes = params.promptName
-    ? { "gen_ai.prompt.name": params.promptName }
-    : undefined;
   let message: Awaited<ReturnType<typeof completeSimple>>;
   try {
     message = await withLogContext(
@@ -315,7 +312,7 @@ export async function completeText(params: {
         withChatRequestTelemetry(
           {
             attributes: {
-              ...promptAttributes,
+              "gen_ai.prompt.name": params.promptName,
               "gen_ai.provider.auth_mode": credential.mode,
             },
           },
@@ -349,7 +346,7 @@ export async function completeText(params: {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
       "gen_ai.request.model": params.modelId,
-      ...promptAttributes,
+      "gen_ai.prompt.name": params.promptName,
       "exception.message": providerMessage,
     });
     throw createProviderError(providerMessage, { modelId: params.modelId });
