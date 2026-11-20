@@ -7,14 +7,10 @@ import type { StaticToolName } from "@/chat/tools/registry";
  * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
  * when spawnAgent is available. `children_and_parent`: the same, but
  * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn. `top_level`: only messageAgent, to other top-level agents.
+ * to spawn. `lead`: only messageAgent, to other top-level agents.
  * `none`: neither.
  */
-export type AgentTools =
-  | "none"
-  | "children"
-  | "children_and_parent"
-  | "top_level";
+export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
 
 /**
  * What one Turn does that depends on the Conversation kind and on who opened
@@ -229,7 +225,7 @@ const LEAD: TurnBehavior = {
   sessionTasks: false,
   tools: {
     ...ROOT.tools,
-    agents: "top_level",
+    agents: "lead",
     subscriptions: false,
     only: LEAD_TOOLS,
   },

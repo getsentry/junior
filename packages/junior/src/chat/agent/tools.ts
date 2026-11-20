@@ -782,7 +782,7 @@ export function bindAgentTools(
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (agents === "none" || !bindSpawnAgent) return {};
   // A Lead steers other top-level agents and starts no child agents.
-  if (agents === "top_level") {
+  if (agents === "lead") {
     const messageAgent = bindMessageAgent?.(run, agents);
     return messageAgent ? { messageAgent } : {};
   }
