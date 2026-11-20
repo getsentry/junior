@@ -59,13 +59,13 @@ export function RowActionButton(props: {
 export function RowQuickActions(props: {
   actions: InboxCardActions;
   expanded: boolean;
-  to: string;
+  open: { label: string; path: string };
 }) {
   const { actions } = props;
   if (props.expanded) return null;
   return (
     <>
-      <RowOpenLink to={props.to} />
+      <RowOpenLink {...props.open} />
       {actions.onSnooze ? (
         <RowSnoozeButton
           eventSnooze={actions.eventSnooze}
@@ -83,8 +83,11 @@ export function RowQuickActions(props: {
   );
 }
 
-/** The hover action that opens the row's Conversation in the main area. */
-export function RowOpenLink(props: { to: string }) {
+/**
+ * The hover action that opens the row's Conversation, or another owner such
+ * as an Automation, in the main area.
+ */
+export function RowOpenLink(props: { label: string; path: string }) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -92,15 +95,15 @@ export function RowOpenLink(props: { to: string }) {
           // The row names the Conversation; a search for its title finds
           // the row's head only.
           <Link
-            aria-label="Open conversation"
+            aria-label={props.label}
             className={ROW_ACTION_BUTTON_CLASS}
-            to={props.to}
+            to={props.path}
           >
             <ArrowUpRight aria-hidden="true" size={14} />
           </Link>
         }
       />
-      <TooltipContent size="compact">Open conversation</TooltipContent>
+      <TooltipContent size="compact">{props.label}</TooltipContent>
     </Tooltip>
   );
 }

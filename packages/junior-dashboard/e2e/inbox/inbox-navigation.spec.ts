@@ -228,7 +228,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const other = {
       ...rollout,
-      addedByConversationId: "slack:COTHER:1770000000.000100",
+      owner: { id: "slack:COTHER:1770000000.000100", kind: "conversation" },
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
@@ -251,7 +251,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const other = {
       ...rollout,
-      addedByConversationId: "slack:COTHER:1770000000.000100",
+      owner: { id: "slack:COTHER:1770000000.000100", kind: "conversation" },
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
@@ -442,7 +442,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       const feed = await response.json();
       const linked = feed.conversations.find(
         (conversation: { conversationId: string }) =>
-          conversation.conversationId === rollout.addedByConversationId,
+          conversation.conversationId === rollout.owner.id,
       );
       const newer = Array.from({ length: 40 }, (_, index) => ({
         ...linked,

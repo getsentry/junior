@@ -15,7 +15,7 @@ import {
 // Child agents of the rollout Conversation each add an ask. They roll up
 // under the root's stack, after the root's own ask.
 const childOf = (thread: string, label: string) => ({
-  addedByConversationId: `slack:CQA123:1770003600.${thread}`,
+  owner: { id: `slack:CQA123:1770003600.${thread}`, kind: "conversation" },
   addedByLabel: label,
   rootConversationId: conversationId,
 });
@@ -72,9 +72,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const stack = stackOf(page);
     await expect(stack.locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(
-      page.locator(
-        `li[data-inbox-row="todo:${childReview.addedByConversationId}"]`,
-      ),
+      page.locator(`li[data-inbox-row="todo:${childReview.owner.id}"]`),
     ).toHaveCount(0);
     await expect(rowOf(page, childReview)).toContainText(
       "Check the pipeline runs",
@@ -258,7 +256,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(open).toBeVisible();
     await expect(open).toHaveAttribute(
       "href",
-      `/conversations/${encodeURIComponent(childReview.addedByConversationId)}?ask=${childReview.id}`,
+      `/conversations/${encodeURIComponent(childReview.owner.id)}?ask=${childReview.id}`,
     );
     await quick("Dismiss").click();
     await expect(row).toHaveCount(0);

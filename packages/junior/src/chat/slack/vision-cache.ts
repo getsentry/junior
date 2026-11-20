@@ -1,4 +1,4 @@
-import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type {
   ConversationVisionState,
@@ -12,26 +12,33 @@ function visionCacheKey(conversationId: string): string {
   return `vision-cache:v${VISION_CACHE_SCHEMA_VERSION}:${conversationId}`;
 }
 
+// The cache is disposable: drop bad fields and entries instead of failing.
+const visionCacheSchema = z.object({
+  schemaVersion: z.literal(VISION_CACHE_SCHEMA_VERSION),
+  backfillCompletedAtMs: z.number().optional().catch(undefined),
+  byFileId: z.record(z.string(), z.unknown()).catch({}),
+});
+
+const visionSummarySchema = z.object({
+  summary: z.string().refine((summary) => summary.trim() !== ""),
+  analyzedAtMs: z.number(),
+});
+
 function coerceVisionCache(value: unknown): ConversationVisionState {
-  if (
-    !isRecord(value) ||
-    value["schemaVersion"] !== VISION_CACHE_SCHEMA_VERSION
-  ) {
+  const parsed = visionCacheSchema.safeParse(value);
+  if (!parsed.success) {
     return { byFileId: {} };
   }
 
-  const rawByFileId = isRecord(value["byFileId"]) ? value["byFileId"] : {};
   const byFileId: Record<string, ConversationVisionSummary> = {};
-  for (const [fileId, rawSummary] of Object.entries(rawByFileId)) {
-    if (!fileId.trim() || !isRecord(rawSummary)) continue;
-    const summary = toOptionalString(rawSummary["summary"]);
-    const analyzedAtMs = toOptionalNumber(rawSummary["analyzedAtMs"]);
-    if (!summary || analyzedAtMs === undefined) continue;
-    byFileId[fileId] = { summary, analyzedAtMs };
+  for (const [fileId, rawSummary] of Object.entries(parsed.data.byFileId)) {
+    if (!fileId.trim()) continue;
+    const summary = visionSummarySchema.safeParse(rawSummary);
+    if (summary.success) byFileId[fileId] = summary.data;
   }
 
   return {
-    backfillCompletedAtMs: toOptionalNumber(value["backfillCompletedAtMs"]),
+    backfillCompletedAtMs: parsed.data.backfillCompletedAtMs,
     byFileId,
   };
 }

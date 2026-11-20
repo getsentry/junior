@@ -89,7 +89,7 @@ describe("conversation tree state", () => {
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
     const forOther = await insertReviewItem(getDb(), {
-      addedByConversationId: asking.childConversationId,
+      owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
@@ -383,7 +383,7 @@ describe("conversation tree state", () => {
     );
     const other = await resolveViewerUser("bob@example.com");
     await insertReviewItem(getDb(), {
-      addedByConversationId: conversationId,
+      owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",

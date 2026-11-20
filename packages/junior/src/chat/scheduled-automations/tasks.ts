@@ -1,6 +1,7 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
+import { syncAutomationAlert } from "@/chat/automations/alert-items";
 import { refreshAutomationLastRun } from "@/chat/automations/execution-stats";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
@@ -196,6 +197,7 @@ async function writeScheduledAutomation(
   }
   await upsertScheduledAutomation(db, task);
   await recordAutomationVersion(db, task, current, editedBy);
+  await syncAutomationAlert(db, task.id);
 }
 
 async function skipPendingRunsForDeletedTask(

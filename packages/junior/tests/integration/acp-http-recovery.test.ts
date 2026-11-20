@@ -413,7 +413,11 @@ describe("remote ACP recovery", () => {
           {
             type: "toolCall",
             name: "searchMcpTools",
-            arguments: { provider: "eval-auth", query: "budget echo" },
+            arguments: {
+              provider: "eval-auth",
+              query: "budget echo",
+              intent: "look up the budget",
+            },
           },
           { type: "text", text: "Auth-paused Turn must not reply." },
         ]),

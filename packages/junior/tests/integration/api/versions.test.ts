@@ -202,7 +202,7 @@ describe("versions API", () => {
     expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertReviewItem(getDb(), {
-      addedByConversationId: OWN,
+      owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Approve the change.",

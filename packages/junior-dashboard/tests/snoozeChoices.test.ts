@@ -18,6 +18,8 @@ describe("snoozeChoicesAt", () => {
   it("offers the afternoon and evening of today before noon", () => {
     // Friday, August 7, 10:30.
     expect(menuAt(2026, 7, 7, 10, 30)).toEqual([
+      ["15 minutes", "8/7 10:45"],
+      ["30 minutes", "8/7 11:00"],
       ["1 hour", "8/7 11:30"],
       ["3 hours", "8/7 13:30"],
       ["This afternoon", "8/7 14:00"],
@@ -29,6 +31,8 @@ describe("snoozeChoicesAt", () => {
 
   it("drops the afternoon and evening after 17:00", () => {
     expect(menuAt(2026, 7, 7, 17, 30)).toEqual([
+      ["15 minutes", "8/7 17:45"],
+      ["30 minutes", "8/7 18:00"],
       ["1 hour", "8/7 18:30"],
       ["3 hours", "8/7 20:30"],
       ["Tomorrow morning", "8/8 9:00"],
@@ -39,6 +43,8 @@ describe("snoozeChoicesAt", () => {
   it("wakes on Sunday night at Monday 09:00 for both morning choices", () => {
     // Sunday, August 9, 22:00: 3 hours runs into Monday.
     expect(menuAt(2026, 7, 9, 22, 0)).toEqual([
+      ["15 minutes", "8/9 22:15"],
+      ["30 minutes", "8/9 22:30"],
       ["1 hour", "8/9 23:00"],
       ["3 hours", "8/10 1:00"],
       ["Tomorrow morning", "8/10 9:00"],

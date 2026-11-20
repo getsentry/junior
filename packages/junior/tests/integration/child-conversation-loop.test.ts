@@ -17,7 +17,12 @@ import type {
 } from "@/chat/agent-invocations/types";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { botConfig } from "@/chat/config";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { ingestEvent } from "@/chat/events/ingest";
+import { createWatch } from "@/chat/events/store";
+import { countAutomatedTurn } from "@/chat/services/automated-turn-limit";
+import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -412,6 +417,68 @@ describe("child Turns on the Conversation loop", () => {
       );
       // A stop is not a result, so the parent hears nothing.
       await expect(parentMessageTexts()).resolves.toEqual(before);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("tells the parent once when the automated-turn limit drops a child's Watch Events", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "task");
+      await createWatch(
+        {
+          conversationId: childId,
+          events: ["pull_request.merge_conflict"],
+          expiresAtMs: Date.now() + 60_000,
+          identifier: "getsentry/junior#3796",
+          intent: "Fix merge conflicts.",
+          label: "GitHub PR getsentry/junior#3796",
+          namespace: "github",
+          resourceType: "pull_request",
+        },
+        { state: harness.state },
+      );
+      const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+      for (let turn = 0; turn < maxTurns; turn += 1) {
+        await countAutomatedTurn({ conversationId: childId, maxTurns });
+      }
+      // The Turn that reached the limit posts no notice: a child has no
+      // Location.
+      await expect(
+        postAutomatedTurnLimitNoticeForConversation({
+          conversationId: childId,
+          maxTurns,
+        }),
+      ).resolves.toBe(false);
+      const before = await parentMessageTexts();
+
+      for (const headSha of ["abc123", "def456"]) {
+        await expect(
+          ingestEvent(
+            {
+              data: { pullRequest: 3796, repo: "getsentry/junior" },
+              eventKey: `github:merge-conflict:getsentry/junior#3796:${headSha}`,
+              eventType: "pull_request.merge_conflict",
+              identifier: "getsentry/junior#3796",
+              namespace: "github",
+              occurredAtMs: Date.now(),
+              trustedSummary: "getsentry/junior#3796 has merge conflicts.",
+            },
+            { queue: harness.queue, state: harness.state },
+          ),
+        ).resolves.toEqual({ enqueued: 0 });
+      }
+
+      // The paused child starts no Turn, and its parent learns once, so it
+      // can message the child to continue.
+      const added = (await parentMessageTexts()).slice(before.length);
+      expect(added).toEqual([
+        expect.stringContaining(
+          `I stopped taking Watch Events after ${maxTurns} automated Turns in a row`,
+        ),
+      ]);
     } finally {
       await harness.close();
     }

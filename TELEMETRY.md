@@ -93,6 +93,7 @@ attributes. Nested logs and spans inherit them.
 | Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
+| Idle period outcomes or breaker      | metrics `cache_warming.idle_period.saved_usd` (`app.cache_warming.idle_outcome`), `cache_warming.breaker` (`app.cache_warming.breaker_event`) | `chat/cache-warming/savings.ts`, `chat/cache-warming/request.ts` |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
@@ -223,5 +224,6 @@ sort=-timestamp
 | `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>`          |
 | `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` or `SENTRY_SPOTLIGHT` is set |
 | `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                                 |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                               |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links, System page cache health | unset                                               |
+| `SENTRY_READ_TOKEN`         | System page cache health reads of the `SENTRY_DSN` project | unset                                     |
 | `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                         |

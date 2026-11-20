@@ -2,7 +2,6 @@ import { ArrowUpRight, Check, X } from "lucide-react";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import {
@@ -15,7 +14,13 @@ import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { answerLine, reviewItemText } from "./reviewItemFormat";
+import {
+  answerLine,
+  itemConversationId,
+  itemOwnerLinkLabel,
+  itemOwnerPath,
+  reviewItemText,
+} from "./reviewItemFormat";
 import { formatRelativeTime } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { ReviewItemCloser, ReviewItemTitle } from "./ReviewItemPeople";
@@ -111,19 +116,17 @@ function DoneRow(props: {
             </span>
             <Link
               className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-              to={conversationPath(item.addedByConversationId, {
-                askItemId: item.id,
-              })}
+              to={itemOwnerPath(item, { askItemId: item.id })}
             >
-              Open conversation
+              {itemOwnerLinkLabel(item)}
               <ArrowUpRight aria-hidden="true" size={14} />
             </Link>
           </div>
-          <ReviewItemObjects conversationId={item.addedByConversationId}>
+          <ReviewItemObjects conversationId={itemConversationId(item)}>
             <DisplayText mentions={item.mentions} text={text} />
             {item.subject ? (
               <ReviewItemSubjectPreview
-                conversationId={item.addedByConversationId}
+                conversationId={itemConversationId(item)}
                 subject={item.subject}
               />
             ) : null}
@@ -139,7 +142,7 @@ function DoneRow(props: {
 /**
  * Done: the closed Review items of the Inbox, newest closed first, in
  * Today, This week, and Earlier. It is read-only. A row expands in place;
- * only "Open conversation" leaves the Inbox.
+ * only the link to its Conversation or Automation leaves the Inbox.
  */
 export function InboxDoneView(props: {
   collapsed: ReadonlySet<string>;
@@ -148,7 +151,7 @@ export function InboxDoneView(props: {
   nowMs: number;
   onToggle(key: string): void;
   onToggleSection(key: string): void;
-  titleOf(conversationId: string): string | undefined;
+  titleOf(conversationId: string | undefined): string | undefined;
 }) {
   return (
     <div className="grid">
@@ -166,7 +169,7 @@ export function InboxDoneView(props: {
               item={item}
               key={item.id}
               onToggle={() => props.onToggle(item.id)}
-              title={props.titleOf(item.addedByConversationId)}
+              title={props.titleOf(itemConversationId(item))}
             />
           ))}
         </InboxSection>
