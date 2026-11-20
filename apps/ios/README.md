@@ -9,12 +9,12 @@ the MCP server at `/api/mcp`, and signs in with its OAuth flow.
 
 | Path                    | What it holds                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Packages/JuniorKit`    | Logic with no UI: the MCP client and OAuth, tool result models, Markdown, and display rules.                  |
+| `Packages/JuniorKit`    | Logic with no UI: the MCP client and OAuth, tool result models, Markdown, display rules, and the demo.        |
 | `Junior`                | The SwiftUI app. `Theme/` mirrors the dashboard tokens; each feature has its own folder.                       |
 | `JuniorUITests`         | UI journeys against the mock MCP server.                                                                       |
 | `project.yml`           | The XcodeGen project. `Junior.xcodeproj` is generated and not committed.                                       |
 | `fastlane/`             | The signed TestFlight build that `.github/workflows/ios-beta.yml` runs.                                        |
-| `scripts/`              | `mock-server.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, `generate-icons.mjs`, and the CI steps in `.github/workflows/ios*.yml`. |
+| `scripts/`              | `mock-server.mjs`, `export-demo-data.mjs`, `xcbuild.sh`, `sim.sh`, `device.sh`, `generate-icons.mjs`, and the CI steps in `.github/workflows/ios*.yml`. |
 
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
 `sendMessage`, …); their result types mirror the tool schemas in
@@ -60,11 +60,10 @@ In `apps/ios`, `make init` installs the tools and `make xcode` makes and opens t
 
 ### On an iPhone
 
-Sign in to Xcode with your Apple ID (Xcode › Settings › Accounts), put
-`DEVELOPMENT_TEAM = <team ID>` in `apps/ios/Local.xcconfig` (git ignores it),
-connect the iPhone with Developer Mode on, and run `apps/ios/scripts/device.sh`.
-A personal team also needs `JUNIOR_BUNDLE_ID = <a bundle ID of its own>` there,
-and its builds expire after 7 days.
+Run `make signing` in `apps/ios` with `MATCH_PASSWORD` set, connect the
+iPhone with Developer Mode on, and run `apps/ios/scripts/device.sh`. The iPhone
+must be in the match development profile. Without access to the match repo, sign
+with your own team in `apps/ios/Local.xcconfig`, as `Signing.xcconfig` shows.
 
 ### Machine rules
 
@@ -74,10 +73,11 @@ boots, and deletes the device that it created. To use a simulator that is
 already booted, set `JUNIOR_IOS_REUSE_UDID`; the script installs the app there,
 removes it at the end, and does not shut that simulator down.
 
-`xcbuild.sh` shares one compilation cache per machine
-(`~/Library/Caches/ios-agent-build.noindex`) and keeps DerivedData in this
-checkout (`.build.noindex`). Checkout paths are remapped out of cache keys, so
-a new worktree reuses compiled work.
+## Logs
+
+Logs use the subsystem `io.sentry.junior`. Message text shows only in a debugger.
+Stream with `log stream --level debug --predicate 'subsystem == "io.sentry.junior"'`,
+use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 ## Launch arguments
 

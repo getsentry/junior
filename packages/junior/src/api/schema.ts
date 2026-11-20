@@ -472,12 +472,15 @@ export type {
   ReviewItemPayload,
 } from "./schema/review-item";
 export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
+  InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
 } from "./schema/inbox-snooze";
