@@ -1,11 +1,15 @@
+import { generateKeyPairSync } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
+import { http, HttpResponse } from "msw";
+import { vi } from "vitest";
 import type { InboxSnoozeSubjectBody } from "@/api/schema/inbox-snooze";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
+import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
 export const ROOT = "slack:CSNOOZE:1.000001";
@@ -83,6 +87,62 @@ export const PULL_REQUEST = {
   identifier: "getsentry/junior#1",
   url: "https://github.com/getsentry/junior/pull/1",
 };
+
+/** Another pull request in the repository of `PULL_REQUEST`. */
+export const OTHER_PULL_REQUEST = {
+  identifier: "getsentry/junior#2",
+  url: "https://github.com/getsentry/junior/pull/2",
+};
+
+/** A pull request of getsentry/junior that does not exist. */
+const MISSING_PULL_REQUEST_NUMBER = "999";
+export const MISSING_PULL_REQUEST_URL = `https://github.com/getsentry/junior/pull/${MISSING_PULL_REQUEST_NUMBER}`;
+
+/** Link a GitHub login to a User, as account linking does. */
+export async function linkGitHub(viewer: User, login: string): Promise<User> {
+  await upsertLinkedIdentity(getSqlExecutor(), viewer.id, {
+    handle: login,
+    kind: "user",
+    provider: "github",
+    providerSubjectId: `gh-${login}`,
+  });
+  return (await resolveViewerUserFromSql(getDb(), viewer.email))!;
+}
+
+/**
+ * Let the GitHub App read pull requests of getsentry/junior, except
+ * `MISSING_PULL_REQUEST_URL`, and let only these GitHub logins see the
+ * repository.
+ */
+export function useGitHubRepository(readers: string[]): void {
+  vi.stubEnv("GITHUB_APP_ID", "123");
+  vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+  vi.stubEnv(
+    "GITHUB_APP_PRIVATE_KEY",
+    generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ format: "pem", type: "pkcs1" })
+      .toString(),
+  );
+  const api = "https://api.github.com/repos/getsentry/junior";
+  mswServer.use(
+    http.get(`${api}/collaborators/:login/permission`, ({ params }) =>
+      HttpResponse.json({
+        permission: readers.includes(String(params["login"])) ? "read" : "none",
+      }),
+    ),
+    http.get(`${api}/pulls/:number`, ({ params }) =>
+      params["number"] === MISSING_PULL_REQUEST_NUMBER
+        ? HttpResponse.json({ message: "Not Found" }, { status: 404 })
+        : HttpResponse.json({
+            html_url: `https://github.com/getsentry/junior/pull/${params["number"]}`,
+            merged: false,
+            number: Number(params["number"]),
+            state: "open",
+            title: `Pull request ${params["number"]}`,
+          }),
+    ),
+  );
+}
 
 /**
  * Add an open action item for these Users about `PULL_REQUEST`. It is
@@ -165,10 +225,19 @@ export function api(fixture: ConversationFixture, viewer: User) {
     /** Snooze a row until this time. */
     snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
-    /** Snooze a row until an Event on each item's subject. */
+    /** The Events of a page that the viewer names for a snooze. */
+    resource: (url: string) =>
+      app.request(
+        `http://localhost/api/inbox/snoozes/resource?${new URLSearchParams({ url })}`,
+      ),
+    /** Snooze a row until an Event on each item's subject or a named page. */
     snoozeOn: (
       subject: InboxSnoozeSubjectBody,
-      triggers: { eventType: string; outcome: "resolve" | "wake" }[],
+      triggers: {
+        eventType: string;
+        outcome: "resolve" | "wake";
+        resourceUrl?: string;
+      }[],
       wakeAtMs?: number,
     ) =>
       snoozes("POST", {

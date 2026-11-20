@@ -2,6 +2,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
+import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -129,25 +130,7 @@ export const migration = {
 };
 
 // The Events of a GitHub pull request subject, as the API lists them.
-export const pullRequestResource = {
-  events: [
-    "pull_request.checks.failed",
-    "pull_request.checks.passed",
-    "pull_request.checks.recovered",
-    "pull_request.comment.created",
-    "pull_request.opened",
-    "pull_request.ready_for_review",
-    "pull_request.review.approved",
-    "pull_request.review.changes_requested",
-    "pull_request.review.commented",
-    "pull_request.review_comment.created",
-    "pull_request.merged",
-    "pull_request.closed_unmerged",
-    "pull_request.merge_conflict",
-  ],
-  namespace: "github",
-  resourceType: "pull_request",
-};
+export const pullRequestResource = PULL_REQUEST_RESOURCE;
 
 // The GitHub plugin's ask for a Junior pull request: an action item with no
 // question. The mock Conversation has the object annotation for the same URL.

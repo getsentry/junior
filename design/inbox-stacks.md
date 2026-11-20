@@ -108,7 +108,8 @@ Order and counts:
 
 Snooze:
 
-- Snooze on a row puts away only that item, until a time or an Event.
+- Snooze on a row puts away only that item, until a time or one of the
+  Events it picks on its subject or a page that the viewer can see.
 - Snooze on a stack snoozes each of its items until the same time. An
   item that arrives later is not snoozed: it shows in the Inbox by itself,
   and the rest stay in Snoozed.

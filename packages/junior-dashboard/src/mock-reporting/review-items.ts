@@ -14,6 +14,7 @@ import {
   type InboxSnoozeCreateBody,
   type InboxSnoozeSubjectBody,
 } from "@sentry/junior/api/schema";
+import { PULL_REQUEST_RESOURCE } from "./snooze-resources";
 
 /** One open question, and an earlier one that the viewer answered. */
 export const MOCK_QUESTION_CONVERSATION_ID = "internal:question-qa";
@@ -51,26 +52,6 @@ const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
-// The Events of a GitHub pull request subject, as the API lists them.
-const PULL_REQUEST_RESOURCE = {
-  events: [
-    "pull_request.checks.failed",
-    "pull_request.checks.passed",
-    "pull_request.checks.recovered",
-    "pull_request.comment.created",
-    "pull_request.opened",
-    "pull_request.ready_for_review",
-    "pull_request.review.approved",
-    "pull_request.review.changes_requested",
-    "pull_request.review.commented",
-    "pull_request.review_comment.created",
-    "pull_request.merged",
-    "pull_request.closed_unmerged",
-    "pull_request.merge_conflict",
-  ],
-  namespace: "github",
-  resourceType: "pull_request",
-};
 const DAY = 24 * 60;
 
 export type MockItemSeed = Pick<

@@ -2,6 +2,7 @@ import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { reviewItemRequestSchema } from "@/chat/review-items/evidence";
 import { actorIdentitySchema } from "./conversation";
+import { inboxSnoozeResourceSchema } from "./inbox-snooze";
 
 const answerSchema = z
   .object({
@@ -103,14 +104,7 @@ export const reviewItemSchema = z
          * the Event types that can wake or resolve a snooze of the item.
          * Unset when no Event source claims it.
          */
-        resource: z
-          .object({
-            events: z.array(z.string().min(1)).min(1),
-            namespace: z.string().min(1),
-            resourceType: z.string().min(1),
-          })
-          .strict()
-          .optional(),
+        resource: inboxSnoozeResourceSchema.optional(),
         title: z.string().min(1).optional(),
         url: z.string().min(1).optional(),
       })

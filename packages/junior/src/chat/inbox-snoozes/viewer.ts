@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { mapBounded } from "@/chat/fan-out";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   canActOnReviewItem,
@@ -23,7 +24,11 @@ import {
   unsnoozeInboxRow,
   type InboxSnoozeTriggerInput,
 } from "./store";
-import { snoozeSubjectResource } from "./subject";
+import {
+  snoozeSubjectResource,
+  viewerSnoozeResource,
+  type SnoozeResource,
+} from "./subject";
 import { scheduleInboxSnoozeTimer } from "./triggers";
 
 /**
@@ -129,31 +134,65 @@ async function visibleRowItems(
 }
 
 /**
- * An Event on each snoozed item's subject that ends its snooze: `wake`
- * shows the item again, and `resolve` dismisses it.
+ * An Event that ends a snooze: `wake` shows the item again, and `resolve`
+ * dismisses it. It is on the page at `resourceUrl`, or on each item's
+ * subject.
  */
 interface ViewerSnoozeTrigger {
   eventType: string;
   outcome: "wake" | "resolve";
+  resourceUrl?: string;
 }
 
 /**
- * Aim each trigger at the resource of the item's subject. The item names
- * the resource, so a viewer cannot wait on a resource that no item they
- * see names. A `resolve` dismisses the item, so it needs a viewer who can
- * dismiss it. Returns undefined when a trigger does not apply to the item.
+ * Read the resource of each page that the triggers name. The viewer must
+ * be allowed to see each one, so a snooze cannot learn about a page that
+ * they cannot see.
  */
-function subjectTriggers(
+async function namedResources(
+  user: User,
+  triggers: readonly ViewerSnoozeTrigger[],
+): Promise<Map<string, SnoozeResource>> {
+  const urls = [
+    ...new Set(triggers.flatMap((trigger) => trigger.resourceUrl ?? [])),
+  ];
+  const catalog = getEventCatalog();
+  const resources = await mapBounded(urls, (url) =>
+    viewerSnoozeResource(user, catalog, url),
+  );
+  const named = new Map<string, SnoozeResource>();
+  for (const [index, url] of urls.entries()) {
+    const resource = resources[index];
+    if (!resource) {
+      throw new InboxSnoozeInputError(`A snooze cannot wait on ${url}.`);
+    }
+    named.set(url, resource);
+  }
+  return named;
+}
+
+/**
+ * Aim each trigger at its named resource, or at the resource of the item's
+ * subject. A viewer waits on the subject without a check, as the item
+ * already names it. A `resolve` dismisses the item, so it needs a viewer
+ * who can dismiss it. Returns undefined when a trigger does not apply to
+ * the item.
+ */
+function itemTriggers(
   item: RowItem,
   triggers: readonly ViewerSnoozeTrigger[],
+  named: ReadonlyMap<string, SnoozeResource>,
 ): InboxSnoozeTriggerInput[] | undefined {
-  const resource =
+  const subject =
     item.subjectUrl &&
     snoozeSubjectResource(getEventCatalog(), item.subjectUrl);
-  if (!resource) return triggers.length > 0 ? undefined : [];
   const aimed: InboxSnoozeTriggerInput[] = [];
   for (const trigger of triggers) {
+    const resource = trigger.resourceUrl
+      ? named.get(trigger.resourceUrl)
+      : subject;
     if (
+      !resource ||
       !resource.events.includes(trigger.eventType) ||
       (trigger.outcome === "resolve" && !item.canAct)
     ) {
@@ -178,14 +217,15 @@ function subjectTriggers(
 function itemsWithTriggers(
   items: readonly RowItem[],
   triggers: readonly ViewerSnoozeTrigger[],
+  named: ReadonlyMap<string, SnoozeResource>,
 ): { item: RowItem; triggers: InboxSnoozeTriggerInput[] }[] {
   const taken = items.flatMap((item) => {
-    const aimed = subjectTriggers(item, triggers);
+    const aimed = itemTriggers(item, triggers, named);
     return aimed ? [{ item, triggers: aimed }] : [];
   });
   if (taken.length === 0) {
     throw new InboxSnoozeInputError(
-      "No item in the row has a subject with these Events that the viewer can act on.",
+      "No item in the row takes these Events from this viewer.",
     );
   }
   return taken;
@@ -193,8 +233,8 @@ function itemsWithTriggers(
 
 /**
  * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
- * or until one of `triggers` fires on an item's subject, whichever is
- * first. Each item gets its own snooze, which replaces the viewer's
+ * or until one of `triggers` fires on an item's subject or on a page that
+ * the viewer names, whichever is first. Each item gets its own snooze, which replaces the viewer's
  * earlier one; a later item in the row shows by itself. Returns the
  * snoozed items.
  */
@@ -226,7 +266,12 @@ export async function createViewerSnooze(
   if (items.length === 0) {
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
-  const snoozed = itemsWithTriggers(items, input.triggers ?? []);
+  const triggers = input.triggers ?? [];
+  const snoozed = itemsWithTriggers(
+    items,
+    triggers,
+    await namedResources(user, triggers),
+  );
   const timerId =
     wakeAtMs === undefined ? undefined : `inbox-snooze:${randomUUID()}`;
   // Add the timer before the snoozes replace the viewer's earlier ones, so

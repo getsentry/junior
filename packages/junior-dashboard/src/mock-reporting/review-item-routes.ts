@@ -3,6 +3,7 @@ import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
   apiErrorSchema,
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
   reviewItemActionSchema,
@@ -21,6 +22,7 @@ import {
   snoozeMockRow,
   wakeMockRow,
 } from "./review-items";
+import { readMockSnoozeResource } from "./snooze-resources";
 
 function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -81,6 +83,12 @@ export function addMockReviewItemRoutes(
     return item
       ? jsonResponse(reviewItemSchema, item)
       : errorResponse("Review item not found.", 404);
+  });
+  app.get("/inbox/snoozes/resource", (c) => {
+    const resource = readMockSnoozeResource(c.req.query("url") ?? "");
+    return resource
+      ? jsonResponse(inboxSnoozeResourceSchema, resource)
+      : errorResponse("A snooze cannot wait on this link.", 404);
   });
   app.post("/inbox/snoozes", async (c) => {
     const body = inboxSnoozeCreateSchema.safeParse(await c.req.json());

@@ -171,6 +171,7 @@ function subjectPayload(
           resource: {
             events: [...resource.events],
             namespace: resource.namespace,
+            phrases: { ...resource.phrases },
             resourceType: resource.resourceType,
           },
         }
