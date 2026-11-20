@@ -23,6 +23,12 @@ export const KEY_PREFIX = "junior:cache_warming";
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
 // timing use the TTL of this retention (`CACHE_TTL_MS`).
+//
+// The 1h retention costs more on Anthropic: Opus writes cost $8/MTok for 1h
+// and $5/MTok for 5 minutes. A 1h write on every call costs more than it
+// saves. A 1h write of the whole prefix when a Conversation goes idle costs
+// $8/MTok of prefix. An hour of 5-minute warmups costs about $2.6/MTok (12
+// warmups at $0.22), so that write never wins either.
 export const CACHE_RETENTION: CacheRetention = "short";
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
