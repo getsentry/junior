@@ -54,6 +54,30 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
   }
 
+  /// The built-in demo answers without the mock server: a reply to a sent
+  /// message, and a notice instead of the dashboard it does not have.
+  func testTryDemo() {
+    let app = launch(auth: .signedOut)
+    let tryDemo = app.buttons["try-demo"]
+    XCTAssertTrue(tryDemo.waitForExistence(timeout: 10))
+    tryDemo.tap()
+    let field = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "label == 'Message Junior…' AND (elementType == %d OR elementType == %d)",
+        XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)
+    ).firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    field.tap()
+    field.typeText("Summarize this week's deploys")
+    app.buttons["Send"].tap()
+    let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'This is the demo'")).firstMatch
+    XCTAssertTrue(reply.waitForExistence(timeout: 20))
+
+    app.buttons["Conversation menu"].tap()
+    app.buttons["Open on the web"].tap()
+    XCTAssertTrue(app.alerts["The demo has no web dashboard"].waitForExistence(timeout: 10))
+  }
+
   func testHomeOpensConversation() {
     let app = launch()
     let row = card(app, "Investigate checkout latency")
