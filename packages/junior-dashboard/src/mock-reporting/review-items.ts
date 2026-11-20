@@ -9,7 +9,6 @@ import {
   answeredChoices,
   type ConversationFeed,
   type ConversationFeedViewerAnswer,
-  type ConversationReportEvent,
   type ReviewItemActionBody,
   type ReviewItemPayload,
   type InboxSnoozeCreateBody,
@@ -21,7 +20,8 @@ export const MOCK_QUESTION_CONVERSATION_ID = "internal:question-qa";
 /** Three open questions, so the question shows "1 of 3". */
 export const MOCK_QUESTIONS_CONVERSATION_ID = "internal:questions-qa";
 
-const viewer = {
+/** The mock viewer, who answers and closes items. */
+export const viewer = {
   displayName: "Dashboard User",
   email: "dev@example.com",
   userId: "u-dev",
@@ -29,7 +29,7 @@ const viewer = {
 
 // The mock rollback owner. Junior names people as Slack mentions, and the
 // API resolves each mention to its person.
-const AVERY_MENTION = {
+export const AVERY_MENTION = {
   email: "avery@sentry.io",
   fullName: "Avery Chen",
   slackUserId: "U789",
@@ -51,9 +51,29 @@ const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
+// The Events of a GitHub pull request subject, as the API lists them.
+const PULL_REQUEST_RESOURCE = {
+  events: [
+    "pull_request.checks.failed",
+    "pull_request.checks.passed",
+    "pull_request.checks.recovered",
+    "pull_request.comment.created",
+    "pull_request.opened",
+    "pull_request.ready_for_review",
+    "pull_request.review.approved",
+    "pull_request.review.changes_requested",
+    "pull_request.review.commented",
+    "pull_request.review_comment.created",
+    "pull_request.merged",
+    "pull_request.closed_unmerged",
+    "pull_request.merge_conflict",
+  ],
+  namespace: "github",
+  resourceType: "pull_request",
+};
 const DAY = 24 * 60;
 
-type MockItemSeed = Pick<
+export type MockItemSeed = Pick<
   ReviewItemPayload,
   | "answer"
   | "body"
@@ -83,7 +103,8 @@ type MockItemSeed = Pick<
     plugin?: string;
   };
 
-function seeds(nowMs: number): MockItemSeed[] {
+/** Every mock Review item, with its times relative to `nowMs`. */
+export function seeds(nowMs: number): MockItemSeed[] {
   const at = (minutes: number) =>
     new Date(nowMs - minutes * 60_000).toISOString();
   return [
@@ -241,6 +262,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
@@ -270,6 +292,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Retry Slack uploads on rate limits",
         url: "https://github.com/getsentry/junior/pull/2188",
       },
@@ -285,6 +308,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
       },
@@ -344,6 +368,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         // As the GitHub plugin names it, with its number.
         title: "Retry a canary stage once on a lost agent (#418)",
         url: "https://github.com/getsentry/sentaur/pull/418",
@@ -464,6 +489,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Tabs in the dashboard sidebar",
         url: "https://github.com/getsentry/junior/pull/3052",
       },
@@ -480,6 +506,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Fix the stable list order",
         url: "https://github.com/getsentry/junior/pull/3037",
       },
@@ -606,7 +633,9 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
         (!body.reviewItemId || seed.id === body.reviewItemId),
     )
     .map((seed) => seed.id);
-  for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+  // A snooze with no time waits for its Event, which mock data never sends.
+  const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
+  for (const id of reviewItemIds) snoozes.set(id, wakeAtMs);
   return { reviewItemIds };
 }
 
@@ -888,103 +917,4 @@ export function readMockReviewItemCounts(nowMs: number) {
       (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
   };
-}
-
-function addItemCall(seq: number, createdAt: string, item: MockItemSeed) {
-  return {
-    seq,
-    createdAt,
-    data: {
-      type: "tool_calls",
-      calls: [
-        {
-          input: { kind: "action", title: item.title },
-          name: "addReviewItem",
-          output: JSON.stringify({ item: { id: item.id } }),
-          status: "completed",
-          toolCallId: `add-${item.id}`,
-        },
-      ],
-    },
-  } satisfies ConversationReportEvent;
-}
-
-function message(
-  seq: number,
-  createdAt: string,
-  role: "assistant" | "user",
-  text: string,
-): ConversationReportEvent {
-  return {
-    seq,
-    createdAt,
-    data: { type: "message", messageId: `qa-message-${seq}`, role, text },
-  };
-}
-
-/**
- * Build the two question Conversations. Junior adds each item with a tool
- * call before its final message, as a live Turn does.
- */
-export function mockQuestionConversations(nowMs: number) {
-  const [region, rollout, window, tables, negative] = seeds(nowMs);
-  const at = (minutes: number) =>
-    new Date(nowMs - minutes * 60_000).toISOString();
-  const conversation = (
-    conversationId: string,
-    displayTitle: string,
-    events: ConversationReportEvent[],
-  ) => ({
-    actorIdentity: { email: viewer.email, fullName: viewer.displayName },
-    conversationId,
-    cumulativeDurationMs: 95_000,
-    displayTitle,
-    events,
-    isParticipant: true,
-    lastProgressAt: events.at(-1)!.createdAt,
-    lastSeenAt: events.at(-1)!.createdAt,
-    startedAt: events[0]!.createdAt,
-    surface: "internal" as const,
-  });
-  return [
-    conversation(MOCK_QUESTION_CONVERSATION_ID, "Roll out payments-v42", [
-      message(0, at(60), "user", "Ship payments-v42 when the canary is clean."),
-      addItemCall(1, at(58), region!),
-      message(
-        2,
-        at(58),
-        "assistant",
-        "The build is ready. I need a region for the canary first.",
-      ),
-      message(3, at(50), "user", region!.answer!.other!),
-      {
-        ...message(
-          4,
-          at(49),
-          "assistant",
-          "The canary is running in us-east-1. I will check it in 20 minutes, and <@U789> can roll it back.",
-        ),
-        mentions: [AVERY_MENTION],
-      },
-      addItemCall(5, at(26), rollout!),
-      message(
-        6,
-        at(26),
-        "assistant",
-        "The canary error rate is flat for 30 minutes, and p95 latency did not move. I need your go-ahead before I roll out to every region.",
-      ),
-    ]),
-    conversation(MOCK_QUESTIONS_CONVERSATION_ID, "Plan the billing migration", [
-      message(0, at(45), "user", "Plan the billing migration for next week."),
-      addItemCall(1, at(42), window!),
-      addItemCall(2, at(41), tables!),
-      addItemCall(3, at(40), negative!),
-      message(
-        4,
-        at(40),
-        "assistant",
-        "The dry run passed. Three decisions are left before I schedule it.",
-      ),
-    ]),
-  ];
 }

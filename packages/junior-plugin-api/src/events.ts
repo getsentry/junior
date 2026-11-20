@@ -488,6 +488,19 @@ export const pluginEventsSchema = z
         output: z.string().optional(),
       })
       .optional(),
+    /**
+     * The resource that one web page shows, the inverse of `resourceUrl`, so
+     * a link such as a Review item's subject can name an Event resource.
+     * Returns undefined when no resource type of the source has the page.
+     */
+    resourceForUrl: z
+      .function({
+        input: [z.string()],
+        output: z
+          .object({ identifier: z.string(), resourceType: z.string() })
+          .optional(),
+      })
+      .optional(),
   })
   .strict()
   .superRefine((registration, context) => {

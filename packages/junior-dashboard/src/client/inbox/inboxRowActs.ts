@@ -7,7 +7,9 @@ import type { RefObject } from "react";
 
 import { useToastManager } from "../components/ui/toast";
 import { useReviewItemAction } from "./queries";
+import type { SnoozeEnd } from "./inboxSnoozes";
 import type { InboxCardActions } from "./RowHoverActions";
+import { eventSnoozeOf, type EventSnooze } from "./snoozeChoices";
 import {
   showReturnedRow,
   type useLeaveCard,
@@ -146,7 +148,7 @@ export function inboxCardActions(input: {
   leave: ReturnType<typeof useLeaveRow>;
   leaveCard: ReturnType<typeof useLeaveCard>;
   setSnoozeKey(key: string | undefined): void;
-  snoozeItem(item: ReviewItemPayload, untilMs: number): void;
+  snoozeItem(item: ReviewItemPayload, end: SnoozeEnd): void;
   snoozeKey?: string;
 }) {
   const { act, leave, leaveCard, setSnoozeKey } = input;
@@ -157,17 +159,19 @@ export function inboxCardActions(input: {
         row.passing
           ? leave(row.key, release, row.passing)
           : leaveCard(row.key, item.id, release);
+      const snooze = options.snoozed
+        ? undefined
+        : (end: SnoozeEnd) => {
+            setSnoozeKey(undefined);
+            putAway(() => input.snoozeItem(item, end));
+          };
       return {
+        eventSnooze: eventSnoozeOf([item], snooze),
         onDismiss:
           item.status === "open" && item.canAct
             ? () => void act(row, [item], { action: "dismiss" }).catch(() => {})
             : undefined,
-        onSnooze: options.snoozed
-          ? undefined
-          : (untilMs) => {
-              setSnoozeKey(undefined);
-              putAway(() => input.snoozeItem(item, untilMs));
-            },
+        onSnooze: snooze,
         onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
         snoozeMenuOpen: input.snoozeKey === menuKey,
       };
@@ -186,12 +190,13 @@ export function inboxStackActions(input: {
   items: readonly ReviewItemPayload[];
   /** The stack's row keys, in order. */
   keys: readonly string[];
-  snooze(untilMs: number): void;
+  snooze(end: SnoozeEnd): void;
   snoozed?: boolean;
   stackKey: string;
   title: string;
 }): {
   dismissCount?: number;
+  eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
 } {
@@ -209,6 +214,7 @@ export function inboxStackActions(input: {
   };
   return {
     dismissCount: open.length,
+    eventSnooze: eventSnoozeOf(input.items, input.snooze),
     onDismiss:
       open.length > 0
         ? () => void input.act(row, open, { action: "dismiss" }).catch(() => {})

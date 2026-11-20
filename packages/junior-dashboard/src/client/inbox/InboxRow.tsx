@@ -83,6 +83,7 @@ import {
   type InboxCardActions,
 } from "./RowHoverActions";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import type { EventSnooze } from "./snoozeChoices";
 import type { InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -174,6 +175,8 @@ type InboxRowProps = {
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(untilMs: number): void;
+  /** Snooze on an Event of the subject that the row's items share. */
+  eventSnooze?: EventSnooze | undefined;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -788,9 +791,9 @@ function rowActions(props: InboxRowProps, inline = false) {
       conversation={props.conversation}
       inline={inline}
       // A stack of one card snoozes on the card.
-      onSnooze={
-        (props.bundle?.items.length ?? 0) > 1 ? props.onSnooze : undefined
-      }
+      {...((props.bundle?.items.length ?? 0) > 1
+        ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
+        : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
       open={rowOpenTarget(props)}
@@ -802,6 +805,7 @@ function rowActions(props: InboxRowProps, inline = false) {
 function ExpandedActions(props: {
   conversation?: Conversation;
   inline: boolean;
+  eventSnooze?: EventSnooze | undefined;
   open: { label: string; path: string };
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -828,6 +832,7 @@ function ExpandedActions(props: {
       ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
+          eventSnooze={props.eventSnooze}
           label="Snooze all"
           onOpenChange={props.onSnoozeMenu}
           onSnooze={props.onSnooze}

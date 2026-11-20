@@ -3,6 +3,7 @@ import {
   inboxSnoozeSchema,
   type InboxSnoozeCreateBody,
   type InboxSnoozeSubjectBody,
+  type InboxSnoozeTrigger,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
@@ -13,6 +14,9 @@ import { invalidateReviewItemCollections } from "./queries";
 import { itemConversationId, type InboxBundle } from "./reviewItemFormat";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
+
+/** When a snooze ends: at a time, as `Date.now()`, or on an Event. */
+export type SnoozeEnd = number | InboxSnoozeTrigger;
 
 /** What the Snoozed list says about the viewer's snoozed rows. */
 interface SnoozedRead {
@@ -48,11 +52,11 @@ function rowSubject(bundle: InboxBundle): InboxSnoozeSubjectBody {
 /**
  * Snooze Inbox items on the server, so a snooze holds in every browser. A
  * row snoozes its item, and a stack's Snooze its root's items. An item
- * wakes at its time, or when its root Conversation adds an item; the
- * versions poll then refreshes the lists. The server hides snoozed rows
- * from the Inbox lists and counts; until the Inbox list reads the server
- * again, `hides` keeps a row that was just snoozed out of the lists, and
- * `waking` one that was just woken.
+ * wakes at its time or on its Event, or when its root Conversation adds an
+ * item; the versions poll then refreshes the lists. The server hides
+ * snoozed rows from the Inbox lists and counts; until the Inbox list reads
+ * the server again, `hides` keeps a row that was just snoozed out of the
+ * lists, and `waking` one that was just woken.
  */
 export function useInboxSnoozes(read: SnoozedRead) {
   const queryClient = useQueryClient();
@@ -87,14 +91,16 @@ export function useInboxSnoozes(read: SnoozedRead) {
   const save = async (
     key: string,
     subject: InboxSnoozeSubjectBody,
-    untilMs: number,
+    end: SnoozeEnd,
   ) => {
     hide(key, Infinity);
     startChange();
     try {
       const body: InboxSnoozeCreateBody = {
         ...subject,
-        wakeAt: new Date(untilMs).toISOString(),
+        ...(typeof end === "number"
+          ? { wakeAt: new Date(end).toISOString() }
+          : { triggers: [end] }),
       };
       await post(inboxSnoozeSchema, SNOOZES_PATH, body);
     } catch {
@@ -136,15 +142,15 @@ export function useInboxSnoozes(read: SnoozedRead) {
     }
   };
   /**
-   * Snooze a row until `untilMs`. A root Conversation's row, such as a
-   * stack's Snooze, snoozes each of its open items; a row of one item,
-   * such as an FYI notice, only that item.
+   * Snooze a row until `end`. A root Conversation's row, such as a stack's
+   * Snooze, snoozes each of its open items; a row of one item, such as an
+   * FYI notice, only that item.
    */
-  const snooze = (bundle: InboxBundle, untilMs: number) =>
-    save(bundle.key, rowSubject(bundle), untilMs);
-  /** Snooze one item until `untilMs`. The rest of its stack stays. */
-  const snoozeItem = (item: ReviewItemPayload, untilMs: number) =>
-    save(item.id, itemSubject(item), untilMs);
+  const snooze = (bundle: InboxBundle, end: SnoozeEnd) =>
+    save(bundle.key, rowSubject(bundle), end);
+  /** Snooze one item until `end`. The rest of its stack stays. */
+  const snoozeItem = (item: ReviewItemPayload, end: SnoozeEnd) =>
+    save(item.id, itemSubject(item), end);
   /** Wake a snoozed row now: undo the viewer's snoozes on its items. */
   const wake = (bundle: InboxBundle) =>
     unsnooze(

@@ -87,18 +87,38 @@ async function lockUserSnoozes(
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
+/** An Event that ends a new snooze. */
+export interface InboxSnoozeTriggerInput {
+  eventType: string;
+  identifier: string;
+  namespace: string;
+  outcome: "wake" | "resolve";
+}
+
+/** The trigger of a snooze timer: its `timer.fired` Event wakes the item. */
+export function snoozeTimerTrigger(timerId: string): InboxSnoozeTriggerInput {
+  return {
+    eventType: SNOOZE_TIMER_EVENT_TYPE,
+    identifier: timerId,
+    namespace: CORE_EVENT_NAMESPACE,
+    outcome: "wake",
+  };
+}
+
 /**
- * Snooze Review items for one User. Each item gets its own snooze with a
- * timer wake trigger. A new item in the row is not snoozed, so it shows by
+ * Snooze Review items for one User. Each item gets its own snooze with its
+ * own triggers. A new item in the row is not snoozed, so it shows by
  * itself. The User's earlier snooze on an item is cancelled. The caller
  * must check that the User can see each item. Returns the new snoozes.
  */
 export async function snoozeInboxItems(
   db: JuniorDatabase,
   input: {
+    items: readonly {
+      reviewItemId: string;
+      triggers: readonly InboxSnoozeTriggerInput[];
+    }[];
     nowMs: number;
-    reviewItemIds: readonly string[];
-    timerId: string;
     userId: string;
   },
 ): Promise<string[]> {
@@ -110,28 +130,28 @@ export async function snoozeInboxItems(
       .where(
         and(
           eq(juniorInboxSnoozes.userId, input.userId),
-          inArray(juniorInboxSnoozes.reviewItemId, [...input.reviewItemIds]),
+          inArray(
+            juniorInboxSnoozes.reviewItemId,
+            input.items.map((item) => item.reviewItemId),
+          ),
           eq(juniorInboxSnoozes.state, "snoozed"),
         ),
       );
-    const snoozes = input.reviewItemIds.map((reviewItemId) => ({
+    const snoozes = input.items.map((item) => ({
       createdAt: new Date(input.nowMs),
       id: randomUUID(),
-      reviewItemId,
+      reviewItemId: item.reviewItemId,
       state: "snoozed" as const,
       userId: input.userId,
     }));
     await tx.insert(juniorInboxSnoozes).values(snoozes);
     await tx.insert(juniorInboxSnoozeTriggers).values(
-      snoozes.flatMap((snooze) => [
-        {
-          eventType: SNOOZE_TIMER_EVENT_TYPE,
-          identifier: input.timerId,
-          namespace: CORE_EVENT_NAMESPACE,
-          outcome: "wake" as const,
-          snoozeId: snooze.id,
-        },
-      ]),
+      input.items.flatMap((item, index) =>
+        item.triggers.map((trigger) => ({
+          ...trigger,
+          snoozeId: snoozes[index]!.id,
+        })),
+      ),
     );
     return snoozes.map((snooze) => snooze.id);
   });

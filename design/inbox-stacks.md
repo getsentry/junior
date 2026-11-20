@@ -22,7 +22,7 @@ can act on it.
   read stays useful.
 - A stack is a light grouping, not a new kind of row. It sits inside the
   To do, Up for grabs, and other sections, around the normal Inbox rows.
-  It uses the classic Inbox look and adds no color.
+  It adds no color.
 
 ## Entry points
 
@@ -51,10 +51,9 @@ Grouping:
   Automation for its alerts. The owner sets who sees the item, its tenant,
   and its stack. An Automation's alert takes its visibility from the
   Automation's Destination, and stacks under the Automation alone.
-- A child Conversation, at any depth, rolls up to its root. Every item has
-  the same root field, read from the root that each Conversation stores, so
-  depth costs nothing. The row shows a quiet label that names the child,
-  such as its Thread title, so the reader knows which sub-thread asked.
+- A child Conversation, at any depth, rolls up to its root. The row shows a
+  quiet label that names the child, such as its Thread title, so the reader
+  knows which sub-thread asked.
 - An item rolls up only when the viewer can see its root, as
   `../policies/conversation-access.md` says. Otherwise it groups under the
   Conversation that added it. The viewer never sees a title, a name, or a
@@ -109,7 +108,7 @@ Order and counts:
 
 Snooze:
 
-- Snooze on a row puts away only that item. It wakes at its time.
+- Snooze on a row puts away only that item, until a time or an Event.
 - Snooze on a stack snoozes each of its items until the same time. An
   item that arrives later is not snoozed: it shows in the Inbox by itself,
   and the rest stay in Snoozed.

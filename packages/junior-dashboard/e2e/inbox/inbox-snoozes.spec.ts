@@ -10,6 +10,7 @@ import {
   pinReview,
   prReady,
   prReview,
+  pullRequestResource,
   releaseNotes,
   rollout,
   rowHead,
@@ -35,6 +36,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("dialog", { name: "Snooze until" }),
     ).toBeVisible();
     await screenshot(page, "inbox-snooze", { view: "desktop" });
+    // The ask names no resource, so no Event can end its snooze.
+    await expect(page.getByRole("button", { name: "Event…" })).toHaveCount(0);
     const created = page.waitForRequest(
       (request) =>
         request.method() === "POST" &&
@@ -340,6 +343,79 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row).toHaveCount(0);
     release();
     await expect(row).toHaveCount(0);
+  });
+
+  test("a pull request row snoozes until an Event on its pull request", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    const row = page
+      .locator("[data-inbox-row]")
+      .filter({ hasText: "Review requested · #91" });
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await screenshot(page, "inbox-snooze-event-menu", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    await menu.getByRole("button", { name: "Event…" }).click();
+    // Each Event of the pull request, named without "pull request".
+    const wakeWhen = menu.getByRole("group", { name: "Wake when" });
+    await expect(wakeWhen.getByRole("button")).toHaveCount(
+      pullRequestResource.events.length,
+    );
+    await expect(
+      wakeWhen.getByRole("button", { name: "Review approved" }),
+    ).toBeVisible();
+    await screenshot(page, "inbox-snooze-event", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    // The viewer can dismiss the ask, so the Event can dismiss it.
+    await menu.getByRole("button", { name: "Dismiss" }).click();
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await menu
+      .getByRole("group", { name: "Dismiss when" })
+      .getByRole("button", { exact: true, name: "Merged" })
+      .click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: prReview.rootConversationId,
+      reviewItemId: prReview.id,
+      triggers: [{ eventType: "pull_request.merged", outcome: "resolve" }],
+    });
+    await expect(row).toHaveCount(0);
+  });
+
+  test("an Event wakes an ask that the viewer cannot dismiss", async ({
+    dashboard,
+    page,
+  }) => {
+    const ask = { ...prReview, canAct: false };
+    await mockReviewItems(page, { open: [license, ask] });
+    await page.goto(`${dashboard.baseURL}/?view=prs&item=${ask.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await menu.getByRole("button", { name: "Event…" }).click();
+    await expect(menu.getByRole("group", { name: "On the event" })).toHaveCount(
+      0,
+    );
+    const created = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    );
+    await menu.getByRole("button", { name: "Checks passed" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: ask.rootConversationId,
+      reviewItemId: ask.id,
+      triggers: [{ eventType: "pull_request.checks.passed", outcome: "wake" }],
+    });
   });
 
   test("a row snoozed in another browser loads asleep", async ({

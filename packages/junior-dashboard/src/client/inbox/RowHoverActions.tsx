@@ -8,9 +8,11 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import type { EventSnooze } from "./snoozeChoices";
 
 /** What one card does by itself: its Dismiss and Snooze. */
 export type InboxCardActions = {
+  eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -66,6 +68,7 @@ export function RowQuickActions(props: {
       <RowOpenLink {...props.open} />
       {actions.onSnooze ? (
         <RowSnoozeButton
+          eventSnooze={actions.eventSnooze}
           look="icon"
           onOpenChange={actions.onSnoozeMenu}
           onSnooze={actions.onSnooze}

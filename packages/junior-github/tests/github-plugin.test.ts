@@ -800,6 +800,37 @@ describe("github plugin", () => {
     });
   });
 
+  it("names the resource of a github.com page, the inverse of its URL", () => {
+    const events = githubPlugin().events!;
+    const resources = [
+      { identifier: "getsentry/junior", resourceType: "repository" },
+      { identifier: "getsentry/junior#691", resourceType: "pull_request" },
+      { identifier: "getsentry/junior#208", resourceType: "issue" },
+    ];
+    for (const resource of resources) {
+      expect(events.resourceForUrl!(events.resourceUrl!(resource)!)).toEqual(
+        resource,
+      );
+    }
+    expect(
+      events.resourceForUrl!(
+        "https://github.com/GetSentry/Junior/pull/691/files",
+      ),
+    ).toEqual({
+      identifier: "getsentry/junior#691",
+      resourceType: "pull_request",
+    });
+    for (const url of [
+      "https://github.com/getsentry/junior/commit/abc123",
+      "https://github.com/getsentry/junior/pull/new",
+      "https://gist.github.com/getsentry/junior",
+      "https://github.com/getsentry",
+      "not a url",
+    ]) {
+      expect(events.resourceForUrl!(url)).toBeUndefined();
+    }
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({

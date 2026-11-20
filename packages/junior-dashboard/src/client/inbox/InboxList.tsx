@@ -48,6 +48,7 @@ import {
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
+import type { SnoozeEnd } from "./inboxSnoozes";
 import { PageEnd, RetryRow } from "./PageEnd";
 import {
   inboxCardActions,
@@ -58,6 +59,7 @@ import { useLeaveCard, useLeaveRow } from "./rowMotion";
 import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
+import { eventSnoozeOf } from "./snoozeChoices";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
@@ -351,7 +353,7 @@ export function InboxList(props: {
     leave,
     leaveCard,
     setSnoozeKey,
-    snoozeItem: (item, untilMs) => void snoozes.snoozeItem(item, untilMs),
+    snoozeItem: (item, end) => void snoozes.snoozeItem(item, end),
     snoozeKey,
   });
 
@@ -383,6 +385,14 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     const title = titleOf(row.conversationId) ?? row.newest.title;
     const acted = { items: row.items, key, passing: options.passing, title };
+    const snoozeRow = options.snoozed
+      ? undefined
+      : (end: SnoozeEnd) => {
+          setSnoozeKey(undefined);
+          // The snooze hides the row before it saves, and brings it back
+          // with a toast when the save fails.
+          leave(key, () => void snoozes.snooze(row, end));
+        };
     return (
       <InboxRow
         answered={options.answered}
@@ -423,16 +433,8 @@ export function InboxList(props: {
         }
         key={key}
         onItemAction={(item, body) => act(acted, [item], body)}
-        onSnooze={
-          options.snoozed
-            ? undefined
-            : (untilMs) => {
-                setSnoozeKey(undefined);
-                // The snooze hides the row before it saves, and brings it
-                // back with a toast when the save fails.
-                leave(key, () => void snoozes.snooze(row, untilMs));
-              }
-        }
+        eventSnooze={eventSnoozeOf(row.items, snoozeRow)}
+        onSnooze={snoozeRow}
         onWake={
           options.snoozed
             ? () =>
@@ -507,9 +509,9 @@ export function InboxList(props: {
           keys: rows.map((stacked) => stacked.key),
           stackKey,
           title,
-          snooze: (untilMs) => {
+          snooze: (end) => {
             setSnoozeKey(undefined);
-            leave(stackKey, () => void snoozes.snooze(row, untilMs));
+            leave(stackKey, () => void snoozes.snooze(row, end));
           },
           snoozed: options.snoozed,
         })}

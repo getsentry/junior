@@ -64,6 +64,7 @@ export function InboxRowCard(props: {
         {props.rowActions}
         {actions?.onSnooze ? (
           <RowSnoozeButton
+            eventSnooze={actions.eventSnooze}
             onOpenChange={actions.onSnoozeMenu}
             onSnooze={actions.onSnooze}
             open={actions.snoozeMenuOpen}
