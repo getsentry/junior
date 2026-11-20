@@ -313,6 +313,37 @@ export interface WarmupDecisionInput {
   timerDueIdleMs?: number;
 }
 
+// The return chances of an idle period: its Conversation's gaps blended
+// with its segment's, and a thin segment's with its parents'.
+function returnCurve(
+  input: Pick<
+    WarmupDecisionInput,
+    "conversationGapsMs" | "globalGapsMs" | "priorGapsMs"
+  >,
+) {
+  const conversation = histogramOf(input.conversationGapsMs);
+  const segments = [histogramOf(input.globalGapsMs)];
+  for (const gapsMs of input.priorGapsMs ?? []) {
+    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
+    segments.push(histogramOf(gapsMs));
+  }
+  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
+  // Each thin list leans on the blend of the lists after it.
+  const histogram = blendHistograms(
+    conversation,
+    segments.reduceRight((prior, own) =>
+      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
+    ),
+    CONVERSATION_BLEND_PSEUDOCOUNT,
+  );
+  return {
+    histogram,
+    conversationGaps: conversation.total,
+    segmentGaps,
+    parentPrior: segmentGaps > segments[0]!.total,
+  };
+}
+
 /** Result of one warmup decision. */
 export interface WarmupDecision {
   warm: boolean;
@@ -356,21 +387,8 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
   const threshold =
     savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
-  const conversation = histogramOf(input.conversationGapsMs);
-  const segments = [histogramOf(input.globalGapsMs)];
-  for (const gapsMs of input.priorGapsMs ?? []) {
-    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
-    segments.push(histogramOf(gapsMs));
-  }
-  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
-  // Each thin list leans on the blend of the lists after it.
-  const histogram = blendHistograms(
-    conversation,
-    segments.reduceRight((prior, own) =>
-      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
-    ),
-    CONVERSATION_BLEND_PSEUDOCOUNT,
-  );
+  const { histogram, conversationGaps, segmentGaps, parentPrior } =
+    returnCurve(input);
   const probability = returnProbability(
     histogram,
     input.idleMs,
@@ -388,7 +406,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     returnProbability: probability,
     returnsPerWarmup: perWarmup,
     threshold,
-    parentPrior: segmentGaps > segments[0]!.total,
+    parentPrior,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return decision("prefix_too_small");
@@ -402,7 +420,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const reason =
     input.idleMs >= IDLE_HORIZON_MS
       ? "horizon"
-      : conversation.total + segmentGaps < MIN_GAP_SAMPLES
+      : conversationGaps + segmentGaps < MIN_GAP_SAMPLES
         ? "few_gaps"
         : perWarmup >= threshold
           ? "warm"
@@ -438,4 +456,106 @@ function returnsPerWarmup(
     best = Math.max(best, returns / warmups);
   }
   return best;
+}
+
+/** Inputs for one compaction on idle choice. Prices use one unit. */
+export interface IdleCompactionChoiceInput extends Omit<
+  WarmupDecisionInput,
+  "timerDueIdleMs"
+> {
+  /** Estimated prefix after the ready summary replaces history. */
+  compactedTokens: number;
+  /** False when this slot cannot send a warmup, such as a late one. */
+  canWarm: boolean;
+}
+
+/** What a warmup slot does with a ready summary. */
+export type IdleCompactionChoice = "compact" | "warm" | "stop";
+
+/** Result of one compaction on idle choice, with the expected costs. */
+export interface IdleCompactionChoiceResult {
+  choice: IdleCompactionChoice;
+  /** Expected cost of each option for this idle period, in price units. */
+  costs: Record<IdleCompactionChoice, number>;
+}
+
+/**
+ * Choose what a warmup slot does when a ready summary could replace the
+ * full prefix P with a compacted prefix C. It uses the return chances of
+ * `decideWarmup`. Only returns in the idle horizon count. Each option's cost
+ * is the expected price of the warmups and of the first request of a return:
+ *
+ * - `warm`: a warmup reads P, and a return before the next slot reads P.
+ *   At the next slot, the choice runs again with the same three options.
+ * - `compact`: a return writes C. No more warmups.
+ * - `stop`: a return before the cache expires reads P, a later one writes P.
+ *
+ * The cheapest option wins. On a tie, compact wins, because a return after
+ * the horizon also writes less. So a likely quick return, such as a child
+ * agent's result, warms first and compacts at a later slot.
+ */
+export function chooseIdleCompaction(
+  input: IdleCompactionChoiceInput,
+): IdleCompactionChoiceResult {
+  const { histogram } = returnCurve(input);
+  const S = (ms: number) => survival(histogram, Math.min(ms, IDLE_HORIZON_MS));
+  const now = S(input.idleMs);
+  const readFull = input.cacheReadPrice * input.prefixTokens;
+  const writeFull = input.cacheWritePrice * input.prefixTokens;
+  const writeCompacted = input.cacheWritePrice * input.compactedTokens;
+  const intervalMs = input.cacheTtlMs - WARMUP_MARGIN_MS;
+  const end = S(IDLE_HORIZON_MS);
+  // Slot k starts at `startMs`, and its cache expires at `expiryMs`. Costs
+  // are not yet divided by `now`, so each slot weighs its own still-idle
+  // share.
+  const options = (
+    startMs: number,
+    expiryMs: number,
+    canWarm: boolean,
+  ): Record<IdleCompactionChoice, number> => {
+    const left = S(startMs);
+    const nextMs = startMs + intervalMs;
+    const warm =
+      !canWarm || intervalMs <= 0
+        ? Infinity
+        : left * readFull +
+          (left - S(nextMs)) * readFull +
+          (nextMs < IDLE_HORIZON_MS
+            ? best(options(nextMs, startMs + input.cacheTtlMs, true))
+            : 0);
+    return {
+      compact: (left - end) * writeCompacted,
+      stop: (left - S(expiryMs)) * readFull + (S(expiryMs) - end) * writeFull,
+      warm,
+    };
+  };
+  const costs = options(input.idleMs, input.cacheExpiryIdleMs, input.canWarm);
+  // With no return left, each option that can run costs nothing.
+  const perIdle = (cost: number) => (now > 0 ? cost / now : cost);
+  return {
+    choice: cheapest(costs),
+    costs: {
+      compact: perIdle(costs.compact),
+      stop: perIdle(costs.stop),
+      warm: perIdle(costs.warm),
+    },
+  };
+}
+
+const CHOICE_ORDER: readonly IdleCompactionChoice[] = [
+  "compact",
+  "stop",
+  "warm",
+];
+
+function cheapest(
+  costs: Record<IdleCompactionChoice, number>,
+): IdleCompactionChoice {
+  return CHOICE_ORDER.reduce((best, choice) =>
+    costs[choice] < costs[best] ? choice : best,
+  );
+}
+
+function best(costs: Record<IdleCompactionChoice, number>): number {
+  return costs[cheapest(costs)];
 }

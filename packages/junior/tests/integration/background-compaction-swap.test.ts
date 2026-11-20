@@ -785,6 +785,10 @@ describe("compaction on idle", () => {
       modelId: MODEL_ID,
       prefixTokens: getAgentBackgroundCompactionMarkTokens(MODEL_ID),
       requestOverheadTokens: 0,
+      choose: () => ({
+        choice: "compact" as const,
+        costs: { compact: 0, stop: 0, warm: 0 },
+      }),
     };
     // The person returns: a Run takes the lease before it reads history.
     await requestConversationWork({
@@ -794,7 +798,7 @@ describe("compaction on idle", () => {
     const lease = await startConversationWork({ conversationId });
     if (lease.status !== "acquired") throw new Error("Expected work lease");
 
-    expect(await compactOnIdle(idle)).toBe("busy");
+    expect((await compactOnIdle(idle))?.outcome).toBe("busy");
     const events = getConversationEventStore();
     expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
       committed.historyVersion,
@@ -804,7 +808,7 @@ describe("compaction on idle", () => {
       conversationId,
       leaseToken: lease.leaseToken,
     });
-    expect(await compactOnIdle(idle)).toBe("applied");
+    expect((await compactOnIdle(idle))?.outcome).toBe("applied");
     expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
       committed.historyVersion + 1,
     );

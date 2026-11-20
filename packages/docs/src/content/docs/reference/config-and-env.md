@@ -413,8 +413,10 @@ likely to cost less than that write.
   `true`.
 - Compaction on idle: when the cached prefix is at or above the background
   compaction mark (85% of the compaction threshold), a warmup first looks
-  for a background summary that is ready. When it finds one, the summary
-  replaces the history and warming stops for that idle period. The returning
+  for a background summary that is ready. When it finds one, it takes the
+  cheapest of three options: warm the full prefix, swap the summary in, or
+  stop. A swap replaces the history and warming stops for that idle period.
+  A likely quick return warms first and swaps at a later warmup. The returning
   turn reads a much smaller prefix, but it gets a summary in place of
   history that it would have kept in that turn, which can make an answer
   worse. When no summary is ready, or a turn runs, Junior warms as usual.
@@ -428,7 +430,11 @@ Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
 `junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
 cost of the Conversation. The `app.cache_warming.trigger` log attribute is
 `idle` or `tool_wait`. A warmup that compacted on idle has the skip reason
-`compacted_on_idle`.
+`compacted_on_idle`, and one that chose to stop has `idle_compaction_stopped`.
+`app.cache_warming.idle_compaction` is `applied`, `deferred` (warmed), or
+`stopped`, with the expected cost of each option in
+`app.cache_warming.compact_cost_micro_usd`, `warm_cost_micro_usd`, and
+`stop_cost_micro_usd`.
 
 ## Install-wide config defaults
 

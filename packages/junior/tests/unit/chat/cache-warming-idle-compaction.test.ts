@@ -11,6 +11,7 @@ import { getConversationEventStore } from "@/chat/db";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
+import { textCharsForTokens } from "@/chat/services/token-estimate";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 
@@ -39,6 +40,9 @@ const definitionsKey = { platform: "local", mode: "conversation" } as const;
 // threshold on its own.
 const OVERSIZED_TEXT = "x".repeat(1_600_000);
 const SUMMARY = "The person asked for the deploy checksum of build 7421.";
+// A summary at 30% of the prefix: a write of it costs more than a few reads
+// of the full prefix.
+const LONG_SUMMARY = `${SUMMARY} ${"z".repeat(textCharsForTokens(0.3 * markTokens))}`;
 
 function assistant(text: string, timestamp: number): PiMessage {
   return {
@@ -85,6 +89,7 @@ const history: PiMessage[] = [
 async function commitTurn(
   conversationId: string,
   summary: "ready" | "running",
+  summaryText = SUMMARY,
 ) {
   const committed = await commitMessages({
     conversationId,
@@ -104,7 +109,7 @@ async function commitTurn(
               type: "compaction_prepared",
               ...fact,
               outcome: "ready",
-              summary: SUMMARY,
+              summary: summaryText,
             }
           : { type: "compaction_requested", ...fact },
     },
@@ -155,6 +160,35 @@ function scheduledWarmup() {
   return message;
 }
 
+async function recordGaps(gapMs: number) {
+  for (let i = 0; i < 20; i++) {
+    await getStateAdapter().appendToList(GAPS_KEY, gapMs);
+  }
+}
+
+const scheduledWarmups = () =>
+  mocks.sendCacheWarmup.mock.calls.filter(
+    ([sent]) => (sent as CacheWarmupMessage).kind === "warmup",
+  );
+
+// Run the first warmup of an idle period at the end of a Turn with a ready
+// summary, and return the warmup requests that it sent.
+async function runFirstWarmup(conversationId: string, summaryText: string) {
+  const warmupRequests: unknown[] = [];
+  mockTitleModel("", {
+    cacheReadTokens: markTokens,
+    onRequest: (request) => warmupRequests.push(request),
+  });
+  await commitTurn(conversationId, "ready", summaryText);
+  mocks.sendCacheWarmup.mockClear();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  await endTurn(conversationId);
+  const warmup = scheduledWarmup();
+  vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
+  await runCacheWarmup(warmup);
+  return warmupRequests;
+}
+
 const historyText = async (conversationId: string) =>
   JSON.stringify(
     (await loadConversationProjection({ conversationId })).messages,
@@ -170,22 +204,11 @@ describe("cache warming compaction on idle", () => {
 
   it("swaps a ready background summary in when the cache is about to expire, and sends no warmup", async () => {
     const conversationId = "local:test:idle-compaction-ready";
-    // People in this segment reply after 8 minutes, so the model would warm.
-    for (let i = 0; i < 20; i++) {
-      await getStateAdapter().appendToList(GAPS_KEY, 8 * MINUTE);
-    }
-    const warmupRequests: unknown[] = [];
-    mockTitleModel("", {
-      onRequest: (request) => warmupRequests.push(request),
-    });
-    await commitTurn(conversationId, "ready");
-    mocks.sendCacheWarmup.mockClear();
-    vi.useFakeTimers({ toFake: ["Date"] });
-    await endTurn(conversationId);
-    const warmup = scheduledWarmup();
+    // People in this segment reply after 30 minutes: many warmups of the
+    // full prefix cost more than one write of the summary.
+    await recordGaps(30 * MINUTE);
 
-    vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
-    await runCacheWarmup(warmup);
+    const warmupRequests = await runFirstWarmup(conversationId, SUMMARY);
 
     // The person who returns reads the summary, not the full tool result.
     const text = await historyText(conversationId);
@@ -193,18 +216,40 @@ describe("cache warming compaction on idle", () => {
     expect(text).not.toContain(OVERSIZED_TEXT.slice(0, 100));
     expect(warmupRequests).toEqual([]);
     // The idle period stops: no next warmup of the old prefix.
-    expect(
-      mocks.sendCacheWarmup.mock.calls.filter(
-        ([sent]) => (sent as CacheWarmupMessage).kind === "warmup",
-      ),
-    ).toHaveLength(1);
+    expect(scheduledWarmups()).toHaveLength(1);
+  });
+
+  it("warms the full prefix and keeps the history when a return before the next warmup is likely", async () => {
+    const conversationId = "local:test:idle-compaction-deferred";
+    await recordGaps(6 * MINUTE);
+
+    const warmupRequests = await runFirstWarmup(conversationId, LONG_SUMMARY);
+
+    expect(warmupRequests).toHaveLength(1);
+    expect(await historyText(conversationId)).toContain(
+      OVERSIZED_TEXT.slice(0, 100),
+    );
+    // The next warmup chooses again.
+    expect(scheduledWarmups()).toHaveLength(2);
+  });
+
+  it("stops with no warmup and no swap when the return likely reads the current cache", async () => {
+    const conversationId = "local:test:idle-compaction-stopped";
+    // Returns land before the current cache expires.
+    await recordGaps(4.5 * MINUTE);
+
+    const warmupRequests = await runFirstWarmup(conversationId, LONG_SUMMARY);
+
+    expect(warmupRequests).toEqual([]);
+    expect(await historyText(conversationId)).toContain(
+      OVERSIZED_TEXT.slice(0, 100),
+    );
+    expect(scheduledWarmups()).toHaveLength(1);
   });
 
   it("warms the full prefix while the background summary still runs", async () => {
     const conversationId = "local:test:idle-compaction-running";
-    for (let i = 0; i < 20; i++) {
-      await getStateAdapter().appendToList(GAPS_KEY, 8 * MINUTE);
-    }
+    await recordGaps(8 * MINUTE);
     const warmupRequests: unknown[] = [];
     mockTitleModel("", {
       cacheReadTokens: markTokens,

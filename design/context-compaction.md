@@ -22,7 +22,7 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   and a warm return saves one write minus one read. So warming pays when
   more than 0.2 / (5 − 0.2), about 4%, of warmups reach a return.
 - At or above the background compaction mark, an idle Conversation compacts
-  instead of warming. A backtest of idle periods at that size found it
+  instead of warming when that costs less. A backtest of idle periods at that size found it
   cheaper than warming, and the largest saving of the options that it
   compared. About a third of returning Turns at that size compact in the
   Turn anyway, and then pay for the full prefix and the compacted one. A
@@ -45,9 +45,24 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 - Compaction on idle uses only a background summary that is ready. It
   makes no summary call. When no summary is ready, Junior warms as it does
   below the mark, and the next warmup checks again.
-- Compaction on idle waits until the cache is about to expire. A return
-  before that reads the full prefix from the cache, which costs less than a
-  write of the compacted prefix: about $0.07 against about $0.60.
+- Compaction on idle chooses at each warmup slot, when the cache is about
+  to expire. With a ready summary, it takes the cheapest of three options
+  for the full prefix P and the compacted prefix C. Each cost is the
+  expected price of the warmups and of the first request of a return in
+  the idle horizon, with the return chances and prices of the warmup rule:
+  - Warm: a warmup reads P, and a return before the next slot reads P.
+    The next slot chooses again.
+  - Compact: a return writes C, and P gets no more warmups.
+  - Stop: a return before the cache expires reads P. A later return
+    writes P.
+- For P = 360K and C = 120K tokens, a compacted return costs
+  5 × 0.12 = $0.60, a warmup or a warm return 0.2 × 0.36 = $0.072, and a
+  cold return of P $1.80. So warming wins only while a return is likely
+  before the warmups cost more than the write of C. A Conversation with a
+  likely quick return, such as one that waits for a child agent, warms
+  first and compacts at a later slot. Stop wins only when the return
+  likely comes before the current cache expires. On a tie, compaction
+  wins, because a return after the horizon also writes less.
 - After compaction on idle, Junior sends no warmups in that idle period.
   The compacted prefix is not in the cache, so its warmup would be a cache
   write. A return writes it once either way, so no return chance pays for

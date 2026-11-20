@@ -271,16 +271,18 @@ async function swapPreparedCompaction(
 /**
  * Swap a ready prepared summary into the committed history of an idle
  * Conversation. The caller decides that the history is large enough, and
- * keeps a Run from starting until this returns. `beforeReplace` runs right
- * before the replacement commits, and throws when the caller can no longer
- * keep a Run out. A summary that is still running is not awaited: the
- * caller warms the cache instead.
+ * keeps a Run from starting until this returns. `shouldReplace` gets the
+ * estimated size of the replacement and decides whether it commits.
+ * `beforeReplace` runs right before the replacement commits, and throws when
+ * the caller can no longer keep a Run out. A summary that is still running
+ * is not awaited: the caller warms the cache instead.
  */
 export async function swapPreparedCompactionOnIdle(args: {
   beforeReplace: () => Promise<void>;
   conversationId: string;
   modelId: string;
   requestOverheadTokens: number;
+  shouldReplace: (replacementTokens: number) => boolean;
 }): Promise<CompactContextResult> {
   const latest = await loadLatestBackgroundCompaction(args.conversationId);
   const prepared = latest?.event.data;
@@ -315,6 +317,7 @@ export async function swapPreparedCompactionOnIdle(args: {
       prepared,
       {
         beforeReplace: args.beforeReplace,
+        shouldReplace: args.shouldReplace,
         estimatedTokens: estimateHistoryTokens(
           projection.messages,
           args.modelId,
@@ -336,6 +339,7 @@ async function applyPreparedSummary(
     estimatedTokens: number;
     historyVersion: number;
     projection: PiConversationEventProjection;
+    shouldReplace?: (replacementTokens: number) => boolean;
     triggerTokens: number;
   },
 ): Promise<CompactContextResult> {
@@ -426,6 +430,10 @@ async function applyPreparedSummary(
   });
   if (replacementTokens > targetTokens) {
     return discard("over_target");
+  }
+  if (budget.shouldReplace && !budget.shouldReplace(replacementTokens)) {
+    setSpanAttributes({ "app.compaction.outcome": "declined" });
+    return { compacted: false };
   }
 
   args.signal?.throwIfAborted();
