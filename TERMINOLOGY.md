@@ -174,7 +174,12 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Unfinished work** / **Assigned work**: plugin-owned work on a
   Conversation, open / open or done.
 - **Review item**: work for a person, shown in the **Inbox**. Not an
-  Item. **Assignee**: a User or Everyone (anyone who can see it).
+  Item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
+  what the item belongs to, `{ kind, id }`: the Conversation that added it,
+  or an Automation. The owner sets the item's visibility, tenant, and Inbox
+  stack. **Automation alert**: a Review item that an Automation owns. Core
+  adds it for the creator when the Automation needs them, and closes it
+  when the Automation recovers.
 - **Attention**: what Junior takes from a person with a reply, a question, a
   Slack post or DM, a Review item, a review request, a push, or an Inbox
   count. A Watch Event goes to the agent and takes none. Not

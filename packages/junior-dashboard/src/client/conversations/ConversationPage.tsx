@@ -77,7 +77,10 @@ import {
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ChildConversationStatusPill } from "./ChildConversationStatus";
-import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
+import {
+  itemConversationId,
+  reviewItemIdFromToolCall,
+} from "../inbox/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -480,7 +483,7 @@ export function ConversationPage(props: {
         // A child Conversation can add an item to this one. Its Turn is not
         // in this transcript.
         turnId:
-          item.addedByConversationId === conversationId
+          itemConversationId(item) === conversationId
             ? item.addedByTurnId
             : undefined,
         version: (current?.version ?? 0) + 1,

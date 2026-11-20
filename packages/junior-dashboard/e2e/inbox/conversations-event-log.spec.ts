@@ -794,7 +794,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
       ).json();
       const item = {
-        addedByConversationId: conversationId,
+        owner: { id: conversationId, kind: "conversation" },
         rootConversationId: conversationId,
         assignedToEveryone: false,
         assignees: [

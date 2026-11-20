@@ -128,7 +128,8 @@ export async function selectExpiredRoots(
       )
       or exists (
         select 1 from junior_review_items review_items
-        where review_items.added_by_conversation_id = tree.conversation_id
+        where review_items.owner_kind = 'conversation'
+          and review_items.owner_id = tree.conversation_id
           and review_items.status = 'open'
           and review_items.automation_id is null
       )
@@ -145,7 +146,8 @@ export async function selectExpiredRoots(
           )
           or exists (
             select 1 from junior_review_items review_items
-            where review_items.added_by_conversation_id = tree.conversation_id
+            where review_items.owner_kind = 'conversation'
+              and review_items.owner_id = tree.conversation_id
               and review_items.visibility = 'private'
               and (
                 review_items.status <> 'open'
@@ -330,7 +332,7 @@ export async function purgeConversationTree(
             );
           // No agent can act on an item after its Conversation is purged.
           await dismissOpenReviewItems(executor.db(), {
-            addedByConversationIds: ids,
+            ownerConversationIds: ids,
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
@@ -355,7 +357,8 @@ export async function purgeConversationTree(
               .delete(juniorReviewItems)
               .where(
                 and(
-                  inArray(juniorReviewItems.addedByConversationId, ids),
+                  eq(juniorReviewItems.ownerKind, "conversation"),
+                  inArray(juniorReviewItems.ownerId, ids),
                   eq(juniorReviewItems.visibility, "private"),
                   or(
                     ne(juniorReviewItems.status, "open"),

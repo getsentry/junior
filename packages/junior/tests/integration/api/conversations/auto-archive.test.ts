@@ -360,7 +360,7 @@ describe("conversation auto-archive API", () => {
     }
     // An open action item for the viewer keeps the conversation in the feed.
     await insertReviewItem(getDb(), {
-      addedByConversationId: waitingId,
+      owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Merge or close the follow-up?",
@@ -617,7 +617,7 @@ describe("conversation auto-archive API", () => {
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
       const item = await insertReviewItem(getDb(), {
-        addedByConversationId: `${conversationId}:child`,
+        owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
         assigneeUserIds: [],
         body: "Ship the release now?",

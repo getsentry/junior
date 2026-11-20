@@ -458,6 +458,12 @@ export const pluginEventDeclarationSchema = z
       .min(1)
       .max(EVENT_GUIDANCE_MAX_LENGTH)
       .optional(),
+    /**
+     * How an Event of this type reads after the name of its resource, such
+     * as `is merged` or `gets a new comment`. People read it in a sentence,
+     * such as "When getsentry/junior#12 is merged".
+     */
+    phrase: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
 
