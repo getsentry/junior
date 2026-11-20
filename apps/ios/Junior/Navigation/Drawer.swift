@@ -60,7 +60,9 @@ struct Drawer: View {
         .padding(12)
       }
 
-      ServerFooter(host: app.server.baseURL.host() ?? app.server.baseURL.absoluteString, version: app.serverVersion)
+      ServerFooter(
+        host: app.server.isDemo ? "Demo" : app.server.baseURL.host() ?? app.server.baseURL.absoluteString,
+        version: app.serverVersion)
     }
     .background(Tokens.bgElevated)
   }

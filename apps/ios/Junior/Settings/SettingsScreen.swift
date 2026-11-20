@@ -29,9 +29,15 @@ struct SettingsScreen: View {
               Text(archiveResult).type(.xs).foregroundStyle(Tokens.textMuted)
             }
           }
-          card("Connection", description: "Signed in through \(app.agentName)'s MCP server.") {
+          card(
+            "Connection",
+            description: app.server.isDemo
+              ? "The demo shows sample data on this device. Sign out to connect to your \(app.agentName)."
+              : "Signed in through \(app.agentName)'s MCP server."
+          ) {
             VStack(alignment: .leading, spacing: 4) {
-              Text(app.server.baseURL.absoluteString).type(.sm, .medium).foregroundStyle(Tokens.text)
+              Text(app.server.isDemo ? "Demo" : app.server.baseURL.absoluteString)
+                .type(.sm, .medium).foregroundStyle(Tokens.text)
               if let version = app.serverVersion {
                 Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
               }
