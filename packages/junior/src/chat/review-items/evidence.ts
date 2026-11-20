@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import { userInputRequestSchema } from "@/chat/review-items/user-input-request";
 
 /**
  * One source that an agent cites for a Review item: a link or a

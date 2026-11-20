@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { ReviewItemRequest } from "@/chat/review-items/evidence";
-import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/review-items/user-input-request";
 import { juniorAutomations } from "./automations";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";

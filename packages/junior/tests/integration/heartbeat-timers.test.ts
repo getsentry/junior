@@ -7,7 +7,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch, takeDueTimerWatches } from "@/chat/events/store";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
-import { createEventTools } from "@/chat/tools/events";
+import { createEventTools } from "@/chat/tool-support/event-tools";
 import {
   createConversationId,
   recordWebConversationActivity,

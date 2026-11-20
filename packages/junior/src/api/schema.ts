@@ -18,12 +18,12 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";

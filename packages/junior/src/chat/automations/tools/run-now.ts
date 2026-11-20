@@ -14,7 +14,7 @@ import { getDb } from "@/chat/db";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 export const runAutomationNowToolDefinition = zodToolDefinition({

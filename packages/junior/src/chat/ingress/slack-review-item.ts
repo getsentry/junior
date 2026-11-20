@@ -44,7 +44,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buttonUserInputField,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import {
   buildSlackInteractionInput,

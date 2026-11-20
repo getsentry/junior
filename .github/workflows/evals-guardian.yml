@@ -45,6 +45,9 @@ jobs:
               - 'packages/junior/src/chat/guardian/**'
               # guardian-tools.ts builds each case's tool from these sources.
               - 'packages/junior/src/chat/tools/**'
+              - 'packages/junior/src/chat/tool-support/**'
+              - 'packages/junior/src/chat/review-items/tools/**'
+              - 'packages/junior/src/chat/review-items/tool-support.ts'
               - 'packages/junior-github/src/**'
               - 'packages/junior-google/src/**'
               - 'packages/junior-vercel/src/**'

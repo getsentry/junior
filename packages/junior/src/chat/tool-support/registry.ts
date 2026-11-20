@@ -12,6 +12,7 @@
  * MCP tools, the `codemode` declarations and the `searchTools` sources are
  * also built by each run, outside `createTools`.
  */
+import { searchReviewItemsToolDefinition } from "@/chat/review-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -32,7 +33,7 @@ import { slackCanvasReadToolDefinition } from "@/chat/slack/tools/canvas/read";
 import { slackCanvasWriteToolDefinition } from "@/chat/slack/tools/canvas/write";
 import { slackChannelJoinToolDefinition } from "@/chat/slack/tools/channel-join";
 import { slackChannelListMessagesToolDefinition } from "@/chat/slack/tools/channel-list-messages";
-import { slackConversationSearchChannelFilter } from "@/chat/slack/tools/conversation-search";
+import { slackConversationSearchChannelFilter } from "@/chat/slack/tool-support/conversation-search";
 import { searchConversationMessagesToolDefinition } from "@/chat/slack/tools/conversation-message-search";
 import { slackListAddItemsToolDefinition } from "@/chat/slack/tools/list/add-items";
 import { slackListCreateToolDefinition } from "@/chat/slack/tools/list/create";
@@ -46,15 +47,12 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
-import {
-  addReviewItemToolDefinition,
-  searchReviewItemsToolDefinition,
-  updateReviewItemToolDefinition,
-} from "@/chat/tools/review-items";
+import { updateReviewItemToolDefinition } from "@/chat/review-items/tools/update";
+import { addReviewItemToolDefinition } from "@/chat/review-items/tools/add";
 import { archiveAgentToolDefinition } from "@/chat/tools/runtime/archive-agent";
 import { messageAgentToolDefinition } from "@/chat/tools/runtime/message-agent";
 import { noReplyToolDefinition } from "@/chat/tools/runtime/no-reply";
@@ -76,10 +74,8 @@ import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
 import { systemTimeToolDefinition } from "@/chat/tools/system-time";
 import { submitFeedbackToolDefinition } from "@/chat/tools/submit-feedback";
 import { updateUserCustomizationToolDefinition } from "@/chat/tools/user-customization";
-import {
-  userLookupIdentityProviders,
-  userLookupToolDefinition,
-} from "@/chat/tools/user-lookup";
+import { userLookupToolDefinition } from "@/chat/tools/user-lookup";
+import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
 import { watchEventsToolDefinition } from "@/chat/tools/watch-events";
 import { watchTimerToolDefinition } from "@/chat/tools/watch-timer";
 import { webFetchToolDefinition } from "@/chat/tools/web/fetch-tool";

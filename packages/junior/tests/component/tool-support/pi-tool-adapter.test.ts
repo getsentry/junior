@@ -20,7 +20,7 @@ const { handleToolExecutionError } = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
+vi.mock("@/chat/tool-support/tool-error-handler", () => ({
   handleToolExecutionError,
 }));
 

@@ -14,7 +14,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { PlanItem, PlanItemStatus } from "./types";
 
 const PLAN_LOCK_PREFIX = "junior:plan";

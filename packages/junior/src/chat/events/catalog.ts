@@ -15,7 +15,7 @@ import {
   type EventMatch,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /**
  * How core limits one of its own resource types. Limits sit beside the

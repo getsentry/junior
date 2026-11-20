@@ -5,8 +5,8 @@ import {
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorReviewItemAssignees,
   juniorReviewItemConversations,

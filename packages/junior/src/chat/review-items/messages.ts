@@ -22,7 +22,7 @@ import {
 } from "@/chat/events/notification";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
-import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
+import { formatUserInputAnswer } from "@/chat/review-items/user-input-request";
 import { juniorConversations } from "@/db/schema";
 import type { ReviewItemChangeRecord } from "./change-record";
 import type { ReviewItem } from "./store";

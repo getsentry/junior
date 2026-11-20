@@ -1,3 +1,4 @@
+import { searchCatalogTools } from "@/chat/tool-support/catalog-search";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -12,10 +13,9 @@ import { memoryPlugin } from "@sentry/junior-memory";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { searchCatalogTools } from "@/chat/tools/search-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 
 const rootTurnTools = turnBehavior({

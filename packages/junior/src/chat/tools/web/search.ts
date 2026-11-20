@@ -2,8 +2,8 @@ import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { searchWeb, type ConversationModelCost } from "@/chat/core-model";
-import { withTimeout } from "@/chat/tools/web/network";
-import type { WebSearchToolDeps } from "@/chat/tools/types";
+import { withTimeout } from "@/chat/tool-support/web/network";
+import type { WebSearchToolDeps } from "@/chat/tool-support/types";
 
 const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;

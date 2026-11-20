@@ -12,8 +12,8 @@ import {
 import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { isToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { isToolInputError } from "@/chat/tool-support/tool-input-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { getWorkspace } from "@/chat/workspaces/store";
 import {

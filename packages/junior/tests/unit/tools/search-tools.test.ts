@@ -1,11 +1,11 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
+import { createSearchToolsTool } from "@/chat/tools/search-tools";
 import {
-  createSearchToolsTool,
   searchCatalogTools,
   summarizeModelVisibleDescription,
-} from "@/chat/tools/search-tools";
-import { tool } from "@/chat/tools/definition";
+} from "@/chat/tool-support/catalog-search";
+import { tool } from "@/chat/tool-support/definition";
 
 // These cases never reach the rerank model, so no cost is recorded.
 const NO_COST = { owner: "none" } as const;
