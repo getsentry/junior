@@ -4,8 +4,8 @@ import {
   MAX_CONTENT_CHARS,
   resourceKeyHeaders,
   type FileReference,
-} from "./files";
-import { googleApiRequest, type GoogleToolContext } from "./shared";
+} from "../drive/files";
+import { googleApiRequest, type GoogleToolContext } from "../google-api";
 
 /** Output fields of `readGoogleFile` for a Doc. */
 export const docOutputFields = {

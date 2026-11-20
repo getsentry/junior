@@ -51,7 +51,9 @@ contradictory or unsafe requests.
   data. Omit it for metadata-only traces. Return `undefined` to record nothing.
 - Put shared tool infrastructure in `tool-support` (host:
   `packages/junior/src/chat/tool-support`) or another non-`tools` module.
-  Files under `tools` are concrete tools only, one tool per file.
+  Files under `tools` are concrete tools only, one tool per file, at
+  `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. A tool file exports
+  only its tool. The `tools-dir-*` ast-grep rules enforce this.
 - Prefer direct imports over injected ports. Inject only when production needs
   more than one implementation.
 - Make a tool direct only when many Conversations use it or the system prompt
