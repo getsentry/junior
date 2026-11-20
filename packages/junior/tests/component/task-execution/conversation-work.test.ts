@@ -1698,7 +1698,7 @@ describe("conversation work execution", () => {
     expect(attempts).toEqual([["n1"], ["n2"]]);
   });
 
-  it("resumes a yielded Turn before a newly steered web message", async () => {
+  it("resumes a yielded Turn before newly steered or sent web messages", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const webMessage = (id: string, authorId: string) =>
       inboundMessage(id, {
@@ -1729,6 +1729,14 @@ describe("conversation work execution", () => {
         return { status: "yielded" };
       },
     });
+    // A dashboard send arrives as an interrupt after the Turn yields.
+    await appendInboundMessage({
+      message: inboundMessage("b2", {
+        delivery: "interrupt",
+        input: { authorId: "dashboard:b", text: "b2" },
+        source: "web",
+      }),
+    });
 
     await processConversationWork(conversationQueueMessage(), {
       queue,
@@ -1742,7 +1750,7 @@ describe("conversation work execution", () => {
     });
 
     // A second Turn must not start while the first waits to resume.
-    expect(attempts).toEqual([["a1"], [], ["b1"]]);
+    expect(attempts).toEqual([["a1"], [], ["b1", "b2"]]);
   });
 
   it("does not rewrite mailbox state for an empty drain result", async () => {

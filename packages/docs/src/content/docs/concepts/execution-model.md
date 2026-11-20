@@ -28,7 +28,7 @@ Queue messages only wake a worker. Stored conversation state remains the source 
 
 A **turn** covers one request through its final outcome. It may span several bounded attempts while keeping the same conversation and turn identity.
 
-Only one worker owns a conversation at a time. New mentions can steer active work at a safe point. Other messages wait for the current turn to finish.
+Only one worker owns a conversation at a time. New mentions and dashboard messages can steer active work at a safe point. Other messages wait for the current turn to finish.
 
 Progress updates are status, not final replies. Text produced while calling tools stays internal until Junior produces a reply.
 
