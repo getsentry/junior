@@ -206,12 +206,15 @@ describe("updatePlan", () => {
         harness.updatePlan({
           add: [{ title: "Run the checks", status: "in_progress" }],
         }),
-      ).rejects.toThrow(/one item in_progress/);
+      ).rejects.toThrow(`${items[0]!.id} and new item 1 would be in_progress`);
       // Ids are `TODO-<n>`, so a reply cannot pass one off as a GitHub `#12`.
       expect(items[0]!.id).toMatch(/^TODO-\d+$/);
       await expect(harness.updatePlan({ remove: ["#12"] })).rejects.toThrow(
         /TODO-12/,
       );
+      await expect(
+        harness.updatePlan({ remove: ["TODO-999999"] }),
+      ).rejects.toThrow("No plan item has id TODO-999999.");
       await expect(harness.updatePlan({})).resolves.toEqual({ items });
     } finally {
       await harness.close();
