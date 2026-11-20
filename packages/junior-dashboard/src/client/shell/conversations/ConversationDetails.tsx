@@ -3,7 +3,6 @@ import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
   ConversationDetailReport,
-  ConversationWatch,
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../../components/DetailsPanel";
@@ -20,7 +19,7 @@ import {
 } from "../../conversations/ConversationChildAgents";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
-  ConversationLinkedWork,
+  ConversationLinkedWorkCard,
   type ConversationLink,
 } from "../../conversations/ConversationLinkedWork";
 import {
@@ -32,10 +31,6 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
-import {
-  ConversationWatches,
-  useConversationWatches,
-} from "../../conversations/ConversationWatches";
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
 import { formatRelativeTime, formatTime } from "../../time";
@@ -55,6 +50,8 @@ export function ConversationDetails(props: {
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
+  /** True when the viewer is a Participant, who can cancel Watches. */
+  isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
@@ -80,22 +77,6 @@ export function ConversationDetails(props: {
   const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
   // The last node is this Conversation, so the one before it is the parent.
   const parent = props.agentTree?.at(-2);
-  const allWatches =
-    useConversationWatches(props.conversationId).data?.watches ?? [];
-  // A Watch on linked work shows in that row, so the resource shows once.
-  const linkUrls = new Set(props.links.map((link) => link.url));
-  const watchesByUrl = new Map<string, ConversationWatch[]>();
-  const watches: ConversationWatch[] = [];
-  for (const watch of allWatches) {
-    if (watch.url && linkUrls.has(watch.url)) {
-      watchesByUrl.set(watch.url, [
-        ...(watchesByUrl.get(watch.url) ?? []),
-        watch,
-      ]);
-    } else {
-      watches.push(watch);
-    }
-  }
 
   if (memoriesOpen && memoryList) {
     // The list replaces details in place, so nothing stacks over the panel.
@@ -169,29 +150,11 @@ export function ConversationDetails(props: {
           highlight={props.highlightReview}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
-        {props.links.length > 0 || watches.length > 0 ? (
-          // A Watch waits on something. It shows with linked work, so the
-          // work and what Junior waits on read as one list.
-          <DetailsCard
-            count={props.links.length || watches.length}
-            title={props.links.length > 0 ? "Linked work" : "Waiting on"}
-          >
-            {props.links.length > 0 ? (
-              <ConversationLinkedWork
-                links={props.links}
-                watchesByUrl={watchesByUrl}
-              />
-            ) : null}
-            {props.links.length > 0 && watches.length > 0 ? (
-              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
-                Also waiting on
-              </h4>
-            ) : null}
-            {watches.length > 0 ? (
-              <ConversationWatches watches={watches} />
-            ) : null}
-          </DetailsCard>
-        ) : null}
+        <ConversationLinkedWorkCard
+          canCancelWatches={props.isParticipant}
+          conversationId={props.conversationId}
+          links={props.links}
+        />
         {tasks.length > 0 ? (
           <ConversationTasks
             onOpenTask={(target) => {
