@@ -86,12 +86,17 @@ jobs:
           path: ${{ runner.temp }}/mock-server.log
 
   ipad:
-    name: screenshots / ipad
+    name: screenshots / ipad ${{ matrix.orientation }}
     runs-on: macos-26
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        orientation: [portrait, landscape]
     env:
       # With regular width, lists and the open item show side by side.
       JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M4)
+      ORIENTATION: ${{ matrix.orientation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -102,9 +107,9 @@ jobs:
       - name: Start the mock MCP server
         run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
       - name: Take screenshots
-        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-ipad-screenshots"
+        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-ipad-screenshots" "$ORIENTATION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-ipad-screenshots
+          name: ios-ipad-${{ matrix.orientation }}-screenshots
           path: ${{ runner.temp }}/ios-ipad-screenshots
           if-no-files-found: error
