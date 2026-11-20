@@ -1,4 +1,7 @@
 import * as Sentry from "@/chat/sentry";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { getLogContextAttributesForSpan } from "@/chat/logging";
+import { setChatSpanEndAttributes } from "@/chat/pi/chat-span";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
   scrubPrivateSentryEvent,
@@ -69,6 +72,19 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
   };
 }
 
+// The AI integrations record prompts and responses only for public
+// Conversations. They decide when each call starts.
+const recordAiContent = () => getCurrentConversationPrivacy() === "public";
+
+// Runs for every AI SDK span, in the async context of the call. The spans are
+// not Junior agent spans, so they get no `gen_ai.agent.name`.
+function setAiSdkSpanAttributes(span: Sentry.Span): void {
+  span.setAttributes({
+    ...getLogContextAttributesForSpan("gen_ai.chat"),
+    "app.conversation.privacy": getCurrentConversationPrivacy() ?? "private",
+  });
+}
+
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -90,6 +106,18 @@ export function initSentry(): void {
     environment: getEnvironment(),
     release: serviceVersion,
     tracesSampleRate: getTracesSampleRate(),
+    integrations: [
+      Sentry.piAiIntegration({
+        recordInputs: recordAiContent,
+        recordOutputs: recordAiContent,
+        onSpanEnd: setChatSpanEndAttributes,
+      }),
+      Sentry.vercelAIIntegration({
+        recordInputs: recordAiContent,
+        recordOutputs: recordAiContent,
+        onSpanStart: setAiSdkSpanAttributes,
+      }),
+    ],
     ignoreSpans: [
       // Vercel health checks
       { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },

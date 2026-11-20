@@ -56,14 +56,12 @@ registerApiProvider({
 });
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
-import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   structuredOutputErrorCause,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
-  getLogContextAttributesForSpan,
   logException,
   logWarn,
   setSpanAttributes,
@@ -258,34 +256,22 @@ function inputCostAttributes(costUsd: number | undefined) {
   });
 }
 
-function gatewayCostAttributes(event: { providerMetadata: unknown }) {
-  return extractGenAiUsageAttributes({
-    cost: { total: gatewayCostUsd(event.providerMetadata) },
-  });
-}
-
 /**
  * `ai` runs `onStart` and `onEnd` inside the span that the SDK's
  * `vercelAIIntegration` starts for the call. Spans are sent when they end, so
- * Junior attributes must be set here, not after the call returns.
+ * call attributes must be set here, not after the call returns.
  */
 function aiSdkSpanCallbacks<TEndEvent>(
   attributes: Record<string, unknown>,
   endAttributes?: (event: TEndEvent) => Record<string, unknown>,
 ) {
   return {
-    onStart: () =>
-      setSpanAttributes({
-        ...getLogContextAttributesForSpan("gen_ai.chat"),
-        "app.conversation.privacy":
-          getCurrentConversationPrivacy() ?? "private",
-        ...attributes,
-      }),
-    onEnd: (event: TEndEvent) => {
-      if (endAttributes) {
-        setSpanAttributes(endAttributes(event));
-      }
-    },
+    onStart: () => setSpanAttributes(attributes),
+    ...(endAttributes
+      ? {
+          onEnd: (event: TEndEvent) => setSpanAttributes(endAttributes(event)),
+        }
+      : undefined),
   };
 }
 
@@ -519,29 +505,18 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.promptName
             ? { telemetry: { functionId: params.promptName } }
             : undefined),
-          ...aiSdkSpanCallbacks(
-            {
-              ...(params.promptName
-                ? { "gen_ai.prompt.name": params.promptName }
-                : undefined),
-              "gen_ai.provider.auth_mode": credential.mode,
-              ...(params.thinkingLevel
-                ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-                : undefined),
-              ...(maxOutputTokens !== undefined
-                ? { "gen_ai.request.max_tokens": maxOutputTokens }
-                : undefined),
-            },
-            (event: { usage: LanguageModelUsage }) =>
-              extractGenAiUsageAttributes({
-                cost: {
-                  total: bestEffortObjectCompletionCost(
-                    params.modelId,
-                    event.usage,
-                  ),
-                },
-              }),
-          ),
+          ...aiSdkSpanCallbacks({
+            ...(params.promptName
+              ? { "gen_ai.prompt.name": params.promptName }
+              : undefined),
+            "gen_ai.provider.auth_mode": credential.mode,
+            ...(params.thinkingLevel
+              ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
+              : undefined),
+            ...(maxOutputTokens !== undefined
+              ? { "gen_ai.request.max_tokens": maxOutputTokens }
+              : undefined),
+          }),
         }),
     );
     const object = result.output as z.infer<TSchema>;
@@ -759,13 +734,10 @@ export async function rerankTexts(params: {
           model: provider.rerankingModel(params.modelId),
           query,
           documents: params.documents,
-          ...aiSdkSpanCallbacks(
-            {
-              "gen_ai.provider.auth_mode": credential.mode,
-              "app.rerank.document.count": params.documents.length,
-            },
-            gatewayCostAttributes,
-          ),
+          ...aiSdkSpanCallbacks({
+            "gen_ai.provider.auth_mode": credential.mode,
+            "app.rerank.document.count": params.documents.length,
+          }),
         }),
     );
     // The SDK sorts by score. Plugins get scores in input order.
@@ -833,15 +805,12 @@ export async function searchWeb(params: {
     ...(params.promptName
       ? { telemetry: { functionId: params.promptName } }
       : undefined),
-    ...aiSdkSpanCallbacks(
-      {
-        ...(params.promptName
-          ? { "gen_ai.prompt.name": params.promptName }
-          : undefined),
-        "gen_ai.provider.auth_mode": credential.mode,
-      },
-      gatewayCostAttributes,
-    ),
+    ...aiSdkSpanCallbacks({
+      ...(params.promptName
+        ? { "gen_ai.prompt.name": params.promptName }
+        : undefined),
+      "gen_ai.provider.auth_mode": credential.mode,
+    }),
   });
   const costUsd = gatewayCostUsd(response.providerMetadata);
   return {

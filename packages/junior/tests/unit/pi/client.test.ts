@@ -251,9 +251,6 @@ describe("completeText", () => {
         telemetry: { functionId: "classifier" },
       }),
     );
-    expect(mocks.setSpanAttributes).toHaveBeenLastCalledWith({
-      "app.cost.total_usd": 0.003,
-    });
   });
 
   it("keeps a successful object when cost estimation fails", async () => {
@@ -466,12 +463,9 @@ describe("completeText", () => {
 
     expect(result.dimensions).toBe(3);
     expect(result.costUsd).toBe(0.00000016);
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "app.conversation.privacy": "private",
-        "gen_ai.provider.auth_mode": "oidc",
-      }),
-    );
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "gen_ai.provider.auth_mode": "oidc",
+    });
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.input_usd": 0.00000016,
       "app.cost.total_usd": 0.00000016,
@@ -564,9 +558,6 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({ "app.rerank.document.count": 2 }),
     );
-    expect(mocks.setSpanAttributes).toHaveBeenLastCalledWith({
-      "app.cost.total_usd": 0.0000074,
-    });
   });
 });
 

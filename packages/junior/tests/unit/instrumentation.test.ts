@@ -37,6 +37,11 @@ function resetEnv(): void {
   }
 }
 
+interface AiIntegrationOptions {
+  recordInputs: () => boolean;
+  recordOutputs: () => boolean;
+}
+
 async function loadInstrumentationModule() {
   vi.resetModules();
   const init = vi.fn();
@@ -45,6 +50,14 @@ async function loadInstrumentationModule() {
     getClient: () => undefined,
     init,
     getGlobalScope: () => globalScope,
+    piAiIntegration: (options: AiIntegrationOptions) => ({
+      name: "PiAi",
+      options,
+    }),
+    vercelAIIntegration: (options: AiIntegrationOptions) => ({
+      name: "VercelAI",
+      options,
+    }),
   }));
   const instrumentation = await import("@/instrumentation");
   return { init, globalScope, instrumentation };
@@ -101,6 +114,22 @@ describe("initSentry", () => {
     expect(options?.beforeSend).toEqual(expect.any(Function));
     expect(options?.beforeSendLog).toEqual(expect.any(Function));
     expect(options?.beforeSendSpan).toEqual(expect.any(Function));
+    // The AI integrations record prompts and responses only in public
+    // Conversations. `loadInstrumentationModule` reset the module registry.
+    const privacy = await import("@/chat/conversation-privacy");
+    for (const { options: integration } of options?.integrations ?? []) {
+      for (const record of [
+        integration.recordInputs,
+        integration.recordOutputs,
+      ]) {
+        expect(privacy.runWithConversationPrivacy("public", record)).toBe(true);
+        expect(privacy.runWithConversationPrivacy("private", record)).toBe(
+          false,
+        );
+        expect(record()).toBe(false);
+      }
+    }
+    expect(options?.integrations).toHaveLength(2);
     const span: {
       attributes: Record<string, unknown>;
       end_timestamp: number;
