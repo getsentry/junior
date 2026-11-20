@@ -9,7 +9,7 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/memories",
   "/settings",
   "/plugins/",
-  "/review",
+  "/inbox",
 ] as const;
 
 /** True when the path is only available to a signed-in viewer. */
@@ -53,9 +53,9 @@ export function buildPrimaryNavItems(input: {
       ? [
           {
             count: input.reviewCount,
-            key: "review",
+            key: "inbox",
             label: "Inbox",
-            to: "/review",
+            to: "/inbox",
           },
           { key: "automations", label: "Automations", to: "/automations" },
         ]

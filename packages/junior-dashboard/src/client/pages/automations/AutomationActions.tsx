@@ -20,7 +20,7 @@ import {
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
-import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../inbox/inboxQueries";
 
 /**
  * Header actions for one Automation: Edit, Pause or Resume, and Delete.

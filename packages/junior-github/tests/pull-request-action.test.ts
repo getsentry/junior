@@ -156,7 +156,7 @@ function mockGitHub(github: GitHubState, requests: string[]) {
             (login) => ({ login }),
           ),
           state: github.state,
-          title: "Add the review desk notice",
+          title: "Add the Inbox notice",
           user: { id: BOT_USER_ID },
         });
       },
@@ -254,7 +254,7 @@ function route(
           }
           if (failures.close > 0) {
             failures.close -= 1;
-            throw new Error("review desk is down");
+            throw new Error("Inbox is down");
           }
           calls.push({ conversationId, input, kind: "close" });
         },
@@ -394,7 +394,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Ready to merge · #946",
@@ -586,7 +586,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Review requested · #946",
@@ -686,7 +686,7 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice (#946)",
+            title: "Add the Inbox notice (#946)",
             url: PULL_URL,
           },
           title: "Review requested · #946",

@@ -379,7 +379,7 @@ describe("daily reconcile of open pull requests", () => {
     const desk = h.reviewItems.forConversation("slack:C1:1.0");
     vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
       ...desk,
-      close: () => Promise.reject(new Error("The review desk is down")),
+      close: () => Promise.reject(new Error("The Inbox is down")),
     });
     await h.heartbeat(now);
     const state949 = async () =>

@@ -1,11 +1,11 @@
 ---
 name: verify-junior
-description: Prove what Junior does by launching the local example app (`pnpm dev`) and driving it the way a user does, through the dashboard (Conversations, Inbox, Automations, System) with Playwright, and capturing the action, the resulting state, and the side effects. Use when asked to verify or prove a Junior behavior, to check a sub-feature such as `review-desk#waiting` or `guardian#decision-recorded`, or to collect live evidence for a PR. Do not use for writing tests or evals, or for Slack or GitHub behavior on a machine with no Slack workspace or GitHub App.
+description: Prove what Junior does by launching the local example app (`pnpm dev`) and driving it the way a user does, through the dashboard (Conversations, Inbox, Automations, System) with Playwright, and capturing the action, the resulting state, and the side effects. Use when asked to verify or prove a Junior behavior, to check a sub-feature such as `inbox#waiting` or `guardian#decision-recorded`, or to collect live evidence for a PR. Do not use for writing tests or evals, or for Slack or GitHub behavior on a machine with no Slack workspace or GitHub App.
 ---
 
 # Verify Junior
 
-Users touch Junior in Slack (Turns and Review item cards), in the dashboard (Conversations, Inbox, Automations, System), and on GitHub (PRs, issues). The local example app (`apps/example`) serves the dashboard and runs real Turns, with a real model, in a queue worker. A message sent from the dashboard composer runs the same agent, tools, Guardian review, and Review desk as Slack. Slack and GitHub need their own credentials (see each feature's `Gotchas`).
+Users touch Junior in Slack (Turns and Review item cards), in the dashboard (Conversations, Inbox, Automations, System), and on GitHub (PRs, issues). The local example app (`apps/example`) serves the dashboard and runs real Turns, with a real model, in a queue worker. A message sent from the dashboard composer runs the same agent, tools, Guardian review, and Inbox as Slack. Slack and GitHub need their own credentials (see each feature's `Gotchas`).
 
 Helpers are Node scripts in `scripts/`. Run them from the repo root. The feature map is [features/README.md](features/README.md).
 
@@ -93,4 +93,4 @@ It stops the `pnpm dev` process tree that `launch` recorded, never processes fou
 
 ## Map
 
-Read [features/README.md](features/README.md). Cite a sub-feature as `<file>#<id>`, for example `review-desk#first-answer-closes`. Keep the map current with the `maintain-verification-skill` skill.
+Read [features/README.md](features/README.md). Cite a sub-feature as `<file>#<id>`, for example `inbox#first-answer-closes`. Keep the map current with the `maintain-verification-skill` skill.

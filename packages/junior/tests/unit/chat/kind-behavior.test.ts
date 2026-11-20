@@ -15,7 +15,7 @@ const rootTurn = {
   sessionTasks: true,
   tools: {
     agents: "children",
-    reviewDesk: true,
+    inbox: true,
     subscriptions: true,
     userCustomization: true,
     reply: "none",
@@ -44,7 +44,7 @@ const agentInThreadTurn = {
   sessionTasks: false,
   tools: {
     agents: "children_and_parent",
-    reviewDesk: false,
+    inbox: false,
     subscriptions: false,
     userCustomization: false,
     reply: "parent",
@@ -107,7 +107,7 @@ describe("turnBehavior", () => {
   it("lists the tools of both senders on every Turn of a Thread", () => {
     expect(promptModeTurnTools("thread")).toEqual({
       ...agentInThreadTurn.tools,
-      reviewDesk: true,
+      inbox: true,
       subscriptions: true,
       userCustomization: true,
     });
