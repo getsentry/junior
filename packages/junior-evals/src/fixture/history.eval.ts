@@ -75,7 +75,8 @@ function stripVolatile(value: unknown): unknown {
  * message. Runtime context and capability sections belong to the run, not
  * the history: a Turn after loaded history sends the sections. Model cost
  * events record what a call spent, such as the title, and loaded history
- * spent nothing.
+ * spent nothing. Memory recall events record what one run recalled, and
+ * loaded history recalled nothing.
  */
 async function comparableRows(conversationId: string): Promise<unknown[]> {
   const rows = await getConversationEventStore().loadHistory(conversationId);
@@ -95,6 +96,13 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
       data["type"] === "structured_event" &&
       typeof (data["content"] as { costUsd?: unknown } | undefined)?.costUsd ===
         "number"
+    ) {
+      continue;
+    }
+    if (
+      data["type"] === "structured_event" &&
+      data["namespace"] === "memory" &&
+      data["name"] === "memories_recalled"
     ) {
       continue;
     }
@@ -148,8 +156,14 @@ async function compareWithRealTurn(
   );
 }
 
+// Memory extraction runs after a public Turn and adds a row to it. Loaded
+// history has no such Turn, so these cases run without extraction, as they
+// did before Memory moved into core.
+const EXTRACTION_OFF = { memory: { disableExtraction: true } };
+
 describe("loaded history", () => {
-  test("matches the rows of a real web turn", async ({ run }) => {
+  test("matches the rows of a real web turn", async ({ agent }) => {
+    const { run } = await agent(EXTRACTION_OFF);
     await compareWithRealTurn(
       run,
       webMessage("Reply with exactly: noted"),
@@ -157,7 +171,8 @@ describe("loaded history", () => {
     );
   });
 
-  test("matches the rows of a real Slack turn", async ({ run }) => {
+  test("matches the rows of a real Slack turn", async ({ agent }) => {
+    const { run } = await agent(EXTRACTION_OFF);
     await compareWithRealTurn(
       run,
       slackMention("Reply with exactly: noted"),
@@ -166,8 +181,9 @@ describe("loaded history", () => {
   });
 
   test("matches the rows of a real Slack turn without a reply", async ({
-    run,
+    agent,
   }) => {
+    const { run } = await agent(EXTRACTION_OFF);
     // Slack ingress escapes markdown, such as the brackets and underscore.
     await compareWithRealTurn(
       run,

@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -235,11 +234,7 @@ describe("tool search ranking", () => {
 
   beforeAll(async () => {
     await createApp({
-      plugins: defineJuniorPlugins([
-        githubPlugin(),
-        memoryPlugin(),
-        trackerPlugin,
-      ]),
+      plugins: defineJuniorPlugins([githubPlugin(), trackerPlugin]),
     });
     tools = catalogTools();
     catalog = planToolExposure(catalogToolDefinitions()).catalogTools;

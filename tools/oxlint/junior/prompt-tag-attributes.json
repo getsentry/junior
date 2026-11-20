@@ -1,5 +1,5 @@
 {
-  "packages/junior-memory/src/agent.ts": {
+  "packages/junior/src/chat/memory/agent.ts": {
     "message": ["actor", "authority", "index", "is_run_actor", "role"],
     "tool-result": ["index", "is_error", "tool"]
   },
