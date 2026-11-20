@@ -597,30 +597,17 @@ test("Send sends docked picks and asks before a message drops others", async ({
   await details.getByRole("button", { name: migration.title }).click();
   await details.getByRole("radio", { name: "Reject" }).click();
 
-  // The message box sends the docked picks. With an empty draft no message
-  // goes, so nothing asks about the details-panel picks.
+  // The docked question has no Send of its own: the message box sends its
+  // picks. An answer closes the item at once, also in the details panel, so
+  // the dialog comes first.
   await expect(
     question.getByRole("textbox", { name: /Anything else/ }),
   ).toHaveCount(0);
   await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
   await question.getByRole("radio", { name: "Approve" }).click();
-  await composer.press("Enter");
-  await expect
-    .poll(() => actions)
-    .toEqual([
-      {
-        body: {
-          action: "submit",
-          answer: { values: { decision: ["Approve"] } },
-        },
-        id: migration.id,
-      },
-    ]);
   const confirm = page.getByRole("alertdialog", {
     name: "Send without your answers?",
   });
-  await expect(confirm).toHaveCount(0);
-  expect(messages).toEqual([]);
 
   // A message drops the details-panel picks, so it asks first.
   await composer.fill("Friday works.");
@@ -628,18 +615,27 @@ test("Send sends docked picks and asks before a message drops others", async ({
   await expect(confirm).toContainText(migration.title);
   // A mobile view would close the details panel and its picks.
   await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
-  // Go back keeps the draft and the picks.
+  // Go back keeps the draft and the picks, and sends nothing.
   await confirm.getByRole("button", { name: "Go back" }).click();
   await expect(confirm).toBeHidden();
   await expect(composer).toHaveText("Friday works.", { useInnerText: true });
   await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
+  expect(actions).toEqual([]);
   expect(messages).toEqual([]);
 
-  // The reader can send the message anyway.
+  // The reader can send the message anyway. The docked picks go first.
   await composer.press("ControlOrMeta+Enter");
   await confirm.getByRole("button", { name: "Send message" }).click();
   await expect
     .poll(() => messages)
     .toEqual([{ answersBefore: 1, message: "Friday works." }]);
-  expect(actions).toHaveLength(1);
+  expect(actions).toEqual([
+    {
+      body: {
+        action: "submit",
+        answer: { values: { decision: ["Approve"] } },
+      },
+      id: migration.id,
+    },
+  ]);
 });
