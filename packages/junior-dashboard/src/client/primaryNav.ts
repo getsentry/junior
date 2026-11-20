@@ -10,6 +10,8 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/settings",
   "/plugins/",
   "/inbox",
+  // The old Inbox path renders once before it redirects to /inbox.
+  "/review",
 ] as const;
 
 /** True when the path is only available to a signed-in viewer. */
