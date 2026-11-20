@@ -13,12 +13,16 @@ import { InboxSidebar, type InboxGroupKey } from "./InboxSidebar";
 import { ReviewItemDetails } from "./ReviewItemDetails";
 import { ReviewItemView } from "./ReviewItemView";
 import {
-  useBlockedAutomationsData,
   useLinkedConversationTitles,
   useReviewItemData,
   useReviewItemsData,
 } from "./queries";
-import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
+import {
+  inboxGroups,
+  itemConversationId,
+  nextInboxItem,
+  reviewItemPath,
+} from "./reviewItemFormat";
 
 const shellClass =
   "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
@@ -74,11 +78,6 @@ export function InboxPage() {
     moreArchived,
     query: items,
   } = useReviewItemsData({ forViewer: true, q });
-  const showBlocked = !q;
-  const blocked = useBlockedAutomationsData(showBlocked);
-  const blockedAutomations = showBlocked
-    ? (blocked.data?.automations ?? [])
-    : [];
   const groups = useMemo(() => inboxGroups(list), [list]);
   // A search lists every match in one list. Later pages add open items, so
   // keep open matches before archived ones.
@@ -124,15 +123,16 @@ export function InboxPage() {
     const shown = selected ? [...rows, selected] : rows;
     return [
       ...new Set(
-        shown
-          .filter((item) => !item.automationId)
-          .map((item) => item.addedByConversationId),
+        shown.flatMap((item) => {
+          const conversationId = itemConversationId(item);
+          return conversationId && !item.automationId ? [conversationId] : [];
+        }),
       ),
     ];
   }, [collapsed, groups, results, selected]);
   const sourceTitles = useLinkedConversationTitles(sourceIds);
   const sourceTitle = (item: ReviewItemPayload) =>
-    sourceTitles[sourceIds.indexOf(item.addedByConversationId)];
+    sourceTitles[sourceIds.indexOf(itemConversationId(item) ?? "")];
 
   const panelFits = useDetailsPanel();
   const [detailsChoice, setDetailsChoice] = useState<boolean>();
@@ -141,8 +141,7 @@ export function InboxPage() {
   const listParams = new URLSearchParams(searchParams);
   listParams.delete("item");
   const loaded = Boolean(items.data);
-  const empty =
-    loaded && !q && open.length === 0 && blockedAutomations.length === 0;
+  const empty = loaded && !q && open.length === 0;
 
   return (
     <div className={shellClass}>
@@ -153,7 +152,6 @@ export function InboxPage() {
         )}
       >
         <InboxSidebar
-          blocked={blockedAutomations}
           collapsed={collapsed}
           error={Boolean(items.error && !items.data)}
           footer={

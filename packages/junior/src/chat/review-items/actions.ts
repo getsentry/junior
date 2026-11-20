@@ -1,5 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { AutomationEditError } from "@/chat/automations/edit-rules";
+import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
 import {
   isEmptyUserInputAnswer,
@@ -11,9 +13,11 @@ import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
   canUserReadReviewItem,
+  isAutomationAlertItem,
   isOnlyAssignee,
   isPluginReviewItem,
 } from "./access";
+import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginReviewItem } from "./plugin-answer";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
@@ -192,6 +196,21 @@ export async function actOnReviewItem(args: {
       nowMs,
     });
   }
+  // Core takes the step that a person picked on an Automation alert. A
+  // retry of the same answer takes it again.
+  if (action === "submit" && isAutomationAlertItem(closed)) {
+    try {
+      await answerAutomationAlert({ item: closed, user });
+    } catch (error) {
+      if (error instanceof ViewerTaskNotFoundError) {
+        throw new ReviewItemActionError("not_found", "Automation not found.");
+      }
+      if (error instanceof AutomationEditError) {
+        throw new ReviewItemActionError("invalid", error.message);
+      }
+      throw error;
+    }
+  }
   await deliverReviewItemChange({
     change: reviewItemChange(action, user),
     delivery: args.delivery,
@@ -238,7 +257,7 @@ function messageAnswer(
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
- * - The agent added it in this Conversation (`addedByConversationId`).
+ * - The agent added it in this Conversation, its owner.
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
  * - The decision model says that the reply answers this item

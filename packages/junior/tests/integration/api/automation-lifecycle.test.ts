@@ -96,7 +96,7 @@ describe("Automation lifecycle API", () => {
         ).toMatchObject({ versions: [{ version: 1 }] });
         // A run of the Automation asked a person something.
         const item = await insertReviewItem(getDb(), {
-          addedByConversationId: "slack:T123:U123:edit",
+          owner: { id: "slack:T123:U123:edit", kind: "conversation" },
           assignedToEveryone: false,
           assigneeUserIds: [],
           automationId: id,

@@ -337,12 +337,15 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheHealthReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
@@ -472,12 +475,15 @@ export type {
   ReviewItemPayload,
 } from "./schema/review-item";
 export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
+  InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
 } from "./schema/inbox-snooze";

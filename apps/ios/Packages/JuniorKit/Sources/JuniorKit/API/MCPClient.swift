@@ -7,6 +7,10 @@ public protocol CredentialStore: Sendable {
   func save(_ credentials: OAuthCredentials?)
 }
 
+/// Sends one HTTP request. `URLSession` by default; the demo answers in
+/// process.
+public typealias HTTPTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
 /// Client for Junior's MCP server (`/api/mcp`), the public API. Each tool call
 /// is one JSON-RPC POST, which Junior answers with JSON. The client refreshes
 /// the access token before it expires and once more after a 401; an actor, so
@@ -15,14 +19,18 @@ public actor MCPClient {
   public nonisolated let server: JuniorServer
   private let store: CredentialStore
   private let session: URLSession
+  private let transport: HTTPTransport
   private var credentials: OAuthCredentials?
   private var refreshing: Task<OAuthCredentials, Error>?
   private var nextID = 0
 
-  public init(server: JuniorServer, store: CredentialStore, session: URLSession = .shared) {
+  public init(
+    server: JuniorServer, store: CredentialStore, session: URLSession = .shared, transport: HTTPTransport? = nil
+  ) {
     self.server = server
     self.store = store
     self.session = session
+    self.transport = transport ?? { request in try await session.data(for: request) }
     credentials = store.load().flatMap { $0.server == server ? $0 : nil }
   }
 
@@ -43,16 +51,18 @@ public actor MCPClient {
   public func call<Result: Decodable & Sendable>(
     _ tool: String, _ arguments: [String: JSONValue] = [:], as type: Result.Type = Result.self
   ) async throws -> Result {
-    let data = try await rpc("tools/call", ["name": .string(tool), "arguments": .object(arguments)])
-    let result = try decode(RPCEnvelope<ToolResult<Result>>.self, data, tool: tool)
-    if result.isError == true {
-      let text = result.content?.compactMap(\.text).joined(separator: "\n")
-      throw JuniorAPIError.tool(text?.isEmpty == false ? text! : "\(tool) failed.")
+    try await logged(tool) {
+      let data = try await rpc("tools/call", ["name": .string(tool), "arguments": .object(arguments)])
+      let result = try decode(RPCEnvelope<ToolResult<Result>>.self, data, tool: tool)
+      if result.isError == true {
+        let text = result.content?.compactMap(\.text).joined(separator: "\n")
+        throw JuniorAPIError.tool(text?.isEmpty == false ? text! : "\(tool) failed.")
+      }
+      guard let value = result.structuredContent else {
+        throw JuniorAPIError.decoding("\(tool) returned no structured result.")
+      }
+      return value
     }
-    guard let value = result.structuredContent else {
-      throw JuniorAPIError.decoding("\(tool) returned no structured result.")
-    }
-    return value
   }
 
   public struct ServerInfo: Decodable, Sendable {
@@ -63,13 +73,36 @@ public actor MCPClient {
   /// The server name and Junior version, from MCP `initialize`.
   public func serverInfo() async throws -> ServerInfo {
     struct Initialized: Decodable, Sendable { var serverInfo: ServerInfo }
-    let data = try await rpc(
-      "initialize",
-      [
-        "protocolVersion": .string(Self.protocolVersion), "capabilities": .object([:]),
-        "clientInfo": .object(["name": "junior-ios", "version": "0.1.0"]),
-      ])
-    return try decode(RPCEnvelope<Initialized>.self, data, tool: "initialize").serverInfo
+    let info = try await logged("initialize") {
+      let data = try await rpc(
+        "initialize",
+        [
+          "protocolVersion": .string(Self.protocolVersion), "capabilities": .object([:]),
+          "clientInfo": .object(["name": "junior-ios", "version": "0.1.0"]),
+        ])
+      return try decode(RPCEnvelope<Initialized>.self, data, tool: "initialize").serverInfo
+    }
+    Log.api.notice(
+      "Connected to \(self.server.baseURL.absoluteString, privacy: .public): \(info.name, privacy: .public) \(info.version ?? "unknown", privacy: .public)"
+    )
+    return info
+  }
+
+  /// Run one call and log its outcome and duration. Every failure gets one
+  /// error line, so a bug report needs only the copied logs.
+  private func logged<Value: Sendable>(_ name: String, _ work: () async throws -> Value) async throws -> Value {
+    let started = ContinuousClock.now
+    func milliseconds() -> Int { Int(started.duration(to: .now) / .milliseconds(1)) }
+    do {
+      let value = try await work()
+      Log.api.info("\(name, privacy: .public) ok in \(milliseconds(), privacy: .public)ms")
+      return value
+    } catch {
+      Log.api.error(
+        "\(name, privacy: .public) failed in \(milliseconds(), privacy: .public)ms: \(String(describing: error), privacy: .public)"
+      )
+      throw error
+    }
   }
 
   static let protocolVersion = "2025-06-18"
@@ -91,15 +124,20 @@ public actor MCPClient {
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
       let (data, response) = try await load(request)
       if response.statusCode == 401 {
+        Log.oauth.notice("\(method, privacy: .public) got 401 on attempt \(attempt + 1, privacy: .public)")
         guard attempt == 0 else { break }
         token = try await refreshedToken(replacing: token)
         continue
       }
       guard (200..<300).contains(response.statusCode) else {
+        Log.api.error(
+          "\(method, privacy: .public) got HTTP \(response.statusCode, privacy: .public): \(excerpt(data), privacy: .private)"
+        )
         throw JuniorAPIError.server(status: response.statusCode, message: nil)
       }
       return data
     }
+    Log.oauth.notice("Signed out: Junior rejected the refreshed token")
     signOut()
     throw JuniorAPIError.signedOut
   }
@@ -128,8 +166,10 @@ public actor MCPClient {
       guard credentials != nil else { throw JuniorAPIError.signedOut }
       credentials = renewed
       store.save(renewed)
+      Log.oauth.notice("Refreshed the access token")
       return renewed.accessToken
     } catch JuniorAPIError.signedOut {
+      Log.oauth.notice("Signed out: Junior no longer accepts the refresh token")
       signOut()
       throw JuniorAPIError.signedOut
     }
@@ -141,6 +181,8 @@ public actor MCPClient {
     do {
       envelope = try JSONDecoder.junior.decode(type, from: data)
     } catch let error as DecodingError {
+      // The body holds conversation text, so only an attached debugger sees it.
+      Log.api.debug("\(tool, privacy: .public) body: \(excerpt(data), privacy: .private)")
       throw JuniorAPIError.decoding("\(tool): \(describe(error))")
     }
     if let error = envelope.error { throw JuniorAPIError.server(status: 200, message: error.message) }
@@ -150,12 +192,17 @@ public actor MCPClient {
 
   private func load(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
     do {
-      let (data, response) = try await session.data(for: request)
+      let (data, response) = try await transport(request)
       return (data, response as! HTTPURLResponse)
     } catch {
       throw JuniorAPIError.offline(error.localizedDescription)
     }
   }
+}
+
+/// The start of a response body, for logs.
+private func excerpt(_ data: Data) -> String {
+  String(decoding: data.prefix(4096), as: UTF8.self)
 }
 
 struct RPCEnvelope<Result: Decodable>: Decodable {

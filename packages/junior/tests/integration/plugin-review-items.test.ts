@@ -167,7 +167,7 @@ describe("plugin review items", () => {
       TENANT,
     );
     expect(added).toMatchObject({
-      addedByConversationId: "slack:C1:1.000001",
+      owner: { id: "slack:C1:1.000001", kind: "conversation" },
       assignees: [{ email: "ana@example.com", userId: ana.user.id }],
       conversationIds: ["slack:C1:1.000001"],
       kind: "notice",

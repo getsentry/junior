@@ -1,5 +1,4 @@
 import { pluginToolReplySchema } from "@sentry/junior-plugin-api";
-import { isRecord } from "@/chat/coerce";
 import { getConversationEventStore } from "@/chat/db";
 
 /**
@@ -14,10 +13,16 @@ export async function recordToolReply(args: {
   toolCallId?: string | undefined;
 }): Promise<unknown> {
   const { result } = args;
-  if (!isRecord(result) || result["isError"] === true) return result;
-  const details = isRecord(result["details"]) ? result["details"] : result;
-  if (details["reply"] === undefined) return result;
-  const reply = pluginToolReplySchema.parse(details["reply"]);
+  if (typeof result !== "object" || result === null) return result;
+  if ("isError" in result && result.isError === true) return result;
+  const details =
+    "details" in result &&
+    typeof result.details === "object" &&
+    result.details !== null
+      ? result.details
+      : result;
+  if (!("reply" in details) || details.reply === undefined) return result;
+  const reply = pluginToolReplySchema.parse(details.reply);
   if (args.toolCallId) {
     await getConversationEventStore().append(args.conversationId, [
       {
@@ -35,6 +40,6 @@ export async function recordToolReply(args: {
     ]);
   }
   const { reply: _reply, ...rest } = details;
-  if (isRecord(result["details"])) return { ...result, details: rest };
+  if (details !== result) return { ...result, details: rest };
   return rest;
 }

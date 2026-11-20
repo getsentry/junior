@@ -71,7 +71,7 @@ export async function seedMcpReviewItem(args: {
 }): Promise<ReviewItem> {
   const viewer = await requireViewer(args.email);
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: args.conversationId,
+    owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [viewer.id],
     body: "Pick one.",

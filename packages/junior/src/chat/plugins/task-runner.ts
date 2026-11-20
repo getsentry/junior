@@ -5,6 +5,7 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
+import * as z from "zod";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -77,19 +78,10 @@ interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const textPartSchema = z.object({ type: z.literal("text"), text: z.string() });
 
 function textPart(value: unknown): string | undefined {
-  if (
-    isRecord(value) &&
-    value["type"] === "text" &&
-    typeof value["text"] === "string"
-  ) {
-    return value["text"];
-  }
-  return undefined;
+  return textPartSchema.safeParse(value).data?.text;
 }
 
 function messageText(message: PiMessage): string {
