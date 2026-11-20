@@ -392,6 +392,59 @@ export async function changeAutomationLifecycle(
   return { kind: "scheduled", task, ownedByViewer };
 }
 
+/**
+ * Queue an active scheduled Automation to run as soon as possible, without
+ * changing its schedule. The run-now tool and an alert's Run again use it.
+ * Event Automations run only when a matching event arrives.
+ */
+export async function runAutomationNow(
+  current: TaskCandidate,
+): Promise<TaskCandidate> {
+  if (current.kind !== "scheduled") {
+    throw new AutomationEditError(
+      "Only scheduled automations can run now. Event automations run when a matching event arrives.",
+    );
+  }
+  const { task, ownedByViewer } = current;
+  if (task.status !== "active") {
+    throw new AutomationEditError(
+      "Scheduled automation must be active before it can be run now.",
+    );
+  }
+  requireCredentialStart(task, ownedByViewer);
+  const nowMs = Date.now();
+  const next = { ...task, updatedAtMs: nowMs, runNowAtMs: nowMs };
+  return {
+    kind: "scheduled",
+    ownedByViewer,
+    task: await saveScheduledAutomation(
+      getDb(),
+      next,
+      automationRevision(task),
+    ),
+  };
+}
+
+/**
+ * Take the step that a person picked on an Automation alert: Run again or
+ * Pause. The person must be able to manage the Automation.
+ */
+export async function takeViewerAutomationAlertStep(
+  user: User,
+  id: string,
+  step: "pause" | "run",
+): Promise<void> {
+  const current = await requireEditableAutomation(user, id);
+  if (step === "run") {
+    await runAutomationNow(current);
+    return;
+  }
+  await changeAutomationLifecycle(current, {
+    action: "pause",
+    revision: automationRevision(current.task),
+  });
+}
+
 /** Delete one Automation from the dashboard. */
 export async function deleteViewerTask(user: User, id: string): Promise<void> {
   if (!(await deleteAutomation(await requireEditableAutomation(user, id))))

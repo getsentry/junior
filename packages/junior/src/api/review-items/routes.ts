@@ -37,16 +37,18 @@ import {
   type RelatedReviewWork,
 } from "@/chat/review-items/related";
 import {
-  countOpenReviewItemsForUser,
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
+  ownerConversationId,
   searchReviewItems,
   type ReviewItem,
   type ReviewItemFilters,
   type ReviewItemPosition,
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
-import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
+import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
 import { readItemRoots } from "./item-roots";
@@ -70,7 +72,7 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   ReviewItemFilters,
-  "conversationId" | "forUserId" | "query"
+  "conversationId" | "forUserId" | "ownerKind" | "query" | "snoozedForUserId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -81,7 +83,9 @@ const cursorSchema = z
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
+    ownerKind: z.enum(["automation", "conversation"]).optional(),
     query: z.string().min(1).optional(),
+    snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
@@ -122,7 +126,9 @@ function decodeCursor(
   if (
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
+    parsed.ownerKind !== filters.ownerKind ||
     parsed.query !== filters.query ||
+    parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
     parsed.status !== filters.status ||
     (filters.status !== undefined && parsed.closedAtMs === undefined) ||
@@ -155,7 +161,22 @@ function subjectPayload(
   subject: NonNullable<ReviewItem["subject"]>,
 ): NonNullable<ReviewItemPayload["subject"]> {
   const objectType = subject.url && readLinkObjectType(subject.url);
-  return { ...subject, ...(objectType ? { objectType } : undefined) };
+  const resource =
+    subject.url && snoozeSubjectResource(getEventCatalog(), subject.url);
+  return {
+    ...subject,
+    ...(objectType ? { objectType } : undefined),
+    ...(resource
+      ? {
+          resource: {
+            events: [...resource.events],
+            namespace: resource.namespace,
+            phrases: { ...resource.phrases },
+            resourceType: resource.resourceType,
+          },
+        }
+      : undefined),
+  };
 }
 
 /** Build the API payload of one Review item for its viewer. */
@@ -166,9 +187,9 @@ function reviewItemPayload(
   mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
 ): ReviewItemPayload {
-  const root = roots.get(item.addedByConversationId);
+  const conversationId = ownerConversationId(item);
+  const root = conversationId ? roots.get(conversationId) : undefined;
   return {
-    addedByConversationId: item.addedByConversationId,
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
@@ -180,11 +201,14 @@ function reviewItemPayload(
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
-    rootConversationId: root?.rootConversationId ?? item.addedByConversationId,
+    owner: item.owner,
     status: item.status,
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
+    ...(conversationId
+      ? { rootConversationId: root?.rootConversationId ?? conversationId }
+      : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
     ...(item.automationId ? { automationId: item.automationId } : undefined),
@@ -239,7 +263,7 @@ function actionErrorResponse(error: unknown): Response {
   throw error;
 }
 
-/** Create the authenticated review desk routes. */
+/** Create the authenticated Inbox routes. */
 export function createReviewItemRoutes(services: {
   delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {
@@ -260,7 +284,9 @@ export function createReviewItemRoutes(services: {
           ? { conversationId: query.conversationId }
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
+        ...(query.owner ? { ownerKind: query.owner } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
         ...(query.status[0] === "open"
           ? query.sort
             ? { sort: query.sort }
@@ -303,6 +329,14 @@ export function createReviewItemRoutes(services: {
       const [open, archived] = await Promise.all([
         searchReviewItems(db, reader, {
           ...filters,
+          // The viewer's Inbox hides the rows they snoozed until they wake. A
+          // Conversation's own list and a search still show them.
+          ...(query.for === "viewer" &&
+          !filters.conversationId &&
+          !filters.query &&
+          !filters.snoozedForUserId
+            ? { awakeForUserId: viewer.id }
+            : undefined),
           limit: query.limit + 1,
           statuses: ["open"],
           ...(filters.sort
@@ -357,25 +391,21 @@ export function createReviewItemRoutes(services: {
       const viewer = context.get("viewer");
       const query = context.req.valid("query");
       const db = getDb();
-      // One query counts the badge and both bundles. The snoozed and
-      // Automation counts run only when the request asks for them, so the
-      // current dashboard pays for one query.
-      const [subjects, snoozed, automations] = await Promise.all([
+      // One query counts the badge, both bundles, and the Automation alerts.
+      // The snoozed count runs only when the request asks for it, so the
+      // classic dashboard pays for one query.
+      const [subjects, snoozed] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countOpenReviewItemsForUser(
-          db,
-          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          query.snoozed,
-        ),
-        query.include === "automations"
-          ? countOwnedAutomationsNeedingAttention(viewer)
-          : undefined,
+        query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
+      // The Automations badge counts the alerts that its To do lists.
+      let automations = 0;
       const linkTypes = readObjectLinkTypes();
       let codeChanges = 0;
       let decisions = 0;
       let needsViewer = 0;
       for (const subject of subjects) {
+        automations += subject.automations;
         needsViewer += subject.total;
         decisions += subject.decisions;
         if (
@@ -386,7 +416,9 @@ export function createReviewItemRoutes(services: {
         }
       }
       return jsonResponse(reviewItemCountSchema, {
-        ...(automations === undefined ? undefined : { automations }),
+        ...(query.include.includes("automations")
+          ? { automations }
+          : undefined),
         codeChanges,
         decisions,
         needsViewer,

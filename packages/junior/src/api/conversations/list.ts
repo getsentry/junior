@@ -32,19 +32,23 @@ import {
 import {
   reviewItemForUser,
   reviewItemNeedsInput,
+  reviewItemOwnedByConversation,
 } from "@/chat/review-items/access";
 import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
-import { readConversationAccessFromSql } from "./access";
+import {
+  conversationAccessFromRows,
+  readConversationAccessRows,
+} from "./access";
 import {
   conversationPinnedForUser,
-  conversationViewerMarks,
-  conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
+  readMemberParticipants,
+  rootVisibleToViewer,
 } from "./membership";
 import {
   conversationFromRecordRow,
@@ -56,7 +60,7 @@ import {
   conversationStatusSql,
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
-import { readFeedThreads } from "./threads";
+import { nestFeedThreads, readFeedThreadRecords } from "./threads";
 import type {
   ConversationFeed,
   ConversationFeedInclude,
@@ -69,7 +73,8 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
-import { listWaitingConversations } from "@/chat/review-items/store";
+import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
+import { waitingConversationIdsQuery } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
@@ -85,6 +90,7 @@ import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
+import { conversationSlackTenantId } from "@/chat/conversations/sql/event-actor";
 import { readConversationParticipants } from "./participants";
 import {
   decodeConversationFeedCursor,
@@ -144,10 +150,7 @@ function conversationCodeRepositoryFilter(
         WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}
       )
     )`,
-    or(
-      eq(juniorDestinations.visibility, "public"),
-      viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
-    ),
+    rootVisibleToViewer(viewerUserId),
   );
 }
 
@@ -164,6 +167,7 @@ async function conversationRows(
     pinnedForUserId,
     query,
     status,
+    waitingForUserId,
   }: {
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
@@ -179,6 +183,8 @@ async function conversationRows(
     pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string | undefined;
     status: "active" | "archived" | "all";
+    /** Read only the root conversations that wait on this user. */
+    waitingForUserId?: string;
   },
 ) {
   const rows = db
@@ -213,6 +219,12 @@ async function conversationRows(
         conversationFeedMembershipFilter(status, filter),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
+          : undefined,
+        waitingForUserId
+          ? inArray(
+              juniorConversations.conversationId,
+              waitingConversationIdsQuery(db, waitingForUserId),
+            )
           : undefined,
         pinnedForUserId
           ? pinnedForUserId.pinned
@@ -255,34 +267,6 @@ async function conversationRows(
     )
     .$dynamic();
   return limit === undefined ? rows : rows.limit(limit);
-}
-
-type FeedRow = Awaited<ReturnType<typeof conversationRows>>[number];
-
-/**
- * Read the viewer's active conversations that wait on them but fall outside
- * the first page. Needs you shows every conversation that waits on the
- * viewer, so an old one must come back to the feed.
- */
-async function waitingRowsOutsidePage(
-  db: JuniorDatabase,
-  filter: ConversationFeedMembership & { kind: "viewer" },
-  page: FeedRow[],
-  include: readonly ConversationFeedInclude[],
-): Promise<FeedRow[]> {
-  const loaded = new Set(page.map((row) => row.conversation.conversationId));
-  const missing = (await listWaitingConversations(db, filter.userId))
-    .map((waiting) => waiting.conversationId)
-    .filter((conversationId) => !loaded.has(conversationId));
-  if (missing.length === 0) return [];
-  return await conversationRows(db, {
-    conversationIds: missing,
-    filter,
-    include,
-    includePrivateBriefs: true,
-    limit: missing.length,
-    status: "active",
-  });
 }
 
 /**
@@ -342,7 +326,7 @@ export function conversationFeedVersionQuery(
         count(*) filter (where ${feedTree.stoppedAt} is not null),
         coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
         bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
-          eq(juniorReviewItems.addedByConversationId, feedTree.conversationId),
+          reviewItemOwnedByConversation(feedTree.conversationId),
           reviewItemNeedsInput(),
           reviewItemForUser(userId),
         )}) or ${awaitsAuthorizationFrom(feedTree.conversationId, userId)}),
@@ -537,8 +521,9 @@ export async function readConversationFeedFromSql(
     query,
     status,
   };
-  const [pinnedRows, pageRows] = await Promise.all([
-    pinsFirst && !cursor
+  const firstPage = pinsFirst && !cursor;
+  const [pinnedRows, pageRows, waitingRows] = await Promise.all([
+    firstPage
       ? conversationRows(db, {
           ...feedQuery,
           pinnedForUserId: { pinned: true, userId: filter.userId },
@@ -553,22 +538,39 @@ export async function readConversationFeedFromSql(
         ? { pinnedForUserId: { pinned: false, userId: filter.userId } }
         : undefined),
     }),
+    // Needs you shows every conversation that waits on the viewer, so the
+    // first page also holds the waiting ones that fall outside it.
+    firstPage
+      ? conversationRows(db, {
+          filter,
+          include,
+          includePrivateBriefs: true,
+          status: "active",
+          waitingForUserId: filter.userId,
+        })
+      : [],
   ]);
   const page = pageRows.slice(0, limit);
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
-  if (pinsFirst && !cursor) {
-    const waitingRows = await waitingRowsOutsidePage(db, filter, rows, include);
-    options.onWaitingRows?.(waitingRows.length);
-    rows.push(...waitingRows);
+  if (firstPage) {
+    const loaded = new Set(rows.map((row) => row.conversation.conversationId));
+    const outsidePage = waitingRows.filter(
+      (row) => !loaded.has(row.conversation.conversationId),
+    );
+    options.onWaitingRows?.(outsidePage.length);
+    rows.push(...outsidePage);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
   );
+  // Every child of these roots, read once for work owners and Threads.
+  const conversationTrees = readConversationTrees(db, conversationIds);
   const [
-    accessByConversation,
-    viewerMarksByConversation,
+    accessRows,
+    tree,
+    participantsByRoot,
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
@@ -583,12 +585,21 @@ export async function readConversationFeedFromSql(
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     treeStateByConversation,
+    threadRecords,
   ] = await Promise.all([
-    readConversationAccessFromSql(db, conversationIds, options.viewer),
-    conversationViewerMarks(
+    readConversationAccessRows(db, conversationIds),
+    conversationTrees,
+    // The viewer's rows give both access and pin marks. Without a viewer, an
+    // actor email feed reads only its pin marks. Feed rows are roots, so
+    // these roots cover the access check.
+    readMemberParticipants(
       db,
       conversationIds,
-      filter ? feedMember(filter) : undefined,
+      options.viewer
+        ? { userId: options.viewer.id }
+        : filter
+          ? feedMember(filter)
+          : undefined,
     ),
     listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds),
@@ -601,31 +612,44 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
-    listConversationWork(conversationIds).then(async (work) => ({
-      work,
-      // Priority uses this time only for finished assigned work. Skip the
-      // message scan for every other Conversation.
-      lastUserMessageAt: await readLastUserMessageAtByConversation(
-        db,
-        work.assignedIds.filter(
-          (conversationId) => work.finishedAtById[conversationId],
+    conversationTrees
+      .then((tree) => listConversationWork(conversationIds, tree))
+      .then(async (work) => ({
+        work,
+        // Priority uses this time only for finished assigned work. Skip the
+        // message scan for every other Conversation.
+        lastUserMessageAt: await readLastUserMessageAtByConversation(
+          db,
+          work.assignedIds.filter(
+            (conversationId) => work.finishedAtById[conversationId],
+          ),
         ),
-      ),
-    })),
+      })),
     readConversationActivityPreviews(db, conversationIds),
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
-  ]);
-  const visibleActivityPreviews = await attachActivityPreviewMentions(
-    getSqlExecutor(),
-    new Map(
-      [...activityPreviewByConversation].filter(
-        ([conversationId]) =>
-          accessByConversation.get(conversationId)?.canViewPrivateContent,
-      ),
+    // A Thread shows only while its root is not archived.
+    readFeedThreadRecords(
+      db,
+      conversations
+        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .map(({ conversationId }) => conversationId),
     ),
+  ]);
+  const accessByConversation = conversationAccessFromRows(
+    accessRows,
+    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
+  );
+  const tenantByConversation = new Map(
+    rows.flatMap((row) => {
+      const tenantId = conversationSlackTenantId({
+        providerTenantId: row.location?.providerTenantId,
+        sessionSource: row.conversation.sessionSource,
+      });
+      return tenantId ? [[row.conversation.conversationId, tenantId]] : [];
+    }),
   );
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
@@ -635,22 +659,28 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [sidebarAnnotationsByConversation, threadsByRoot] = await Promise.all([
-    listConversationSidebarAnnotations(
-      conversationIds,
-      visibleAnnotationsByConversation,
-    ),
-    // A Thread shows only while its root is not archived.
-    readFeedThreads(
-      db,
-      conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
-        .map(({ conversationId }) => ({
-          access: accessByConversation.get(conversationId),
-          conversationId,
-        })),
-    ),
-  ]);
+  const [visibleActivityPreviews, sidebarAnnotationsByConversation] =
+    await Promise.all([
+      attachActivityPreviewMentions(
+        getSqlExecutor(),
+        new Map(
+          [...activityPreviewByConversation].filter(
+            ([conversationId]) =>
+              accessByConversation.get(conversationId)?.canViewPrivateContent,
+          ),
+        ),
+        tenantByConversation,
+      ),
+      listConversationSidebarAnnotations(
+        conversationIds,
+        visibleAnnotationsByConversation,
+      ),
+    ]);
+  const threadsByRoot = nestFeedThreads(
+    threadRecords,
+    tree,
+    accessByConversation,
+  );
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
@@ -663,7 +693,9 @@ export async function readConversationFeedFromSql(
       );
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
-        ...viewerMarksByConversation.get(conversation.conversationId),
+        ...(filter
+          ? participantsByRoot.get(conversation.conversationId)
+          : undefined),
         status: row.status,
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,

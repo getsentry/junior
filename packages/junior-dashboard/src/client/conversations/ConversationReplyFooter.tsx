@@ -19,8 +19,8 @@ import {
   ComposerQuestionsLoadError,
   useComposerQuestions,
   type ComposerQuestionAnswers,
-} from "../review-desk/ComposerQuestion";
-import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
+} from "../inbox/ComposerQuestion";
+import { useConfirmUnsentAnswers } from "../inbox/UnsentAnswers";
 import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {
@@ -30,6 +30,7 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
+import type { ComposerConversation } from "./ComposerMention";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
@@ -67,6 +68,8 @@ function ReplyFooter(props: {
   conversationId: string;
   /** A request to focus the message box. */
   focusRequest?: ReplyFocusRequest | undefined;
+  /** The Conversation that the composer writes to. */
+  conversation?: ComposerConversation | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   /**
@@ -146,14 +149,28 @@ function ReplyFooter(props: {
   const hasQuestionAnswersRef = useRef(hasQuestionAnswers);
   hasQuestionAnswersRef.current = hasQuestionAnswers;
   const { confirmSubmit } = unsentAnswers;
+  // Resolves to true when the queued message of the edit in flight left the
+  // queue. Its text is in the draft before the cancel lands.
+  const editCancelledRef = useRef<Promise<boolean>>(undefined);
   // A failed answer keeps the draft, so the reader can send both again.
   // Only a message drops the details-panel picks, so only a message asks.
   const beforeSubmit = useCallback(
     ({ sendsMessage }: { sendsMessage: boolean }) => {
-      const confirmation = sendsMessage ? confirmSubmit() : undefined;
-      if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
+      const editCancelled = editCancelledRef.current;
+      // A send during an edit waits for its cancel, and stops when the
+      // queued message is still queued or Junior read it. Then the text does
+      // not go out twice, and the reader sees the edit error. The unsent
+      // answers dialog opens only after the wait, so a stopped send leaves
+      // none open.
+      const confirm = () => (sendsMessage ? confirmSubmit() : undefined);
+      const confirmation = editCancelled ? undefined : confirm();
+      if (!editCancelled && !confirmation && !hasQuestionAnswersRef.current) {
+        return undefined;
+      }
       return (async () => {
-        if (confirmation && !(await confirmation)) return false;
+        if (editCancelled && !(await editCancelled)) return false;
+        const confirmed = editCancelled ? confirm() : confirmation;
+        if (confirmed && !(await confirmed)) return false;
         return (await questionAnswersRef.current?.send()) ?? true;
       })();
     },
@@ -309,6 +326,12 @@ function ReplyFooter(props: {
       // decides. Text with files moves with its files after the cancel, so
       // the reader cannot send the text without them.
       const textFirst = !message.attachments?.length;
+      let settleEdit = (_cancelled: boolean) => {};
+      if (textFirst) {
+        editCancelledRef.current = new Promise((resolve) => {
+          settleEdit = resolve;
+        });
+      }
       if (textFirst && !queuedTextInDraft(conversationId, inboundMessageId)) {
         setQueuedTextInDraft(conversationId, inboundMessageId, true);
         composerRef.current?.restoreMessage({ text });
@@ -330,12 +353,15 @@ function ReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
+        const cancelled =
+          result.cancelledInboundMessageIds.includes(inboundMessageId);
+        settleEdit(cancelled);
         if (textFirst) {
           setQueuedTextInDraft(conversationId, inboundMessageId, false);
         }
         // Junior can read the message before the cancel lands, or someone
         // else can remove it. Then there is nothing to edit.
-        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+        if (!cancelled) {
           setQueueActionError("That message was already read or removed.");
           return;
         }
@@ -350,6 +376,8 @@ function ReplyFooter(props: {
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
+        settleEdit(false);
+        editCancelledRef.current = undefined;
         editingRef.current = false;
         setEditTargetInboundMessageId(undefined);
       }
@@ -458,6 +486,8 @@ function ReplyFooter(props: {
             ? `Could not stop ${getDashboardAgentName()}. Try again.`
             : undefined)
         }
+        conversation={props.conversation}
+        linksWork
         ref={composerRef}
         label="Continue this conversation"
         placeholder={questionShown ? "Or type your answer…" : undefined}

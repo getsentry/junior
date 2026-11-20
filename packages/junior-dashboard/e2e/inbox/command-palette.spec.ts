@@ -12,7 +12,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
   const question = {
-    addedByConversationId: CLOSED_ISSUE_ID,
+    owner: { id: CLOSED_ISSUE_ID, kind: "conversation" },
     rootConversationId: CLOSED_ISSUE_ID,
     assignedToEveryone: false,
     assignees: [
@@ -216,7 +216,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await composer.pressSequentially(" 1");
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Hold on 1");
+    await expect(composer).toHaveText("Hold on 1", { useInnerText: true });
   });
 
   test("jumps to a page from the command palette", async ({

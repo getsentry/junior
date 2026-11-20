@@ -19,8 +19,10 @@ import {
   juniorAgentInvocations,
   juniorAutomations,
   juniorIdentities,
+  juniorInboxSnoozes,
   juniorReviewItemConversations,
   juniorReviewItems,
+  juniorUsers,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -36,6 +38,11 @@ import {
   getReviewItem,
   insertReviewItem,
 } from "@/chat/review-items/store";
+import {
+  snoozeInboxItems,
+  snoozeTimerTrigger,
+  unsnoozeInboxRow,
+} from "@/chat/inbox-snoozes/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -108,7 +115,7 @@ describe("retention purge job", () => {
       visibility: "public" | "private" = "public",
     ) =>
       (await insertReviewItem(fixture.sql.db(), {
-        addedByConversationId: conversationId,
+        owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [],
         ...(automationId ? { automationId } : undefined),
@@ -224,6 +231,70 @@ describe("retention purge job", () => {
     expect(
       await getReviewItem(fixture.sql.db(), privateAutomationItem),
     ).toBeUndefined();
+  });
+
+  it("deletes snoozes 30 days after they were made, once they end", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "snoozed",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS + 40 * DAY_MS,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorUsers)
+      .values({
+        createdAt: new Date(BASE_MS),
+        id: "user:snoozer",
+        primaryEmail: "snoozer@example.com",
+        primaryEmailNormalized: "snoozer@example.com",
+        updatedAt: new Date(BASE_MS),
+      });
+    const item = await insertReviewItem(fixture.sql.db(), {
+      owner: { id: "snoozed", kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+      body: "The rollout waits on an answer.",
+      conversationIds: ["snoozed"],
+      dedupeKey: "rollout:snoozed",
+      kind: "notice",
+      nowMs: BASE_MS,
+      title: "Rollout paused",
+      visibility: "public",
+    });
+    const snooze = async (nowMs: number) => {
+      const [id] = await snoozeInboxItems(fixture.sql.db(), {
+        items: [
+          {
+            reviewItemId: item!.id,
+            triggers: [snoozeTimerTrigger(`inbox-snooze:${nowMs}`)],
+          },
+        ],
+        nowMs,
+        userId: "user:snoozer",
+      });
+      return id!;
+    };
+    const wake = () =>
+      unsnoozeInboxRow(fixture.sql.db(), {
+        rootConversationId: "snoozed",
+        userId: "user:snoozer",
+      });
+    await snooze(BASE_MS);
+    await wake();
+    const recent = await snooze(BASE_MS + 20 * DAY_MS);
+    await wake();
+    const oldSnoozed = await snooze(BASE_MS);
+
+    await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 31 * DAY_MS });
+    const left = await fixture.sql
+      .db()
+      .select({ id: juniorInboxSnoozes.id })
+      .from(juniorInboxSnoozes);
+    // A snoozed item stays snoozed until it wakes.
+    expect(left.map((row) => row.id).sort()).toEqual(
+      [oldSnoozed, recent].sort(),
+    );
   });
 
   it("shortens the window when visibility flips public to private", async () => {
@@ -645,7 +716,8 @@ describe("retention purge job", () => {
       conversationId: string,
       visibility: "public" | "private",
     ) => ({
-      addedByConversationId: conversationId,
+      ownerId: conversationId,
+      ownerKind: "conversation" as const,
       body: `${conversationId} body`,
       createdAt: new Date(BASE_MS),
       dedupeKey: `${conversationId}-key`,

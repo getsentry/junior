@@ -172,7 +172,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // and its end stays out of view.
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
@@ -196,7 +199,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   function askBehindNotices() {
     const notices = Array.from({ length: 30 }, (_, index) => ({
       ...prReady,
-      addedByConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - (60 - index) * 3_600_000).toISOString(),
@@ -206,7 +212,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const ask = {
       ...license,
-      addedByConversationId: "slack:CASK:1770000000.000100",
+      owner: { id: "slack:CASK:1770000000.000100", kind: "conversation" },
       rootConversationId: "slack:CASK:1770000000.000100",
       conversationIds: [],
       createdAt: new Date(NOW_MS - 60_000).toISOString(),
@@ -276,7 +282,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
@@ -328,7 +337,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Each ask is in its own Conversation, and only the first page loads.
     const decisions = Array.from({ length: 12 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
@@ -341,24 +353,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const asleep = decisions.at(-1)!;
     // A row on a later page sleeps until tomorrow.
-    await page.addInitScript(
-      (id) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({ [id]: { untilMs: Date.now() + 86_400_000 } }),
-        ),
-      asleep.id,
-    );
-    await mockReviewItems(page, { open: [...decisions, ...prs], pageSize: 2 });
+    await mockReviewItems(page, {
+      open: [...decisions, ...prs],
+      pageSize: 2,
+      snoozes: [
+        {
+          conversationId: asleep.owner.id,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
     await holdLaterReviewItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(
       page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
     ).toHaveCount(2);
-    // The server counts every page, and the snoozed row it was told about.
+    // The server counts every page, and leaves out the snoozed row.
     await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
-      /^Decisions\s*12$/,
+      /^Decisions\s*11$/,
     );
     await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
       /^Pull requests\s*2$/,
@@ -451,7 +464,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   function questionsByPage() {
     return Array.from({ length: 12 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),

@@ -3,7 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   invalidateReviewItemListsOfConversation,
   reviewItemListQueryKey,
-} from "../review-desk/queries";
+} from "../inbox/queries";
 
 const CONVERSATION_SIDE_READS = [
   "agents",

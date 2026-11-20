@@ -56,6 +56,8 @@ export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
 export type { DailyConversationActivity } from "./activity";
 export {
   codeActivityDaySchema,
+  codeChangeSearchQuerySchema,
+  codeChangeSearchReportSchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
@@ -65,14 +67,17 @@ export {
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
   IDLE_CHANGE_DAYS,
+  mentionableCodeChangeSchema,
 } from "./schema/code";
 export type {
   CodeActivityDay,
+  CodeChangeSearchReport,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
   CodeRepositoryReport,
   CodeRepositorySummary,
+  MentionableCodeChange,
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
@@ -118,7 +123,6 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
@@ -187,10 +191,13 @@ export type {
   ConversationDeliveryResponse,
 } from "./schema/conversation-delivery";
 export {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -253,6 +260,7 @@ export type {
 export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
 } from "./schema/watch";
 export {
   conversationPlanItemSchema,
@@ -271,6 +279,9 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  mentionablePersonSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   PERSON_CARD_RECENT_LIMIT,
   personCardReportSchema,
   personalSpendReportSchema,
@@ -298,12 +309,14 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   ActorWindowMetrics,
+  MentionablePerson,
   PeopleActivityDayReport,
+  PeopleSearchReport,
   PersonalSpendReport,
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
 export type { ApiError } from "./schema/common";
 export {
   connectionListSchema,
@@ -324,12 +337,15 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheHealthReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
@@ -458,5 +474,18 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
+  inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
+export type {
+  InboxSnoozeCreateBody,
+  InboxSnoozeResource,
+  InboxSnoozeSubjectBody,
+  InboxSnoozeTrigger,
+} from "./schema/inbox-snooze";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

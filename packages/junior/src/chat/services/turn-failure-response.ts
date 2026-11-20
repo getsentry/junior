@@ -1,6 +1,7 @@
 import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
+import { formatSentryEventReference } from "@/chat/sentry-links";
 import {
   findProviderError,
   getProviderErrorAttributes,
@@ -197,7 +198,7 @@ export function finalizeFailedTurnReplyWithEvent(args: {
       ? getProviderErrorUserMessage(args.reply.diagnostics.providerError)
       : "";
   const failureText = providerUserMessage
-    ? `${providerUserMessage} Reference: \`event_id=${eventId}\`.`
+    ? `${providerUserMessage} Reference: ${formatSentryEventReference(eventId)}.`
     : buildTurnFailureResponse(eventId);
 
   return {

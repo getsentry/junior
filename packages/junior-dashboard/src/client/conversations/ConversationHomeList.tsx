@@ -16,7 +16,7 @@ import {
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
 import { cn } from "../styles";
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import type { Conversation } from "../types";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { conversationCardTags } from "./ConversationContextTags";

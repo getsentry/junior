@@ -15,7 +15,7 @@ import type {
   PluginRegistration,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
+import { refreshEmbeddings } from "@/db/embeddings";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {

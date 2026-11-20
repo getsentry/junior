@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   readConversationAccessFromSql,
   type ProviderTenant,
@@ -64,6 +64,19 @@ export function reviewItemReaderForUser(user: User): ReviewItemReader {
     ),
     userId: user.id,
   };
+}
+
+/**
+ * SQL: a Conversation owns the Review item. The Conversation status and
+ * feeds read the items that each Conversation owns.
+ */
+export function reviewItemOwnedByConversation(
+  conversationId: SQL | AnyColumn | string,
+): SQL {
+  return and(
+    eq(juniorReviewItems.ownerKind, "conversation"),
+    eq(juniorReviewItems.ownerId, conversationId),
+  )!;
 }
 
 /** SQL: the Review item has this assigned User. */
@@ -242,7 +255,7 @@ export interface ReviewItemAgentScope {
 /**
  * Read the scope of an agent. The agent reads as its Conversation and
  * Automation, not as its Actor: an assignment lets a person see the item on
- * the review desk, not let an agent read it into another Conversation.
+ * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readReviewItemAgentScope(
   context: Pick<
@@ -281,6 +294,12 @@ export async function readReviewItemAgentScope(
  */
 export const PLUGIN_REVIEW_ITEM_KEY_PREFIX = "plugin:";
 
+/**
+ * Dedupe keys with this prefix belong to Automation alerts, which core adds
+ * and closes. An agent cannot use the prefix.
+ */
+export const AUTOMATION_REVIEW_ITEM_KEY_PREFIX = "automation:";
+
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
 export function reviewItemPlugin(dedupeKey: string): string | undefined {
   if (!dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return undefined;
@@ -290,22 +309,34 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
   return plugin || undefined;
 }
 
+/** Return whether the item is an Automation alert. Core takes its answer. */
+export function isAutomationAlertItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return item.dedupeKey.startsWith(AUTOMATION_REVIEW_ITEM_KEY_PREFIX);
+}
+
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
+}
+
 /**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public
  * Conversation, so private content never reaches its readers. A private
  * item changes only from the Conversation or Automation that added it. An
- * agent never changes an item that a plugin added.
+ * agent never changes an item that a plugin added, or an item that another
+ * owner kind, such as an Automation, owns.
  */
 export function canAgentChangeReviewItem(
   item: ReviewItem,
   scope: ReviewItemAgentScope,
 ): boolean {
   if (item.dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return false;
+  if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
-    item.addedByConversationId === scope.reader.conversationId ||
+    item.owner.id === scope.reader.conversationId ||
     (scope.reader.automationId !== undefined &&
       item.automationId === scope.reader.automationId)
   );

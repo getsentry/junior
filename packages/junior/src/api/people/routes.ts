@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { getDb } from "@/chat/db";
 import { readImage } from "@/chat/images/read";
 import type { WaitUntilFn } from "@/handlers/types";
+import {
+  readableSlackTeamId,
+  readConversationAccessFromSql,
+} from "../conversations/access";
 import { jsonResponse, throwApiError } from "../http";
 import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
@@ -9,6 +14,8 @@ import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   avatarParamsSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   personParamsSchema,
   personCardReportSchema,
   personalSpendReportSchema,
@@ -21,7 +28,8 @@ import { readPersonCard } from "./card";
 import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
-import { readPeopleProfile } from "./profile";
+import { readPeopleProfileFromSql } from "./profile.query";
+import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
@@ -61,6 +69,30 @@ export function createPeopleRoutes(options: {
       actorDirectoryReportSchema,
       await readPeopleList({ waitUntil: options.waitUntil }),
     ),
+  );
+
+  // Before `/:email`, which would also match `/search`.
+  app.get(
+    "/search",
+    requireViewer,
+    validateRequest("query", peopleSearchQuerySchema, "Invalid search query."),
+    async (context) => {
+      const { conversationId, q } = context.req.valid("query");
+      const slackTeamId = conversationId
+        ? readableSlackTeamId(
+            (
+              await readConversationAccessFromSql(
+                getDb(),
+                [conversationId],
+                context.get("viewer"),
+              )
+            ).get(conversationId),
+          )
+        : undefined;
+      return jsonResponse(peopleSearchReportSchema, {
+        people: await readPeopleSearchFromSql(q, slackTeamId),
+      });
+    },
   );
 
   app.get(
@@ -121,7 +153,7 @@ export function createPeopleRoutes(options: {
       const viewer = context.get("viewer");
       return jsonResponse(
         actorProfileReportSchema,
-        await readPeopleProfile(email, viewer ? { viewer } : {}),
+        await readPeopleProfileFromSql(email, viewer ? { viewer } : {}),
       );
     },
   );

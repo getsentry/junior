@@ -7,7 +7,7 @@ const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
 const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
 const question = {
-  addedByConversationId: CLOSED_ISSUE_ID,
+  owner: { id: CLOSED_ISSUE_ID, kind: "conversation" },
   rootConversationId: CLOSED_ISSUE_ID,
   assignedToEveryone: false,
   assignees: [
@@ -208,7 +208,7 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   );
   await composer.pressSequentially(" 1");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("Hold on 1");
+  await expect(composer).toHaveText("Hold on 1", { useInnerText: true });
 });
 
 test("jumps to a page from the command palette", async ({

@@ -54,7 +54,6 @@ jobs:
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
-              - packages/junior-search/**
               - packages/junior-testing/**
               - policies/**
             dashboard:
@@ -71,7 +70,6 @@ jobs:
               - apps/example/**
               - packages/junior/**
               - packages/junior-plugin-api/**
-              - packages/junior-search/**
             ios:
               - apps/ios/**
               - .github/workflows/ios.yml
@@ -93,12 +91,10 @@ jobs:
               - packages/junior-hex/**
               - packages/junior-linear/**
               - packages/junior-maintenance/**
-              - packages/junior-memory/**
               - packages/junior-notion/**
               - packages/junior-octolens/**
               - packages/junior-pagerduty/**
               - packages/junior-restream/**
-              - packages/junior-search/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
               - packages/junior-xdotcom/**
@@ -413,6 +409,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # dashboard-bundle-size:check reads the baseline at the merge base
+          # with origin/main.
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter "@sentry/junior-dashboard..." run build

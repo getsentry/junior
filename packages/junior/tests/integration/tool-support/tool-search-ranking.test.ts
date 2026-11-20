@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -67,8 +66,8 @@ const RANKING_CASES = [
   ["read one conversation event", "conversations", "readConversationEvent"],
   ["list active watches", "resource-watches", "listWatches"],
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
-  ["find open review items", "review-desk", "searchReviewItems"],
-  ["update a review item", "review-desk", "updateReviewItem"],
+  ["find open review items", "inbox", "searchReviewItems"],
+  ["update a review item", "inbox", "updateReviewItem"],
   ["list automations", "automations", "searchAutomations"],
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],
@@ -235,11 +234,7 @@ describe("tool search ranking", () => {
 
   beforeAll(async () => {
     await createApp({
-      plugins: defineJuniorPlugins([
-        githubPlugin(),
-        memoryPlugin(),
-        trackerPlugin,
-      ]),
+      plugins: defineJuniorPlugins([githubPlugin(), trackerPlugin]),
     });
     tools = catalogTools();
     catalog = planToolExposure(catalogToolDefinitions()).catalogTools;

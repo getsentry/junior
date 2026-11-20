@@ -31,13 +31,14 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
 } from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
-import { mockQuestionConversations } from "./review-items";
+import { mockQuestionConversations } from "./question-conversations";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
@@ -1381,6 +1382,41 @@ function threadConversation(
 }
 
 /**
+ * Attach files to a Thread's follow-up message, so the composer can mention
+ * files that are already in the Conversation.
+ */
+function withFollowUpFiles(conversation: MockConversation): MockConversation {
+  const followUp = `${conversation.conversationId}:follow-up`;
+  return {
+    ...conversation,
+    events: conversation.events.map((event) =>
+      event.data.type === "message" && event.data.messageId === followUp
+        ? {
+            ...event,
+            data: {
+              ...event.data,
+              attachments: [
+                {
+                  id: "qa-chart-png",
+                  filename: "pin-order-reload.png",
+                  contentType: "image/png",
+                  bytes: 18211,
+                },
+                {
+                  id: "qa-notes-txt",
+                  filename: "pinned-rows.txt",
+                  contentType: "text/plain",
+                  bytes: 22,
+                },
+              ],
+            },
+          }
+        : event,
+    ),
+  };
+}
+
+/**
  * Add a Watch Event that reached a child after its last reply. The child runs
  * it as an agent invocation, so the input names the invocation and the Event.
  */
@@ -2390,12 +2426,14 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     {
       ...withChildWatchEvent(
-        threadConversation(
-          nowMs,
-          DASHBOARD_QA_THREAD_ID,
-          "Check pinned row order",
-          "Check that pinned rows keep their order after a reload.",
-          -3 * 60 * 60_000,
+        withFollowUpFiles(
+          threadConversation(
+            nowMs,
+            DASHBOARD_QA_THREAD_ID,
+            "Check pinned row order",
+            "Check that pinned rows keep their order after a reload.",
+            -3 * 60 * 60_000,
+          ),
         ),
       ),
       // The nested Thread below.
@@ -4066,9 +4104,8 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
         pluginName: "briefs",
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "148" },
-          { label: "conversations with a brief", value: "93" },
-          { label: "briefs · 30d", value: "61" },
+          { label: "briefs · 30d", tone: "good", value: "61" },
+          { label: "conversations with a brief · 30d", value: "38" },
           { label: "cost · 30d · retained", value: "$0.23" },
           {
             label: "average cost per brief · 30d · retained",
@@ -4126,6 +4163,17 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
+  // Sizes for some changes. #519 counts no deletions, so that part hides.
+  const sizes: Record<number, CodeChangeSize> = {
+    42: { additions: 86, changedFiles: 4, deletions: 12 },
+    85: { additions: 2, changedFiles: 1, deletions: 2 },
+    519: { additions: 64, changedFiles: 2 },
+    2330: { additions: 412, changedFiles: 9, deletions: 37 },
+    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+    2384: { additions: 18, changedFiles: 2, deletions: 5 },
+    2391: { additions: 148, changedFiles: 5, deletions: 21 },
+    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+  };
   const openChange = (
     number: number,
     repository: string,
@@ -4141,6 +4189,7 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
+    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,
@@ -4169,7 +4218,7 @@ export function readMockPeopleCode(
     ),
     openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
@@ -4192,7 +4241,7 @@ export function readMockPeopleCode(
     doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
       merged: 6,
     }),
-    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+    doneChange(2361, "getsentry/junior", "Add Inbox filters", 6, {
       merged: 4,
     }),
     doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {

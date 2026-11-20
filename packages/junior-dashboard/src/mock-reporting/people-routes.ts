@@ -18,6 +18,7 @@ import {
   readMockPersonalSpend,
 } from "./fixtures";
 import { readMockPersonCard } from "./objects";
+import { registerMockPeopleSearchRoutes } from "./people-search";
 
 /** Add the mock People routes: the directory, profiles, and person cards. */
 export function mountMockPeopleRoutes(
@@ -26,6 +27,8 @@ export function mountMockPeopleRoutes(
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
+  // Before `/people/:email`, which would take `search` as an email.
+  registerMockPeopleSearchRoutes(app);
   app.get("/people/me/spend", (context) => {
     const email = context.get("viewer")?.email;
     const report = email ? readMockPersonalSpend(email) : undefined;

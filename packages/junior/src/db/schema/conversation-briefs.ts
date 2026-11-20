@@ -56,6 +56,12 @@ export const juniorConversationBriefs = pgTable(
       table.conversationId,
       table.version.desc(),
     ),
+    // The System page counts the Briefs and Conversations of a recent
+    // window from this index alone.
+    index("junior_conversation_briefs_created_at_idx").on(
+      table.createdAt,
+      table.conversationId,
+    ),
     index("junior_conversation_briefs_search_idx").using(
       "gin",
       sql`to_tsvector('english', ${table.searchText})`,

@@ -322,7 +322,7 @@ importers:
     dependencies:
       '@sentry/junior':
         specifier: workspace:*
-        version: file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))
+        version: file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2)
       '@sentry/junior-agent-browser':
         specifier: workspace:*
         version: link:../../packages/junior-agent-browser
@@ -331,7 +331,7 @@ importers:
         version: link:../../packages/junior-amplitude
       '@sentry/junior-dashboard':
         specifier: workspace:*
-        version: file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0)))
+        version: file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2))(typescript@7.0.2)
       '@sentry/junior-datadog':
         specifier: workspace:*
         version: link:../../packages/junior-datadog
@@ -347,9 +347,6 @@ importers:
       '@sentry/junior-linear':
         specifier: workspace:*
         version: link:../../packages/junior-linear
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory
       '@sentry/junior-notion':
         specifier: workspace:*
         version: link:../../packages/junior-notion
@@ -438,12 +435,12 @@ importers:
       '@neondatabase/serverless':
         specifier: ^1.1.0
         version: 1.1.0
+      '@sentry/api':
+        specifier: 2.16.0
+        version: 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search':
-        specifier: workspace:*
-        version: link:../junior-search
+        version: link:../junior-plugin-api
       '@sentry/nitro':
         specifier: 'catalog:'
         version: 11.14.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))
@@ -553,15 +550,12 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       '@sentry/junior-notion':
         specifier: workspace:*
-        version: file:packages/junior-notion(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-notion
       '@sentry/junior-sentry':
         specifier: workspace:*
-        version: file:packages/junior-sentry(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)(typescript@7.0.2)
+        version: link:../junior-sentry
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)
@@ -628,6 +622,9 @@ importers:
       '@dnd-kit/sortable':
         specifier: ^10.0.0
         version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      '@lexical/react':
+        specifier: ^0.53.0
+        version: 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
       '@sentry/browser':
         specifier: 'catalog:'
         version: 11.14.0
@@ -655,6 +652,9 @@ importers:
       hono:
         specifier: ^4.13.11
         version: 4.13.11
+      lexical:
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.6)
@@ -703,7 +703,7 @@ importers:
         version: 5.3.0
       '@sentry/junior':
         specifier: workspace:*
-        version: file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)
+        version: file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)(vitest@4.1.12)
       '@tailwindcss/cli':
         specifier: ^4.3.0
         version: 4.3.0
@@ -768,7 +768,7 @@ importers:
         version: 1.5.2(undici@7.30.1)(zod@4.6.7)
       '@sentry/junior':
         specifier: workspace:*
-        version: file:packages/junior(@types/node@24.19.2)(vitest@4.1.12)
+        version: file:packages/junior(@types/node@24.19.2)(typescript@7.0.2)(vitest@4.1.12)
       '@sentry/junior-eval-pantry':
         specifier: link:fixtures/plugins/eval-pantry
         version: link:fixtures/plugins/eval-pantry
@@ -778,9 +778,6 @@ importers:
       '@sentry/junior-google':
         specifier: workspace:*
         version: link:../junior-google
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -836,7 +833,7 @@ importers:
         version: 1.3.4(graphql@16.14.0)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-plugin-api
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -906,7 +903,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-plugin-api
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -977,52 +974,6 @@ importers:
 
   packages/junior-maintenance: {}
 
-  packages/junior-memory:
-    dependencies:
-      '@sentry/junior-plugin-api':
-        specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search':
-        specifier: workspace:*
-        version: link:../junior-search
-      '@sinclair/typebox':
-        specifier: ^0.34.49
-        version: 0.34.49
-      commander:
-        specifier: ^14.0.3
-        version: 14.0.3
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
-    devDependencies:
-      '@sentry/junior-testing':
-        specifier: workspace:*
-        version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      '@types/pg':
-        specifier: ^8.15.6
-        version: 8.15.6
-      drizzle-kit:
-        specifier: 'catalog:'
-        version: 0.31.10
-      pg:
-        specifier: ^8.16.3
-        version: 8.21.0
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
-
   packages/junior-notion:
     dependencies:
       '@sentry/junior-plugin-api':
@@ -1051,9 +1002,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.4
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1067,20 +1015,11 @@ importers:
 
   packages/junior-restream: {}
 
-  packages/junior-search:
-    devDependencies:
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-
   packages/junior-sentry:
     dependencies:
       '@sentry/api':
-        specifier: 2.3.0
-        version: 2.3.0(typescript@7.0.2)(zod@4.6.7)
+        specifier: 2.16.0
+        version: 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -2991,6 +2930,12 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
+  '@floating-ui/react@0.27.20':
+    resolution: {integrity: sha512-CMqMy7OaXl9W0eq1Uy7L7i2Y/anPvHmFmESd2CEw0t5YvZhcVCeo4MBevAmswRllX7Y2dEidA4ozGPunLSTQpw==}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
+
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
@@ -3453,6 +3398,198 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lexical/a11y@0.53.0':
+    resolution: {integrity: sha512-Xmi6TDF7mkhxYMO7GNN1G5mgdNRN5mMKcvMk7zIWnteXIuBJ4li5LgYXDvnCfYU/qrkocIBQhlJNqaiXzvtktA==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/clipboard@0.53.0':
+    resolution: {integrity: sha512-QkSu7wiLtiNCoHBJzdcwmAD91Xz+Q29gPHcLwgk6NqTk255KBhqMEV2KHa87sJKHU4zBQMmhc52QkoaU3GkDxA==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/code-core@0.53.0':
+    resolution: {integrity: sha512-u684OEtS6lb5IQKeFFAPlNfWhdcnKi2ZctOEgK5o2rHd01FF0pG/J57gbTzcpwnyfw98s6c5SnBuxTAXA7EWsA==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/devtools-core@0.53.0':
+    resolution: {integrity: sha512-CBKNXTXz+k7csz5BfFS5SeeR8p5MdRAZZ/eSp5iPvmphBMujgnEz/U8+cmK60mglH4nofoUjhBZ5iVyY28uohA==}
+    peerDependencies:
+      react: '>=18.x'
+      react-dom: '>=18.x'
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/dragon@0.53.0':
+    resolution: {integrity: sha512-pulm9Nwg7Cl0tvrJesWGyRFVjUgs0C4gKJ/IBnssYAMP1Sk2Y4vVn5Bw0YJ75ChHa76VNPajUn7jDhLW9BWD2A==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/extension@0.53.0':
+    resolution: {integrity: sha512-+qjF79P6sBCggg/A5jmQRfQK8CEIXiUK7ndWcbm5m6y/ZOafakBhcjj2yfaxxnM+zPrvj7GZeyHbGpc6/lXENQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/hashtag@0.53.0':
+    resolution: {integrity: sha512-ZYw82Gj5pDFqhsqRhubiSV6Jv62Iib2pMC+Lu4oHhKox6azh+FtxLNdqoDTp9iCXGaz3YHMuIrZvtl5qYK/UYw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/history@0.53.0':
+    resolution: {integrity: sha512-MyNM9jSVLlloKTrka+3X6tRtjAruzsSKkvezq/R/mvsjlXoxLW/6bi4QE0RZtba8Ma4ZwZs6/gpmN4O1P9T+EQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/html@0.53.0':
+    resolution: {integrity: sha512-QTA+r1+7UleNFb3puIBEp2ENL3Qw4VMayYKO0hoDpr+adyzUNZapIlVVkB4no4Bc4ei5wt9EJK7r4g0G1lfEAw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/internal@0.53.0':
+    resolution: {integrity: sha512-ORSbMXwae0X1SeSsqywx9Lw0Bf8/rJNZzKdQp6uMVGGwgM6Ul+cCAjsKYlG7cnhJILJwYoi2a5+ZK4Y+KFAxlg==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/link@0.53.0':
+    resolution: {integrity: sha512-2oEeCTzwtN3EGPN+RcCdorWDn1WuC8GWKl1kWUdbUtJyEqjLtOj97dY1uSPFA+i6BxlDQoUjkl4H+UUfjgJfYw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/list@0.53.0':
+    resolution: {integrity: sha512-wW+ufz4W40v+/fk2F98yxS8fXfmP1qOrEf5EPCmmV+lqxZ3FEPgN0JwPv8XUPF6/IaC8SyndT9eZgf4mJ1HCrQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/mark@0.53.0':
+    resolution: {integrity: sha512-b6CkBVl/bWa0ZP8P9FqDbRsi7HX0fWyfrLrvSSa/EOkiaydVZ5Npqac/fV8IqP5tUBwTohQms0H0nriJeBsnig==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/markdown@0.53.0':
+    resolution: {integrity: sha512-kQ/MlE/zaG2k5NtO+15QIOVPbDO9vwfW4JpNXads2fM2v4qQVjdvuEq+Elm6CjwVz/L7fDjT2JgUjg/Ozkpqkw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/overflow@0.53.0':
+    resolution: {integrity: sha512-8MSMCVlYEqtEOEf+fF1dBmg3nFwRQRxikFOOcTOs4KgKb3hLSCs9hMWdSuO1+DNciLT2rin4b5jXJJZ2cYTcRw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/plain-text@0.53.0':
+    resolution: {integrity: sha512-5I1scAnq5Wc6l9a/aFOXuEyw7QA5pFMawD1ATmghI7ybGNciM7iODJTCrZK96RueBs3odpzLtEX2mjwy/PhovQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/react@0.53.0':
+    resolution: {integrity: sha512-LiTwacTsFwWFqh2cS01U3Ffe15ypzaBwkVcdcD47wN0mauwbNsZoGPumWKgvI69trBfF1MUeRQxEyO9EzWGuhw==}
+    peerDependencies:
+      react: '>=18.x'
+      react-dom: '>=18.x'
+      typescript: '>=5.2'
+      yjs: '>=13.5.37'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+      yjs:
+        optional: true
+
+  '@lexical/rich-text@0.53.0':
+    resolution: {integrity: sha512-Hz7Ari2IbuY/BEO/Q4wMToPClvOCjEoKSNdhFCJePDfdnGUVSMOXLl4SGvKgC7aQB302Pc5hTysLPuS8XwxlSw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/selection@0.53.0':
+    resolution: {integrity: sha512-K7yTg/7PRZTKZ8UzzTC1tme4WEAz39vg4MqteHqrspmXFM3OubTXcANdXZFvMyzTDJ7g3sIoDkjD73kroDvO2Q==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/table@0.53.0':
+    resolution: {integrity: sha512-He2dAALEW7yvAon0t56m0tMF/oDYX/llHPM+oRc/BvAzpRkkFuV/0oGkJNoEZ1TFvK7tT0OSme0kYW3TLI2FZw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/text@0.53.0':
+    resolution: {integrity: sha512-s0zWuQZH7MMl0tNb9qs+GptTv1459lBzsYV7UrrsPVuvD1otHgw3qE9rCSkv2C5oXkTy8MR7t14dFIgqybJhBQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/utils@0.53.0':
+    resolution: {integrity: sha512-Uq+zEWPnX0eZqRw0gTe3NuPOduePHVmP0dQ3jyoi8JIN3HIQOIn5yTFGejX8j4M3RcYXwgsm89pNWflNWV/8tw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@lexical/yjs@0.53.0':
+    resolution: {integrity: sha512-5q5vwK3YRv6cBEhF54ATC09RsfVDW8uhRjgD7jcOcbiPvy5oZCsUI04PJs/V7+Nozr3ivmmtfqgBn/orHfbQeQ==}
+    peerDependencies:
+      typescript: '>=5.2'
+      yjs: '>=13.5.37'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   '@loaderkit/resolve@1.0.6':
     resolution: {integrity: sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg==}
@@ -4272,6 +4409,9 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  '@preact/signals-core@1.14.5':
+    resolution: {integrity: sha512-vcRv7Ityz5JVmeiVqIluLFzT/PDS/AlhHUpw3/aUWqcVUs6bDGIPXE/6RSC4evBNWYvnniozg5Syfj33al3gkg==}
+
   '@primer/octicons@19.21.1':
     resolution: {integrity: sha512-7tgtBkCNcg75YJnckinzvES+uxysYQCe+CHSEnzr3VYgxttzKRvfmrnVogl3aEuHCQP4xhiE9k2lFDhYwGtTzQ==}
 
@@ -5051,8 +5191,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@2.3.0':
-    resolution: {integrity: sha512-DaFq7/eAVyo11cT7fzDc0NVhAsUjhP9S8hRJIi4K1UKLe7rrViyvXCmtonnoBJKTY9I1r8G5LgeGUsB7CawDsw==}
+  '@sentry/api@2.16.0':
+    resolution: {integrity: sha512-GfpMIHqtyc4O9s9H+jOPDRuMGOgBYtlAFY5NZHxcYs8uxq9Rkj6uzUVXzc19aqPvZOpbBaMtcO409qVW6mfYRA==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -5106,20 +5246,8 @@ packages:
   '@sentry/junior-github@file:packages/junior-github':
     resolution: {directory: packages/junior-github, type: directory}
 
-  '@sentry/junior-memory@file:packages/junior-memory':
-    resolution: {directory: packages/junior-memory, type: directory}
-
-  '@sentry/junior-notion@file:packages/junior-notion':
-    resolution: {directory: packages/junior-notion, type: directory}
-
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     resolution: {directory: packages/junior-plugin-api, type: directory}
-
-  '@sentry/junior-search@file:packages/junior-search':
-    resolution: {directory: packages/junior-search, type: directory}
-
-  '@sentry/junior-sentry@file:packages/junior-sentry':
-    resolution: {directory: packages/junior-sentry, type: directory}
 
   '@sentry/junior-testing@file:packages/junior-testing':
     resolution: {directory: packages/junior-testing, type: directory}
@@ -5578,6 +5706,9 @@ packages:
 
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
+
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
@@ -8223,6 +8354,14 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
+  lexical@0.53.0:
+    resolution: {integrity: sha512-yAJJJsIkkfKVemlxC+akk1hJR+P7Zqzch+uTAJ1Wqq6H0o0TkjjaxCyaELd8M9OzWX07f9WOU6RJSyutcVewUw==}
+    peerDependencies:
+      typescript: '>=5.2'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   libpg-query@18.2.2:
     resolution: {integrity: sha512-BOKY0X05vnxkFe+FD8JH71sSO560UKoSRv9Fsy67zapmryhqcew+4Hq0Phu8a6mcENklK7LiHJi0d0j8DbIb4A==}
 
@@ -10256,6 +10395,9 @@ packages:
     engines: {node: '>=10.0.0'}
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
+
+  tabbable@6.5.2:
+    resolution: {integrity: sha512-XgdnB1nGU6KU4VgMnZPaZCx7M1hBrLyEiZYau2G2gq9UT0d7d4FUBlNX7vvPlm/B1vk1PjrzJBx9Lbv4fsqS9g==}
 
   tagged-tag@1.0.0:
     resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
@@ -12986,6 +13128,14 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
 
+  '@floating-ui/react@0.27.20(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@floating-ui/utils': 0.2.12
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+      tabbable: 6.5.2
+
   '@floating-ui/utils@0.2.12': {}
 
   '@fontsource-variable/inter@5.3.0': {}
@@ -13334,6 +13484,239 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@lexical/a11y@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/clipboard@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/list': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      '@types/trusted-types': 2.0.7
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/code-core@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/devtools-core@0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)':
+    dependencies:
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/link': 0.53.0(typescript@7.0.2)
+      '@lexical/mark': 0.53.0(typescript@7.0.2)
+      '@lexical/table': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/dragon@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/extension@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      '@preact/signals-core': 1.14.5
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/hashtag@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/text': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/history@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/html@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/internal@0.53.0(typescript@7.0.2)':
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/link@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/a11y': 0.53.0(typescript@7.0.2)
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/list@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/mark@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/markdown@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/code-core': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/link': 0.53.0(typescript@7.0.2)
+      '@lexical/list': 0.53.0(typescript@7.0.2)
+      '@lexical/rich-text': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      '@lexical/text': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/overflow@0.53.0(typescript@7.0.2)':
+    dependencies:
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/plain-text@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/clipboard': 0.53.0(typescript@7.0.2)
+      '@lexical/dragon': 0.53.0(typescript@7.0.2)
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/react@0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@lexical/a11y': 0.53.0(typescript@7.0.2)
+      '@lexical/devtools-core': 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
+      '@lexical/dragon': 0.53.0(typescript@7.0.2)
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/hashtag': 0.53.0(typescript@7.0.2)
+      '@lexical/history': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/link': 0.53.0(typescript@7.0.2)
+      '@lexical/list': 0.53.0(typescript@7.0.2)
+      '@lexical/mark': 0.53.0(typescript@7.0.2)
+      '@lexical/markdown': 0.53.0(typescript@7.0.2)
+      '@lexical/overflow': 0.53.0(typescript@7.0.2)
+      '@lexical/plain-text': 0.53.0(typescript@7.0.2)
+      '@lexical/rich-text': 0.53.0(typescript@7.0.2)
+      '@lexical/table': 0.53.0(typescript@7.0.2)
+      '@lexical/text': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      '@lexical/yjs': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/rich-text@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/a11y': 0.53.0(typescript@7.0.2)
+      '@lexical/clipboard': 0.53.0(typescript@7.0.2)
+      '@lexical/dragon': 0.53.0(typescript@7.0.2)
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/selection@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/table@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/clipboard': 0.53.0(typescript@7.0.2)
+      '@lexical/extension': 0.53.0(typescript@7.0.2)
+      '@lexical/html': 0.53.0(typescript@7.0.2)
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/text@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/utils@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@lexical/yjs@0.53.0(typescript@7.0.2)':
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+      '@lexical/selection': 0.53.0(typescript@7.0.2)
+      lexical: 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
 
   '@loaderkit/resolve@1.0.6':
     dependencies:
@@ -13870,6 +14253,8 @@ snapshots:
   '@playwright/test@1.60.0':
     dependencies:
       playwright: 1.60.0
+
+  '@preact/signals-core@1.14.5': {}
 
   '@primer/octicons@19.21.1':
     dependencies:
@@ -14464,7 +14849,7 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@2.3.0(typescript@7.0.2)(zod@4.6.7)':
+  '@sentry/api@2.16.0(typescript@7.0.2)(zod@4.6.7)':
     dependencies:
       http-cache-semantics: 4.2.0
       p-limit: 7.3.3
@@ -14506,13 +14891,14 @@ snapshots:
     dependencies:
       '@sentry/core': 11.14.0
 
-  '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0)))':
+  '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@dnd-kit/core': 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      '@lexical/react': 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
       '@sentry/browser': 11.14.0
-      '@sentry/junior': file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))
+      '@sentry/junior': file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@tanstack/react-query': 5.100.14(react@19.2.6)
       '@tanstack/react-virtual': 3.14.26(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -14521,6 +14907,7 @@ snapshots:
       cmdk: 1.1.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       cn: 0.5.0
       hono: 4.13.11
+      lexical: 0.53.0(typescript@7.0.2)
       lucide-react: 1.17.0(react@19.2.6)
       p-limit: 7.3.3
       react: 19.2.6
@@ -14535,42 +14922,14 @@ snapshots:
       shiki: 4.1.0
       zod: 4.6.7
     transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
       - '@date-fns/tz'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
       - '@types/react'
       - '@types/react-dom'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
       - date-fns
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
       - redux
-      - sql.js
-      - sqlite3
       - supports-color
+      - typescript
+      - yjs
 
   '@sentry/junior-github@file:packages/junior-github':
     dependencies:
@@ -14623,7 +14982,7 @@ snapshots:
   '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)':
     dependencies:
       '@0no-co/graphql.web': 1.3.4(graphql@16.14.0)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       ignore: 7.0.5
@@ -14668,314 +15027,10 @@ snapshots:
       - sqlite3
       - supports-color
 
-  '@sentry/junior-memory@file:packages/junior-memory':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sentry/junior-search': file:packages/junior-search
-      '@sinclair/typebox': 0.34.52
-      commander: 14.0.3
-      drizzle-orm: 0.45.4
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-memory@file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
-      '@sinclair/typebox': 0.34.52
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-notion@file:packages/junior-notion(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     dependencies:
       commander: 14.0.3
-      drizzle-orm: 0.45.4
       zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-search@file:packages/junior-search': {}
-
-  '@sentry/junior-sentry@file:packages/junior-sentry(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)(typescript@7.0.2)':
-    dependencies:
-      '@sentry/api': 2.3.0(typescript@7.0.2)(zod@4.6.7)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      mdast-util-from-markdown: 2.1.0
-      mdast-util-gfm: 3.1.0
-      micromark-extension-gfm: 3.0.0
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-      - supports-color
-      - typescript
-      - valibot
 
   '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)':
     dependencies:
@@ -15091,7 +15146,7 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))':
+  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2)':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.6.7)
       '@ai-sdk/gateway': 4.0.126(zod@4.6.7)
@@ -15105,8 +15160,8 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
@@ -15195,13 +15250,15 @@ snapshots:
       - sqlite3
       - supports-color
       - svelte
+      - typescript
       - utf-8-validate
+      - valibot
       - vitest
       - vue
       - webpack
       - ws
 
-  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)':
+  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)(vitest@4.1.12)':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.6.7)
       '@ai-sdk/gateway': 4.0.126(zod@4.6.7)
@@ -15215,8 +15272,8 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
@@ -15305,13 +15362,15 @@ snapshots:
       - sqlite3
       - supports-color
       - svelte
+      - typescript
       - utf-8-validate
+      - valibot
       - vitest
       - vue
       - webpack
       - ws
 
-  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(vitest@4.1.12)':
+  '@sentry/junior@file:packages/junior(@types/node@24.19.2)(typescript@7.0.2)(vitest@4.1.12)':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.6.7)
       '@ai-sdk/gateway': 4.0.126(zod@4.6.7)
@@ -15325,8 +15384,8 @@ snapshots:
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
@@ -15414,7 +15473,9 @@ snapshots:
       - sqlite3
       - supports-color
       - svelte
+      - typescript
       - utf-8-validate
+      - valibot
       - vitest
       - vue
       - webpack
@@ -15941,6 +16002,8 @@ snapshots:
       '@types/node': 25.9.1
 
   '@types/statuses@2.0.6': {}
+
+  '@types/trusted-types@2.0.7': {}
 
   '@types/unist@2.0.11': {}
 
@@ -19034,6 +19097,12 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  lexical@0.53.0(typescript@7.0.2):
+    dependencies:
+      '@lexical/internal': 0.53.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
   libpg-query@18.2.2:
     dependencies:
       '@pgsql/types': 18.0.0
@@ -21822,6 +21891,8 @@ snapshots:
       sax: 1.6.1
 
   systeminformation@5.33.16: {}
+
+  tabbable@6.5.2: {}
 
   tagged-tag@1.0.0: {}
 

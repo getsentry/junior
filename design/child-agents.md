@@ -35,7 +35,7 @@ child chooses to report reaches the parent.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
-- A child agent never asks a person. It has no Review desk and does not
+- A child agent never asks a person. It has no Inbox and does not
   wait for a sign-in. Missing access is a blocked report to its parent.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
@@ -65,12 +65,17 @@ child chooses to report reaches the parent.
 - Some behavior of a child agent branches on `kind` outside the one switch.
   This breaks "its `kind` is the only switch". getsentry/junior#3435,
   getsentry/junior#3060, and getsentry/junior#2567 track it.
+- Some input to a child agent runs in a separate child worker, not in
+  the path that runs every Conversation. This breaks "one execution path
+  runs every Conversation". getsentry/junior#3060 tracks it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".
 - A parent does not archive its child agents when their work is done. This
+  breaks "a parent manages the lifecycle of its child agents".
+- A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
 - For some child messages, Junior reads the sender from the message id.
   This breaks "a message id is an opaque key".

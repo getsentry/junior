@@ -9,7 +9,7 @@ import { Link } from "react-router";
 import { useActorCodeData, useDashboardCoreData } from "../api";
 import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
-import { useReviewItemCountData } from "../review-desk/queries";
+import { useReviewItemCountData } from "../inbox/queries";
 import { cn } from "../styles";
 import { IdleText } from "./codeChangeIdle";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
@@ -111,9 +111,9 @@ export function HomeSummary() {
               <StatusText tone="bg-amber-300">
                 <Link
                   className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                  to="/review"
+                  to="/inbox"
                 >
-                  on your Review desk
+                  in your Inbox
                 </Link>
               </StatusText>
             ) : (

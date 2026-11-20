@@ -43,6 +43,12 @@ each rule, so new code cannot drift from it.
   channels that Sentry's Postgres spans use. Tests inject them into `pg` with
   `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
   extra wrapper.
+- Do not read a big table in full on a hot API route. Integration tests check
+  the plan of each statement with `expectNoFullScan` from the same file. It
+  fails when a plan reads a table in its `BIG_TABLES` list with no index
+  condition. A known full scan with a fix on the way gets a named `allowed`
+  entry with a reason. An entry that matches nothing fails, so the fix
+  removes it.
 - Keep the JSON body of hot API routes inside a size budget. A budget holds
   the size of the largest item of a list. A nested list with no cap on its
   count gets its own budget. Integration tests measure it with
@@ -54,10 +60,10 @@ each rule, so new code cannot drift from it.
   needs one. Check: `pnpm nav-request-budgets:check`.
   `scripts/nav-request-budget-exceptions.mjs` lists the routes without one and
   why. Do not add entries.
-- Keep the first load of each dashboard UI shell inside a gzip budget. Check:
-  `pnpm dashboard-bundle-size:check` fails when a shell grows more than 2%
-  over `scripts/dashboard-bundle-size-baseline.json`. Update the baseline only
-  in the change that must grow the first load.
+- Keep the first load of each dashboard UI shell inside a gzip budget.
+  `scripts/dashboard-bundle-size-baseline.json` holds the size on `main`. A
+  change that grows the first load updates it, and may grow it at most 2%.
+  Check: `pnpm dashboard-bundle-size:check`.
 - Set a new budget to the measured value. When a change uses less, lower the
   budget in the same change. Do not raise a budget to pass. Fix the code.
 
