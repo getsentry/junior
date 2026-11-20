@@ -333,7 +333,7 @@ export async function readCacheHealth(
   }
   const state = await connectedState();
   const cached = await state.get<SentryHealth>(cacheKey(window));
-  let health: SentryHealth | { status: "rate_limited" | "denied" };
+  let health: SentryHealth | { status: "rate_limited" | "denied" | "busy" };
   if (cached && isFresh(cached, nowMs)) {
     health = cached;
   } else {
@@ -350,8 +350,8 @@ export async function readCacheHealth(
       // rather than read Sentry again.
       health = { ...cached, stale: true };
     } else {
-      // With no answer to serve, a stuck refresh must not block this load.
-      health = await refreshWindow(state, telemetry, window, nowMs);
+      // Reading Sentry here too would bring back the overlapping reads.
+      health = { status: "busy" };
     }
   }
   if (health.status !== "ok") return { status: health.status };
