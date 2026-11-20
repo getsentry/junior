@@ -73,10 +73,6 @@ export const juniorTurns = pgTable(
       sql`${table.stepSeq} >= 0 and ${table.leaseEpoch} >= 0 and ${table.attempts} >= 0`,
     ),
     check("junior_turns_priority_check", sql`${table.priority} >= 0`),
-    check(
-      "junior_turns_source_check",
-      sql`${table.source} in ('slack', 'local', 'web', 'event', 'scheduled_automation', 'event_automation', 'plugin_dispatch', 'agent_invocation')`,
-    ),
     // At most one running Turn per Conversation. More Turns can wait queued.
     uniqueIndex("junior_turns_running_conversation_idx")
       .on(table.conversationId)
