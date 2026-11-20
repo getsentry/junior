@@ -112,6 +112,15 @@ export const juniorGitHubPullRequests = pgTable(
      */
     nextAction: text("next_action").$type<GitHubPullRequestAction>(),
     /**
+     * When Junior last acted on the pull request: a push, a comment or
+     * review by its App, or a new request for the requester's review.
+     */
+    juniorActivityAt: timestamp("junior_activity_at", { withTimezone: true }),
+    /** When the requester last reviewed or commented on the pull request. */
+    requesterActivityAt: timestamp("requester_activity_at", {
+      withTimezone: true,
+    }),
+    /**
      * Webhooks that asked to check the next action. The check runs again
      * when this changes during a check.
      */

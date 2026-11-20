@@ -374,9 +374,12 @@ export interface GitHubPullRequestMergeState {
   /**
    * The commit of the requester's latest change request, when that is their
    * latest review. Read only when the pull request is open, not a draft, and
-   * GitHub does not ask the requester for a review, or it can merge cleanly.
+   * GitHub does not ask the requester for a review, the requester acted
+   * last, or it can merge cleanly.
    */
   changesRequestedCommit?: string;
+  /** When the requester submitted that change request, if GitHub says. */
+  changesRequestedAt?: Date;
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha: string;
@@ -398,14 +401,15 @@ export interface GitHubPullRequestMergeState {
  * changed their review, with a read-only token. GitHub computes
  * `mergeable_state` after a change, so an unknown state is read once more.
  * Reviews load for an open pull request that is not a draft, when it can
- * merge cleanly or GitHub does not ask the requester for a review. Each
+ * merge cleanly, when GitHub does not ask the requester for a review, or
+ * when `requesterActedLast` says that their reply can end the review. Each
  * reviewer counts by their latest approval, change request, or dismissal.
  * Comments do not change the result.
  */
 export async function loadPullRequestMergeState(
   env: GitHubInstallationEnv,
   pullRequest: { number: number; repositoryFullName: string },
-  requesterLogin: string | undefined,
+  requester: { login: string | undefined; requesterActedLast: boolean },
 ): Promise<GitHubPullRequestMergeState> {
   const { owner, name } = splitRepository(
     pullRequest.repositoryFullName,
@@ -446,14 +450,17 @@ export async function loadPullRequestMergeState(
   if (state.state !== "open" || state.draft) return state;
   const canMerge = !state.autoMerge;
   if (canMerge && !state.mergeableState) state = await readPull();
-  const login = requesterLogin?.toLowerCase();
+  const login = requester.login?.toLowerCase();
   // GitHub stops asking a reviewer once they review. After a change request,
-  // the requester's review is still wanted when new commits come in.
+  // the requester's review is still wanted when Junior acts after it. A
+  // GitHub request stays after the requester replies, so their reply can
+  // end it only when the reviews show the change request.
   const readsChanges =
     login !== undefined &&
-    !state.requestedReviewers.some(
-      (reviewer) => reviewer.toLowerCase() === login,
-    );
+    (requester.requesterActedLast ||
+      !state.requestedReviewers.some(
+        (reviewer) => reviewer.toLowerCase() === login,
+      ));
   const readsApproval = canMerge && state.mergeableState === "clean";
   if (!readsApproval && !readsChanges) return state;
 
@@ -474,6 +481,9 @@ export async function loadPullRequestMergeState(
     requesterReview.commit_id
   ) {
     state.changesRequestedCommit = requesterReview.commit_id;
+    if (requesterReview.submitted_at) {
+      state.changesRequestedAt = new Date(requesterReview.submitted_at);
+    }
   }
   return state;
 }

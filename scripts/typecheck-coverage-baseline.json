@@ -66,7 +66,6 @@
   "packages/junior-github/tests/merge-conflicts.test.ts",
   "packages/junior-github/tests/msw.ts",
   "packages/junior-github/tests/plugin-harness.ts",
-  "packages/junior-github/tests/pull-request-action.test.ts",
   "packages/junior-github/tests/pull-request-ready-reviewers.test.ts",
   "packages/junior-github/tests/pull-request-reconcile.test.ts",
   "packages/junior-github/tests/react-to-issue.test.ts",

@@ -6,6 +6,7 @@ const reviewsSchema = z.array(
   z.object({
     commit_id: z.string().nullable().optional(),
     state: z.string(),
+    submitted_at: z.iso.datetime({ offset: true }).nullish(),
     user: z.object({ login: z.string() }).nullable(),
   }),
 );
