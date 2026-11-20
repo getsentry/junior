@@ -66,6 +66,7 @@
   "rules": {
     "preserve-caught-error": "error",
     "unicorn/no-array-for-each": "error",
+    "junior/no-record-type-guard": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",

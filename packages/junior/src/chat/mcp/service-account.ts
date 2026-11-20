@@ -18,7 +18,7 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { isRecord } from "@/chat/coerce";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -55,39 +55,37 @@ function updateLockKey(provider: string): string {
   return `${serviceAccountKey(provider)}:update`;
 }
 
+// OAuth payloads are stored as the MCP SDK returned them. Only their object
+// shape is checked here.
+const storedOAuthClientInformationSchema =
+  z.custom<OAuthClientInformationMixed>(
+    (value) => typeof value === "object" && value !== null,
+  );
+const storedOAuthDiscoveryStateSchema = z.custom<OAuthDiscoveryState>(
+  (value) => typeof value === "object" && value !== null,
+);
+const storedOAuthTokensSchema = z.custom<OAuthTokens>(
+  (value) => typeof value === "object" && value !== null,
+);
+
+const credentialsSchema = z.object({
+  clientInformation: storedOAuthClientInformationSchema,
+  connectedAtMs: z.number(),
+  connectedBy: z.string().optional().catch(undefined),
+  discoveryState: storedOAuthDiscoveryStateSchema.optional().catch(undefined),
+  redirectUrl: z.string(),
+  tokens: storedOAuthTokensSchema,
+});
+
 function parseCredentials(
   value: unknown,
 ): McpServiceAccountCredentials | undefined {
   try {
     // Plaintext values from before encryption are JSON strings.
-    const parsed: unknown =
-      typeof value === "string" ? JSON.parse(value) : value;
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed["clientInformation"]) ||
-      !isRecord(parsed["tokens"]) ||
-      typeof parsed["connectedAtMs"] !== "number" ||
-      typeof parsed["redirectUrl"] !== "string"
-    ) {
-      return undefined;
-    }
-    return {
-      clientInformation: parsed[
-        "clientInformation"
-      ] as OAuthClientInformationMixed,
-      connectedAtMs: parsed["connectedAtMs"],
-      ...(typeof parsed["connectedBy"] === "string"
-        ? { connectedBy: parsed["connectedBy"] }
-        : undefined),
-      ...(isRecord(parsed["discoveryState"])
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      redirectUrl: parsed["redirectUrl"],
-      tokens: parsed["tokens"] as OAuthTokens,
-    };
+    const parsed = credentialsSchema.safeParse(
+      typeof value === "string" ? JSON.parse(value) : value,
+    );
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -308,33 +306,18 @@ function signInKey(state: string): string {
   return `${SIGN_IN_KEY_PREFIX}:${state}`;
 }
 
+const signInSchema = z.object({
+  clientInformation: storedOAuthClientInformationSchema,
+  codeVerifier: z.string(),
+  discoveryState: storedOAuthDiscoveryStateSchema.optional().catch(undefined),
+  provider: z.string(),
+  redirectUrl: z.string(),
+  startedBy: z.string().optional().catch(undefined),
+});
+
 function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
-  if (
-    !isRecord(value) ||
-    !isRecord(value["clientInformation"]) ||
-    typeof value["codeVerifier"] !== "string" ||
-    typeof value["provider"] !== "string" ||
-    typeof value["redirectUrl"] !== "string"
-  ) {
-    return undefined;
-  }
-  return {
-    clientInformation: value[
-      "clientInformation"
-    ] as OAuthClientInformationMixed,
-    codeVerifier: value["codeVerifier"],
-    ...(isRecord(value["discoveryState"])
-      ? {
-          // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-          discoveryState: value.discoveryState as OAuthDiscoveryState,
-        }
-      : undefined),
-    provider: value["provider"],
-    redirectUrl: value["redirectUrl"],
-    ...(typeof value["startedBy"] === "string"
-      ? { startedBy: value["startedBy"] }
-      : undefined),
-  };
+  const parsed = signInSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Result of finishing a sign-in. A failure message is safe to show the Admin. */
