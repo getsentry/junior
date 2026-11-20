@@ -167,7 +167,7 @@
       }
     },
     {
-      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "files": ["src/client/shell/**", "src/client/inbox/**"],
       "rules": {
         "radius/no-large-radius": "error"
       }
@@ -216,7 +216,7 @@
     {
       "files": [
         "src/client/conversations/ConversationSectionList.tsx",
-        "src/client/inbox/conversations/ConversationSectionList.tsx"
+        "src/client/shell/conversations/ConversationSectionList.tsx"
       ],
       "rules": {
         "no-restricted-imports": "off"

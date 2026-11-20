@@ -38,7 +38,11 @@ import {
   getReviewItem,
   insertReviewItem,
 } from "@/chat/review-items/store";
-import { snoozeInboxItems, unsnoozeInboxRow } from "@/chat/inbox-snoozes/store";
+import {
+  snoozeInboxItems,
+  snoozeTimerTrigger,
+  unsnoozeInboxRow,
+} from "@/chat/inbox-snoozes/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -260,9 +264,13 @@ describe("retention purge job", () => {
     });
     const snooze = async (nowMs: number) => {
       const [id] = await snoozeInboxItems(fixture.sql.db(), {
+        items: [
+          {
+            reviewItemId: item!.id,
+            triggers: [snoozeTimerTrigger(`inbox-snooze:${nowMs}`)],
+          },
+        ],
         nowMs,
-        reviewItemIds: [item!.id],
-        timerId: `inbox-snooze:${nowMs}`,
         userId: "user:snoozer",
       });
       return id!;

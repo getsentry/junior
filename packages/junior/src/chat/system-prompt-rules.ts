@@ -87,7 +87,7 @@ const AGENT_INPUT_RULES = [
 /**
  * Block 2, `<automation-run>`: the job rules for a stored automation. No person
  * reads the run while it executes, so Junior does the work without waiting.
- * A decision that only a person can make goes on the review desk, and each
+ * A decision that only a person can make goes in the Inbox, and each
  * Turn ends with one answer tool.
  */
 const AUTOMATION_RUN_RULES = [
@@ -258,8 +258,9 @@ const SKILL_POLICY_RULES = [
 const TODO_POLICY_RULES = [
   "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
   "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Set a To-do to in_progress when its work starts, and to done or dropped when it ends, such as when a child agent's result arrives. After a compaction, `<todos>` lists the open To-dos. `<todo-delta>` shows To-dos that people changed since you last saw them.",
+  "- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<todos>` lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns. `<todo-delta>` shows To-dos that people changed since you last saw them.",
   "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
+  "- To-do ids such as `TODO-12` are only for `updateTodos`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
 ];
 
 /**

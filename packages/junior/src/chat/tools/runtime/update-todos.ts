@@ -8,7 +8,13 @@ import {
   listTodos,
   type StoredTodoAssignee,
 } from "@/chat/todos/store";
-import { outputTodo, todoOutputSchema } from "@/chat/todos/tool-output";
+import {
+  outputTodo,
+  parseTodoRef,
+  todoOutputSchema,
+  todoRef,
+  todoRefSchema,
+} from "@/chat/todos/tool-output";
 import {
   isOpenTodoStatus,
   TODO_STATUSES,
@@ -57,11 +63,9 @@ const notesSchema = z
     "What you need to do the To-do later, such as the brief for a child agent.",
   );
 
-const todoIdSchema = z
-  .number()
-  .int()
-  .positive()
-  .describe("To-do id from an earlier result or a To-do block.");
+const todoIdSchema = todoRefSchema.describe(
+  "To-do id, such as `TODO-12`, from an earlier result or a To-do block.",
+);
 
 const changesSchema = <T extends z.ZodTypeAny>(entry: T) =>
   z.array(entry).min(1).max(MAX_TODOS_PER_CALL).nullable().optional();
@@ -107,12 +111,12 @@ const updateTodosOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "To-dos that this call added or changed, or every open To-do when it changed none.",
     ),
-  removed_ids: z.array(z.number().int()).optional(),
+  removed_ids: z.array(z.string()).optional(),
   replaced_person_changes: z
     .array(
       z
         .object({
-          id: z.number().int(),
+          id: z.string(),
           status: z.enum(TODO_STATUSES),
           changed_by: z.string(),
         })
@@ -190,7 +194,7 @@ export function createUpdateTodosTool(
     execute: async (input) => {
       const add = input.add ?? [];
       const update = input.update ?? [];
-      const remove = input.remove ?? [];
+      const remove = (input.remove ?? []).map(parseTodoRef);
       const executor = getSqlExecutor();
       if (add.length + update.length + remove.length === 0) {
         const todos = await listTodos(executor, context.conversationId);
@@ -216,7 +220,7 @@ export function createUpdateTodosTool(
           update: await Promise.all(
             // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
             update.map(async (todo) => ({
-              id: todo.id,
+              id: parseTodoRef(todo.id),
               ...(todo.title ? { title: todo.title } : undefined),
               ...(todo.notes !== undefined ? { notes: todo.notes } : undefined),
               ...(todo.status ? { status: todo.status } : undefined),
@@ -230,11 +234,13 @@ export function createUpdateTodosTool(
       });
       return {
         todos: todos.map(outputTodoWithAssignee),
-        ...(remove.length > 0 ? { removed_ids: remove } : undefined),
+        ...(remove.length > 0
+          ? { removed_ids: remove.map(todoRef) }
+          : undefined),
         ...(replacedPersonChanges.length > 0
           ? {
               replaced_person_changes: replacedPersonChanges.map((todo) => ({
-                id: todo.id,
+                id: todoRef(todo.id),
                 status: todo.status,
                 changed_by: todo.changedBy!.email,
               })),

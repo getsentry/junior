@@ -783,8 +783,8 @@ type TurnContextPromptInput = {
   askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** From `renderTodoDelta`: To-do changes that others made. */
-  todoDelta?: string | null;
+  /** From `renderTodoDelta` or `renderTodosReview`. */
+  todos?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
@@ -885,7 +885,7 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !params.todoDelta &&
+    !params.todos &&
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
@@ -897,7 +897,7 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
-    params.todoDelta,
+    params.todos,
     disabledTools,
     userCustomization,
     askerTimezone,

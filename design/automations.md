@@ -2,7 +2,8 @@
 
 A user saves an instruction or a skill, and Junior runs it later: on a
 Schedule, on a matching Event, or on a new message in a Slack channel. Each
-Automation run posts its result to the Automation's Destination.
+run's result shows in the Automation's Runs. An Automation can also post its
+result to a Slack Destination.
 
 ## Intent
 
@@ -21,6 +22,8 @@ Automation run posts its result to the Automation's Destination.
 ## Entry points
 
 - Slack: ask Junior in the conversation that should get the results.
+- Dashboard: ask Junior in a Conversation, and name a public Slack channel
+  as the Destination.
 - Dashboard: Automations, and its Runs view.
 - MCP server: read-only search and fetch with the `automations:read` scope.
 
@@ -31,11 +34,15 @@ Automation run posts its result to the Automation's Destination.
 - Anyone in the workspace can see and manage an Automation whose
   Destination is a public channel. Other Automations can be seen and managed
   only by their creator or from their Destination.
+- A Destination is optional. It is a Slack channel or DM, never a web
+  Conversation.
 - A block pauses the Automation until someone resumes it.
 - An event filter limits noise. It is not access control.
 
 ## Gaps
 
+- Each Automation must have a Destination. This breaks "A Destination is
+  optional".
 - A creator can ask for runs to use their own credentials, because some
   providers have no Junior access yet. This breaks "acts as Junior": a run
   can fail when the creator is not connected, and an edit by someone else

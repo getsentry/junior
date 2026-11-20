@@ -50,7 +50,6 @@ export function ConversationDetailsPanel(props: {
         )
       }
       brief={detail?.brief}
-      canEditTodos={detail?.isParticipant === true}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
       identity={
@@ -58,6 +57,7 @@ export function ConversationDetailsPanel(props: {
           <ParticipantAvatarStack participants={participants} size="detail" />
         ) : null
       }
+      isParticipant={detail?.isParticipant === true}
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}

@@ -331,7 +331,7 @@ describe("review item actions API", () => {
         (listed: any) => listed.id,
       );
 
-    // Ana is not assigned, so the item is not on her review desk. She is
+    // Ana is not assigned, so the item is not in her Inbox. She is
     // still a Participant, so the Conversation view shows it.
     expect(await ids(ana, "")).toEqual([]);
     expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([

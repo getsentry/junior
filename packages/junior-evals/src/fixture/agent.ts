@@ -32,7 +32,7 @@ import {
   uploadWebFiles,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./review-desk";
+import { actOnWebReviewItem } from "./inbox";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
 import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
@@ -463,7 +463,7 @@ export async function createFixtureAgent(
     first: MessageInput | ReviewItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    // A review desk action comes from the dashboard.
+    // An Inbox action comes from the dashboard.
     if (first.kind === "web_message" || first.kind === "review_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.

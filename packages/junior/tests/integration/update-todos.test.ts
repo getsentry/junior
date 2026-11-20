@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getSqlExecutor } from "@/chat/db";
 import { setTodoStatusByUser } from "@/chat/todos/store";
+import { parseTodoRef } from "@/chat/todos/tool-output";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -169,7 +170,7 @@ describe("updateTodos", () => {
       // no later To-do delta can show it.
       await setTodoStatusByUser(getSqlExecutor(), {
         conversationId: parentConversationId,
-        id: approval!.id,
+        id: parseTodoRef(approval!.id),
         nowMs: Date.now(),
         status: "done",
         userId: reviewer.id,
@@ -217,6 +218,14 @@ describe("updateTodos", () => {
           update: [{ id: todos[1]!.id, status: "blocked" }],
         }),
       ).rejects.toThrow(/open.*in_progress.*done.*dropped/s);
+      // Ids are `TODO-<n>`, so a reply cannot pass one off as a GitHub `#12`.
+      expect(todos[0]!.id).toMatch(/^TODO-\d+$/);
+      await expect(harness.updateTodos({ remove: ["#12"] })).rejects.toThrow(
+        /TODO-12/,
+      );
+      await expect(
+        harness.updateTodos({ remove: ["TODO-999999"] }),
+      ).rejects.toThrow("No To-do has id TODO-999999.");
       await expect(harness.updateTodos({})).resolves.toEqual({ todos });
     } finally {
       await harness.close();

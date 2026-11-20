@@ -3,8 +3,10 @@
  * calls are already in history, so they get no block. A Turn adds a
  * `<todo-delta>` only for changes that others made since the highest
  * version that history shows. Compaction folds it all into one `<todos>`
- * snapshot of the open To-dos. Both blocks start with that version as plain
- * text, and later deltas build on it.
+ * snapshot of the open To-dos. A Turn context also gets that `<todos>` when
+ * history has not shown the To-dos for a few Turns, so stale To-dos get
+ * closed. Both blocks start with that version as plain text, and later
+ * deltas build on it.
  */
 import type { PiMessage } from "@/chat/pi/messages";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
@@ -15,9 +17,16 @@ import {
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
+import { todoRef } from "./tool-output";
+import {
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
+} from "@/chat/pi/transcript";
 import {
   isOpenTodoStatus,
   SELF_TODO_ASSIGNEE,
+  UPDATE_TODOS_TOOL_NAME,
   type Todo,
   type TodoAssignee,
 } from "./types";
@@ -59,7 +68,7 @@ function renderTodo(todo: Todo, withAuthor: boolean): string {
   ];
   const notes = todo.notes ? `\n  Notes: ${todo.notes}` : "";
   return escapeTagText(
-    `- #${todo.id} (${fields.join(", ")}): ${todo.title}${notes}`,
+    `- ${todoRef(todo.id)} (${fields.join(", ")}): ${todo.title}${notes}`,
   );
 }
 
@@ -74,28 +83,34 @@ function textParts(message: PiMessage): string[] {
   return content.flatMap((part) => (part.type === "text" ? [part.text] : []));
 }
 
-/**
- * Return the highest To-do version that history shows, from runtime blocks
- * only: a `<todo-delta>` in a Turn context or a `<todos>` in a compaction
- * summary. Text that people write is escaped, so it cannot fake one.
- */
+// Highest To-do version in the runtime blocks of one message: a
+// `<todo-delta>` in a Turn context or a `<todos>` in either a Turn context or
+// a compaction summary. Text that people write is escaped, so it cannot fake
+// one.
+function todosBlockVersion(message: PiMessage): number {
+  let seen = 0;
+  for (const text of textParts(message)) {
+    if (
+      !startsWithTag(text, [TURN_CONTEXT_TAG]) &&
+      !isCompactionSummaryText(text)
+    ) {
+      continue;
+    }
+    for (const tag of [TODOS_TAG, TODO_DELTA_TAG]) {
+      for (const block of findTags(text, tag)) {
+        const version = VERSION_LINE.exec(block.body)?.[1];
+        if (version) seen = Math.max(seen, Number(version));
+      }
+    }
+  }
+  return seen;
+}
+
+/** Return the highest To-do version that the runtime blocks of history show. */
 export function latestSeenTodosVersion(messages: readonly PiMessage[]): number {
   let seen = 0;
   for (const message of messages) {
-    for (const text of textParts(message)) {
-      if (
-        !startsWithTag(text, [TURN_CONTEXT_TAG]) &&
-        !isCompactionSummaryText(text)
-      ) {
-        continue;
-      }
-      for (const tag of [TODOS_TAG, TODO_DELTA_TAG]) {
-        for (const block of findTags(text, tag)) {
-          const version = VERSION_LINE.exec(block.body)?.[1];
-          if (version) seen = Math.max(seen, Number(version));
-        }
-      }
-    }
+    seen = Math.max(seen, todosBlockVersion(message));
   }
   return seen;
 }
@@ -131,6 +146,57 @@ export function renderTodosSnapshot(todos: readonly Todo[]): string | null {
     `To-do version ${todosVersion(todos)}. ${
       open.length > 0 ? "Your open To-dos." : "You have no open To-dos."
     }`,
+    ...open.map((todo) => renderTodo(todo, false)),
+  ]);
+}
+
+// A review comes back after this many inputs, about one per Turn, with no
+// To-do change and no To-do block. Each review is a To-do block, so it cannot
+// repeat every Turn.
+const TODOS_REVIEW_INTERVAL = 3;
+
+// An input is a user message other than a Turn context, such as a prompt or
+// a steering message. A Turn context is its own message before the prompt.
+function isInput(message: PiMessage): boolean {
+  const texts = textParts(message);
+  return (
+    texts.length > 0 &&
+    !texts.some((text) => startsWithTag(text, [TURN_CONTEXT_TAG]))
+  );
+}
+
+function showsTodos(message: PiMessage): boolean {
+  if (isToolResultMessage(message)) {
+    return (
+      !isToolResultError(message) &&
+      normalizeToolNameFromResult(message) === UPDATE_TODOS_TOOL_NAME
+    );
+  }
+  return todosBlockVersion(message) > 0;
+}
+
+/**
+ * Render every open To-do as a `<todos>` review, or null when there are no
+ * open To-dos or history showed the To-dos recently. The model forgets to
+ * close To-dos whose work ended, so stale To-dos come back on a fixed
+ * interval.
+ */
+export function renderTodosReview(
+  todos: readonly Todo[],
+  messages: readonly PiMessage[],
+): string | null {
+  const open = todos.filter((todo) => isOpenTodoStatus(todo.status));
+  if (open.length === 0) return null;
+  let inputs = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (showsTodos(message)) return null;
+    if (isInput(message)) inputs += 1;
+    if (inputs >= TODOS_REVIEW_INTERVAL) break;
+  }
+  if (inputs < TODOS_REVIEW_INTERVAL) return null;
+  return renderTag(TODOS_TAG, {}, [
+    `To-do version ${todosVersion(todos)}. These To-dos are still open. Close each one whose work ended.`,
     ...open.map((todo) => renderTodo(todo, false)),
   ]);
 }

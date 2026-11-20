@@ -173,7 +173,7 @@ Canonical words for Junior code and docs. One concept, one word.
   latest saved facts. No live provider fetch.
 - **Unfinished work** / **Assigned work**: plugin-owned work on a
   Conversation, open / open or done.
-- **Review item**: work for a person, shown on the **Review desk**. Not an
+- **Review item**: work for a person, shown in the **Inbox**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
 - **Attention**: what Junior takes from a person with a reply, a question, a
   Slack post or DM, a Review item, a review request, a push, or an Inbox

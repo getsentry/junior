@@ -46,6 +46,8 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
@@ -157,7 +159,21 @@ function subjectPayload(
   subject: NonNullable<ReviewItem["subject"]>,
 ): NonNullable<ReviewItemPayload["subject"]> {
   const objectType = subject.url && readLinkObjectType(subject.url);
-  return { ...subject, ...(objectType ? { objectType } : undefined) };
+  const resource =
+    subject.url && snoozeSubjectResource(getEventCatalog(), subject.url);
+  return {
+    ...subject,
+    ...(objectType ? { objectType } : undefined),
+    ...(resource
+      ? {
+          resource: {
+            events: [...resource.events],
+            namespace: resource.namespace,
+            resourceType: resource.resourceType,
+          },
+        }
+      : undefined),
+  };
 }
 
 /** Build the API payload of one Review item for its viewer. */
@@ -241,7 +257,7 @@ function actionErrorResponse(error: unknown): Response {
   throw error;
 }
 
-/** Create the authenticated review desk routes. */
+/** Create the authenticated Inbox routes. */
 export function createReviewItemRoutes(services: {
   delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {

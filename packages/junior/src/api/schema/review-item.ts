@@ -87,6 +87,19 @@ export const reviewItemSchema = z
          * `code_change` for a pull request. Unset when none claims it.
          */
         objectType: objectTypeSchema.optional(),
+        /**
+         * The Event resource that `url` names, such as a pull request, with
+         * the Event types that can wake or resolve a snooze of the item.
+         * Unset when no Event source claims it.
+         */
+        resource: z
+          .object({
+            events: z.array(z.string().min(1)).min(1),
+            namespace: z.string().min(1),
+            resourceType: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         title: z.string().min(1).optional(),
         url: z.string().min(1).optional(),
       })
@@ -102,7 +115,7 @@ export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 /**
- * Review desk list filters. The list has the open items that the viewer can
+ * Inbox list filters. The list has the open items that the viewer can
  * see, one page at a time. A search or `include=archived` also finds done and
  * dismissed items, after the open ones. `status` lists closed items instead,
  * with the same visibility.
@@ -153,7 +166,7 @@ export const reviewItemListQuerySchema = z
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, oldest first.
+ * One page of the Inbox list. Open items come first, oldest first.
  * The first page of a search, or of a list that includes archived items,
  * also has the newest archived matches.
  */

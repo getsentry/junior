@@ -350,8 +350,11 @@ Once configured, Junior can:
 - Watch or automate matching events when webhooks are enabled
 - Link issue, pull request, and commit references and URLs in Slack replies,
   and in replies and messages in the dashboard, as GitHub does. Bare `#123`
-  uses the one repository that the text names, or else the channel's
-  `github.repo`
+  uses the repository that the text names, in a reference, a URL, or as
+  plain `owner/repo` of the `github.org` owner. When the text names several,
+  it uses the last one named before the reference. When it names none, it
+  uses the channel's `github.repo`. The link text shows the repository, such
+  as `getsentry/sentry#123`
 - Turn `@login` into a Slack mention in Slack when the login links to a known
   person. Other logins become GitHub profile links when the text names a
   repository, or when it came from GitHub or went to GitHub
@@ -637,7 +640,7 @@ people work on it:
 - In the first 2 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day,
   and at most 3 times in a row with no activity by a person between them.
-- After that, Junior publishes no event. It adds a review desk item with a
+- After that, Junior publishes no event. It adds a Review item with a
   **Resume** button for the person who asked for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
   closes.

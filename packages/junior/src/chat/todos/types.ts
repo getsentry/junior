@@ -20,6 +20,9 @@ export function isOpenTodoStatus(status: TodoStatus): boolean {
   return status === "open" || status === "in_progress";
 }
 
+/** Model-facing tool that changes the To-dos. */
+export const UPDATE_TODOS_TOOL_NAME = "updateTodos";
+
 /** Assignee text for the list's own agent, in tool results and blocks. */
 export const SELF_TODO_ASSIGNEE = "self";
 

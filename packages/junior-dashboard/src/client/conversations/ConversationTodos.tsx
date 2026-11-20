@@ -23,7 +23,8 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { DisplayText } from "../display-text/DisplayText";
-import { fetchDashboardJson, patch } from "../http";
+import { patch } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { cn } from "../styles";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
@@ -36,12 +37,10 @@ import {
 /** Load the open To-dos of one Conversation, then the latest closed ones. */
 export function useConversationTodos(conversationId: string) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationTodosReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/todos`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationTodosReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/todos`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "todos"),
     retry: false,
   });

@@ -253,7 +253,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const [path, name] of [
       ["/", "New conversation"],
-      ["/review", "New conversation"],
+      ["/inbox", "New conversation"],
       ["/automations", "New automation"],
     ] as const) {
       await page.goto(`${dashboard.baseURL}${path}`);
