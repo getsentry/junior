@@ -345,10 +345,13 @@ export async function readCacheHealth(
     );
     if (refresh.acquired) {
       health = refresh.value;
-    } else {
+    } else if (cached) {
       // Another load's refresh is still running. Serve the old answer
       // rather than read Sentry again.
-      health = cached ? { ...cached, stale: true } : { status: "rate_limited" };
+      health = { ...cached, stale: true };
+    } else {
+      // With no answer to serve, a stuck refresh must not block this load.
+      health = await refreshWindow(state, telemetry, window, nowMs);
     }
   }
   if (health.status !== "ok") return { status: health.status };
