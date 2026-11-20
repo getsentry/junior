@@ -341,24 +341,25 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const asleep = decisions.at(-1)!;
     // A row on a later page sleeps until tomorrow.
-    await page.addInitScript(
-      (id) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({ [id]: { untilMs: Date.now() + 86_400_000 } }),
-        ),
-      asleep.id,
-    );
-    await mockReviewItems(page, { open: [...decisions, ...prs], pageSize: 2 });
+    await mockReviewItems(page, {
+      open: [...decisions, ...prs],
+      pageSize: 2,
+      snoozes: [
+        {
+          conversationId: asleep.addedByConversationId,
+          untilMs: NOW_MS + 86_400_000,
+        },
+      ],
+    });
     await holdLaterReviewItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(
       page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
     ).toHaveCount(2);
-    // The server counts every page, and the snoozed row it was told about.
+    // The server counts every page, and leaves out the snoozed row.
     await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
-      /^Decisions\s*12$/,
+      /^Decisions\s*11$/,
     );
     await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
       /^Pull requests\s*2$/,

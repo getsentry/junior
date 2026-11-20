@@ -11,6 +11,7 @@ import {
   type ConversationReportEvent,
   type ReviewItemActionBody,
   type ReviewItemPayload,
+  type InboxSnoozeCreateBody,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -551,10 +552,58 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
+/** When each snoozed item wakes, by item id, like the server's snoozes. */
+const snoozes = new Map<string, number>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockReviewItems(): void {
   changes.clear();
+  snoozes.clear();
+}
+
+/** The items that a snooze hides now. */
+function snoozedItemIds(nowMs: number): Set<string> {
+  return new Set(
+    [...snoozes].flatMap(([itemId, wakeAtMs]) =>
+      wakeAtMs > nowMs ? [itemId] : [],
+    ),
+  );
+}
+
+/**
+ * Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last,
+ * and returns the open items that it hides.
+ */
+export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
+  const reviewItemIds = seeds(nowMs)
+    .filter(
+      (seed) =>
+        rootOf(seed) === body.conversationId &&
+        isOpen(seed) &&
+        (!body.reviewItemId || seed.id === body.reviewItemId),
+    )
+    .map((seed) => seed.id);
+  for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+  return { reviewItemIds };
+}
+
+/** Wake a mock row, or one item of it, like `DELETE /api/inbox/snoozes`. */
+export function wakeMockRow(
+  nowMs: number,
+  subject: { conversationId: string; reviewItemId?: string | undefined },
+): void {
+  if (subject.reviewItemId) {
+    snoozes.delete(subject.reviewItemId);
+    return;
+  }
+  for (const seed of seeds(nowMs)) {
+    if (rootOf(seed) === subject.conversationId) snoozes.delete(seed.id);
+  }
+}
+
+/** The root Conversation whose stack shows the seed: a child's parent. */
+function rootOf(seed: MockItemSeed): string {
+  return seed.childLabel ? SENTAUR_CONVERSATION_ID : seed.conversationId;
 }
 
 function isOpen(seed: MockItemSeed): boolean {
@@ -608,7 +657,7 @@ function payload(
     canTake: false,
     conversationIds: [conversationId, ...linkedConversationIds],
     kind: seed.kind ?? "action",
-    rootConversationId: childLabel ? SENTAUR_CONVERSATION_ID : conversationId,
+    rootConversationId: rootOf(seed),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
@@ -630,17 +679,25 @@ export function readMockReviewItems(
   filters: {
     closed?: boolean | undefined;
     conversationId?: string | undefined;
+    /** Leaves out snoozed rows, like the viewer's Inbox. */
+    forViewer?: boolean | undefined;
     q?: string | undefined;
+    /** Lists only snoozed rows. */
+    snoozed?: boolean | undefined;
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
+  const snoozed = snoozedItemIds(nowMs);
   const all = seeds(nowMs);
   const items = all
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
-        (!q || seed.title.toLowerCase().includes(q)),
+        (!q || seed.title.toLowerCase().includes(q)) &&
+        (filters.snoozed
+          ? snoozed.has(seed.id)
+          : !filters.forViewer || !snoozed.has(seed.id)),
     )
     .map((seed) => payload(seed, all));
   if (filters.closed)
@@ -773,16 +830,13 @@ export function readMockWaitingConversations(nowMs: number) {
 
 /** The open mock action items that the viewer must answer. */
 function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
-  return readMockReviewItems(nowMs, {}).filter(
+  return readMockReviewItems(nowMs, { forViewer: true }).filter(
     (item) => item.kind === "action" && !item.assignedToEveryone,
   );
 }
 
 /** Count the mock items like `GET /api/review-items/count`, but Automations. */
-export function readMockReviewItemCounts(
-  nowMs: number,
-  snoozedIds: readonly string[],
-) {
+export function readMockReviewItemCounts(nowMs: number) {
   const needsViewer = mockItemsNeedingViewer(nowMs);
   return {
     decisions: needsViewer.filter((item) => item.request).length,
@@ -790,8 +844,9 @@ export function readMockReviewItemCounts(
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
-      snoozedIds.includes(item.id),
+    // Like the server: each snoozed item that is still open.
+    snoozed: seeds(nowMs).filter(
+      (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
   };
 }

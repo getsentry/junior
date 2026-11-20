@@ -2,9 +2,9 @@ import type { AutomationListItem } from "@sentry/junior/api/schema";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useReducer } from "react";
 
-// Kept apart from the item snoozes: the server will own both later, and
-// Automation alerts are not Review items, so the server count never sees
-// these keys.
+// Item snoozes live on the server. An Automation alert is not a Review
+// item, so a server snooze cannot hide it; it is put away in this browser,
+// and the server count never sees these keys.
 const STORAGE_KEY = "junior:inbox:automation-alerts";
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
