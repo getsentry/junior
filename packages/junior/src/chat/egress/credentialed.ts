@@ -15,6 +15,8 @@ import {
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { responseTextWithinLimit } from "@/chat/egress/response-text";
+import type { SandboxCredentialRequest } from "@/chat/sandbox/egress/credential-request";
 import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
   clearSandboxEgressCredentialLease,
@@ -77,7 +79,6 @@ const DECODED_RESPONSE_HEADERS = new Set([
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
-const RESPONSE_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
 
 /**
  * Intercepts the already-authenticated provider request before live forwarding.
@@ -352,74 +353,6 @@ function grantSelectionBodyText(
   return new TextDecoder().decode(body);
 }
 
-function responseContentLength(upstream: Response): number | undefined {
-  const raw = upstream.headers.get("content-length");
-  if (!raw) {
-    return undefined;
-  }
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-async function responseTextWithinLimit(
-  upstream: Response,
-  maxBytes: number,
-): Promise<string | undefined> {
-  const limit = Math.min(
-    Math.max(0, Math.floor(maxBytes)),
-    RESPONSE_BODY_TEXT_LIMIT_BYTES,
-  );
-  if (limit <= 0) {
-    return undefined;
-  }
-  const contentLength = responseContentLength(upstream);
-  if (contentLength !== undefined && contentLength > limit) {
-    return undefined;
-  }
-  let clone: Response;
-  try {
-    clone = upstream.clone();
-  } catch {
-    return undefined;
-  }
-  const body = clone.body;
-  if (!body) {
-    return "";
-  }
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (!value) {
-        continue;
-      }
-      bytes += value.byteLength;
-      if (bytes > limit) {
-        await reader.cancel().catch(() => undefined);
-        return undefined;
-      }
-      chunks.push(value);
-    }
-  } catch {
-    await reader.cancel().catch(() => undefined);
-    return undefined;
-  } finally {
-    reader.releaseLock();
-  }
-  const combined = new Uint8Array(bytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    combined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(combined);
-}
-
 /**
  * Build the upstream request headers.
  *
@@ -430,7 +363,7 @@ async function responseTextWithinLimit(
  */
 function requestHeaders(
   request: Request,
-  lease: SandboxEgressCredentialLease,
+  headerTransforms: SandboxEgressCredentialLease["headerTransforms"],
   upstreamHost: string,
   tracePropagation: SandboxEgressTracePropagationConfig,
 ): Headers {
@@ -453,7 +386,7 @@ function requestHeaders(
     headers.append(key, value);
   }
 
-  for (const transform of lease.headerTransforms) {
+  for (const transform of headerTransforms) {
     if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
       continue;
     }
@@ -546,6 +479,69 @@ async function recordSandboxPolicyDenied(input: {
 }
 
 /**
+ * Forward a request that gets no credential, with its own headers.
+ *
+ * Proxy-only and hop-by-hop headers are still stripped, and trace headers
+ * follow the same propagation rules as credentialed requests.
+ */
+async function forwardWithoutCredential(input: {
+  activeEgressId: string;
+  body: ArrayBuffer | undefined;
+  credentialContext: SandboxEgressCredentialContext;
+  credentialRequest: Exclude<SandboxCredentialRequest, "placeholder">;
+  deps: CredentialedEgressDeps;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<Response> {
+  const { body, deps, provider, request, upstreamUrl } = input;
+  const headers = requestHeaders(
+    request,
+    [],
+    upstreamUrl.hostname,
+    deps.tracePropagation ?? {},
+  );
+  const intercepted = await deps.interceptHttp?.({
+    provider,
+    request: new Request(upstreamUrl, {
+      method: request.method,
+      headers,
+      ...(body !== undefined ? { body } : undefined),
+    }),
+    upstreamUrl,
+  });
+  if (intercepted) {
+    return intercepted;
+  }
+  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+    method: request.method,
+    headers,
+    ...(body !== undefined ? { body } : undefined),
+    redirect: "manual",
+  });
+  logAudit("sandbox.egress.upstream.requested", {
+    ...egressAttributes({
+      egressId: input.activeEgressId,
+      host: upstreamUrl.hostname,
+      method: request.method,
+      path: upstreamUrl.pathname,
+      provider,
+      status: upstream.status,
+    }),
+    ...routingAttributes(request, upstreamUrl),
+    ...credentialAuditAttributes(input.credentialContext.source),
+    ...egressDecisionAttributes("allowed"),
+    "app.sandbox.egress.credential_request": input.credentialRequest,
+    "app.sandbox.egress.upstream_ok": upstream.ok,
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders(upstream),
+  });
+}
+
+/**
  * Forward one verified sandbox egress request with host-managed credentials.
  *
  * The caller must already have authenticated the sandbox VM, checked the signed
@@ -564,6 +560,11 @@ export async function executeCredentialedEgressRequest(input: {
   upstreamUrl: URL;
   /** Use only the credential subject's own stored OAuth token. */
   userOAuthOnly?: boolean;
+  /**
+   * Forward the request without a credential, because it carries its own
+   * or asks for none. The plugin's egress policy still applies.
+   */
+  withoutCredential?: Exclude<SandboxCredentialRequest, "placeholder">;
 }): Promise<CredentialedEgressResult> {
   const {
     activeEgressId,
@@ -617,6 +618,7 @@ export async function executeCredentialedEgressRequest(input: {
         : undefined),
       ...(operation ? { operation } : undefined),
       ...(input.userOAuthOnly ? { userOAuthOnly: true } : undefined),
+      ...(input.withoutCredential ? { withoutCredential: true } : undefined),
       provider,
       method: request.method,
       upstreamUrl,
@@ -648,6 +650,20 @@ export async function executeCredentialedEgressRequest(input: {
       return { response: policyDeniedResponse(error) };
     }
     throw error;
+  }
+  if (input.withoutCredential) {
+    return {
+      response: await forwardWithoutCredential({
+        activeEgressId,
+        body,
+        credentialContext,
+        credentialRequest: input.withoutCredential,
+        deps,
+        provider,
+        request,
+        upstreamUrl,
+      }),
+    };
   }
   async function resolveLease(): Promise<
     SandboxEgressCredentialLease | CredentialedEgressResult
@@ -739,10 +755,11 @@ export async function executeCredentialedEgressRequest(input: {
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 
+  /* oxlint-disable no-await-in-loop -- The loop sends the request again only after a 403, and each step waits on the step before. */
   while (true) {
     const headers = requestHeaders(
       request,
-      lease,
+      lease.headerTransforms,
       upstreamUrl.hostname,
       deps.tracePropagation ?? {},
     );
@@ -924,4 +941,5 @@ export async function executeCredentialedEgressRequest(input: {
       }),
     };
   }
+  /* oxlint-enable no-await-in-loop */
 }

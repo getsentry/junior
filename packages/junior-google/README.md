@@ -2,8 +2,8 @@
 
 Proof of concept. Junior uses its own Google Workspace account, such as
 `junior@example.com`, to schedule meetings, read Meet transcripts, read
-Google Docs, Sheets, and Slides that are shared with that account, and create
-and edit Google Docs. Junior does
+Google Docs, Sheets, and Slides that are shared with that account, create
+and edit Google Docs, and edit Google Slides. Junior does
 not use the Google credentials of the people it helps.
 
 ## Setup
@@ -12,7 +12,8 @@ not use the Google credentials of the people it helps.
    Calendar, Docs, Drive, Sheets, and Slides APIs.
 2. Use an **Internal** consent screen. Add the scopes
    `calendar.events.freebusy`, `calendar.events.readonly`,
-   `calendar.events.owned`, `documents`, `drive.file`, and `drive.readonly`.
+   `calendar.events.owned`, `documents`, `drive.file`, `drive.readonly`, and
+   `presentations`.
    After you add a scope, reconnect the account in step 7.
 3. Add the redirect URIs
    `https://<junior host>/api/plugins/google/oauth/callback` and
@@ -25,9 +26,13 @@ not use the Google credentials of the people it helps.
 7. Connect the account on **Admin → Google account** in the dashboard, or run
    `junior google connect`.
 
-Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable. Given a
-link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+Anyone who can talk to Junior can read the calendars that the Junior account
+can see. Share calendars with that account only when that is acceptable.
+Junior reads a Doc, Sheet, or Slides file, or its comments, only for a
+requester who can open it too. This is the check that link cards use: the
+file names the requester, anyone with the link can open it, or the
+requester's domain can open it and owns it. Access through a Google group
+does not count.
 One tool, `readGoogleFile`, reads all three. It takes the type from the link,
 or from Drive for a bare file id.
 Search finds only files that any employee could already find in Drive, and
@@ -53,8 +58,9 @@ An event card shows the title and time. Cards never show guests.
 
 Junior edits a Doc only for a requester who can edit it through their own
 email, their domain, or an editable link. Access through a Google group is not
-checked. Anyone who can talk to Junior can read a Doc that Junior edits, if
-they give Junior its link. Junior makes the requester the owner of a Doc it
+checked. The plugin enforces this for every change to an existing Drive file:
+each write operation declares how it checks the requester, and a file write
+fails unless the tool passes the file that the editor check returned. Junior makes the requester the owner of a Doc it
 creates, then removes its own access. Google emails the requester about the
 new ownership. Junior cannot read or edit that Doc again unless the requester
 shares it back. This only works for requesters in the same Workspace
@@ -63,6 +69,16 @@ organization as Junior's account.
 Each edit of an existing Doc needs the `revision_id` that `readGoogleFile` or
 the last edit returned. If someone changed the Doc after that, the edit is
 refused, so Junior never changes text that it did not read.
+
+Slides edits follow the same rules. Junior edits a presentation only for a
+requester who can edit it. `updateGoogleSlides` sends Slides API
+`batchUpdate` requests at the `revision_id` that `readGoogleSlidesLayout` or
+the last edit returned. A Sheets chart needs a Sheet that the requester can
+open too, and only YouTube videos can be added, because Junior cannot check
+who can open a Drive video. Junior does not refresh a Sheets chart, because
+the request does not name the chart's Sheet. `getGoogleSlideThumbnail` renders a slide so Junior
+can check its work. The sandbox downloads the rendered image, which needs no
+credential.
 
 ## Email requests
 

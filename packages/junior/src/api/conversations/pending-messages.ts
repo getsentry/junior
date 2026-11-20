@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -13,7 +14,6 @@ import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";
 import { type ActorIdentity } from "../schema/conversation";
 import {
-  conversationPendingMessagesReportSchema,
   type ConversationPendingMessage,
   type ConversationPendingMessagesReport,
 } from "../schema/conversation-pending-messages";
@@ -213,14 +213,12 @@ async function findViewerWebAuthorization(
   conversationId: string,
   viewer: User,
 ) {
-  for (const actorId of webActorUserIds(viewer)) {
-    const authorization = await getWebAuthorization({
-      actorId,
-      conversationId,
-    });
-    if (authorization) return authorization;
-  }
-  return undefined;
+  // The viewer has two actor ids, so read both at once. The current id wins.
+  const actorIds: readonly [string, string] = webActorUserIds(viewer);
+  const authorizations = await Promise.all(
+    actorIds.map((actorId) => getWebAuthorization({ actorId, conversationId })),
+  );
+  return authorizations.find((authorization) => authorization !== undefined);
 }
 
 /**
@@ -253,10 +251,8 @@ export async function readConversationPendingMessages(
 
   const work = await getConversation({ conversationId });
   const pendingMessages = work?.execution.pendingMessages ?? [];
-  const projectedMessages = await Promise.all(
-    pendingMessages.map((message) =>
-      projectPendingMessage(message, canExposePayload),
-    ),
+  const projectedMessages = await mapBounded(pendingMessages, (message) =>
+    projectPendingMessage(message, canExposePayload),
   );
   const messages = await attachPendingMentions(
     conversationId,
@@ -271,7 +267,7 @@ export async function readConversationPendingMessages(
     }),
   );
 
-  return conversationPendingMessagesReportSchema.parse({
+  return {
     ...(authorization
       ? {
           authorization: {
@@ -284,7 +280,7 @@ export async function readConversationPendingMessages(
     conversationId,
     generatedAt: new Date().toISOString(),
     messages,
-  });
+  };
 }
 
 /** Load pending mailbox messages or throw a standard API not-found error. */

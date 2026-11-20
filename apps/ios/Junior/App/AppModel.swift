@@ -1,0 +1,296 @@
+import JuniorKit
+import Observation
+import Security
+import SwiftUI
+
+/// Theme the app shows: the saved choice, or the system appearance.
+enum ThemeChoice: String, CaseIterable {
+  case system, light, dark
+
+  var colorScheme: ColorScheme? {
+    switch self {
+    case .system: nil
+    case .light: .light
+    case .dark: .dark
+    }
+  }
+}
+
+/// The three primary places, as the dashboard's primary nav names them.
+enum Place: Hashable {
+  case conversations, inbox, automations
+}
+
+/// A pushed screen. Paths mirror the dashboard routes they render.
+enum Route: Hashable {
+  case conversation(String)
+  case reviewItem(String)
+  case automation(String)
+  case settings
+}
+
+/// App-wide state: the server and its sign-in, the Inbox count, navigation,
+/// and the refresh tick that tells screens to reload. The app uses only
+/// Junior's public API, the MCP server at `/api/mcp`.
+@MainActor
+@Observable
+final class AppModel {
+  /// The app's OAuth client: the URL of its Client ID Metadata Document,
+  /// which names the app and lists its loopback redirect URI.
+  static let oauthClientID =
+    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+
+  private(set) var server: JuniorServer
+  private(set) var client: MCPClient
+  private(set) var signedIn: Bool
+  var theme: ThemeChoice {
+    didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
+  }
+
+  var serverVersion: String?
+  var inboxCount = 0
+  var shellError: JuniorAPIError?
+
+  var place: Place = .conversations
+  var path: [Route] = []
+  var drawerOpen = false
+  var webPage: URL?
+  /// Focus the home search field ("Go to conversation").
+  var focusSearch = false
+  /// Open the Conversation's details on arrival (`?details=1`).
+  var openDetails = false
+  /// The app is in front; refreshes stop otherwise.
+  var isActive = true
+
+  /// Bumps when lists should reload: on the refresh tick and after a write.
+  private(set) var conversationsVersion = 0
+  private(set) var reviewItemsVersion = 0
+
+  /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
+  let fixedNow: Date?
+  let agentName = "Junior"
+
+  private let store = KeychainCredentialStore()
+  private var ticking: Task<Void, Never>?
+  private var lastInput = Date()
+
+  init(launch: LaunchOptions = .current) {
+    let defaults = UserDefaults.standard
+    let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
+    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!)
+    #if DEBUG
+      // Screenshots and UI tests start signed in to the mock server, or
+      // signed out to run the sign-in flow.
+      if launch.signOut { store.save(nil) }
+      if let token = launch.accessToken {
+        store.save(
+          OAuthCredentials(
+            server: server, clientID: Self.oauthClientID, tokenEndpoint: server.page("/api/mcp/oauth/token")!,
+            accessToken: token, refreshToken: nil, expiresAt: .distantFuture, scope: nil))
+      }
+    #endif
+    self.server = server
+    self.client = MCPClient(server: server, store: store)
+    self.signedIn = store.load()?.server == server
+    self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
+    self.fixedNow = launch.fixedNow
+    if let open = launch.open { self.open(dashboardPath: open) }
+  }
+
+  var clock: DisplayClock {
+    DisplayClock(now: fixedNow ?? Date())
+  }
+
+  /// Call one MCP tool. A call that finds the sign-in gone shows Sign in.
+  func call<Result: Decodable & Sendable>(
+    _ tool: String, _ arguments: [String: JSONValue] = [:], as type: Result.Type = Result.self
+  ) async throws -> Result {
+    do {
+      return try await client.call(tool, arguments, as: type)
+    } catch JuniorAPIError.signedOut {
+      signedIn = false
+      throw JuniorAPIError.signedOut
+    }
+  }
+
+  /// Sign in to `baseURL` in the system browser sheet, then load the shell.
+  func signIn(to baseURL: URL) async throws {
+    let server = JuniorServer(baseURL: baseURL)
+    let oauth = OAuthClient(server: server, clientID: Self.oauthClientID)
+    let credentials = try await BrowserSignIn().run(oauth)
+    UserDefaults.standard.set(baseURL.absoluteString, forKey: "serverURL")
+    self.server = server
+    client = MCPClient(server: server, store: store)
+    await client.signIn(credentials)
+    signedIn = true
+    didWrite()
+    await refreshShell()
+  }
+
+  func signOut() {
+    let client = client
+    Task { await client.signOut() }
+    signedIn = false
+    inboxCount = 0
+    serverVersion = nil
+    path = []
+    drawerOpen = false
+  }
+
+  /// Open a dashboard path (`/`, `/inbox?item=…`, `/conversations/…`,
+  /// `/automations/…`, `/settings`) the way the web router does.
+  func open(dashboardPath: String) {
+    guard let components = URLComponents(string: dashboardPath) else { return }
+    let parts = components.path.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
+    let item = components.queryItems?.first { $0.name == "item" }?.value
+    drawerOpen = false
+    switch parts.first {
+    case "conversations" where parts.count > 1:
+      place = .conversations
+      path = [.conversation(parts[1])]
+    case "inbox":
+      place = .inbox
+      path = item.map { [.reviewItem($0)] } ?? []
+    case "automations" where parts.count > 1 && parts[1] != "runs":
+      place = .automations
+      path = [.automation(parts[1])]
+    case "automations":
+      place = .automations
+      path = []
+    case "settings":
+      path = [.settings]
+    default:
+      place = .conversations
+      path = []
+    }
+    // `?drawer=1` opens the navigation drawer over the page (screenshots).
+    drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
+    openDetails = components.queryItems?.contains { $0.name == "details" } == true
+  }
+
+  func go(_ place: Place) {
+    self.place = place
+    path = []
+    drawerOpen = false
+  }
+
+  /// Open a dashboard page in the in-app browser, for what the public API
+  /// cannot do (answer a Review item, change an Automation).
+  func openOnWeb(_ dashboardPath: String) {
+    drawerOpen = false
+    webPage = server.page(dashboardPath)
+  }
+
+  /// Open a link from a tool result, such as a dashboard or Slack URL.
+  func openLink(_ link: String?) {
+    guard let link, let url = URL(string: link) else { return }
+    drawerOpen = false
+    webPage = url
+  }
+
+  func refreshShell() async {
+    guard signedIn else { return }
+    do {
+      serverVersion = try await client.serverInfo().version
+      shellError = nil
+    } catch JuniorAPIError.signedOut {
+      signedIn = false
+    } catch let error as JuniorAPIError {
+      shellError = error
+    } catch {}
+    await refreshInboxCount()
+  }
+
+  /// Open Review items that wait on the viewer.
+  func refreshInboxCount() async {
+    if let list = try? await call("searchReviewItems", ["limit": 50], as: ReviewItemList.self) {
+      inboxCount = list.items.filter(\.canAct).count
+    }
+  }
+
+  /// Reload lists every 15s (60s after 5 minutes without input) while the
+  /// app is in front. The public API has no change feed to poll.
+  func startTicking() {
+    ticking?.cancel()
+    ticking = Task { [weak self] in
+      while !Task.isCancelled {
+        let idle = Date().timeIntervalSince(self?.lastInput ?? Date()) > 300
+        try? await Task.sleep(for: .seconds(idle ? 60 : 15))
+        guard let self, !Task.isCancelled, self.signedIn else { continue }
+        self.conversationsVersion += 1
+        self.reviewItemsVersion += 1
+        await self.refreshInboxCount()
+      }
+    }
+  }
+
+  func stopTicking() {
+    ticking?.cancel()
+    ticking = nil
+  }
+
+  func noteInput() {
+    lastInput = Date()
+  }
+
+  /// Tell screens that data changed after a local write.
+  func didWrite() {
+    conversationsVersion += 1
+    reviewItemsVersion += 1
+  }
+}
+
+/// The sign-in, kept in the Keychain for this device only.
+struct KeychainCredentialStore: CredentialStore {
+  private var query: [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "io.sentry.junior",
+      kSecAttrAccount as String: "mcp-credentials",
+    ]
+  }
+
+  func load() -> OAuthCredentials? {
+    var request = query
+    request[kSecReturnData as String] = true
+    request[kSecMatchLimit as String] = kSecMatchLimitOne
+    var item: CFTypeRef?
+    guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
+      return nil
+    }
+    return try? JSONDecoder().decode(OAuthCredentials.self, from: data)
+  }
+
+  func save(_ credentials: OAuthCredentials?) {
+    SecItemDelete(query as CFDictionary)
+    guard let credentials, let data = try? JSONEncoder().encode(credentials) else { return }
+    var item = query
+    item[kSecValueData as String] = data
+    item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    SecItemAdd(item as CFDictionary, nil)
+  }
+}
+
+/// Launch arguments for development and screenshots:
+/// `-JuniorServer <url> -JuniorFixedNow <iso> -JuniorOpen <path> -JuniorTheme <dark|light>`,
+/// and in debug builds `-JuniorAccessToken <token>` to start signed in or
+/// `-JuniorSignOut YES` to start signed out.
+struct LaunchOptions {
+  var server: URL?
+  var fixedNow: Date?
+  var open: String?
+  var theme: ThemeChoice?
+  var accessToken: String?
+  var signOut = false
+
+  static var current: LaunchOptions {
+    let defaults = UserDefaults.standard
+    return LaunchOptions(
+      server: defaults.string(forKey: "JuniorServer").flatMap(URL.init(string:)),
+      fixedNow: defaults.string(forKey: "JuniorFixedNow").flatMap(Date.junior),
+      open: defaults.string(forKey: "JuniorOpen"),
+      theme: defaults.string(forKey: "JuniorTheme").flatMap(ThemeChoice.init(rawValue:)),
+      accessToken: defaults.string(forKey: "JuniorAccessToken"),
+      signOut: defaults.bool(forKey: "JuniorSignOut"))
+  }
+}

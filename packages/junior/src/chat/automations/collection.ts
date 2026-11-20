@@ -12,12 +12,16 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
+  lte,
   ne,
   notInArray,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
   juniorAutomationRuns,
@@ -66,20 +70,17 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         : undefined,
     ),
   )!;
-  const runs = juniorAutomationRuns;
-  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
-      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
-      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
+  const lastRun = juniorAutomationRuns;
+  const lastRunNeedsAttention = sql<boolean>`coalesce(${lastRun.status} in ('failed', 'blocked'), false)`;
   // When the last run ended, or else when the Automation was created.
-  const activityAtMs = sql<number>`coalesce((select ${runs.completedAtMs} from ${runs}
-      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
-      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), ${automation.createdAtMs})`;
+  const activityAtMs = sql<number>`coalesce(${lastRun.completedAtMs}, ${automation.createdAtMs})`;
   return db
     .select({
       kind: automation.kind,
       id: automation.id,
       title: automation.title,
       createdAtMs: automation.createdAtMs,
+      lastRunId: automation.lastRunId,
       activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
       state: sql<string>`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
@@ -121,6 +122,7 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         eq(destination.providerDestinationId, automation.channelId),
       ),
     )
+    .leftJoin(lastRun, eq(lastRun.id, automation.lastRunId))
     .where(and(ne(automation.status, "deleted"), or(owned, sharedToViewer)))
     .as("accessible_automations");
 }
@@ -219,17 +221,17 @@ export async function countOwnedAutomationsNeedingAttention(
 /** Where a page of `sort=activity` ends: its last row's activity and ID. */
 export type AutomationActivityPosition = { activityAtMs: number; id: string };
 
-/**
- * Read an SQL page and complete, access-scoped counts and filter options.
- * `sort=activity` pages by position: it reads the rows after `after`, and
- * `next` is set when more rows follow.
- */
-export async function readAutomationCollection(
+/** A viewer's access-scoped collection and the filters of one list query. */
+export type AutomationListSelection = {
+  collection: ReturnType<typeof viewerAutomationCollection>;
+  where: SQL | undefined;
+};
+
+/** Build the access-scoped collection and the filters of one list query. */
+export async function selectViewerAutomations(
   viewer: AutomationViewer,
   input: AutomationListQuery,
-  after?: AutomationActivityPosition,
-) {
-  const db = getDb();
+): Promise<AutomationListSelection> {
   const collection = viewerAutomationCollection(viewer);
   // The trigger check reads every accessible event Automation, so only the
   // filters that use it pay for it.
@@ -262,83 +264,92 @@ export async function readAutomationCollection(
       ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.skill}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
-  // A page by activity does not depend on the total, so it reads alongside
-  // the counts. One extra row tells whether more follow.
-  const activityPage =
-    input.sort === "activity"
-      ? db
-          .select({
-            activityAtMs: collection.activityAtMs,
-            id: collection.id,
-            kind: collection.kind,
-          })
-          .from(collection)
-          .where(
-            and(
-              where,
-              after
-                ? sql`(${collection.activityAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
-                : undefined,
-            ),
-          )
-          .orderBy(desc(collection.activityAtMs), desc(collection.id))
-          .limit(input.pageSize + 1)
-      : undefined;
-  const [totals, counts, creators, destinations, activityRows] =
-    await Promise.all([
-      db.select({ total: count() }).from(collection).where(where),
-      db
-        .select({
-          all: count(),
-          mine: sql<number>`count(*) filter (where ${collection.owned})::int`,
-          public: sql<number>`count(*) filter (where ${collection.isPublic})::int`,
-          private: sql<number>`count(*) filter (where not ${collection.isPublic})::int`,
-        })
-        .from(collection),
-      db
-        .select({
-          value: collection.creator,
-          label: sql<string>`min(${collection.creatorLabel})`,
-        })
-        .from(collection)
-        .groupBy(collection.creator)
-        .orderBy(sql`min(${collection.creatorLabel})`, collection.creator),
-      db
-        .select({
-          value: collection.destination,
-          label: sql<string>`min(${collection.destinationLabel})`,
-        })
-        .from(collection)
-        .groupBy(collection.destination)
-        .orderBy(
-          sql`min(${collection.destinationLabel})`,
-          collection.destination,
-        ),
-      activityPage,
-    ]);
-  const total = totals[0]!.total;
-  const facets = {
-    total,
-    pageSize: input.pageSize,
-    counts: counts[0]!,
-    creators,
-    destinations,
+  return { collection, where };
+}
+
+/**
+ * Read one `sort=activity` page: the rows after `after`, newest activity
+ * first. `next` is set when more rows follow.
+ */
+export async function readAutomationActivityPage(
+  { collection, where }: AutomationListSelection,
+  pageSize: number,
+  after?: AutomationActivityPosition,
+) {
+  const db = getDb();
+  const limit = pageSize + 1; // One extra row tells whether more follow.
+  // Sorting the collection by its last run's end time would read the last
+  // run of every row. Instead, walk runs newest first and keep each run that
+  // is a listed Automation's last run, and merge the Automations that have no
+  // run yet by creation time.
+  const run = alias(juniorAutomationRuns, "page_run");
+  const withRun = db
+    .select({
+      activityAtMs: sql<number>`${run.completedAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(run)
+    .innerJoin(collection, eq(collection.lastRunId, run.id))
+    .where(
+      and(
+        where,
+        after
+          ? and(
+              lte(run.completedAtMs, after.activityAtMs),
+              sql`(${run.completedAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`,
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(run.completedAtMs), desc(collection.id))
+    .limit(limit);
+  const withoutRun = db
+    .select({
+      activityAtMs: sql<number>`${collection.createdAtMs}`
+        .mapWith(Number)
+        .as("activity_at_ms"),
+      id: collection.id,
+      kind: collection.kind,
+    })
+    .from(collection)
+    .where(
+      and(
+        where,
+        isNull(collection.lastRunId),
+        after
+          ? sql`(${collection.createdAtMs}, ${collection.id}) < (${after.activityAtMs}, ${after.id})`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(collection.createdAtMs), desc(collection.id))
+    .limit(limit);
+  const rows = await unionAll(withRun, withoutRun)
+    .orderBy(desc(sql.identifier("activity_at_ms")), desc(sql.identifier("id")))
+    .limit(limit);
+  const pageRows = rows.slice(0, pageSize);
+  const last = pageRows.at(-1);
+  return {
+    rows: pageRows,
+    ...(rows.length > pageSize && last
+      ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
+      : undefined),
   };
-  if (activityRows) {
-    const pageRows = activityRows.slice(0, input.pageSize);
-    const last = pageRows.at(-1);
-    return {
-      rows: pageRows,
-      page: 1,
-      ...facets,
-      ...(activityRows.length > input.pageSize && last
-        ? { next: { activityAtMs: last.activityAtMs, id: last.id } }
-        : undefined),
-    };
-  }
+}
+
+/** Read an SQL page by offset and complete, access-scoped counts and filter options. */
+export async function readAutomationCollection(
+  viewer: AutomationViewer,
+  input: AutomationListQuery,
+) {
+  const selection = await selectViewerAutomations(viewer, input);
+  const { collection, where } = selection;
+  const facets = await readAutomationFacets(selection);
   const page = Math.min(
     input.page,
-    Math.max(1, Math.ceil(total / input.pageSize)),
+    Math.max(1, Math.ceil(facets.total / input.pageSize)),
   );
   const order =
     input.sort === "oldest"
@@ -347,13 +358,63 @@ export async function readAutomationCollection(
         ? asc(
             sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}, ${collection.skill}))`,
           )
-        : desc(collection.createdAtMs);
-  const rows = await db
+        : input.sort === "activity"
+          ? desc(collection.activityAtMs)
+          : desc(collection.createdAtMs);
+  const rows = await getDb()
     .select({ id: collection.id, kind: collection.kind })
     .from(collection)
     .where(where)
     .orderBy(order, desc(collection.id))
     .limit(input.pageSize)
     .offset((page - 1) * input.pageSize);
-  return { rows, page, ...facets };
+  return { rows, page, pageSize: input.pageSize, ...facets };
+}
+
+/**
+ * Read the match total, the scope counts, and the creator and Destination
+ * options. Separate statements run in parallel on their own connections,
+ * which measured faster than one grouped statement.
+ */
+export async function readAutomationFacets({
+  collection,
+  where,
+}: AutomationListSelection) {
+  const db = getDb();
+  const [totals, counts, creators, destinations] = await Promise.all([
+    db.select({ total: count() }).from(collection).where(where),
+    db
+      .select({
+        all: count(),
+        mine: sql<number>`count(*) filter (where ${collection.owned})::int`,
+        public: sql<number>`count(*) filter (where ${collection.isPublic})::int`,
+        private: sql<number>`count(*) filter (where not ${collection.isPublic})::int`,
+      })
+      .from(collection),
+    db
+      .select({
+        value: collection.creator,
+        label: sql<string>`min(${collection.creatorLabel})`,
+      })
+      .from(collection)
+      .groupBy(collection.creator)
+      .orderBy(sql`min(${collection.creatorLabel})`, collection.creator),
+    db
+      .select({
+        value: collection.destination,
+        label: sql<string>`min(${collection.destinationLabel})`,
+      })
+      .from(collection)
+      .groupBy(collection.destination)
+      .orderBy(
+        sql`min(${collection.destinationLabel})`,
+        collection.destination,
+      ),
+  ]);
+  return {
+    total: totals[0]!.total,
+    counts: counts[0]!,
+    creators,
+    destinations,
+  };
 }

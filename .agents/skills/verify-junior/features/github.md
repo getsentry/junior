@@ -1,44 +1,48 @@
 # GitHub
 
-A user asks Junior to work in a GitHub repository: read code, change it, open and follow pull requests, review them, and work on issues. Junior does this as its GitHub App, so the user needs no token. GitHub activity can also wake a Conversation or run an Event automation. Intent and rules: `design/github.md`.
+A user asks Junior to work in a GitHub repository: read code, change it, open and follow pull requests, and work on issues. Junior does this as its GitHub App, so the user needs no token. GitHub activity can wake a Conversation that watches it. Intent and rules: `design/github.md`.
 
-## Claims
+## Sub-features
 
-- `pr-draft` A user asks for a code change. Junior pushes a branch and opens a draft PR without asking first, unless the user asks for a ready PR or for investigation only. Proof: none. See Gaps.
-- `pr-assign` Junior opens a PR. The user sees it assigned to their linked GitHub account, and a review request to them, or to the reviewers they named, when the PR is ready. Proof: `test` with `pnpm --filter @sentry/junior-github exec vitest run tests/github-plugin.test.ts tests/pull-request-ready-reviewers.test.ts -t "assigns pull requests to the linked requester and mentions them in attribution|asks the named reviewers and keeps the requester as the assignee|to review a draft only when it becomes ready"`.
-- `attribution` Junior creates a PR or an issue. Its body names the requester and links back to the Conversation. Proof: `test` with `pnpm --filter @sentry/junior-github exec vitest run tests/github-plugin.test.ts -t "creates pull requests with deterministic requester attribution|creates issues with deterministic requester attribution|adds dashboard and Sentry session links to issue footers when configured|adds a Sentry session link to pull request footers when configured"`.
-- `pr-follow` Junior opened a PR. It fixes failed checks and review feedback, and replies on GitHub. It fixes merge conflicts on an active PR, and adds a Review item for the requester on an idle one. Proof: `eval` with `pnpm --filter @sentry/junior-evals evals:behavioral evals/coding/subscriptions.eval.ts -t "when a watch asks for a fix and the PR checks fail, push the fix and end with no reply"` for failed checks, and `test` with `pnpm --filter @sentry/junior-github exec vitest run tests/merge-conflicts.test.ts -t "fixes once a day while people work on the pull request|adds one notice when nobody worked on it for 2 days"` for conflict events and the idle notice. See Gaps.
-- `draft-ready` The required checks of a Junior draft pass and no decision is open. Junior marks it ready. A PR that code owners must review stays a draft, and Junior tells the requester. Proof: `eval` with `pnpm --filter @sentry/junior-evals evals:behavioral evals/coding/subscriptions.eval.ts -t "when the checks of a Junior draft pass, mark it ready without posting|when the checks of a Junior draft with code owners pass, keep it a draft and tell the requester|when a Junior draft names an open decision, keep it a draft"`.
-- `feedback-status` A person comments on a Junior PR. The comment gets 👀, then 👍 when Junior addresses it or 👎 when Junior declines it. Proof: `test` with `pnpm --filter @sentry/junior-github exec vitest run tests/webhook-outcomes.test.ts tests/update-pull-request-feedback.test.ts -t "before publishing its events|adds the addressed reaction for a fresh conversation comment|replaces Junior's prior status reaction without touching a human reaction"`. See Gaps.
-- `issues` A user asks to create, update, or comment on an issue. Junior does it, with the same attribution. Proof: `test` with `pnpm --filter @sentry/junior-github exec vitest run tests/github-plugin.test.ts tests/update-issue.test.ts tests/comment-on-issue.test.ts -t "creates issues with deterministic requester attribution|updates issue metadata and preserves runtime-owned body metadata|posts an issue comment"`.
-- `watch` A user asks Junior to watch a PR, issue, deployment, release, or repo. Matching activity wakes the Conversation, and Junior does not poll. Proof: `eval` with `pnpm --filter @sentry/junior-evals evals:behavioral evals/coding/subscriptions.eval.ts -t "when a PR can emit the requested events, subscribe instead of polling|subscribes to an exact deployment before GitHub creates it|when a watched PR check fails, summarize the failure and suggest next steps"`.
-- `default-repo` A user sets a default repo or org once. Later requests use it, and a named `owner/repo` always wins. Proof: `eval` with `pnpm --filter @sentry/junior-evals evals:behavioral evals/coding/github.eval.ts -t "when a default repo is set in one turn, reuse it in the next turn without asking again|when confirming an explicit issue reference, use that issue as target"`.
-- `cards` A user opens a Conversation in the dashboard. A PR or issue card shows only when the viewer's linked GitHub account can see the repo. Proof: `test` with `pnpm --filter @sentry/junior exec vitest run tests/integration/api/objects.test.ts -t "resolves GitHub issue and pull request links for viewers who can see the repository"`.
+- `pr-draft` A user asks for a code change. Junior pushes a branch and opens a draft PR without asking first.
+- `pr-assign` The new PR is assigned to the user's linked GitHub account, and review goes to the user or the reviewers they named when it is ready.
+- `attribution` The body of a PR or issue that Junior creates names the requester and links back to the Conversation.
+- `pr-follow` A check fails or a person leaves review feedback on a Junior PR. Junior pushes a fix and replies on GitHub.
+- `draft-ready` The required checks of a Junior draft pass and no decision is open. Junior marks it ready.
+- `feedback-status` A person comments on a Junior PR. The comment gets 👀, then 👍 when Junior addresses it or 👎 when Junior declines it.
+- `issues` A user asks to create, update, or comment on an issue. Junior does it, with the same attribution.
+- `watch` A user asks Junior to watch a PR. Matching activity wakes the Conversation, and Junior does not poll.
+- `default-repo` A user sets a default repo once. Later requests use it, and a named `owner/repo` wins.
+- `cards` A Conversation that links a PR or issue shows its card only when the viewer's linked GitHub account can see the repo.
 
-## How to get to it
+## How to get to it (user POV)
 
-- Slack: ask Junior in a thread or DM, or use `/github-code`.
-- GitHub: comments, reviews, and review comments on Junior PRs, and the Conversation link in a PR or issue.
-- Dashboard: Settings, Identities, to connect GitHub; Code; PR and issue cards in Conversations.
-- Runtime triggers: signed GitHub webhooks at `/api/webhooks/github`, and the daily reconcile of open PRs.
+- Ask Junior in a dashboard Conversation or in Slack.
+- GitHub: comments, reviews, and checks on Junior PRs, and the Conversation link in a PR or issue body.
+- Dashboard: `Settings`, `Identities`, to link a GitHub account; PR and issue cards in a Conversation.
 
-## Driving it with proofs.mjs
+## Driving it with browse.mjs and gh
 
 Preconditions:
 
-- Compose Postgres is healthy (`docker compose up -d --wait postgres redis`). `instance.mjs launch` also starts it.
-- `pnpm build` ran after the last pull, and the run directory is `$RUN_DIR`.
+- A GitHub App installed on a scratch repo `$REPO` that nobody else uses, with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_INSTALLATION_ID` in `.env.local`, and a webhook to a public tunnel at `/api/webhooks/github`.
+- The dashboard viewer has linked a GitHub account in `Settings`, `Identities`.
+- Code work needs a Sandbox. Without Vercel Sandbox credentials, launch with `JUNIOR_SANDBOX_PROVIDER=docker node $S/instance.mjs launch` (no `--mock`). Inside a Vercel Sandbox, also set the extra CA that the `junior-qa` skill names. `instance.mjs doctor` passes.
+- `gh` is signed in as the linked account, and is used only to read and to act as that person. `E=$RUN_DIR/evidence/github`.
 
-- **`pr-assign`, `attribution`, `pr-follow`, `feedback-status`, `issues`, `cards`: run the tests.** Run `node .agents/skills/verify-junior/scripts/proofs.mjs run --out $RUN_DIR/evidence/github .agents/skills/verify-junior/features/github.md`. Each command exits `0`. `summary.tsv` lists each command, its exit code, and the claims it proves.
-- **Evals.** Add `--kind eval` to the same command. See Gotchas for what an eval run needs.
+- **Draft PR (`pr-draft`, `pr-assign`, `attribution`).** Run `node $S/browse.mjs --out $E/pr --timeout 600000 --goto / --fill "role=textbox[name=\"Start a conversation\"]=In $REPO, add a line 'verify-junior' to the end of README.md and open a PR." --press Enter --idle --expect 'text=/pull\/\d+/' --snap reply`. Then run `gh pr list -R $REPO --author app/<app slug> --json number,isDraft,assignees,body,url > $E/pr/prs.json`. One PR is a draft, assigned to the linked account, and its body names the requester and links the Conversation URL from `reply.url.txt`. Junior asked no question first.
+- **Card (`cards`).** Run `node $S/browse.mjs --out $E/cards --goto "$(cat $E/pr/reply.url.txt)" --expect "text=$REPO" --snap card`. The PR card shows. Unlink the GitHub account and load the page again: the card does not show.
+- **Feedback (`feedback-status`, `pr-follow`).** Comment `gh pr comment <n> -R $REPO -b "Please also add a trailing newline."`. Within a minute the comment has 👀. After Junior's push, it has 👍, and `gh pr view <n> -R $REPO --json commits` shows a new commit.
+- **Ready (`draft-ready`).** When the checks of the draft pass, `gh pr view <n> -R $REPO --json isDraft` returns `false`.
+- **Issue (`issues`).** Ask `In $REPO, open an issue titled "verify-junior issue" that says the README needs a section on setup.` Then ask `Comment on that issue: done in the PR.` `gh issue view -R $REPO "verify-junior issue" --json body,comments` shows the attribution footer and the comment.
+- **Watch (`watch`).** Ask `Watch PR <n> in $REPO and tell me here when it is merged.` Merge it with `gh pr merge <n> -R $REPO --squash`. The Conversation gets a new message about the merge, and its event log has no repeated polling tool calls.
+- **Default repo (`default-repo`).** Ask `Use $REPO as my default repo.`, then in the next message `How many open issues are there?`. Junior answers for `$REPO` without asking which repo.
 
 ## Gotchas
 
-- A live GitHub drive needs a GitHub App, a webhook tunnel, and a model. The plugin tests fake GitHub with MSW at its HTTP API, which is the production boundary. No drive step uses a real repo.
-- Evals need `ROACH_TOKEN`, or `ROACH_MODE=off` with `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` and `cloudflared`. Without them, global setup fails before a case runs (see `SKILL.md`).
-
-## Gaps
-
-- `pr-draft`: no eval drives a code change to a draft PR. The closest case, `evals/coding/github.eval.ts` "when completed code work leaves an optional follow-up, open the PR without asking", asks Junior to describe what it does. It does not observe the action.
-- `pr-follow`: no eval covers a fix for review feedback with a reply on GitHub, or a fix for a merge conflict on an active PR. The test proves the conflict event and the idle notice only.
-- `feedback-status`: no eval proves that Junior picks addressed or declined for a comment. The tests prove the webhook reaction and the tool.
+- With no Sandbox provider, every shell command fails with an OIDC credentials error, and Junior says it could not make the change. That is a missing precondition, not a GitHub failure.
+- Without the GitHub App settings, Junior cannot push or open a PR. Report each sub-feature here as unreachable, with the reply that Junior gave and the setting that is missing.
+- Do not give the instance a personal token, such as your own `GITHUB_TOKEN`. Junior must act as its GitHub App, and the drive proves nothing otherwise.
+- Use a scratch repo. A drive opens PRs and issues, and merges one.
+- `pr-follow`, `feedback-status`, `draft-ready`, and `watch` need the webhook. Check the App's recent deliveries for `200` before you blame Junior.
+- `instance.mjs stop` drops the local data, not the PRs and issues. Close them on GitHub after the run, and keep `$E` as the record.

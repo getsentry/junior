@@ -499,7 +499,7 @@ function githubToolsContext(input?: {
         _ttlMs: number,
         callback: () => Promise<T>,
       ) {
-        return await callback();
+        return { acquired: true as const, value: await callback() };
       },
     },
     egressRequests() {
@@ -652,6 +652,40 @@ describe("github plugin", () => {
         workflowPath: { kind: "string" },
       },
     });
+  });
+
+  // Event data names the number `pull_request` or `issue`, and the model
+  // copies that name into tool arguments.
+  it("names pull request and issue numbers the way event data does", () => {
+    const inputKeys = Object.fromEntries(
+      Object.entries(githubPlugin().hooks?.tools?.() ?? {}).map(
+        ([name, tool]) => [
+          name,
+          Object.keys(
+            (tool.inputSchema as { properties?: object }).properties ?? {},
+          ),
+        ],
+      ),
+    );
+    const pullRequest = expect.arrayContaining(["pull_request"]);
+    const issue = expect.arrayContaining(["issue"]);
+
+    expect(inputKeys).toMatchObject({
+      commentOnIssue: issue,
+      commentOnPullRequest: pullRequest,
+      getIssue: issue,
+      getPullRequest: pullRequest,
+      reactToIssue: issue,
+      submitPullRequestReview: pullRequest,
+      updateIssue: issue,
+      updatePullRequest: pullRequest,
+      updatePullRequestFeedback: pullRequest,
+    });
+    expect(
+      Object.keys(inputKeys).filter((name) =>
+        inputKeys[name]?.includes("number"),
+      ),
+    ).toEqual([]);
   });
 
   it("registers app guidance for pull request events", () => {

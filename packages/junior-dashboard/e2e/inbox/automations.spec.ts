@@ -72,7 +72,8 @@ test.describe("new UI", { tag: "@new" }, () => {
             lastProgressAt: NOW,
             lastSeenAt: NOW,
             startedAt: NOW,
-            status: "completed",
+            status: "done",
+            turnActive: false,
             surface: "internal",
           }),
         });
@@ -162,7 +163,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(earlier).toContainText("Incident change alerts");
     await expect(
       earlier.getByRole("link", { name: "Change trigger", exact: true }),
-    ).toHaveAttribute("href", "/automations/event-2/edit");
+    ).toHaveAttribute("href", "/automations/event-2/edit?scope=all");
     await screenshot(page, "automations", { lightTheme: true });
     const weeklySummary = page
       .getByRole("main")
@@ -225,7 +226,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     const recentDetails = page.getByRole("dialog");
     await expect(
-      recentDetails.getByText("completed", { exact: true }),
+      recentDetails.getByText("done", { exact: true }),
     ).toBeVisible();
     // Details show the run's Conversation, not only its numbers.
     await expect(
@@ -315,9 +316,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         exact: true,
       }),
     ).toBeEnabled();
-    await expect(
-      page.getByText("Automation deleted", { exact: true }),
-    ).toHaveCount(0);
     await confirmation
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
@@ -650,9 +648,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/automations?type=scheduled`,
     );
     await expect(
-      page.getByText("Automation deleted", { exact: true }),
-    ).toBeVisible();
-    await expect(
       page.getByRole("heading", { name: "Automations", exact: true }),
     ).toBeVisible();
     await expect(openWeekly).toHaveCount(0);
@@ -929,9 +924,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("No runs until resumed", { exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByText("Automation paused", { exact: true }),
-    ).toBeVisible();
     await screenshot(page, "automation-paused");
     const pauseHelp = page.getByRole("button", {
       name: "About pausing",
@@ -947,9 +939,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Automation resumed", { exact: true }),
-    ).toBeVisible();
-    await expect(
       page.getByRole("link", { name: "Open last run", exact: true }),
     ).toBeVisible();
     await page.getByRole("link", { name: "Back to automations" }).click();
@@ -962,7 +951,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/automations/event-2/executions", (route) =>
       route.fulfill({
         json: {
-          automation: report.automations.find((item) => item.id === "event-2"),
           executions: [],
           executionDays: [],
           truncated: false,

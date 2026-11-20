@@ -241,6 +241,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         const historyVersion = cursor.maxHistoryVersion ?? 0;
         let seq = cursor.nextSeq;
         const rows: ConversationEventInsert[] = [];
+        /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
         for (const event of pending) {
           const actorIdentityId = await resolveEventActorIdentityId(
             this.executor,
@@ -260,6 +261,7 @@ class SqlConversationEventStore implements ConversationEventStore {
             ),
           );
         }
+        /* oxlint-enable no-await-in-loop */
         const db = this.executor.db();
         await db
           .with(conversationDetailTouch(db, [conversationId]))
@@ -275,6 +277,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         ) {
           await refreshLastMessageAt(this.executor, conversationId);
         }
+        /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(
@@ -283,6 +286,7 @@ class SqlConversationEventStore implements ConversationEventStore {
             );
           }
         }
+        /* oxlint-enable no-await-in-loop */
         return rows.map((row) => ({
           seq: row.seq,
           historyVersion: row.historyVersion,
@@ -323,6 +327,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       conversationId,
     );
     let restores = false;
+    /* oxlint-disable no-await-in-loop -- Writes share the caller's executor and follow event order. */
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
@@ -338,6 +343,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       });
       restores ||= isPerson && unarchives;
     }
+    /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.
     if (restores) {
       await restoreArchivedPath(this.executor.db(), conversationId);
@@ -579,6 +585,33 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, type),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadCurrentEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]> {
+    const db = this.executor.db();
+    // One statement, as in `loadCurrentHistory`. Older versions stay out of
+    // the read, so its cost does not grow with every compaction.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
           eq(juniorConversationEvents.type, type),
         ),
       )

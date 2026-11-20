@@ -39,10 +39,6 @@ if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
 
 loadEnvFiles([workspaceRoot, exampleDir]);
 
-// `OPEN_SPOTLIGHT_WEB=1` opens the Sentry Local UI. Read it after the env
-// files load, so that `.env.local` can set it.
-const openLocalUi = process.env.OPEN_SPOTLIGHT_WEB?.trim() === "1";
-
 const children = new Set();
 const stoppedChildren = new WeakSet();
 let shuttingDown = false;
@@ -232,22 +228,11 @@ function clearExampleVercelOutput() {
   });
 }
 
-// Restarts reuse this function. Open the Sentry Local UI only on the first
-// start, so that each rebuild does not open a new browser tab.
-function startNitroDev({ openLocalUi = false } = {}) {
+function startNitroDev() {
   if (shuttingDown) {
     return;
   }
   const child = spawnChild("pnpm", [
-    "exec",
-    "sentry",
-    "local",
-    "run",
-    ...(openLocalUi ? ["--open"] : []),
-    "--port",
-    "8969",
-    "--",
-    "pnpm",
     "--dir",
     exampleDir,
     "exec",
@@ -465,7 +450,7 @@ if (tunnelToken) {
 }
 
 watchForRestarts();
-startNitroDev({ openLocalUi });
+startNitroDev();
 if (runQueueWorker) {
   startQueueWorker();
 }

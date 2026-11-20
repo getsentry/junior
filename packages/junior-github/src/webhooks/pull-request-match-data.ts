@@ -3,6 +3,7 @@ import type {
   EventPublisher,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
@@ -10,6 +11,9 @@ import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.j
 import { definedValues } from "./event-targets.js";
 import { isBotLogin } from "./ownership.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+
+// GitHub logins that one delivery loads at once, under GitHub rate limits.
+const LOGIN_LOAD_CONCURRENCY = 5;
 
 /** A pull request value that needs a database or GitHub call to load. */
 type Lookup = "authors" | "opener" | "openerRole";
@@ -122,15 +126,16 @@ async function withJuniorOpeners(
     repositoryFullName: context.repositoryFullName,
   });
   const logins = new Map<string, string | undefined>();
-  for (const identityId of new Set(
-    [...openers.values()].map((opener) => opener.identityId),
-  )) {
-    try {
-      logins.set(identityId, await context.loadGitHubLogin?.(identityId));
-    } catch (error) {
-      logFailure(context, "opener", error);
-    }
-  }
+  await pLimit(LOGIN_LOAD_CONCURRENCY).map(
+    [...new Set([...openers.values()].map((opener) => opener.identityId))],
+    async (identityId) => {
+      try {
+        logins.set(identityId, await context.loadGitHubLogin?.(identityId));
+      } catch (error) {
+        logFailure(context, "opener", error);
+      }
+    },
+  );
   return events.map((event) => {
     const number = botNumber(event);
     if (number === undefined) return event;

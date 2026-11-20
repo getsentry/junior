@@ -5,7 +5,7 @@
  * sibling. Delivery does not change: each watch still wakes the Conversation
  * that created it.
  */
-import pLimit from "p-limit";
+import { mapBounded } from "@/chat/fan-out";
 import {
   listDescendantAgents,
   type DescendantAgent,
@@ -17,9 +17,6 @@ import {
   listWatches,
   type Watch,
 } from "@/chat/events/store";
-
-// Child agents whose watches one listing reads at once.
-const CHILD_WATCH_READ_CONCURRENCY = 8;
 
 /** An active watch and the child agent that created it, if not the owner. */
 export type OwnedWatch = {
@@ -36,14 +33,9 @@ export async function listOwnedWatches(
     listWatches({ conversationId }),
     listDescendantAgents(conversationId),
   ]);
-  const limit = pLimit(CHILD_WATCH_READ_CONCURRENCY);
-  const childWatches = await Promise.all(
-    childAgents.map((childAgent) =>
-      limit(async () =>
-        (await listWatches({ conversationId: childAgent.conversationId })).map(
-          (watch) => ({ childAgent, watch }),
-        ),
-      ),
+  const childWatches = await mapBounded(childAgents, async (childAgent) =>
+    (await listWatches({ conversationId: childAgent.conversationId })).map(
+      (watch) => ({ childAgent, watch }),
     ),
   );
   return [...own.map((watch) => ({ watch })), ...childWatches.flat()].sort(

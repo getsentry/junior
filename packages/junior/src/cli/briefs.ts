@@ -179,6 +179,7 @@ async function pullSnapshot(
     eventsUrl.searchParams.set("before", cursor);
     eventsUrl.searchParams.set("limit", "1000");
     const page = conversationEventPageSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Each page reads back from the cursor of the page before.
       await fetchJson(eventsUrl, options.token),
     );
     eventPages.push(page);
@@ -198,11 +199,13 @@ function fileStem(conversationId: string): string {
 async function pullAll(options: PullOptions): Promise<void> {
   await mkdir(options.out, { recursive: true });
   for (const conversationId of options.conversationIds) {
+    // oxlint-disable-next-line no-await-in-loop -- Pull one Conversation at a time, so output stays in order.
     const snapshot = await pullSnapshot(options, conversationId);
     const output = path.join(
       options.out,
       `${fileStem(snapshot.detail.conversationId)}.snapshot.json`,
     );
+    // oxlint-disable-next-line no-await-in-loop -- Pull one Conversation at a time, so output stays in order.
     await writeFile(output, `${JSON.stringify(snapshot, undefined, 2)}\n`);
     console.log(output);
   }
@@ -241,6 +244,7 @@ async function runSnapshot(
     finalThroughIndex,
   )) {
     versions.push(
+      // oxlint-disable-next-line no-await-in-loop -- Generate one version at a time, under model rate limits.
       await generateBrief({
         assistantName: options.assistantName,
         completeObject: (request) =>
@@ -297,6 +301,7 @@ async function runAll(options: RunOptions): Promise<void> {
   if (!prompt.trim()) throw new Error("Brief prompt must not be empty");
   await mkdir(options.out, { recursive: true });
   for (const snapshot of options.snapshots) {
+    // oxlint-disable-next-line no-await-in-loop -- Run one snapshot at a time, under model rate limits.
     await runSnapshot(snapshot, options, prompt);
   }
 }

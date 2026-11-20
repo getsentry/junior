@@ -32,6 +32,8 @@ const TEST = vi.hoisted(() => ({
   calls: [] as Array<{ modelId: string; prompt: string }>,
   embedCalls: [] as Array<{ inputType?: string | undefined; texts: string[] }>,
   failNextEmbed: false,
+  /** Each Brief generation waits for the next of these, in order. */
+  heldGenerations: [] as Array<Promise<void>>,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
   originalDatabaseUrl: process.env["DATABASE_URL"],
 }));
@@ -60,6 +62,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   completeObject: vi.fn(async (input: { modelId: string; prompt: string }) => {
     TEST.calls.push(input);
+    await TEST.heldGenerations.shift();
     return {
       costUsd: 0.0042,
       object: {
@@ -92,7 +95,8 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
       return {
         dimensions: 2,
         model: input.modelId,
-        provider: "test-provider",
+        // The provider name that the real gateway client reports.
+        provider: "vercel-ai-gateway",
         vectors: input.texts.map(() => [1, 0]),
       };
     },
@@ -218,6 +222,7 @@ describe("Conversation Brief task", () => {
     TEST.calls.length = 0;
     TEST.embedCalls.length = 0;
     TEST.failNextEmbed = false;
+    TEST.heldGenerations = [];
     await migrateSchema(fixture.sql);
   });
 
@@ -310,7 +315,7 @@ describe("Conversation Brief task", () => {
       turnId: "turn-1",
       throughSeq: firstTurn.throughSeq,
       modelId: TEST.calls[0]?.modelId,
-      costUsd: 0.0042,
+      costMicroUsd: 4_200,
     });
     expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
     expect(rows[0]?.searchText).not.toBe("");
@@ -334,7 +339,7 @@ describe("Conversation Brief task", () => {
         conversationId,
         dimensions: 2,
         model: botConfig.embeddingModelId,
-        provider: "test-provider",
+        provider: "vercel-ai-gateway",
       },
     ]);
     expect(rows[0]?.content.links).toEqual([
@@ -567,5 +572,134 @@ describe("Conversation Brief task", () => {
           eq(juniorConversationBriefs.conversationId, childConversationId),
         ),
     ).toEqual([]);
+  }, 30_000);
+
+  it("covers the last Turn when its task skipped behind an older Brief", async () => {
+    const conversationId = `local:briefs-catch-up:${randomUUID()}`;
+    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      nowMs: 1,
+      source: "local",
+      title: "Brief catch-up",
+      visibility: "private",
+    });
+    const firstTurn = await recordCompletedTurn({
+      conversationId,
+      instruction: "Write the first Brief.",
+      turnId: "turn-1",
+    });
+    const task = (sessionId: string) => ({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId, sessionId },
+    });
+
+    // turn-2 completes while the turn-1 Brief is still being generated, so
+    // the turn-2 task finds the lock held and skips. turn-2 is the last Turn.
+    let finishGeneration!: () => void;
+    TEST.heldGenerations = [
+      new Promise<void>((resolve) => {
+        finishGeneration = resolve;
+      }),
+    ];
+    const firstTask = processPluginTask(task("turn-1"));
+    await vi.waitFor(() => expect(TEST.calls).toHaveLength(1));
+    const secondTurn = await recordCompletedTurn({
+      conversationId,
+      instruction: "Write the second Brief.",
+      previousPiMessages: firstTurn.piMessages,
+      turnId: "turn-2",
+    });
+    await processPluginTask(task("turn-2"));
+    expect(TEST.calls).toHaveLength(1);
+    finishGeneration();
+    await firstTask;
+
+    const briefs = () =>
+      getDb()
+        .select()
+        .from(juniorConversationBriefs)
+        .where(eq(juniorConversationBriefs.conversationId, conversationId))
+        .orderBy(juniorConversationBriefs.version);
+    expect((await briefs()).map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
+    ]);
+
+    // A later delivery of the turn-2 task reuses that Brief and its event.
+    await processPluginTask(task("turn-2"));
+    expect(TEST.calls).toHaveLength(2);
+    expect(
+      await getDb()
+        .select()
+        .from(juniorConversationEvents)
+        .where(
+          and(
+            eq(juniorConversationEvents.conversationId, conversationId),
+            eq(juniorConversationEvents.type, "structured_event"),
+          ),
+        ),
+    ).toHaveLength(2);
+
+    // Three Turns complete in a row, each while the Brief before it is being
+    // generated. The holder stops at its pass limit with turn-6 uncovered,
+    // so it fails for a queue retry instead of dropping turn-6.
+    let history = (
+      await recordCompletedTurn({
+        conversationId,
+        instruction: "Write the third Brief.",
+        previousPiMessages: secondTurn.piMessages,
+        turnId: "turn-3",
+      })
+    ).piMessages;
+    const finishes: Array<() => void> = [];
+    TEST.heldGenerations = [3, 4, 5].map(
+      () => new Promise<void>((resolve) => finishes.push(resolve)),
+    );
+    const completeDuringGeneration = async (calls: number, turnId: string) => {
+      await vi.waitFor(() => expect(TEST.calls).toHaveLength(calls));
+      history = (
+        await recordCompletedTurn({
+          conversationId,
+          instruction: `Write the Brief for ${turnId}.`,
+          previousPiMessages: history,
+          turnId,
+        })
+      ).piMessages;
+      finishes[calls - 3]!();
+    };
+    const thirdFailure = processPluginTask(task("turn-3")).catch(
+      (error: unknown) => error,
+    );
+    await completeDuringGeneration(3, "turn-4");
+    await completeDuringGeneration(4, "turn-5");
+    await completeDuringGeneration(5, "turn-6");
+    expect(await thirdFailure).toMatchObject({
+      message: expect.stringContaining(
+        "Brief catch-up stopped after 3 passes with Turn turn-6 uncovered",
+      ),
+    });
+    expect((await briefs()).map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
+      "turn-3",
+      "turn-4",
+      "turn-5",
+    ]);
+
+    // The retry finds the turn-3 Brief stored, covers turn-6, and stops.
+    await processPluginTask(task("turn-3"));
+    expect(TEST.calls).toHaveLength(6);
+    expect((await briefs()).map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
+      "turn-3",
+      "turn-4",
+      "turn-5",
+      "turn-6",
+    ]);
   }, 30_000);
 });

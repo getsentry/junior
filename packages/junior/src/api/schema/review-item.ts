@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
+import { reviewItemRequestSchema } from "@/chat/review-items/evidence";
+import { actorIdentitySchema } from "./conversation";
 
 const answerSchema = z
   .object({
@@ -12,6 +13,8 @@ const answerSchema = z
 
 const personSchema = z
   .object({
+    /** Junior API path of the profile photo. */
+    avatarUrl: z.string().min(1).optional(),
     displayName: z.string().min(1).optional(),
     email: z.string().min(1),
     userId: z.string().min(1),
@@ -22,6 +25,11 @@ const personSchema = z
 export const reviewItemSchema = z
   .object({
     addedByConversationId: z.string().min(1),
+    /**
+     * Names the Conversation that added the item when it is not
+     * `rootConversationId`, such as a child agent's Thread title.
+     */
+    addedByLabel: z.string().min(1).optional(),
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
@@ -41,7 +49,35 @@ export const reviewItemSchema = z
     createdAt: z.string().datetime(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
-    request: userInputRequestSchema.optional(),
+    /** People that the title, body, and question mention. */
+    mentions: z.array(actorIdentitySchema).optional(),
+    /**
+     * Other open work that the viewer can see on the same subject or linked
+     * work. Only an open item has it.
+     */
+    related: z
+      .object({
+        /** Linked Conversations other than the one that added the item. */
+        conversationIds: z.array(z.string().min(1)),
+        /**
+         * Open items with the same subject id or URL, or linked to one of
+         * those Conversations, newest first.
+         */
+        items: z.array(
+          z
+            .object({ id: z.string().min(1), title: z.string().min(1) })
+            .strict(),
+        ),
+      })
+      .strict()
+      .optional(),
+    request: reviewItemRequestSchema.optional(),
+    /**
+     * The top of the item's Conversation tree that the viewer can see, at
+     * any depth: the Conversation that added the item when it is a root, or
+     * when the viewer cannot see its root. The Inbox stacks items by it.
+     */
+    rootConversationId: z.string().min(1),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
       .object({
@@ -66,7 +102,7 @@ export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
 export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 /**
- * Review desk list filters. The list has the open items that the viewer can
+ * Inbox list filters. The list has the open items that the viewer can
  * see, one page at a time. A search or `include=archived` also finds done and
  * dismissed items, after the open ones. `status` lists closed items instead,
  * with the same visibility.
@@ -81,6 +117,11 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /**
+     * `true` lists only the open items in Inbox rows that the viewer
+     * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
+     */
+    snoozed: z.enum(["true"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /** Also list the newest done and dismissed items, with the first page. */
@@ -112,7 +153,7 @@ export const reviewItemListQuerySchema = z
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, oldest first.
+ * One page of the Inbox list. Open items come first, oldest first.
  * The first page of a search, or of a list that includes archived items,
  * also has the newest archived matches.
  */
@@ -129,17 +170,15 @@ export const reviewItemListSchema = z
 /** `GET /api/review-items/count` query. */
 export const reviewItemCountQuerySchema = z
   .object({
-    /** `automations` also counts the viewer's Automations that need attention. */
-    include: z.enum(["automations"]).optional(),
     /**
-     * The newest item of each snoozed Inbox row, comma separated. Snoozes
-     * live in the browser, so the server counts only the ids it is given.
+     * Extra counts, comma separated. `automations` counts the viewer's
+     * Automations that need attention, and `snoozed` their snoozed rows.
      */
-    snoozed: z
+    include: z
       .string()
       .default("")
       .transform((value) => [...new Set(value.split(",").filter(Boolean))])
-      .pipe(z.array(z.string().min(1).max(200)).max(100)),
+      .pipe(z.array(z.enum(["automations", "snoozed"]))),
   })
   .strict();
 
@@ -163,7 +202,10 @@ export const reviewItemCountSchema = z
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
      */
     needsViewer: z.number().int().nonnegative(),
-    /** The `snoozed` ids that are open and listed for the viewer. */
+    /**
+     * The Inbox rows that the viewer snoozed and that still have an open
+     * item for them, as Snoozed lists them. 0 without `include=snoozed`.
+     */
     snoozed: z.number().int().nonnegative(),
   })
   .strict();

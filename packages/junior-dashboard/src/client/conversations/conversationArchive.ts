@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import { buildConversations } from "../format";
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import type { Conversation } from "../types";
 import {
   conversationFeedCacheRows,
@@ -28,8 +29,8 @@ import {
   type ConversationSnapshot,
 } from "./queries";
 
-/** Apply archive marks to one feed row, at any depth of nested Threads. */
-function markFeedConversation(
+/** Apply a patch to one feed row, at any depth of nested Threads. */
+export function patchFeedConversation(
   items: ConversationFeedItem[],
   conversationId: string,
   marks: Partial<ConversationFeedItem>,
@@ -40,7 +41,7 @@ function markFeedConversation(
       : item.threads
         ? {
             ...item,
-            threads: markFeedConversation(item.threads, conversationId, marks),
+            threads: patchFeedConversation(item.threads, conversationId, marks),
           }
         : item,
   );
@@ -306,7 +307,7 @@ export function archiveConversationMutationOptions(
           queryKey,
           mapConversationFeedCache(feed, (pageRows, first) => {
             const conversations = !shouldRestore
-              ? markFeedConversation(pageRows, conversationId, viewerMarks)
+              ? patchFeedConversation(pageRows, conversationId, viewerMarks)
               : restoreParentId
                 ? withRestoredThread(pageRows, restoreParentId, {
                     ...archivedSnapshot.conversation,
@@ -330,7 +331,9 @@ export function archiveConversationMutationOptions(
         );
       }
       queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
-        detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
+        detail
+          ? withoutVersion({ ...detail, ...viewerMarks }, "detailEtag")
+          : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -372,11 +375,10 @@ export function archiveConversationMutationOptions(
         conversationDetailQueryKey(conversationId),
         (detail) =>
           detail
-            ? {
-                ...detail,
-                archivedAt: result.archivedAt,
-                detailEtag: undefined,
-              }
+            ? withoutVersion(
+                { ...detail, archivedAt: result.archivedAt },
+                "detailEtag",
+              )
             : detail,
       );
       if (!args.archived) {

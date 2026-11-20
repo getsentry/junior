@@ -24,7 +24,8 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { DisplayText } from "../display-text/DisplayText";
-import { fetchDashboardJson, patch } from "../http";
+import { patch } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { cn } from "../styles";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
@@ -37,12 +38,10 @@ import {
 /** Load the open Plan items of one Conversation, then the latest closed ones. */
 export function useConversationPlan(conversationId: string) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationPlanReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/plan`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationPlanReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/plan`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "plan"),
     retry: false,
   });
@@ -86,7 +85,7 @@ export function ConversationPlan(props: {
     (item) => item.status !== "done" && item.status !== "cancelled",
   ).length;
   return (
-    <DetailsCard count={open} flat title="Plan">
+    <DetailsCard count={open} title="Plan">
       <DetailsList
         itemKey={(item) => String(item.id)}
         items={items}

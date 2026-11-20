@@ -30,14 +30,11 @@ import {
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import {
-  findSkillByName,
-  parseSkillInvocation,
-  type Skill,
-} from "@/chat/skills";
+import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
+  loadConversationSkillNames,
   recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
@@ -145,7 +142,11 @@ import {
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import {
+  discoverRunSkills,
+  restoreActiveSkill,
+  skillInvocationText,
+} from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
@@ -179,6 +180,7 @@ import {
   recordToolBatch,
   toolBatchSpanAttributes,
 } from "@/chat/agent/tool-batch";
+import { mapBounded } from "@/chat/fan-out";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 // Past a turn limit, a gated Turn gets this many failed answer calls before
@@ -483,9 +485,9 @@ async function executeAgentRunInPrivacyContext(
     if (!mcpToolManager) {
       return;
     }
-    for (const provider of mcpToolManager.getActiveProviders()) {
-      await recordConnectedMcpProvider(provider);
-    }
+    await mapBounded(mcpToolManager.getActiveProviders(), (provider) =>
+      recordConnectedMcpProvider(provider),
+    );
   };
   try {
     shouldTrace = shouldEmitDevAgentTrace();
@@ -512,17 +514,13 @@ async function executeAgentRunInPrivacyContext(
     // An Automation in skill mode names its skill in the dispatch, so its
     // text is not parsed for one.
     const dispatchSkill = run.dispatch?.skill;
-    const skillInvocation = dispatchSkill
-      ? { skillName: dispatchSkill }
-      : parseSkillInvocation(userInput, availableSkills);
-    const invokedSkill = skillInvocation
-      ? findSkillByName(skillInvocation.skillName, availableSkills)
-      : null;
-    if (dispatchSkill && !invokedSkill) {
+    const invokedSkillNames = dispatchSkill
+      ? [dispatchSkill]
+      : parseSkillInvocations(skillInvocationText(run, actor), availableSkills);
+    if (dispatchSkill && !findSkillByName(dispatchSkill, availableSkills)) {
       throw new Error(missingAutomationSkillReason(dispatchSkill));
     }
-    const activeSkills: Skill[] = [];
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const skillSandbox = new SkillSandbox(availableSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
     const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
@@ -652,12 +650,16 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
-    // A new turn starts with no active skill. A resumed turn recovers only its
-    // last successful loadSkill result, never skill state from older turns.
-    const explicitSkill = await loadRunSkill({
-      activeSkills,
+    // A manual-only skill that `loadSkill` loaded earlier in this
+    // Conversation stays loadable, and so do the skills that it references.
+    const conversationSkillNames =
+      await loadConversationSkillNames(conversationId);
+
+    // A new turn starts with no active skill. A resumed turn recovers the
+    // skill loaded last in this Turn, never skill state from older turns.
+    // Invoked skills wait for the model to call `loadSkill`.
+    await restoreActiveSkill({
       currentTurnMessages,
-      invokedSkill,
       resumed: resumedFromSessionRecord,
       skillSandbox,
     });
@@ -691,7 +693,7 @@ async function executeAgentRunInPrivacyContext(
       ? runSandbox.agentSandbox.captureRepositoryInstructions()
       : Promise.resolve(undefined);
     const promptTurnContextPromise = loadPromptTurnContext({
-      context: createPromptHookContext({ actor, run, userInput }),
+      context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
@@ -745,7 +747,6 @@ async function executeAgentRunInPrivacyContext(
     // ── Tool wiring ──────────────────────────────────────────────────
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
-      activeSkills,
       behavior,
       currentActor: actor,
       currentAgentMessages,
@@ -758,7 +759,8 @@ async function executeAgentRunInPrivacyContext(
       durability,
       authorization,
       generatedFiles,
-      invokedSkill,
+      invokedSkillNames,
+      conversationSkillNames,
       onEvent: run.onEvent,
       onFatalToolError(error) {
         pendingPiHookError = error;
@@ -829,7 +831,6 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      explicitSkill,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
@@ -1572,6 +1573,7 @@ async function executeAgentRunInPrivacyContext(
             signal?.throwIfAborted();
           };
           try {
+            /* oxlint-disable no-await-in-loop -- The agent runs one step at a time, and each retry follows the step before. */
             for (;;) {
               await runAgentStep(run);
               if (assistantMessageDeliveryError) {
@@ -1712,6 +1714,7 @@ async function executeAgentRunInPrivacyContext(
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
+            /* oxlint-enable no-await-in-loop */
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
               // A durable auth pause is a successful span outcome. Persistence

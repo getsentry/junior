@@ -29,15 +29,16 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
+import { useInboxConversationOrigin } from "../../inbox/inboxListState";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
-} from "../../inbox/components/CommandPalette";
+} from "../../shell/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
-import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import {
   isInboxView,
   isOldAutomationsPath,
@@ -46,6 +47,7 @@ import {
   paneRowRoot,
   type PaneRow,
 } from "./paneRows";
+import { NAV_PAGES } from "../../navPages";
 
 const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 
@@ -149,7 +151,8 @@ export function PaneNavProvider(props: {
   // Remember where each row was, so going back reopens its selection, its
   // search, and (through `scroll`) its list position.
   const [lastRow, setLastRow] = useState<PaneRow>("inbox");
-  const row = paneRowForPath(location, props.navItems, lastRow);
+  const origin = useInboxConversationOrigin();
+  const row = paneRowForPath(location, props.navItems, origin);
   const here = `${location.pathname}${location.search}`;
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},
@@ -444,7 +447,7 @@ function PaneNavHeader(props: { newAction: PaneNewAction }) {
             toolbarControlBoxClass,
             "block shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           )}
-          to="/"
+          to={NAV_PAGES.inbox.to}
         >
           <JuniorLogo size="sm" />
         </Link>

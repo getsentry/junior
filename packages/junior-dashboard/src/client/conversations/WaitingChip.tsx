@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import { cn } from "../styles";
 import { conversationPath } from "./conversationRoutes";
 import { GitHubMark } from "./GitHubMark";

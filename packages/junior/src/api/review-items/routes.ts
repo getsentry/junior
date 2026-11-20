@@ -18,13 +18,14 @@ import {
 } from "@/api/schema/review-item";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
   itemNeedsUser,
   reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
+  type ReviewItemReader,
 } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
@@ -32,7 +33,10 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
-  countOpenReviewItemsForUser,
+  readRelatedReviewWork,
+  type RelatedReviewWork,
+} from "@/chat/review-items/related";
+import {
   countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
@@ -42,7 +46,11 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
+import type { ActorIdentity } from "@/api/schema/conversation";
+import { readItemRoots } from "./item-roots";
+import { readReviewItemMentions } from "./mentions";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -62,7 +70,7 @@ const ARCHIVED_LIMIT = 50;
  */
 type ListFilters = Pick<
   ReviewItemFilters,
-  "conversationId" | "forUserId" | "query"
+  "conversationId" | "forUserId" | "query" | "snoozedForUserId"
 > & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
@@ -74,6 +82,7 @@ const cursorSchema = z
     id: z.string().min(1),
     needsUser: z.boolean().optional(),
     query: z.string().min(1).optional(),
+    snoozedForUserId: z.string().min(1).optional(),
     sort: z.literal("waiting").optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
@@ -115,6 +124,7 @@ function decodeCursor(
     parsed.conversationId !== filters.conversationId ||
     parsed.forUserId !== filters.forUserId ||
     parsed.query !== filters.query ||
+    parsed.snoozedForUserId !== filters.snoozedForUserId ||
     parsed.sort !== filters.sort ||
     parsed.status !== filters.status ||
     (filters.status !== undefined && parsed.closedAtMs === undefined) ||
@@ -151,9 +161,17 @@ function subjectPayload(
 }
 
 /** Build the API payload of one Review item for its viewer. */
-function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
+function reviewItemPayload(
+  item: ReviewItem,
+  viewer: User,
+  roots: Awaited<ReturnType<typeof readItemRoots>>,
+  mentions: readonly ActorIdentity[],
+  related: RelatedReviewWork | undefined,
+): ReviewItemPayload {
+  const root = roots.get(item.addedByConversationId);
   return {
     addedByConversationId: item.addedByConversationId,
+    ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
     assignees: item.assignees,
     body: item.body,
@@ -164,6 +182,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
+    rootConversationId: root?.rootConversationId ?? item.addedByConversationId,
     status: item.status,
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
@@ -174,9 +193,41 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
+    ...(mentions.length > 0 ? { mentions: [...mentions] } : undefined),
+    ...(related &&
+    (related.items.length > 0 || related.conversationIds.length > 0)
+      ? { related }
+      : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
+}
+
+/**
+ * Build the payloads of a page of items, with the root of each one, the
+ * people they mention, and the related work of the open ones. Each read
+ * covers the page, and the reads run at once.
+ */
+async function reviewItemPayloads(
+  items: readonly ReviewItem[],
+  viewer: User,
+  reader: ReviewItemReader,
+): Promise<ReviewItemPayload[]> {
+  const db = getDb();
+  const [roots, mentions, related] = await Promise.all([
+    readItemRoots(db, items, viewer),
+    readReviewItemMentions(getSqlExecutor(), items),
+    readRelatedReviewWork(db, reader, viewer, items),
+  ]);
+  return items.map((item, index) =>
+    reviewItemPayload(
+      item,
+      viewer,
+      roots,
+      mentions[index]!,
+      related.get(item.id),
+    ),
+  );
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -190,7 +241,7 @@ function actionErrorResponse(error: unknown): Response {
   throw error;
 }
 
-/** Create the authenticated review desk routes. */
+/** Create the authenticated Inbox routes. */
 export function createReviewItemRoutes(services: {
   delivery: ReviewItemDelivery;
 }): Hono<JuniorApiEnv> {
@@ -212,6 +263,7 @@ export function createReviewItemRoutes(services: {
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.snoozed ? { snoozedForUserId: viewer.id } : undefined),
         ...(query.status[0] === "open"
           ? query.sort
             ? { sort: query.sort }
@@ -243,7 +295,7 @@ export function createReviewItemRoutes(services: {
         const page = closed.slice(0, query.limit);
         const last = page.at(-1);
         return jsonResponse(reviewItemListSchema, {
-          items: page.map((item) => reviewItemPayload(item, viewer)),
+          items: await reviewItemPayloads(page, viewer, reader),
           ...(closed.length > query.limit && last
             ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
@@ -254,6 +306,14 @@ export function createReviewItemRoutes(services: {
       const [open, archived] = await Promise.all([
         searchReviewItems(db, reader, {
           ...filters,
+          // The viewer's Inbox hides the rows they snoozed until they wake. A
+          // Conversation's own list and a search still show them.
+          ...(query.for === "viewer" &&
+          !filters.conversationId &&
+          !filters.query &&
+          !filters.snoozedForUserId
+            ? { awakeForUserId: viewer.id }
+            : undefined),
           limit: query.limit + 1,
           statuses: ["open"],
           ...(filters.sort
@@ -282,8 +342,10 @@ export function createReviewItemRoutes(services: {
       const page = open.slice(0, query.limit);
       const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
-        items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
-          reviewItemPayload(item, viewer),
+        items: await reviewItemPayloads(
+          [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
+          viewer,
+          reader,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -308,15 +370,11 @@ export function createReviewItemRoutes(services: {
       const db = getDb();
       // One query counts the badge and both bundles. The snoozed and
       // Automation counts run only when the request asks for them, so the
-      // current dashboard pays for one query.
+      // classic dashboard pays for one query.
       const [subjects, snoozed, automations] = await Promise.all([
         countReviewItemsNeedingUserBySubject(db, viewer.id),
-        countOpenReviewItemsForUser(
-          db,
-          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
-          query.snoozed,
-        ),
-        query.include === "automations"
+        query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
+        query.include.includes("automations")
           ? countOwnedAutomationsNeedingAttention(viewer)
           : undefined,
       ]);
@@ -360,7 +418,12 @@ export function createReviewItemRoutes(services: {
           viewer,
           context.req.valid("param").id,
         );
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
+        );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }
@@ -385,7 +448,12 @@ export function createReviewItemRoutes(services: {
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
         });
-        return jsonResponse(reviewItemSchema, reviewItemPayload(item, viewer));
+        const [payload] = await reviewItemPayloads(
+          [item],
+          viewer,
+          reviewItemReaderForUser(viewer),
+        );
+        return jsonResponse(reviewItemSchema, payload!);
       } catch (error) {
         return actionErrorResponse(error);
       }

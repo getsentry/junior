@@ -1,12 +1,15 @@
 import {
   BrowserClient,
-  browserTracingIntegration,
+  browserTracingCoreIntegration,
   captureFeedback,
   defaultStackParser,
+  fetchTracingIntegration,
   getActiveSpan,
   getClient,
   getIsolationScope,
   getRootSpan,
+  linkedTracesIntegration,
+  longTasksIntegration,
   makeFetchTransport,
   setCurrentClient,
   spanToJSON,
@@ -42,12 +45,13 @@ const QUERY_ATTRIBUTE_KEYS = [
   "url.fragment",
   "url.query",
 ];
-// Element selectors in interaction and web vital attributes include these
-// attribute values, such as a conversation title in an `aria-label`. The SDK
-// does not escape quotes in values, so a value can contain `"]` and fake
-// selector parts. Cutting from the first marker to the last `"]` removes every
-// value, at the cost of the selector parts between them.
-const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt)="/;
+// Element selectors in interaction, web vital, and long animation frame
+// invoker attributes include these attribute values, such as a conversation
+// title in an `aria-label` or an image URL in a `src`. The SDK does not escape
+// quotes in values, so a value can contain `"]` and fake selector parts.
+// Cutting from the first marker to the last `"]` removes every value, at the
+// cost of the selector parts between them.
+const ELEMENT_ATTRIBUTE_START = /\[(?:aria-label|type|name|title|alt|src)="/;
 
 function scrubSelector(value: string): string {
   const start = value.search(ELEMENT_ATTRIBUTE_START);
@@ -275,6 +279,65 @@ export function sendFeedback(
 }
 
 /**
+ * Add `http.response.body.size`, the compressed body size from resource
+ * timing, to each fetch span. Vercel compresses at the edge, so the server
+ * sees only the uncompressed size. The SDK ends a fetch span when its
+ * resource timing entry arrives, from a microtask of its own resource
+ * observer. This observer must start before that one, so its callback sets
+ * the size while the span is still open.
+ */
+function trackResponseBodySize(): {
+  onSpanEnd: (span: Span) => void;
+  onRequestSpanStart: (span: Span) => void;
+} {
+  // Fetch spans that wait for their resource timing entry, by URL.
+  const pending = new Map<string, Span[]>();
+  const remove = (url: string, span: Span) => {
+    const spans = pending.get(url)?.filter((item) => item !== span);
+    if (spans?.length) pending.set(url, spans);
+    else pending.delete(url);
+  };
+  try {
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (!(entry instanceof PerformanceResourceTiming)) continue;
+        if (entry.initiatorType !== "fetch") continue;
+        // Requests to one URL can overlap and finish in any order. An entry
+        // belongs to the last span that started before its fetch started.
+        const fetchStart = (performance.timeOrigin + entry.startTime) / 1000;
+        let span: Span | undefined;
+        let spanStart = 0;
+        for (const item of pending.get(entry.name) ?? []) {
+          const start = spanToJSON(item).start_timestamp;
+          if (start <= fetchStart && start >= spanStart) {
+            span = item;
+            spanStart = start;
+          }
+        }
+        if (!span) continue;
+        remove(entry.name, span);
+        span.setAttribute("http.response.body.size", entry.encodedBodySize);
+      }
+    }).observe({ type: "resource" });
+  } catch {
+    // This browser has no resource timing. Fetch spans keep no size.
+    return { onRequestSpanStart: () => {}, onSpanEnd: () => {} };
+  }
+  return {
+    onRequestSpanStart: (span) => {
+      const url = spanToJSON(span).attributes["url.full"];
+      if (typeof url !== "string") return;
+      pending.set(url, [...(pending.get(url) ?? []), span]);
+    },
+    // A span whose entry never arrives ends after the SDK's wait.
+    onSpanEnd: (span) => {
+      const url = spanToJSON(span).attributes["url.full"];
+      if (typeof url === "string") remove(url, span);
+    },
+  };
+}
+
+/**
  * Send dashboard performance spans and reader feedback to the server's Sentry
  * project when the server provides a DSN. Error events and breadcrumbs stay
  * off: they could carry conversation content shown on the page. Every span
@@ -287,16 +350,20 @@ export function initDashboardSentry(ui: UiShell): void {
   const scope = getIsolationScope();
   scope.setTag("app.dashboard.ui", ui);
   scope.setAttribute("app.dashboard.ui", ui);
+  // Starts before the client, so before the SDK's resource observer.
+  const bodySize = trackResponseBodySize();
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
-  // A client built directly bundles only browser tracing.
+  // A client built directly bundles only the integrations listed here.
+  // `browserTracingIntegration` would also bundle web vitals, XHR, and
+  // resource spans.
   const client = new BrowserClient({
     ...config,
     beforeSendSpan: scrubSpan,
     stackParser: defaultStackParser,
     transport: makeFetchTransport,
     integrations: [
-      browserTracingIntegration({
+      browserTracingCoreIntegration({
         beforeStartSpan: (options) =>
           options.op === "pageload"
             ? {
@@ -308,8 +375,14 @@ export function initDashboardSentry(ui: UiShell): void {
               }
             : options,
       }),
+      fetchTracingIntegration({
+        onRequestSpanStart: bodySize.onRequestSpanStart,
+      }),
+      linkedTracesIntegration(),
+      longTasksIntegration(),
     ],
   });
+  client.on("spanEnd", bodySize.onSpanEnd);
   setCurrentClient(client);
   client.init();
 }

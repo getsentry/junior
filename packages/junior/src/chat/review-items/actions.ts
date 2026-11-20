@@ -12,7 +12,9 @@ import {
   canActOnReviewItem,
   canUserReadReviewItem,
   isOnlyAssignee,
+  isPluginReviewItem,
 } from "./access";
+import { answerPluginReviewItem } from "./plugin-answer";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
   closeReviewItem,
@@ -65,7 +67,7 @@ export function reviewItemChange(
 
 /**
  * Return whether a closed item is the result of this same action. An item
- * that a person's message closed never matches a card or desk action.
+ * that a person's message closed never matches a card or Inbox action.
  */
 function isSameClose(
   item: ReviewItem,
@@ -181,6 +183,15 @@ export async function actOnReviewItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
+  // The plugin that added the item does the work, so its answer starts no
+  // Turn. A retry of the same answer calls the plugin again.
+  if (action === "submit" && isPluginReviewItem(closed)) {
+    await answerPluginReviewItem({
+      delivery: args.delivery,
+      item: closed,
+      nowMs,
+    });
+  }
   await deliverReviewItemChange({
     change: reviewItemChange(action, user),
     delivery: args.delivery,
@@ -235,7 +246,7 @@ function messageAnswer(
  *   When the decision fails, all items stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the review desk. Each item closes as `done` with
+ * an answer on the card or the Inbox. Each item closes as `done` with
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.
@@ -284,6 +295,7 @@ export async function closeReviewItemsAnsweredByReply(args: {
   const toDeliver = answered.filter(
     (candidate) => candidate.status !== "open" || matched.has(candidate.id),
   );
+  /* oxlint-disable no-await-in-loop -- Close and deliver answered items in order, one at a time. */
   for (const item of toDeliver) {
     let closedItem: ReviewItem | undefined = item;
     if (item.status === "open") {
@@ -311,4 +323,5 @@ export async function closeReviewItemsAnsweredByReply(args: {
       nowMs,
     });
   }
+  /* oxlint-enable no-await-in-loop */
 }

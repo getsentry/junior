@@ -3,10 +3,7 @@ import { getDb } from "@/chat/db";
 import { listWorkspacesByRepository } from "@/chat/workspaces/store";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
-import {
-  codeRepositoryReportSchema,
-  type CodeRepositoryReport,
-} from "../schema/code";
+import { type CodeRepositoryReport } from "../schema/code";
 import {
   codeChangeReport,
   codeChangeReportColumns,
@@ -82,7 +79,7 @@ export async function readCodeRepository(
       repo: repository.name,
     }),
   ]);
-  return codeRepositoryReportSchema.parse({
+  return {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
@@ -97,5 +94,5 @@ export async function readCodeRepository(
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),
     workspaces,
-  });
+  };
 }

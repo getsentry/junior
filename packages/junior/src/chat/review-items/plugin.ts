@@ -1,4 +1,4 @@
-import pLimit from "p-limit";
+import { mapBounded } from "@/chat/fan-out";
 import type {
   PluginReviewItems,
   PluginReviewNotice,
@@ -9,6 +9,7 @@ import { getDb } from "@/chat/db";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowReviewItem } from "./changes";
+import { reviewItemRequestSchema, type ReviewItemRequest } from "./evidence";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
@@ -16,9 +17,6 @@ import {
   updateReviewItemContent,
   type ReviewItemContent,
 } from "./store";
-
-// Assignees whose access one plugin change reads at once.
-const ASSIGNEE_READ_CONCURRENCY = 8;
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
@@ -30,24 +28,40 @@ async function assigneeUserIds(
   identityIds: readonly string[],
   conversationId: string,
 ): Promise<string[]> {
-  const limit = pLimit(ASSIGNEE_READ_CONCURRENCY);
-  const userIds = await Promise.all(
-    [...new Set(identityIds)].map((identityId) =>
-      limit(async () => {
-        const user = (await readIdentityByIdFromSql(db, identityId))?.user;
-        if (!user) return [];
-        const access = (
-          await readConversationAccessFromSql(db, [conversationId], user)
-        ).get(conversationId);
-        return access?.isParticipant ? [user.id] : [];
-      }),
-    ),
+  const userIds = await mapBounded(
+    [...new Set(identityIds)],
+    async (identityId) => {
+      const user = (await readIdentityByIdFromSql(db, identityId))?.user;
+      if (!user) return [];
+      const access = (
+        await readConversationAccessFromSql(db, [conversationId], user)
+      ).get(conversationId);
+      return access?.isParticipant ? [user.id] : [];
+    },
   );
   return userIds.flat();
 }
 
+/** Field id of the one choice field of a plugin item with choices. */
+export const PLUGIN_CHOICE_FIELD_ID = "choice";
+
+/** The request that shows a plugin item's choices as one row of buttons. */
+function choicesRequest(notice: PluginReviewNotice): ReviewItemRequest {
+  return reviewItemRequestSchema.parse({
+    question: notice.body,
+    fields: [
+      {
+        id: PLUGIN_CHOICE_FIELD_ID,
+        kind: "choice",
+        label: notice.title,
+        options: notice.choices,
+      },
+    ],
+  });
+}
+
 /**
- * Connect a plugin to the review desk for one Conversation. Dedupe keys are
+ * Connect a plugin to the Inbox for one Conversation. Dedupe keys are
  * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
  * cannot change them. A change sends no message to the Conversation. It
  * only shows the new state through `show`. An item is private when the
@@ -101,9 +115,10 @@ export function createPluginReviewItems(args: {
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
         ],
         // An item that waits on its assignees is an action: it needs them.
-        kind: notice.waitsOnAssignees ? "action" : "notice",
+        kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
+        ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
         ...(notice.subject ? { subject: notice.subject } : undefined),
       };
       if (existing) {

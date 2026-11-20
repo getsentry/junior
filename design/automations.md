@@ -14,9 +14,9 @@ Automation run posts its result to the Automation's Destination.
 - A run posts nothing unless it chooses to. Each run starts its own
   Conversation, posts at most one message to each Destination, and puts
   later replies in that message's thread, where people continue it.
-- Junior records every failure and block, and shows it to the creator as a
-  Review item or another notice. It never posts a failure to the
-  Destination.
+- Junior records every failure and block. It tells the creator only when
+  they have a step to take, such as connecting an account or resuming a
+  blocked Automation. It never posts a failure to the Destination.
 
 ## Entry points
 
@@ -39,10 +39,11 @@ Automation run posts its result to the Automation's Destination.
 - A creator can ask for runs to use their own credentials, because some
   providers have no Junior access yet. This breaks "acts as Junior": a run
   can fail when the creator is not connected, and an edit by someone else
-  switches it back to Junior's credentials. The goal is to remove creator
-  credentials.
-- A failed run shows only on the dashboard. It tells its creator nothing,
-  and repeated failures alert nobody. This breaks "shows it to the creator".
+  switches it back to Junior's credentials.
+- A failed run counts in the creator's Inbox To do, even when the reason
+  names no step for them, such as a run that did not finish in 24 hours.
+  Slack does not tell them. This breaks "tells the creator only when they
+  have a step to take".
 - When an Automation reaches the limit of automated Turns in a row, Junior
   posts a pause notice to the Destination. This breaks "posts nothing unless
   it chooses to" and "never posts a failure to the Destination".

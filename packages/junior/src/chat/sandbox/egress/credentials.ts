@@ -156,6 +156,11 @@ export async function selectSandboxEgressGrant(input: {
    * are skipped, because they can issue an install or app credential.
    */
   userOAuthOnly?: boolean;
+  /**
+   * Junior adds no credential to this request. The plugin hook still runs
+   * so its policy applies, and the returned grant is not used.
+   */
+  withoutCredential?: true;
 }): Promise<SandboxEgressGrantSelection> {
   if (input.userOAuthOnly) {
     const manifest = pluginCatalogRuntime.getDefinition(
@@ -174,6 +179,7 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
+    ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }
       : undefined),
@@ -184,6 +190,9 @@ export async function selectSandboxEgressGrant(input: {
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
+  if (input.withoutCredential) {
+    return defaultGrantForProvider(input);
+  }
   if (!pluginGrant) {
     if (hasGenericCredentials(input.provider)) {
       return defaultGrantForProvider(input);

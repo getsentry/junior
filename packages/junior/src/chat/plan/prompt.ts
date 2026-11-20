@@ -9,7 +9,13 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
-import { escapeXmlText } from "@/chat/xml";
+import {
+  escapeTagText,
+  findTags,
+  renderTag,
+  startsWithTag,
+} from "@sentry/junior-plugin-api";
+import { planItemRef } from "./tool-output";
 import {
   isOpenPlanItemStatus,
   SELF_PLAN_ASSIGNEE,
@@ -26,12 +32,9 @@ export const PLAN_DELTA_TAG = "plan-delta";
 /** Compacted context block with every open Plan item. */
 export const PLAN_SNAPSHOT_TAG = "plan";
 
-// The version line follows the opening tag. Escaped person text cannot write
-// a tag, so it cannot fake this line.
-const VERSION_PATTERN = new RegExp(
-  `<(?:${PLAN_SNAPSHOT_TAG}|${PLAN_DELTA_TAG})>\\nPlan version (\\d+)\\.`,
-  "g",
-);
+// The version line starts the body. Escaped person text cannot write a
+// tag, so it cannot fake this line.
+const VERSION_LINE = /^Plan version (\d+)\./;
 
 /** Render an assignee as the text that `updatePlan` accepts. */
 export function renderPlanAssignee(assignee: PlanItemAssignee): string {
@@ -56,8 +59,8 @@ function renderItem(item: PlanItem, withAuthor: boolean): string {
       : []),
   ];
   const notes = item.notes ? `\n  Notes: ${item.notes}` : "";
-  return escapeXmlText(
-    `- #${item.id} (${fields.join(", ")}): ${item.title}${notes}`,
+  return escapeTagText(
+    `- ${planItemRef(item.id)} (${fields.join(", ")}): ${item.title}${notes}`,
   );
 }
 
@@ -82,13 +85,16 @@ export function latestSeenPlanVersion(messages: readonly PiMessage[]): number {
   for (const message of messages) {
     for (const text of textParts(message)) {
       if (
-        !text.startsWith(`<${TURN_CONTEXT_TAG}>`) &&
+        !startsWithTag(text, [TURN_CONTEXT_TAG]) &&
         !isCompactionSummaryText(text)
       ) {
         continue;
       }
-      for (const match of text.matchAll(VERSION_PATTERN)) {
-        seen = Math.max(seen, Number(match[1]));
+      for (const tag of [PLAN_SNAPSHOT_TAG, PLAN_DELTA_TAG]) {
+        for (const block of findTags(text, tag)) {
+          const version = VERSION_LINE.exec(block.body)?.[1];
+          if (version) seen = Math.max(seen, Number(version));
+        }
       }
     }
   }
@@ -108,12 +114,10 @@ export function renderPlanDelta(
     (item) => item.changedBy && item.version > seenVersion,
   );
   if (changed.length === 0) return null;
-  return [
-    `<${PLAN_DELTA_TAG}>`,
+  return renderTag(PLAN_DELTA_TAG, {}, [
     `Plan version ${planVersion(items)}. People changed these items of your plan since you last saw it. Each item shows its current fields.`,
     ...changed.map((item) => renderItem(item, true)),
-    `</${PLAN_DELTA_TAG}>`,
-  ].join("\n");
+  ]);
 }
 
 /**
@@ -124,14 +128,12 @@ export function renderPlanDelta(
 export function renderPlanSnapshot(items: readonly PlanItem[]): string | null {
   if (items.length === 0) return null;
   const open = items.filter((item) => isOpenPlanItemStatus(item.status));
-  return [
-    `<${PLAN_SNAPSHOT_TAG}>`,
+  return renderTag(PLAN_SNAPSHOT_TAG, {}, [
     `Plan version ${planVersion(items)}. ${
       open.length > 0
         ? "The open items of your plan."
         : "Your plan has no open items."
     }`,
     ...open.map((item) => renderItem(item, false)),
-    `</${PLAN_SNAPSHOT_TAG}>`,
-  ].join("\n");
+  ]);
 }

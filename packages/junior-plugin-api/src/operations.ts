@@ -47,7 +47,7 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
-  /** Review desk items, as from a plugin route. */
+  /** Review items in the Inbox, as from a plugin route. */
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
@@ -211,7 +211,7 @@ export interface RouteRegistrationHookContext extends PluginContext {
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
-  /** Review desk items that the plugin adds and closes from its events. */
+  /** Review items in the Inbox that the plugin adds and closes from its events. */
   reviewItems: PluginConversationReviewItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;

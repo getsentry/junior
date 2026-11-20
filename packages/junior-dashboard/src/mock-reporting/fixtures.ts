@@ -31,7 +31,11 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+import {
+  activityPreviewText,
+  IDLE_CHANGE_DAYS,
+} from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
@@ -321,8 +325,11 @@ type DetailOptions = Omit<
   | "startedAt"
   | "status"
   | "surface"
+  | "turnActive"
 > & {
   cumulativeDurationMs?: number;
+  /** Defaults to a running Turn on `working`. */
+  turnActive?: boolean;
   displayTitle: string;
   eventHistory?: ConversationDetailReport["eventHistory"];
   events: ConversationReportEvent[];
@@ -350,8 +357,9 @@ function detail(
     kind: options.kind ?? "root",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
-    status: options.status ?? "completed",
+    status: options.status ?? "done",
     surface: options.surface ?? "internal",
+    turnActive: options.turnActive ?? options.status === "working",
   };
 }
 
@@ -469,7 +477,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastProgressAt: iso(nowMs, -20_000),
     lastSeenAt: iso(nowMs, -10_000),
-    status: "active",
+    status: "working",
     surface: "slack",
     channel: "CQA123",
     channelName: "proj-checkout",
@@ -493,6 +501,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         title: "Retry checkout writes after lock timeouts",
         url: "https://github.com/getsentry/payments/pull/42",
         imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
+        size: { additions: 86, changedFiles: 4, deletions: 12 },
       },
     ],
     annotations: [
@@ -753,7 +762,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             status: "running",
             input: {
               tool_name: "github_getPullRequest",
-              arguments: { repo: "getsentry/payments", number: 42 },
+              arguments: { repo: "getsentry/payments", pull_request: 42 },
             },
           },
         ],
@@ -1373,6 +1382,41 @@ function threadConversation(
 }
 
 /**
+ * Attach files to a Thread's follow-up message, so the composer can mention
+ * files that are already in the Conversation.
+ */
+function withFollowUpFiles(conversation: MockConversation): MockConversation {
+  const followUp = `${conversation.conversationId}:follow-up`;
+  return {
+    ...conversation,
+    events: conversation.events.map((event) =>
+      event.data.type === "message" && event.data.messageId === followUp
+        ? {
+            ...event,
+            data: {
+              ...event.data,
+              attachments: [
+                {
+                  id: "qa-chart-png",
+                  filename: "pin-order-reload.png",
+                  contentType: "image/png",
+                  bytes: 18211,
+                },
+                {
+                  id: "qa-notes-txt",
+                  filename: "pinned-rows.txt",
+                  contentType: "text/plain",
+                  bytes: 22,
+                },
+              ],
+            },
+          }
+        : event,
+    ),
+  };
+}
+
+/**
  * Add a Watch Event that reached a child after its last reply. The child runs
  * it as an agent invocation, so the input names the invocation and the Event.
  */
@@ -1471,61 +1515,69 @@ function longConversation(nowMs: number): ConversationDetailReport {
   );
   nextSeq += 1;
   events.push(
-    reportEvent(nextSeq, iso(Date.parse(startedAt), 166_000), {
-      type: "message",
-      messageId: "release-assistant",
-      role: "assistant",
-      // Links to the Annotations below show as a link, a hover card, and a
-      // full card.
-      text: [
-        "Released the package.",
-        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
-        "",
-        "https://github.com/getsentry/payments/pull/91",
-        "",
-        // No Annotations: the API resolves these dashboard links.
-        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
-        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
-        "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
-        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
-        "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
-        "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
-        "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
-        "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
-        "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
-        "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
-        "The team watches it on https://acme.sentry.io/dashboard/42/",
-        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
-        "",
-        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
-        "",
-        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
-        "",
-        "https://blog.example.com/posts/release-4-2",
-        "",
-        // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, the trace, the event, the release, the
-        // dashboard, and the monitor show a card, and the repeated pull
-        // request shows no second card.
-        "https://www.youtube.com/watch?v=MockLaunchDemo",
-        "",
-        "https://acme.slack.com/archives/CQA456/p1770021700000100",
-        "",
-        "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
-        "",
-        "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
-        "",
-        "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
-        "",
-        "https://acme.sentry.io/releases/junior%404.2.0/",
-        "",
-        "https://acme.sentry.io/dashboard/42/",
-        "",
-        "https://acme.sentry.io/monitors/4021/",
-        "",
-        "https://github.com/getsentry/payments/pull/91",
-      ].join("\n"),
-    }),
+    reportEvent(
+      nextSeq,
+      iso(Date.parse(startedAt), 166_000),
+      {
+        type: "message",
+        messageId: "release-assistant",
+        role: "assistant",
+        // Links to the Annotations below show as a link, a hover card, and a
+        // full card.
+        text: [
+          "Released the package.",
+          "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+          "",
+          "https://github.com/getsentry/payments/pull/91",
+          "",
+          // No Annotations: the API resolves these dashboard links.
+          `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+          "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+          "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+          "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+          "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+          "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+          "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+          "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
+          "Feedback on the new checkout pings the team: https://acme.sentry.io/monitors/alerts/6363564/",
+          "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+          "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
+          "The team watches it on https://acme.sentry.io/dashboard/42/",
+          "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+          "",
+          "<@U123> wrote the launch steps in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+          "",
+          "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+          "",
+          "https://blog.example.com/posts/release-4-2",
+          "",
+          // Alone on their lines: the video shows only its thumbnail, the
+          // Slack message, the chart, the trace, the event, the release, the
+          // dashboard, the monitor, and the alert show a card, and the
+          // repeated pull request shows no second card.
+          "https://www.youtube.com/watch?v=MockLaunchDemo",
+          "",
+          "https://acme.slack.com/archives/CQA456/p1770021700000100",
+          "",
+          "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+          "",
+          "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+          "",
+          "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+          "",
+          "https://acme.sentry.io/releases/junior%404.2.0/",
+          "",
+          "https://acme.sentry.io/dashboard/42/",
+          "",
+          "https://acme.sentry.io/monitors/4021/",
+          "",
+          "https://acme.sentry.io/monitors/alerts/6363564/",
+          "",
+          "https://github.com/getsentry/payments/pull/91",
+        ].join("\n"),
+      },
+      { mentions: [MOCK_MENTION_MORGAN] },
+    ),
   );
   return detail(nowMs, {
     conversationId: LONG_CONVERSATION_ID,
@@ -1558,6 +1610,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
         imageUrl: `${MOCK_DASHBOARD_ORIGIN}/api/images/payments-91-before`,
+        size: { additions: 48, changedFiles: 3, deletions: 9 },
       },
       {
         icon: "git-merge",
@@ -1589,7 +1642,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         displayType: "Pull request",
         facts: {
           type: "code_change",
+          additions: 48,
           author: "junior",
+          changedFiles: 3,
+          deletions: 9,
           sourceBranch: "release/pin-payments-4.2",
           targetBranch: "main",
         },
@@ -1811,7 +1867,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastSeenAt: iso(nowMs, -35 * 60_000),
     lastProgressAt: iso(nowMs, -35 * 60_000),
-    status: "failed",
+    status: "needs_input",
     surface: "slack",
     channel: "CQA777",
     channelName: "proj-incidents",
@@ -1901,6 +1957,14 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
             "- No change blocks the next release.",
             "",
             "I will flag it in the weekly summary if the trend changes.",
+            // The newest reply links two web pages, one with a long title,
+            // so the Inbox row shows them as lines that must not overlap.
+            ...(turn === 23
+              ? [
+                  "",
+                  "The tax cache is https://code.example.com/acme/checkout/pull/5378, and https://news.example.com/checkout-4-2-session-tax-cache covers it.",
+                ]
+              : []),
           ].join("\n"),
         },
       ),
@@ -1917,6 +1981,7 @@ function simpleConversation(
     channel?: string;
     sourceTask?: ConversationDetailReport["sourceTask"];
     archivedAt?: string;
+    status?: ConversationDetailReport["status"];
   },
 ): ConversationDetailReport {
   // Finished work stays in Today even when it was active in the last 24 hours.
@@ -2100,6 +2165,17 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
     // Newest first, like saved Annotations. Not a mock repository, so the
     // Code pages keep their rows.
     sidebarAnnotations: [
+      // The review ask's pull request, with its size for the ask's head.
+      {
+        icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
+        key: "getsentry/sentaur#418",
+        label: "sentaur",
+        title: "Retry a canary stage once on a lost agent",
+        url: "https://github.com/getsentry/sentaur/pull/418",
+        size: { additions: 1204, changedFiles: 12, deletions: 340 },
+      },
       ...SENTAUR_PULL_REQUESTS.map(([repo, number, status, title]) => ({
         icon:
           status === "merged"
@@ -2350,25 +2426,31 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     {
       ...withChildWatchEvent(
-        threadConversation(
-          nowMs,
-          DASHBOARD_QA_THREAD_ID,
-          "Check pinned row order",
-          "Check that pinned rows keep their order after a reload.",
-          -3 * 60 * 60_000,
+        withFollowUpFiles(
+          threadConversation(
+            nowMs,
+            DASHBOARD_QA_THREAD_ID,
+            "Check pinned row order",
+            "Check that pinned rows keep their order after a reload.",
+            -3 * 60 * 60_000,
+          ),
         ),
       ),
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
     },
-    threadConversation(
-      nowMs,
-      DASHBOARD_QA_NESTED_THREAD_ID,
-      "Recheck pin order in Safari",
-      "Recheck the pinned row order in Safari.",
-      -2.9 * 60 * 60_000,
-      DASHBOARD_QA_THREAD_ID,
-    ),
+    {
+      ...threadConversation(
+        nowMs,
+        DASHBOARD_QA_NESTED_THREAD_ID,
+        "Recheck pin order in Safari",
+        "Recheck the pinned row order in Safari.",
+        -2.9 * 60 * 60_000,
+        DASHBOARD_QA_THREAD_ID,
+      ),
+      // QA shows a Thread whose Review item waits on a person.
+      status: "needs_input" as const,
+    },
     threadConversation(
       nowMs,
       DASHBOARD_QA_ARCHIVED_THREAD_ID,
@@ -2404,6 +2486,8 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
+      // A root whose Review item waits on a person.
+      status: "needs_input",
     }),
     simpleConversation(nowMs, {
       conversationId: SCHEDULER_CONVERSATION_ID,
@@ -2450,7 +2534,7 @@ function summaryFromConversation(
             ? { mentions: activityEvent.mentions }
             : undefined),
           role: activityEvent.data.role as "assistant" | "user",
-          text: activityEvent.data.text,
+          text: activityPreviewText(activityEvent.data.text),
         }
       : undefined;
   const {
@@ -2586,6 +2670,31 @@ function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
     .filter((summary) => !summary.archivedAt);
 }
 
+/** Root ids whose latest Turn failed, like `conversationTurnFailedSql`. */
+function mockTurnFailedIds(nowMs: number): Set<string> {
+  const ids = new Set<string>();
+  for (const conversation of mockConversations(nowMs)) {
+    const latest = conversation.events
+      .map((event) => event.data)
+      .filter((data) => data.type === "turn_lifecycle")
+      .at(-1);
+    if (latest?.type === "turn_lifecycle" && latest.state === "failed") {
+      ids.add(conversation.conversationId);
+    }
+  }
+  return ids;
+}
+
+/** Count a running Turn as active and a failed latest Turn as failed. */
+function addTurnCounts(
+  target: { active: number; failed: number },
+  summary: ConversationSummaryReport,
+  failedIds: Set<string>,
+) {
+  target.active += summary.turnActive ? 1 : 0;
+  target.failed += failedIds.has(summary.conversationId) ? 1 : 0;
+}
+
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
   const usage = summary.cumulativeUsage;
   return (
@@ -2603,11 +2712,11 @@ function statsItem(label: string): ConversationStatsItem {
 function addSummary(
   item: ConversationStatsItem,
   summary: ConversationSummaryReport,
+  failedIds: Set<string>,
 ) {
-  item.active += summary.status === "active" ? 1 : 0;
+  addTurnCounts(item, summary, failedIds);
   item.conversations += 1;
   item.durationMs += summary.cumulativeDurationMs;
-  item.failed += summary.status === "failed" ? 1 : 0;
   const tokens = summaryTokenTotal(summary);
   if (tokens) item.tokens = (item.tokens ?? 0) + tokens;
   const cost = summary.cumulativeUsage?.cost?.total;
@@ -2650,7 +2759,7 @@ function addMockOutcome(
   bucket: ConversationStatsReport["metricDays"][number],
   summary: ConversationSummaryReport,
 ) {
-  if (summary.status !== "completed") return;
+  if (summary.status !== "done") return;
   bucket.outcomes = (bucket.outcomes ?? 0) + 1;
   bucket.outcomeCostUsd =
     (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
@@ -3492,8 +3601,8 @@ function mockEarlierEvents(
  */
 export function readMockConversationEventsAround(
   conversationId: string,
-  link: { event: number } | { turn: string },
-): ConversationEventPage | "turn-not-found" | undefined {
+  link: { event: number } | { message: string } | { turn: string },
+): ConversationEventPage | "message-not-found" | "turn-not-found" | undefined {
   const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
@@ -3510,7 +3619,20 @@ export function readMockConversationEventsAround(
     return "turn-not-found";
   }
   const earlier = mockEarlierEvents(conversation);
-  if ("event" in link && earlier.some(({ seq }) => seq === link.event)) {
+  const linked = ({ data, seq }: ConversationReportEvent) =>
+    "event" in link
+      ? seq === link.event
+      : "message" in link &&
+        data.type === "message" &&
+        data.messageId === link.message;
+  if (
+    "message" in link &&
+    !earlier.some(linked) &&
+    !conversation.events.some(linked)
+  ) {
+    return "message-not-found";
+  }
+  if (earlier.some(linked)) {
     return {
       events: [...earlier, ...conversation.events],
       eventHistory: conversation.eventHistory,
@@ -3561,40 +3683,9 @@ export function readMockConversationStats(): ConversationStatsReport {
     const lastSeenAtMs = Date.parse(summary.lastSeenAt);
     return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
   });
-  const total = statsItem("All conversations");
-  const actorItems = new Map<string, ConversationStatsItem>();
-  const locationItems = new Map<string, ConversationStatsItem>();
-  for (const summary of summaries) {
-    addSummary(total, summary);
-    const actorName = actorLabel(summary.actorIdentity);
-    const actorItem = actorItems.get(actorName) ?? statsItem(actorName);
-    addSummary(actorItem, summary);
-    actorItems.set(actorName, actorItem);
-    const place = locationLabel(summary);
-    const locationItem = locationItems.get(place) ?? statsItem(place);
-    addSummary(locationItem, summary);
-    locationItems.set(place, locationItem);
-  }
-  const inputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.inputTokens ?? 0),
-    0,
-  );
-  const cachedInputTokens = summaries.reduce(
-    (sum, summary) => sum + (summary.cumulativeUsage?.cachedInputTokens ?? 0),
-    0,
-  );
   return {
-    active: total.active,
-    actors: [...actorItems.values()],
-    ...(cachedInputTokens ? { cachedInputTokens } : undefined),
-    conversations: total.conversations,
-    costUsd: total.costUsd,
-    durationMs: total.durationMs,
-    failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
-    ...(inputTokens ? { inputTokens } : undefined),
-    locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     ...(() => {
       const metricHours = conversationMetricHours(nowMs, summaries);
@@ -3608,7 +3699,6 @@ export function readMockConversationStats(): ConversationStatsReport {
       };
     })(),
     source: "conversation_index",
-    tokens: total.tokens,
     ...windowBounds(nowMs),
   };
 }
@@ -3852,34 +3942,19 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
-    ActorSummaryReport & {
-      dates: Set<string>;
-      summaries: ConversationSummaryReport[];
-    }
+    ActorSummaryReport & { summaries: ConversationSummaryReport[] }
   >();
   for (const summary of summaries) {
     const identity = summary.actorIdentity;
     const email = identity?.email?.toLowerCase();
     if (!identity || !email) continue;
     const existing = byEmail.get(email) ?? {
-      active: 0,
-      activeDays: 0,
       actor: { ...identity, email },
-      conversations: 0,
-      dates: new Set<string>(),
-      durationMs: 0,
-      failed: 0,
       firstSeenAt: summary.startedAt,
       lastSeenAt: summary.lastSeenAt,
       summaries: [],
       windows: mockActorWindows(nowMs, []),
     };
-    existing.active += summary.status === "active" ? 1 : 0;
-    existing.conversations += 1;
-    existing.dates.add(summary.lastSeenAt.slice(0, 10));
-    existing.activeDays = existing.dates.size;
-    existing.durationMs += summary.cumulativeDurationMs;
-    existing.failed += summary.status === "failed" ? 1 : 0;
     existing.summaries.push(summary);
     existing.firstSeenAt =
       Date.parse(summary.startedAt) < Date.parse(existing.firstSeenAt)
@@ -3889,8 +3964,6 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
       Date.parse(summary.lastSeenAt) > Date.parse(existing.lastSeenAt)
         ? summary.lastSeenAt
         : existing.lastSeenAt;
-    const tokens = summaryTokenTotal(summary);
-    if (tokens) existing.tokens = (existing.tokens ?? 0) + tokens;
     byEmail.set(email, existing);
   }
   const activityDays = mockPeopleActivityDays(nowMs, summaries);
@@ -3901,7 +3974,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
     activitySixHours: mockPeopleActivitySixHours(nowMs, summaries),
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
-      .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({
+      .map(({ summaries: personSummaries, ...person }) => ({
         ...person,
         windows: mockActorWindows(nowMs, personSummaries),
       }))
@@ -3926,6 +3999,7 @@ export function readMockPeopleProfile(
   );
   const identity = summaries[0]?.actorIdentity;
   if (!identity) return undefined;
+  const failedIds = mockTurnFailedIds(nowMs);
   const totals: ActorProfileReport["totals"] = {
     active: 0,
     activeDays: 0,
@@ -3938,10 +4012,9 @@ export function readMockPeopleProfile(
   const locations = new Map<string, ConversationStatsItem>();
   const surfaces = new Map<string, ConversationStatsItem>();
   for (const summary of summaries) {
-    totals.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(totals, summary, failedIds);
     totals.conversations += 1;
     totals.durationMs += summary.cumulativeDurationMs;
-    totals.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) totals.tokens = (totals.tokens ?? 0) + tokens;
 
@@ -3954,10 +4027,9 @@ export function readMockPeopleProfile(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
@@ -3967,7 +4039,7 @@ export function readMockPeopleProfile(
 
     const place = locationLabel(summary);
     const location = locations.get(place) ?? statsItem(place);
-    addSummary(location, summary);
+    addSummary(location, summary, failedIds);
     locations.set(place, location);
 
     const surfaceLabel =
@@ -3975,7 +4047,7 @@ export function readMockPeopleProfile(
         ? "API"
         : `${summary.surface.charAt(0).toUpperCase()}${summary.surface.slice(1)}`;
     const surface = surfaces.get(surfaceLabel) ?? statsItem(surfaceLabel);
-    addSummary(surface, summary);
+    addSummary(surface, summary, failedIds);
     surfaces.set(surfaceLabel, surface);
   }
   totals.activeDays = activeDates.size;
@@ -4032,9 +4104,8 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
         pluginName: "briefs",
         title: "Briefs",
         metrics: [
-          { label: "briefs stored", tone: "good", value: "148" },
-          { label: "conversations with a brief", value: "93" },
-          { label: "briefs · 30d", value: "61" },
+          { label: "briefs · 30d", tone: "good", value: "61" },
+          { label: "conversations with a brief · 30d", value: "38" },
           { label: "cost · 30d · retained", value: "$0.23" },
           {
             label: "average cost per brief · 30d · retained",
@@ -4092,6 +4163,17 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
+  // Sizes for some changes. #519 counts no deletions, so that part hides.
+  const sizes: Record<number, CodeChangeSize> = {
+    42: { additions: 86, changedFiles: 4, deletions: 12 },
+    85: { additions: 2, changedFiles: 1, deletions: 2 },
+    519: { additions: 64, changedFiles: 2 },
+    2330: { additions: 412, changedFiles: 9, deletions: 37 },
+    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+    2384: { additions: 18, changedFiles: 2, deletions: 5 },
+    2391: { additions: 148, changedFiles: 5, deletions: 21 },
+    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+  };
   const openChange = (
     number: number,
     repository: string,
@@ -4107,6 +4189,7 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
+    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,
@@ -4135,7 +4218,7 @@ export function readMockPeopleCode(
     ),
     openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
@@ -4158,7 +4241,7 @@ export function readMockPeopleCode(
     doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
       merged: 6,
     }),
-    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+    doneChange(2361, "getsentry/junior", "Add Inbox filters", 6, {
       merged: 4,
     }),
     doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {
@@ -4245,6 +4328,7 @@ export function conversationTimeBounds(
 function publicLocation(
   summaries: ConversationSummaryReport[],
   channel: string,
+  failedIds: Set<string>,
 ): LocationSummaryReport {
   const [first, ...rest] = summaries.filter(
     (summary) => summary.channel === channel,
@@ -4254,7 +4338,7 @@ function publicLocation(
     [first, ...rest];
   const item = statsItem(locationLabel(first));
   for (const summary of matching) {
-    addSummary(item, summary);
+    addSummary(item, summary, failedIds);
   }
   const bounds = conversationTimeBounds(matching);
   return {
@@ -4281,6 +4365,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
         ),
     ),
   ];
+  const failedIds = mockTurnFailedIds(nowMs);
   const privateActivity = statsItem("Private activity");
   const sparseActivity = new Map<string, LocationActivityDayReport>();
   for (const summary of summaries) {
@@ -4296,7 +4381,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
     if (isPublic) day.publicConversations += 1;
     else {
       day.privateConversations += 1;
-      addSummary(privateActivity, summary);
+      addSummary(privateActivity, summary, failedIds);
     }
     sparseActivity.set(date, day);
   }
@@ -4311,7 +4396,9 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
   return {
     activityDays,
     generatedAt: iso(nowMs),
-    locations: channels.map((channel) => publicLocation(summaries, channel)),
+    locations: channels.map((channel) =>
+      publicLocation(summaries, channel, failedIds),
+    ),
     privateActivity,
     source: "conversation_index",
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
@@ -4330,6 +4417,7 @@ export function readMockLocationDetail(
   const recentConversations = activeMockSummaries(nowMs).filter(
     (summary) => summary.channel === location.providerDestinationId,
   );
+  const failedIds = mockTurnFailedIds(nowMs);
   const actorItems = new Map<string, LocationActorSummaryReport>();
   const sparseDays = new Map<
     string,
@@ -4343,7 +4431,7 @@ export function readMockLocationDetail(
         ...statsItem(actorLabel(identity)),
         actor: identity,
       };
-      addSummary(actorItem, summary);
+      addSummary(actorItem, summary, failedIds);
       actorItems.set(actorKey, actorItem);
     }
     const date = summary.lastSeenAt.slice(0, 10);
@@ -4354,10 +4442,9 @@ export function readMockLocationDetail(
       durationMs: 0,
       failed: 0,
     };
-    day.active += summary.status === "active" ? 1 : 0;
+    addTurnCounts(day, summary, failedIds);
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    day.failed += summary.status === "failed" ? 1 : 0;
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     sparseDays.set(date, day);
@@ -4643,7 +4730,6 @@ export function readMockAutomationExecutions(
         (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
       ),
       executions: [],
-      automation: task,
       truncated: false,
     };
   }
@@ -4722,7 +4808,6 @@ export function readMockAutomationExecutions(
       (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
     ),
     executions,
-    automation: task,
     truncated: task.totalRuns > executions.length,
   };
 }

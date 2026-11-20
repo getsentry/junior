@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
 import pLimit from "p-limit";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -59,7 +60,6 @@ const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
 
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
-const CONVERSATION_LOOP_CHECK_CONCURRENCY = 8;
 
 /** Return whether a child's session stopped after its latest agent invocation. */
 export function isChildAgentSessionStopped(
@@ -228,24 +228,18 @@ async function listChildAgentsFromInvocations(
     getConversationWorkStates(activeIds),
     listActiveMailboxTurnSources(activeIds),
   ]);
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   const onConversationLoop = new Set(
     (
-      await Promise.all(
-        active.map((row) =>
-          limit(async () =>
-            (await runsOnConversationLoop(
-              conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0],
-              row.stoppedAt?.getTime(),
-              workStates.get(row.conversationId)?.execution.pendingMessages ??
-                [],
-              mailboxTurnSources.get(row.conversationId) ?? [],
-            ))
-              ? row.conversationId
-              : undefined,
-          ),
-        ),
+      await mapBounded(active, async (row) =>
+        (await runsOnConversationLoop(
+          conversationKindFromRow(row),
+          byChild.get(row.conversationId)![0],
+          row.stoppedAt?.getTime(),
+          workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+          mailboxTurnSources.get(row.conversationId) ?? [],
+        ))
+          ? row.conversationId
+          : undefined,
       )
     ).filter((id) => id !== undefined),
   );
@@ -348,7 +342,7 @@ async function listChildAgentsWithoutAgentInvocations(
     getConversationWorkStates(ids),
     listActiveMailboxTurnSources(ids),
   ]);
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   return await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // A spawn without an agent invocation always stores the kind.
@@ -412,6 +406,7 @@ async function runsOnConversationLoop(
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
+      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
       (await routeChildInput(message, latest, stoppedAtMs)) ===
         "Conversation loop"
     ) {
@@ -449,20 +444,18 @@ async function listAnsweredLoopChildren(
   if (children.length === 0 || parentMessages.length === 0) {
     return [];
   }
-  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
-  const answered = await Promise.all(
-    children.map(({ childConversationId }) =>
-      limit(async () => {
-        const turnIds = await listOpenLoopTurnIds(childConversationId);
-        return parentMessages.some(
-          ({ sender }) =>
-            sender.conversationId === childConversationId &&
-            turnIds.includes(sender.turnId),
-        )
-          ? childConversationId
-          : undefined;
-      }),
-    ),
+  const answered = await mapBounded(
+    children,
+    async ({ childConversationId }) => {
+      const turnIds = await listOpenLoopTurnIds(childConversationId);
+      return parentMessages.some(
+        ({ sender }) =>
+          sender.conversationId === childConversationId &&
+          turnIds.includes(sender.turnId),
+      )
+        ? childConversationId
+        : undefined;
+    },
   );
   return answered.filter((id) => id !== undefined);
 }

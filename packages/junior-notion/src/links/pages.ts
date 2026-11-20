@@ -123,6 +123,7 @@ const SKIPPED_LINE = /^(#|---|```|<\/?[a-z-]+(\s[^>]*)?\/?>$)/i;
  * the body as Notion-flavored Markdown inside `<content>`.
  */
 function pageSummary(text: string | undefined): string | undefined {
+  // oxlint-disable-next-line junior/no-prompt-tag-matching -- Notion's response format
   const body = text?.match(/<content>([\s\S]*?)<\/content>/)?.[1] ?? "";
   for (const raw of body.split("\n")) {
     const line = raw.trim();

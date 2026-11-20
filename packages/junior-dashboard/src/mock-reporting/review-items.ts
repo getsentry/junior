@@ -1,13 +1,17 @@
 /**
  * Process-local Review items for mock reporting. Three Conversations ask the
  * viewer questions, so the questions above the message box, their transcript
- * rows, and the review desk can be checked without a database. GitHub
+ * rows, and the Inbox can be checked without a database. GitHub
  * plugin asks and FYI notices fill the rest of the inbox.
  */
-import type {
-  ConversationReportEvent,
-  ReviewItemActionBody,
-  ReviewItemPayload,
+import {
+  answeredChoices,
+  type ConversationFeed,
+  type ConversationFeedViewerAnswer,
+  type ConversationReportEvent,
+  type ReviewItemActionBody,
+  type ReviewItemPayload,
+  type InboxSnoozeCreateBody,
 } from "@sentry/junior/api/schema";
 
 /** One open question, and an earlier one that the viewer answered. */
@@ -21,17 +25,42 @@ const viewer = {
   userId: "u-dev",
 };
 
+// The mock rollback owner. Junior names people as Slack mentions, and the
+// API resolves each mention to its person.
+const AVERY_MENTION = {
+  email: "avery@sentry.io",
+  fullName: "Avery Chen",
+  slackUserId: "U789",
+};
+
 // Fixture Conversations that the plugin asks and notices link to.
 const DEPLOY_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const DIGEST_CONVERSATION_ID = "scheduler:daily-ops-digest";
 const RELIABILITY_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+// A root and two of its Threads, so the Inbox stacks a child's items under
+// the root.
+const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
+const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
+const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
+// The checkout latency Conversations: one found that p95 rose after
+// payments-v42, the other rolled it back.
+const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
   ReviewItemPayload,
-  "answer" | "body" | "id" | "request" | "status" | "subject" | "title"
+  | "answer"
+  | "body"
+  | "id"
+  | "mentions"
+  | "request"
+  | "status"
+  | "subject"
+  | "title"
 > &
   Partial<
     Pick<
@@ -39,8 +68,12 @@ type MockItemSeed = Pick<
       "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
     >
   > & {
+    /** The Thread title, for an item that a child agent added. */
+    childLabel?: string;
     conversationId: string;
     createdAt: string;
+    /** Linked Conversations other than the one that added the item. */
+    linkedConversationIds?: string[];
     /** The plugin that added the item. Plugin items have no Turn. */
     plugin?: string;
   };
@@ -60,8 +93,10 @@ function seeds(nowMs: number): MockItemSeed[] {
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(58),
       id: "qa-canary-region",
+      mentions: [AVERY_MENTION],
       request: {
-        question: "Which region should run the canary?",
+        question:
+          "Which region should run the canary? <@U789> owns the rollback.",
         fields: [
           {
             id: "region",
@@ -79,8 +114,23 @@ function seeds(nowMs: number): MockItemSeed[] {
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(26),
       id: "qa-rollout",
+      linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
         question: "Roll out payments-v42 to every region?",
+        // The cited evidence supports the suggested answer. The related
+        // items on the same release disagree with it.
+        evidence: [
+          {
+            label: "Canary error rate",
+            note: "Flat for 30 minutes.",
+            url: "https://sentry.example.com/organizations/acme/insights/backend/?release=payments-v42",
+          },
+          {
+            label: "Canary p95 latency",
+            note: "Did not move in us-east-1.",
+            url: "https://sentry.example.com/organizations/acme/explore/traces/?release=payments-v42",
+          },
+        ],
         fields: [
           {
             id: "go",
@@ -95,6 +145,7 @@ function seeds(nowMs: number): MockItemSeed[] {
         ],
       },
       status: "open",
+      subject: PAYMENTS_V42,
       title: "Approve the payments-v42 rollout",
     },
     {
@@ -191,6 +242,35 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Ready to merge · #2201",
     },
     {
+      // The GitHub plugin stopped fixing this pull request's conflicts.
+      // Resume starts a fix and the fix count again.
+      body: "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(40),
+      id: "qa-conflict-2188",
+      plugin: "github",
+      request: {
+        question:
+          "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+        fields: [
+          {
+            id: "choice",
+            kind: "choice",
+            label: "Merge conflict · #2188",
+            options: [{ label: "Resume" }],
+          },
+        ],
+      },
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/2188",
+        objectType: "code_change",
+        title: "Retry Slack uploads on rate limits",
+        url: "https://github.com/getsentry/junior/pull/2188",
+      },
+      title: "Merge conflict · #2188",
+    },
+    {
       body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(89),
@@ -223,6 +303,140 @@ function seeds(nowMs: number): MockItemSeed[] {
       kind: "notice",
       status: "open",
       title: "Digest skipped two noisy alerts",
+    },
+    // A question on the root, and a review request and a notice from two of
+    // its Threads, so one stack holds three kinds of item.
+    {
+      body: "Two GoCD agents hold their lease after the canary stage failed.",
+      conversationId: SENTAUR_CONVERSATION_ID,
+      createdAt: at(36),
+      id: "qa-sentaur-restart",
+      request: {
+        question: "Restart the two stuck canary agents?",
+        fields: [
+          {
+            id: "restart",
+            kind: "choice",
+            label: "Agents",
+            options: [
+              { label: "Restart both", recommended: true },
+              { label: "Leave them" },
+            ],
+          },
+        ],
+      },
+      status: "open",
+      title: "Restart the stuck canary agents",
+    },
+    {
+      body: "GitHub asks you to review #418.\n\nhttps://github.com/getsentry/sentaur/pull/418",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(34),
+      id: "qa-sentaur-review-418",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/sentaur/pull/418",
+        objectType: "code_change",
+        // As the GitHub plugin names it, with its number.
+        title: "Retry a canary stage once on a lost agent (#418)",
+        url: "https://github.com/getsentry/sentaur/pull/418",
+      },
+      title: "Review requested · #418",
+    },
+    {
+      body: "Agents 7 and 9 lost their lease during the last three canary stages.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(33),
+      id: "qa-sentaur-lost-agents",
+      kind: "notice",
+      status: "open",
+      title: "Two agents lost their lease",
+    },
+    // Three more asks, so the stack folds past its fourth row.
+    {
+      body: "The canary stage fails on a lost agent three runs out of ten.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(32),
+      id: "qa-sentaur-pause",
+      request: {
+        question: "Pause canary rollouts until #418 lands?",
+        fields: [
+          {
+            id: "pause",
+            kind: "choice",
+            label: "Rollouts",
+            options: [{ label: "Pause" }, { label: "Keep going" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Pause canary rollouts",
+    },
+    {
+      body: "Agent 9 restarted by itself and holds no lease now.",
+      childLabel: "Read the canary agent logs",
+      conversationId: SENTAUR_LOGS_THREAD_ID,
+      createdAt: at(31),
+      id: "qa-sentaur-agent-9",
+      request: {
+        question: "Put agent 9 back in the canary pool?",
+        fields: [
+          {
+            id: "pool",
+            kind: "choice",
+            label: "Agent 9",
+            options: [{ label: "Put it back" }, { label: "Keep it out" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Put agent 9 back in the pool",
+    },
+    {
+      body: "Three canary runs failed on a lost agent this week.",
+      childLabel: "Check the last ten Sentaur pipeline runs",
+      conversationId: SENTAUR_RUNS_THREAD_ID,
+      createdAt: at(30),
+      id: "qa-sentaur-rerun",
+      request: {
+        question: "Rerun the three failed canary runs?",
+        fields: [
+          {
+            id: "rerun",
+            kind: "choice",
+            label: "Runs",
+            options: [{ label: "Rerun" }, { label: "Skip" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Rerun the failed canary runs",
+    },
+    {
+      assignedToEveryone: true,
+      body: "Checkout p95 went from 210 ms to 890 ms after payments-v42 landed.",
+      conversationId: LATENCY_CONVERSATION_ID,
+      createdAt: at(18),
+      id: "qa-p95-rose",
+      kind: "notice",
+      status: "open",
+      subject: PAYMENTS_V42,
+      title: "Checkout p95 rose after payments-v42",
+    },
+    {
+      assignedToEveryone: true,
+      body: "Morgan asked to hold the payments-v42 deploy until the serializer fix lands.",
+      conversationId: ROLLBACK_CONVERSATION_ID,
+      createdAt: at(16),
+      id: "qa-hold-v42",
+      kind: "notice",
+      status: "open",
+      subject: PAYMENTS_V42,
+      title: "Hold the payments-v42 deploy",
     },
     // Older items, so the inbox has Today, This week, and Earlier.
     {
@@ -338,28 +552,115 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
+/** When each snoozed item wakes, by item id, like the server's snoozes. */
+const snoozes = new Map<string, number>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockReviewItems(): void {
   changes.clear();
+  snoozes.clear();
 }
 
-function payload(seed: MockItemSeed): ReviewItemPayload {
-  const { conversationId, plugin: _plugin, ...rest } = seed;
+/** The items that a snooze hides now. */
+function snoozedItemIds(nowMs: number): Set<string> {
+  return new Set(
+    [...snoozes].flatMap(([itemId, wakeAtMs]) =>
+      wakeAtMs > nowMs ? [itemId] : [],
+    ),
+  );
+}
+
+/**
+ * Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last,
+ * and returns the open items that it hides.
+ */
+export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
+  const reviewItemIds = seeds(nowMs)
+    .filter(
+      (seed) =>
+        rootOf(seed) === body.conversationId &&
+        isOpen(seed) &&
+        (!body.reviewItemId || seed.id === body.reviewItemId),
+    )
+    .map((seed) => seed.id);
+  for (const id of reviewItemIds) snoozes.set(id, Date.parse(body.wakeAt));
+  return { reviewItemIds };
+}
+
+/** Wake a mock row, or one item of it, like `DELETE /api/inbox/snoozes`. */
+export function wakeMockRow(
+  nowMs: number,
+  subject: { conversationId: string; reviewItemId?: string | undefined },
+): void {
+  if (subject.reviewItemId) {
+    snoozes.delete(subject.reviewItemId);
+    return;
+  }
+  for (const seed of seeds(nowMs)) {
+    if (rootOf(seed) === subject.conversationId) snoozes.delete(seed.id);
+  }
+}
+
+/** The root Conversation whose stack shows the seed: a child's parent. */
+function rootOf(seed: MockItemSeed): string {
+  return seed.childLabel ? SENTAUR_CONVERSATION_ID : seed.conversationId;
+}
+
+function isOpen(seed: MockItemSeed): boolean {
+  return (changes.get(seed.id)?.status ?? seed.status) === "open";
+}
+
+/**
+ * The related work of an open item, like the API: other open items with
+ * the same subject, or added in one of its linked Conversations.
+ */
+function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
+  if (!isOpen(seed)) return undefined;
+  const links = seed.linkedConversationIds ?? [];
+  const items = all
+    .filter(
+      (other) =>
+        other.id !== seed.id &&
+        isOpen(other) &&
+        ((seed.subject && other.subject?.id === seed.subject.id) ||
+          links.includes(other.conversationId)),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(({ id, title }) => ({ id, title }));
+  return items.length > 0 || links.length > 0
+    ? { conversationIds: links, items }
+    : undefined;
+}
+
+function payload(
+  seed: MockItemSeed,
+  all: readonly MockItemSeed[],
+): ReviewItemPayload {
+  const {
+    childLabel,
+    conversationId,
+    linkedConversationIds = [],
+    plugin: _plugin,
+    ...rest
+  } = seed;
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
+  const relatedWork = related(seed, all);
   return {
     ...item,
     addedByConversationId: conversationId,
+    ...(childLabel ? { addedByLabel: childLabel } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [conversationId],
+    conversationIds: [conversationId, ...linkedConversationIds],
     kind: seed.kind ?? "action",
+    rootConversationId: rootOf(seed),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
+    ...(relatedWork ? { related: relatedWork } : undefined),
     ...(item.status !== "open"
       ? {
           closedAt: item.closedAt ?? seed.createdAt,
@@ -378,18 +679,27 @@ export function readMockReviewItems(
   filters: {
     closed?: boolean | undefined;
     conversationId?: string | undefined;
+    /** Leaves out snoozed rows, like the viewer's Inbox. */
+    forViewer?: boolean | undefined;
     q?: string | undefined;
+    /** Lists only snoozed rows. */
+    snoozed?: boolean | undefined;
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
-  const items = seeds(nowMs)
+  const snoozed = snoozedItemIds(nowMs);
+  const all = seeds(nowMs);
+  const items = all
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
-        (!q || seed.title.toLowerCase().includes(q)),
+        (!q || seed.title.toLowerCase().includes(q)) &&
+        (filters.snoozed
+          ? snoozed.has(seed.id)
+          : !filters.forViewer || !snoozed.has(seed.id)),
     )
-    .map(payload);
+    .map((seed) => payload(seed, all));
   if (filters.closed)
     return items
       .filter((item) => item.status !== "open")
@@ -402,8 +712,9 @@ export function readMockReviewItem(
   nowMs: number,
   id: string,
 ): ReviewItemPayload | undefined {
-  const seed = seeds(nowMs).find((candidate) => candidate.id === id);
-  return seed ? payload(seed) : undefined;
+  const all = seeds(nowMs);
+  const seed = all.find((candidate) => candidate.id === id);
+  return seed ? payload(seed, all) : undefined;
 }
 
 /** Apply a viewer action to an open mock item, like the API. */
@@ -424,6 +735,39 @@ export function actOnMockReviewItem(
       : undefined),
   });
   return readMockReviewItem(nowMs, id);
+}
+
+/**
+ * Put the viewer's newest answer on each feed row of the Conversation that
+ * added it, like the API.
+ */
+export function withMockViewerAnswers(
+  feed: ConversationFeed,
+  nowMs: number,
+): ConversationFeed {
+  const answers = new Map<string, ConversationFeedViewerAnswer>();
+  // Closed items come newest closed first, so the first one wins.
+  for (const item of readMockReviewItems(nowMs, { closed: true })) {
+    if (
+      !item.answer ||
+      !item.request ||
+      !item.closedAt ||
+      item.closedBy?.userId !== viewer.userId ||
+      answers.has(item.addedByConversationId)
+    )
+      continue;
+    answers.set(item.addedByConversationId, {
+      choices: answeredChoices(item.request, item.answer),
+      closedAt: item.closedAt,
+    });
+  }
+  return {
+    ...feed,
+    conversations: feed.conversations.map((conversation) => {
+      const viewerAnswer = answers.get(conversation.conversationId);
+      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
+    }),
+  };
 }
 
 /**
@@ -461,8 +805,9 @@ export function readMockWaitingConversations(nowMs: number) {
   );
   const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
+  // Like the API, a child's items wait in its root.
   for (const item of open) {
-    const id = item.addedByConversationId;
+    const id = item.rootConversationId;
     byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {
@@ -485,16 +830,13 @@ export function readMockWaitingConversations(nowMs: number) {
 
 /** The open mock action items that the viewer must answer. */
 function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
-  return readMockReviewItems(nowMs, {}).filter(
+  return readMockReviewItems(nowMs, { forViewer: true }).filter(
     (item) => item.kind === "action" && !item.assignedToEveryone,
   );
 }
 
 /** Count the mock items like `GET /api/review-items/count`, but Automations. */
-export function readMockReviewItemCounts(
-  nowMs: number,
-  snoozedIds: readonly string[],
-) {
+export function readMockReviewItemCounts(nowMs: number) {
   const needsViewer = mockItemsNeedingViewer(nowMs);
   return {
     decisions: needsViewer.filter((item) => item.request).length,
@@ -502,8 +844,9 @@ export function readMockReviewItemCounts(
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
-      snoozedIds.includes(item.id),
+    // Like the server: each snoozed item that is still open.
+    snoozed: seeds(nowMs).filter(
+      (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
   };
 }
@@ -575,12 +918,15 @@ export function mockQuestionConversations(nowMs: number) {
         "The build is ready. I need a region for the canary first.",
       ),
       message(3, at(50), "user", region!.answer!.other!),
-      message(
-        4,
-        at(49),
-        "assistant",
-        "The canary is running in us-east-1. I will check it in 20 minutes.",
-      ),
+      {
+        ...message(
+          4,
+          at(49),
+          "assistant",
+          "The canary is running in us-east-1. I will check it in 20 minutes, and <@U789> can roll it back.",
+        ),
+        mentions: [AVERY_MENTION],
+      },
       addItemCall(5, at(26), rollout!),
       message(
         6,

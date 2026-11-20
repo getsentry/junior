@@ -50,12 +50,56 @@ test("opens links outside the loaded rows from the page around them", async ({
     pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
   ).toEqual(["?turn=turn-30"]);
 
+  // A Message link shows its row in the transcript.
+  pageRequests.length = 0;
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-51`,
+  );
+  await expect(
+    page
+      .getByLabel("Conversation transcript")
+      .getByText("Transcript message 51 "),
+  ).toBeInViewport();
+  expect(
+    pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
+  ).toEqual(["?message=message-51"]);
+
   // A link that the server cannot find is dropped.
   await page.goto(
     `${dashboard.baseURL}/conversations/${mock.conversationId}?turn=turn-missing`,
   );
   await expect(page).not.toHaveURL(/[?&](turn|event)=/);
   await expect(linked).toBeHidden();
+});
+
+test("opens a Message link at the start of its reply", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const mock = await mockReadPositionConversation(page, {
+    eventCount: 160,
+    lastReadSeq: 10,
+  });
+  mock.pagedDetail = true;
+  const transcript = page.getByLabel("Conversation transcript");
+
+  // Tasks of the Turn show under its reply, so the row ends at a Task.
+  mock.taskSeqs = [82, 83];
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-81`,
+  );
+  await expect(transcript.getByText("Transcript message 81 ")).toBeInViewport();
+
+  // A reply taller than the viewport shows from its first line.
+  mock.taskSeqs = [];
+  mock.tallSeqs = [85];
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-85`,
+  );
+  await expect(
+    transcript.getByText("Transcript message 85 starts here."),
+  ).toBeInViewport();
 });
 
 test("opens a link that the cached latest page holds at its row", async ({
@@ -70,7 +114,7 @@ test("opens a link that the cached latest page holds at its row", async ({
   mock.pagedDetail = true;
   const pageRequests = recordPageRequests(page);
   // A hover caches the latest page, which holds event 100.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -110,7 +154,7 @@ test("opens at the latest event when a link at open fails", async ({
   });
   mock.pagedDetail = true;
   // A hover caches the latest page, so it shows while the link loads.
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -163,9 +207,8 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     .filter({ hasText: "Dashboard transcript events should remain" })
     .getByRole("button", { name: "Go to message" })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
+  // The capture has no row, so the message before it shows.
+  await expect(transcript.getByText("Transcript message 12 ")).toBeInViewport();
   expect(pageRequests).toEqual(["?event=13"]);
   await screenshot(page, "conversation-memory-opens-around-event");
 });

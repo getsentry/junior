@@ -53,7 +53,7 @@ const pullRequest = {
   id: 1001,
   merged: false,
   number: 946,
-  title: "Add the review desk ask",
+  title: "Add the Inbox ask",
   updated_at: "2026-07-01T12:00:00Z",
   user: { login: "sentry-junior[bot]" },
 };
@@ -77,7 +77,7 @@ function memoryState(): PluginState {
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
-      return await callback();
+      return { acquired: true, value: await callback() };
     },
   };
 }
@@ -218,7 +218,7 @@ describe("review request when a draft is ready", () => {
       {
         base: "main",
         draft: true,
-        head: "feat/review-desk-ask",
+        head: "feat/inbox-ask",
         repo: "getsentry/junior",
         title: pullRequest.title,
         ...(reviewers ? { reviewers } : undefined),
@@ -235,7 +235,7 @@ describe("review request when a draft is ready", () => {
         pull_request: {
           ...pullRequest,
           draft: false,
-          head: { ref: "feat/review-desk-ask" },
+          head: { ref: "feat/inbox-ask" },
           state: "open",
         },
       },

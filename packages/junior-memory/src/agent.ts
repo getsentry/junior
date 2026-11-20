@@ -1,5 +1,8 @@
 import {
   actorSchema,
+  escapeTagText,
+  renderInlineTag,
+  renderTag,
   sourceSchema,
   type PluginModel,
 } from "@sentry/junior-plugin-api";
@@ -62,6 +65,20 @@ const extractSessionRequestSchema = z
           .strict(),
       )
       .max(10)
+      .default([]),
+    // Memories that recall put into this Turn's prompt. Extraction reports
+    // the ones that this Turn's evidence shows are no longer true.
+    recalledMemories: z
+      .array(
+        z
+          .object({
+            content: z.string().min(1),
+            id: z.string().min(1),
+            kind: memoryKindSchema,
+          })
+          .strict(),
+      )
+      .max(20)
       .default([]),
     actors: z.array(actorSchema),
     runtimeContext: memoryRuntimeContextSchema,
@@ -164,6 +181,11 @@ const extractedMemorySchema = z
       ),
     expiresAtMs: expiresAtMsSchema,
     evidenceMessageIndices: evidenceMessageIndicesSchema,
+    statesChange: z
+      .boolean()
+      .describe(
+        "True only when the cited evidence says this fact changed from an earlier value, such as 'switched to', 'no longer', 'renamed X to Y', or 'replaced X with Y'.",
+      ),
   })
   .strict();
 const extractedMemoryResultSchema = z
@@ -172,6 +194,34 @@ const extractedMemoryResultSchema = z
     expiresAtMs: expiresAtMsSchema,
     kind: memoryKindSchema,
     evidenceMessageIndices: evidenceMessageIndicesSchema,
+    // Extraction output cached before change signals has no value.
+    statesChange: z.boolean().default(false),
+  })
+  .strict();
+const contradictedMemorySchema = z
+  .object({
+    memoryRef: z
+      .string()
+      .min(1)
+      .describe("ref of the memory in <recalled-memories>."),
+    evidenceMessageIndices: evidenceMessageIndicesSchema.describe(
+      "Indices from <run-transcript> that show the memory is no longer true.",
+    ),
+    replacementIndex: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "Index in memories of the new memory that states the current fact, otherwise null.",
+      ),
+  })
+  .strict();
+const contradictedMemoryResultSchema = z
+  .object({
+    evidenceMessageIndices: evidenceMessageIndicesSchema,
+    id: z.string().min(1),
+    replacementIndex: z.number().int().nonnegative().nullable(),
   })
   .strict();
 const extractMemoriesResponseSchema = z
@@ -181,6 +231,12 @@ const extractMemoriesResponseSchema = z
       .max(5)
       .describe(
         "Accepted durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
+      ),
+    contradictedMemories: z
+      .array(contradictedMemorySchema)
+      .max(5)
+      .describe(
+        "Recalled memories that cited evidence in this run shows are no longer true. Usually empty.",
       ),
   })
   .strict();
@@ -197,9 +253,14 @@ export type ExtractSessionRequest = z.output<
   typeof extractSessionRequestSchema
 >;
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
+export type ContradictedMemory = z.output<
+  typeof contradictedMemoryResultSchema
+>;
 
 /** Memories proposed by passive extraction. */
 export type MemoryExtractionResult = {
+  /** Recalled memories that the run's evidence shows are no longer true. */
+  contradicted: ContradictedMemory[];
   memories: ExtractedMemory[];
 };
 
@@ -234,7 +295,7 @@ const MEMORY_ADJUDICATION_SYSTEM = [
   "You are the memory duplicate review agent for an assistant.",
   "Classify how one new memory relates to existing active memories of the same kind.",
   "Return duplicate when the same durable fact, procedure, or preference is merely phrased differently.",
-  "Return supersedes_old only for a preference with an obvious changed value in the same mutable preference slot.",
+  "Return supersedes_old for a preference with an obvious changed value in the same mutable preference slot, or for a fact the candidate says changed.",
   "Return distinct for additive memories or different topics, and uncertain when the relationship is unclear.",
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
@@ -246,13 +307,6 @@ const CANONICAL_CONTENT_RULES = [
   "- Drop perspective/provenance markers while preserving useful context.",
   "- Remove actor names, display names, actor/user labels, first- or second-person wording, thread labels, channel labels, and source labels.",
 ];
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
 
 function actorLabel(actor: z.output<typeof actorSchema> | undefined): string {
   if (!actor) {
@@ -292,16 +346,16 @@ function runtimeDescription(
 ): string {
   const runtime = request.runtimeContext;
   const lines = [
-    `- actor: ${escapeXml(actorLabel(runtime.actor))}`,
-    `- source: ${escapeXml(sourceLabel(runtime.source))}`,
+    `- actor: ${escapeTagText(actorLabel(runtime.actor))}`,
+    `- source: ${escapeTagText(sourceLabel(runtime.source))}`,
     `- has_conversation: ${runtime.conversationId ? "true" : "false"}`,
     `- expires_at: ${
       request.expiresAtMs === undefined
         ? "never"
-        : escapeXml(new Date(request.expiresAtMs).toISOString())
+        : escapeTagText(new Date(request.expiresAtMs).toISOString())
     }`,
   ];
-  return ["<runtime>", ...lines, "</runtime>"].join("\n");
+  return renderTag("runtime", {}, lines);
 }
 
 function sourceContext(request: CreateMemoryRequest): string | undefined {
@@ -309,26 +363,42 @@ function sourceContext(request: CreateMemoryRequest): string | undefined {
   if (!currentUserText) {
     return undefined;
   }
-  return [
-    "<source-context>",
+  return renderTag("source-context", {}, [
     "The current user-authored text is source evidence for explicit memory requests. Use it to recover the concrete fact when the candidate is incomplete, vague, or over-personalized. Store only rewritten, self-contained memory content.",
-    "<current-user-message>",
-    escapeXml(currentUserText),
-    "</current-user-message>",
-    "</source-context>",
-  ].join("\n");
+    renderTag("current-user-message", {}, [escapeTagText(currentUserText)]),
+  ]);
 }
 
 function existingMemoriesContext(request: ExtractSessionRequest): string {
   if (request.existingMemories.length === 0) {
-    return "<existing-memories>[]</existing-memories>";
+    return renderInlineTag("existing-memories", "[]");
   }
-  return [
-    "<existing-memories>",
+  return renderTag("existing-memories", {}, [
     "Use these only to skip memories that are already covered or semantically redundant. They are not source evidence for new memories.",
-    escapeXml(JSON.stringify(request.existingMemories)),
-    "</existing-memories>",
-  ].join("\n");
+    escapeTagText(JSON.stringify(request.existingMemories)),
+  ]);
+}
+
+function recalledMemoriesContext(request: ExtractSessionRequest): string {
+  if (request.recalledMemories.length === 0) {
+    return renderInlineTag("recalled-memories", "[]");
+  }
+  return renderTag("recalled-memories", {}, [
+    "Memories recalled into this run, each with a ref. They are not source evidence for new memories.",
+    escapeTagText(
+      JSON.stringify(
+        request.recalledMemories.map((memory, index) => ({
+          content: memory.content,
+          kind: memory.kind,
+          ref: recalledMemoryRef(index),
+        })),
+      ),
+    ),
+  ]);
+}
+
+function recalledMemoryRef(index: number): string {
+  return `m${index + 1}`;
 }
 
 /**
@@ -342,7 +412,7 @@ function allowedExtractionKinds(actorCount: number): Set<MemoryKind> {
 }
 
 function memoryKindsContext(allowedKinds: Set<MemoryKind>): string {
-  const lines = ["<memory-kinds>"];
+  const lines: string[] = [];
   if (allowedKinds.has("preference")) {
     lines.push(
       "- preference: a durable first-person personal preference, opinion, habit, or workflow owned by the current actor. Stored as actor memory.",
@@ -351,78 +421,79 @@ function memoryKindsContext(allowedKinds: Set<MemoryKind>): string {
   lines.push(
     "- procedure: reusable instructions for how a task, lookup, investigation, process, triage flow, or runbook should be done. Store the method, source-of-truth, prerequisite, or decision path when it took effort to discover. Stored as conversation memory.",
     "- knowledge: stable shared project, channel, operational, or runbook fact that is not a personal actor preference. Direct answers to user inquiries qualify only when they are durable beyond this run. Stored as conversation memory.",
-    "</memory-kinds>",
   );
-  return lines.join("\n");
+  return renderTag("memory-kinds", {}, lines);
 }
 
 function reviewPrompt(request: CreateMemoryRequest): string {
   const sections = [
-    "<memory-review-input>",
     "Review the candidate memory using the runtime-owned context below.",
     "",
     runtimeDescription(request),
     "",
     sourceContext(request),
     "",
-    "<candidate>",
-    escapeXml(request.content),
-    "</candidate>",
+    renderTag("candidate", {}, [escapeTagText(request.content)]),
     "",
-    "<rules>",
-    "- Return store only when the candidate is durable, self-contained, and safe for the current Source.",
-    "- First classify the memory kind: preference, procedure, or knowledge.",
-    "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
-    "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
-    "- Use kind=procedure for reusable task/process/runbook instructions.",
-    "- Use kind=knowledge for shared project, channel, operational, or runbook facts.",
-    "- When current-user-message contains an explicit memory request with a concrete fact or procedure, extract from current-user-message even if the candidate is vague, incomplete, or phrased as an instruction.",
-    "- A candidate may be badly phrased by an outer assistant or extraction pass. When current-user-message contains the actor's own first-person memory fact, treat that as actor-authored source evidence and canonicalize the fact instead of rejecting for third-person wording.",
-    "- When candidate wording personalizes a shared task, process, runbook, project, channel, or operational fact, use current-user-message to recover the shared fact and classify it as procedure or knowledge.",
-    "- Explicit procedure requests are valid when the source text contains both task context and action. Canonicalize them as shared procedure facts instead of rejecting them as vague.",
-    "- Store content as person-less, source-less canonical knowledge. Ownership and source live in structured metadata, not prose.",
-    "- For actor memories, omit the subject and write the content as a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'.",
-    "- Remove actor names, display names, actor/user labels, first- or second-person wording, thread labels, channel labels, and source labels from stored content.",
-    "- Reject third-party personal profile facts, even if they mention a name.",
-    "- Reject vague content such as 'remember this' unless the candidate or current-user-message contains the concrete fact.",
-    "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
-    "- When storing, set reason to null. When rejecting, set kind, canonicalFact, and expiresAtMs to null.",
-    "- If unsure, reject.",
-    "</rules>",
-    "</memory-review-input>",
+    renderTag("rules", {}, [
+      "- Return store only when the candidate is durable, self-contained, and safe for the current Source.",
+      "- First classify the memory kind: preference, procedure, or knowledge.",
+      "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
+      "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
+      "- Use kind=procedure for reusable task/process/runbook instructions.",
+      "- Use kind=knowledge for shared project, channel, operational, or runbook facts.",
+      "- When current-user-message contains an explicit memory request with a concrete fact or procedure, extract from current-user-message even if the candidate is vague, incomplete, or phrased as an instruction.",
+      "- A candidate may be badly phrased by an outer assistant or extraction pass. When current-user-message contains the actor's own first-person memory fact, treat that as actor-authored source evidence and canonicalize the fact instead of rejecting for third-person wording.",
+      "- When candidate wording personalizes a shared task, process, runbook, project, channel, or operational fact, use current-user-message to recover the shared fact and classify it as procedure or knowledge.",
+      "- Explicit procedure requests are valid when the source text contains both task context and action. Canonicalize them as shared procedure facts instead of rejecting them as vague.",
+      "- Store content as person-less, source-less canonical knowledge. Ownership and source live in structured metadata, not prose.",
+      "- For actor memories, omit the subject and write the content as a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'.",
+      "- Remove actor names, display names, actor/user labels, first- or second-person wording, thread labels, channel labels, and source labels from stored content.",
+      "- Reject third-party personal profile facts, even if they mention a name.",
+      "- Reject vague content such as 'remember this' unless the candidate or current-user-message contains the concrete fact.",
+      "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
+      "- When storing, set reason to null. When rejecting, set kind, canonicalFact, and expiresAtMs to null.",
+      "- If unsure, reject.",
+    ]),
   ].filter((section): section is string => section !== undefined);
-  return sections.join("\n");
+  return renderTag("memory-review-input", {}, sections);
 }
 
 function runTranscriptContext(request: ExtractSessionRequest): string {
-  return [
-    "<run-transcript>",
-    ...request.transcript.map((entry, index) => {
+  return renderTag(
+    "run-transcript",
+    {},
+    request.transcript.map((entry, index) => {
       if (entry.type === "toolResult") {
-        return [
-          `<tool-result index="${index}" tool="${escapeXml(entry.toolName)}" is_error="${entry.isError ? "true" : "false"}">`,
-          escapeXml(entry.text),
-          "</tool-result>",
-        ].join("\n");
+        return renderTag(
+          "tool-result",
+          {
+            index,
+            tool: entry.toolName,
+            is_error: entry.isError ? "true" : "false",
+          },
+          [escapeTagText(entry.text)],
+        );
       }
-      const authority = entry.provenance?.authority ?? "context";
-      const isRunActor = entry.isRunActor === true;
-      const actor = actorLabel(entry.provenance?.actor);
-      return [
-        `<message index="${index}" role="${entry.role}" authority="${authority}" is_run_actor="${isRunActor ? "true" : "false"}" actor="${escapeXml(actor)}">`,
-        escapeXml(entry.text),
-        "</message>",
-      ].join("\n");
+      return renderTag(
+        "message",
+        {
+          index,
+          role: entry.role,
+          authority: entry.provenance?.authority ?? "context",
+          is_run_actor: entry.isRunActor === true ? "true" : "false",
+          actor: actorLabel(entry.provenance?.actor),
+        },
+        [escapeTagText(entry.text)],
+      );
     }),
-    "</run-transcript>",
-  ].join("\n");
+  );
 }
 
 function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   const allowedKinds = allowedExtractionKinds(request.actors.length);
   const allowsPreference = allowedKinds.has("preference");
-  return [
-    "<memory-extraction-input>",
+  return renderTag("memory-extraction-input", {}, [
     "Extract durable memories from this completed agent run using the runtime-owned context below.",
     "",
     runtimeDescription({
@@ -431,87 +502,101 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "",
     existingMemoriesContext(request),
     "",
+    recalledMemoriesContext(request),
+    "",
     memoryKindsContext(allowedKinds),
     "",
     runTranscriptContext(request),
     "",
-    "<rules>",
-    "- Return at most five memories.",
-    "- Every returned memory must cite one or more evidenceMessageIndices from <run-transcript>.",
-    "- Cite only indices that directly support the stored fact; do not cite assistant messages as independent evidence.",
-    "- Each transcript message exposes authority (instruction or context), is_run_actor, and an actor id. Use these to classify evidence.",
-    ...(allowsPreference
-      ? [
-          "- For a preference, cite only messages with authority=instruction and is_run_actor=true; a preference must be the run actor's own first-person fact.",
-        ]
-      : []),
-    "- For a procedure or knowledge memory, cite run-actor instruction messages, public context messages, or successful tool results.",
-    "- Use user messages and successful tool results as source evidence for storable facts.",
-    "- Use failed tool results only when the failure reveals durable process knowledge, not transient errors.",
-    "- Use assistant messages only as context; do not store the assistant's claims unless supported by user messages or tool results.",
-    "- Return one memory per distinct fact.",
-    "- Prefer storing how to achieve a result: stable source-of-truth, query location, workflow, prerequisite, caveat, or reusable decision path that took effort to discover.",
-    "- Store direct answers to user inquiries only when they are stable operational/project knowledge, not values that naturally change over time.",
-    "- Do not store point-in-time analytics, search, issue, metric, incident, availability, or status answers just because a tool produced them.",
-    "- Do not store the fact that the user asked for advice, search, recall, planning, listing, inspection, or removal. Store only stable knowledge discovered in response, such as a reusable method or source-of-truth.",
-    "- A user question asking how, what, where, or whether to do something is not source evidence for the answer. Store the answer only when supported by a user-authored factual statement or a tool result.",
-    "- Set kind=procedure for reusable task/process/runbook instructions.",
-    "- Set kind=knowledge for shared team, project, channel, runbook, or operational facts.",
-    ...(allowsPreference
-      ? [
-          "- Set kind=preference only for clear durable first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
-          "- A single task request or ask-for-help is never a durable preference, even when phrased as an ongoing action for this run (for example 'help me capture takeaways as we go'). Do not convert a one-off ask into a 'Prefers ...' memory.",
-          "- A durable preference requires explicitly stated, generalizable first-person phrasing such as 'I prefer ...', 'I always ...', or 'I never ...' that describes how the actor wants things done in general, not just for the current task.",
-        ]
-      : [
-          "- This completed run has multiple run actors. Return only conversation-scoped procedure or knowledge memories.",
-          "- Do not return personal preferences, opinions, habits, identity facts, or workflow preferences from any actor in this run.",
-          "- Do not convert a personal first-person statement into shared knowledge or procedure. Statements like 'I prefer ...', 'I use ...', 'I always ...', or 'I never ...' are not memory evidence in this run.",
-          "- Shared team, channel, repository, or operational norms are eligible only when the source states them as collective practice or durable operational fact, not as one individual's preference.",
-        ]),
-    "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
-    "- User-authored task instructions are procedures, not preferences, unless they explicitly describe the actor's personal preference or habit.",
-    "- Procedural statements such as 'for X, do Y', 'when X, do Y', and 'to accomplish X, do Y' belong in procedures.",
-    ...CANONICAL_CONTENT_RULES,
-    "- Skip a candidate when existing-memories already cover the same durable fact.",
-    "- Reject third-party personal profile facts, even if they mention a name.",
-    "- If unsure, return no memory for that candidate.",
-    "</rules>",
-    "</memory-extraction-input>",
-  ].join("\n");
+    renderTag("rules", {}, [
+      "- Return at most five memories.",
+      "- Every returned memory must cite one or more evidenceMessageIndices from <run-transcript>.",
+      "- Cite only indices that directly support the stored fact; do not cite assistant messages as independent evidence.",
+      "- Each transcript message exposes authority (instruction or context), is_run_actor, and an actor id. Use these to classify evidence.",
+      ...(allowsPreference
+        ? [
+            "- For a preference, cite only messages with authority=instruction and is_run_actor=true; a preference must be the run actor's own first-person fact.",
+          ]
+        : []),
+      "- For a procedure or knowledge memory, cite run-actor instruction messages, public context messages, or successful tool results.",
+      "- Use user messages and successful tool results as source evidence for storable facts.",
+      "- Use failed tool results only when the failure reveals durable process knowledge, not transient errors.",
+      "- Use assistant messages only as context; do not store the assistant's claims unless supported by user messages or tool results.",
+      "- Return one memory per distinct fact.",
+      "- Prefer storing how to achieve a result: stable source-of-truth, query location, workflow, prerequisite, caveat, or reusable decision path that took effort to discover.",
+      "- Store direct answers to user inquiries only when they are stable operational/project knowledge, not values that naturally change over time.",
+      "- Do not store point-in-time analytics, search, issue, metric, incident, availability, or status answers just because a tool produced them.",
+      "- Do not store the fact that the user asked for advice, search, recall, planning, listing, inspection, or removal. Store only stable knowledge discovered in response, such as a reusable method or source-of-truth.",
+      "- A user question asking how, what, where, or whether to do something is not source evidence for the answer. Store the answer only when supported by a user-authored factual statement or a tool result.",
+      "- Set kind=procedure for reusable task/process/runbook instructions.",
+      "- Set kind=knowledge for shared team, project, channel, runbook, or operational facts.",
+      ...(allowsPreference
+        ? [
+            "- Set kind=preference only for clear durable first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
+            "- A single task request or ask-for-help is never a durable preference, even when phrased as an ongoing action for this run (for example 'help me capture takeaways as we go'). Do not convert a one-off ask into a 'Prefers ...' memory.",
+            "- A durable preference requires explicitly stated, generalizable first-person phrasing such as 'I prefer ...', 'I always ...', or 'I never ...' that describes how the actor wants things done in general, not just for the current task.",
+          ]
+        : [
+            "- This completed run has multiple run actors. Return only conversation-scoped procedure or knowledge memories.",
+            "- Do not return personal preferences, opinions, habits, identity facts, or workflow preferences from any actor in this run.",
+            "- Do not convert a personal first-person statement into shared knowledge or procedure. Statements like 'I prefer ...', 'I use ...', 'I always ...', or 'I never ...' are not memory evidence in this run.",
+            "- Shared team, channel, repository, or operational norms are eligible only when the source states them as collective practice or durable operational fact, not as one individual's preference.",
+          ]),
+      "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
+      "- User-authored task instructions are procedures, not preferences, unless they explicitly describe the actor's personal preference or habit.",
+      "- Procedural statements such as 'for X, do Y', 'when X, do Y', and 'to accomplish X, do Y' belong in procedures.",
+      ...CANONICAL_CONTENT_RULES,
+      "- Skip a candidate when existing-memories already cover the same durable fact.",
+      "- Reject third-party personal profile facts, even if they mention a name.",
+      "- If unsure, return no memory for that candidate.",
+      "- Set statesChange=true only when the cited evidence explicitly says the fact changed: 'switched to', 'no longer', 'now uses', 'renamed X to Y', 'replaced X with Y', 'X was removed'. A plain statement of the current fact is statesChange=false.",
+    ]),
+    "",
+    renderTag("contradiction-rules", {}, [
+      "- Return a recalled memory in contradictedMemories only when a cited user message or successful tool result in this run directly shows that the memory is no longer true.",
+      "- Strong signals: the evidence says the old fact changed ('switched to', 'no longer', 'renamed X to Y', 'replaced X with Y'), or a tool result shows current code, configuration, or behavior that conflicts with the memory.",
+      "- A contradiction means the evidence and the memory cannot both be true now: the same subject at the same scope, with a different value.",
+      "- These are not contradictions: a different subject or scope ('tabs in Go files' and 'spaces in Python files'), a compatible or additional fact, a general rule and a specific exception that coexist, and the same fact in other words.",
+      "- Mentioning, asking about, quoting, or repeating a recalled memory is not a contradiction. Sharing a topic or words is not a contradiction.",
+      "- Precision matters far more than recall. A wrong archive hides a true memory; a missed contradiction can be caught later.",
+      "- A preference memory can be contradicted only by the run actor's own first-person statement.",
+      "- Assistant messages are never evidence for a contradiction.",
+      "- When a returned memory in memories states the current fact, set replacementIndex to its index in memories.",
+      "- If unsure, do not return the memory.",
+    ]),
+  ]);
 }
 
 function adjudicationPrompt(request: MemorySupersessionInput): string {
-  return [
-    "<memory-adjudication-input>",
+  return renderTag("memory-adjudication-input", {}, [
     `Classify the candidate ${request.candidate.kind} memory against the related active memories of the same kind.`,
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
     }),
     "",
-    "<candidate>",
-    escapeXml(JSON.stringify(request.candidate)),
-    "</candidate>",
+    renderTag("candidate", {}, [
+      escapeTagText(JSON.stringify(request.candidate)),
+    ]),
     "",
-    "<existing-memories>",
-    escapeXml(JSON.stringify(request.existingMemories)),
-    "</existing-memories>",
+    renderTag("existing-memories", {}, [
+      escapeTagText(JSON.stringify(request.existingMemories)),
+    ]),
     "",
-    "<rules>",
-    "- Return duplicate when the candidate and one existing memory state the same durable fact, procedure, preference, or value with different wording.",
-    "- Return supersedes_old only for preference candidates, and only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
-    "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
-    "- For knowledge and procedure candidates, never return supersedes_old. Return distinct or uncertain when the candidate changes or contradicts an existing memory.",
-    "- Return distinct when the candidate adds information or belongs to a different task or topic.",
-    "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
-    "- Do not supersede memories from different topics even if they are both preferences.",
-    "- duplicateId and supersededIds may contain only ids from existing-memories.",
-    "- Set duplicateId to null unless the decision is duplicate. Set supersededIds to null unless the decision is supersedes_old.",
-    "- If unsure, return uncertain.",
-    "</rules>",
-    "</memory-adjudication-input>",
-  ].join("\n");
+    renderTag("rules", {}, [
+      "- Return duplicate when the candidate and one existing memory state the same durable fact, procedure, preference, or value with different wording.",
+      "- For a preference candidate, return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
+      "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
+      "- For knowledge and procedure candidates, return supersedes_old only when the candidate has statesChange=true and the old memory states the earlier value of the same fact, such as an old name, option, tool, owner, or behavior. Otherwise return distinct or uncertain when the candidate changes or contradicts an existing memory.",
+      "- Supersede only a memory about the same subject at the same scope. A different scope ('tabs in Go files' and 'spaces in Python files'), a general rule and a coexisting exception, or a shared topic is not a replacement.",
+      "- Return distinct when the candidate adds information or belongs to a different task or topic.",
+      "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
+      "- Do not supersede memories from different topics even if they are both preferences.",
+      "- duplicateId and supersededIds may contain only ids from existing-memories.",
+      "- Set duplicateId to null unless the decision is duplicate. Set supersededIds to null unless the decision is supersedes_old.",
+      "- If unsure, return uncertain.",
+    ]),
+  ]);
 }
 
 /** Create the memory-owned agent that reviews, extracts, and deduplicates memories. */
@@ -537,10 +622,10 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         prompt: sessionExtractionPrompt(request),
         maxTokens: 1_000,
       });
+      const response = extractMemoriesResponseSchema.parse(result.object);
       return {
-        memories: extractedMemoriesFromResponse(
-          extractMemoriesResponseSchema.parse(result.object),
-        ),
+        contradicted: contradictedMemoriesFromResponse(request, response),
+        memories: extractedMemoriesFromResponse(response),
       };
     },
     async reviewCreateRequest(rawRequest) {
@@ -606,8 +691,43 @@ function extractedMemoriesFromResponse(
       expiresAtMs: memory.expiresAtMs,
       kind: memory.kind,
       evidenceMessageIndices: memory.evidenceMessageIndices,
+      statesChange: memory.statesChange,
     });
   return response.memories.map(toMemory);
+}
+
+/** Resolve model refs to recalled memory ids, and drop unknown refs. */
+function contradictedMemoriesFromResponse(
+  request: ExtractSessionRequest,
+  response: ExtractMemoriesResponse,
+): ContradictedMemory[] {
+  const idsByRef = new Map(
+    request.recalledMemories.map((memory, index) => [
+      recalledMemoryRef(index),
+      memory.id,
+    ]),
+  );
+  return response.contradictedMemories.flatMap((contradicted) => {
+    const id = idsByRef.get(contradicted.memoryRef);
+    if (!id) return [];
+    const { replacementIndex } = contradicted;
+    return [
+      contradictedMemoryResultSchema.parse({
+        evidenceMessageIndices: contradicted.evidenceMessageIndices,
+        id,
+        replacementIndex:
+          replacementIndex !== null &&
+          replacementIndex < response.memories.length
+            ? replacementIndex
+            : null,
+      }),
+    ];
+  });
+}
+
+/** Parse one contradiction stored across task retries. */
+export function parseContradictedMemory(memory: unknown): ContradictedMemory {
+  return contradictedMemoryResultSchema.parse(memory);
 }
 
 /** Parse the canonical extracted-memory shape stored across task retries. */

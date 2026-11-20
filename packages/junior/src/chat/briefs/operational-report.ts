@@ -2,7 +2,7 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { and, gte, lt, sql } from "drizzle-orm";
+import { and, count, countDistinct, gte, lt } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs } from "@/db/schema";
 
@@ -35,25 +35,21 @@ function formatUsd(value: number): string {
  * Conversations leaves the report with them; the labels say so.
  */
 export async function buildBriefsOperationalReport(args: {
-  briefDays: PluginConversationEventCostDay[];
+  briefDays: Promise<PluginConversationEventCostDay[]>;
   db: JuniorDatabase;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
   const newestDay = startOfUtcDay(args.nowMs);
   const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
   const windowEnd = new Date(newestDay.getTime() + DAY_MS);
-  const [[counts], recentCounts] = await Promise.all([
+  const [[counts], briefDays] = await Promise.all([
+    // Every number on the card covers the same 30 days, so the read stays on
+    // the `created_at` index and never covers every Brief.
     args.db
       .select({
-        conversations:
-          sql<number>`count(distinct ${juniorConversationBriefs.conversationId})`.mapWith(
-            Number,
-          ),
-        stored: sql<number>`count(*)`.mapWith(Number),
+        briefs: count(),
+        conversations: countDistinct(juniorConversationBriefs.conversationId),
       })
-      .from(juniorConversationBriefs),
-    args.db
-      .select({ stored: sql<number>`count(*)`.mapWith(Number) })
       .from(juniorConversationBriefs)
       .where(
         and(
@@ -61,8 +57,9 @@ export async function buildBriefsOperationalReport(args: {
           lt(juniorConversationBriefs.createdAt, windowEnd),
         ),
       ),
+    args.briefDays,
   ]);
-  const recentDays = args.briefDays.filter((day) => {
+  const recentDays = briefDays.filter((day) => {
     const dayStart = Date.parse(`${day.date}T00:00:00.000Z`);
     return dayStart >= windowStart.getTime() && dayStart < windowEnd.getTime();
   });
@@ -74,17 +71,13 @@ export async function buildBriefsOperationalReport(args: {
     title: "Briefs",
     metrics: [
       {
-        label: "briefs stored",
-        tone: counts?.stored ? "good" : "neutral",
-        value: formatCount(counts?.stored ?? 0),
-      },
-      {
-        label: "conversations with a brief",
-        value: formatCount(counts?.conversations ?? 0),
-      },
-      {
         label: "briefs · 30d",
-        value: formatCount(recentCounts[0]?.stored ?? 0),
+        tone: counts?.briefs ? "good" : "neutral",
+        value: formatCount(counts?.briefs ?? 0),
+      },
+      {
+        label: "conversations with a brief · 30d",
+        value: formatCount(counts?.conversations ?? 0),
       },
       { label: "cost · 30d · retained", value: formatUsd(recentCost) },
       {
@@ -94,7 +87,7 @@ export async function buildBriefsOperationalReport(args: {
     ],
     widgets: [
       {
-        categories: args.briefDays.map((day) => ({
+        categories: briefDays.map((day) => ({
           id: day.date,
           label: day.date,
           values: { briefs: day.events, costUsd: day.costUsd },

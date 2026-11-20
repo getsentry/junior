@@ -118,7 +118,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Issue number." }),
+        issue: Type.Integer({ description: "Issue number." }),
         body: Type.String({ description: "Comment text." }),
       }),
     }),
@@ -129,7 +129,7 @@ function mixedCatalog() {
       exposure: "direct",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
         body: Type.String({ description: "Comment text." }),
       }),
     }),
@@ -158,7 +158,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
       }),
     }),
     github_getRepository: tool({
@@ -173,7 +173,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Issue number." }),
+        issue: Type.Integer({ description: "Issue number." }),
       }),
     }),
     github_updatePullRequest: tool({
@@ -183,7 +183,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
       }),
     }),
     mcp__linear__create_issue: tool({

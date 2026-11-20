@@ -6,7 +6,7 @@ import {
 
 import { useToastManager } from "../../components/ui/toast";
 import { fetchDashboardJson, post } from "../../http";
-import { invalidateAutomationReads } from "../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../inbox/inboxQueries";
 
 /**
  * Pause or resume one Automation, then refresh every Automation list. It
@@ -37,22 +37,15 @@ export function useAutomationLifecycle(
       });
     },
     onSuccess: async (updated) => {
-      await invalidateAutomationReads(queryClient);
-      toast.add({
-        title:
-          updated.status === "blocked"
-            ? "Automation is still blocked"
-            : action === "pause"
-              ? "Automation paused"
-              : "Automation resumed",
-        description:
-          updated.status === "blocked"
-            ? "Fix the reported requirement before resuming again."
-            : action === "pause"
-              ? "Work already queued or running may finish."
-              : "Future triggers are enabled.",
-        type: updated.status === "blocked" ? "warning" : "success",
-      });
+      await refreshChangedAutomation(queryClient, updated);
+      // The new state shows on the page. Only a resume that did not take
+      // needs saying.
+      if (updated.status === "blocked")
+        toast.add({
+          title: "Automation is still blocked",
+          description: "Fix the reported requirement before resuming again.",
+          type: "warning",
+        });
     },
   });
 }

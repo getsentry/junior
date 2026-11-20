@@ -8,6 +8,7 @@ import {
   findComposerSafeAreaBottomPadding,
   findDashboardUtilityAssertions,
   findNeutralSurfaceLiterals,
+  findNewUiEllipsis,
   findNonstandardNeutralTextColors,
   findPxBreakpoints,
   findUndersizedHardcodedFontSizes,
@@ -225,5 +226,31 @@ test("reports composer footers that reintroduce bottom safe-area math", () => {
     [
       'src/client/conversations/ConversationPage.tsx:1: const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
     ],
+  );
+});
+
+test("reports ellipsis truncation in the new UI only", () => {
+  const contents = [
+    '<span className="min-w-0 truncate">',
+    '<span className="md:truncate">',
+    '<p className="text-ellipsis">',
+    "{data.truncated ? <Notice /> : null}",
+    "// A long title truncates here.",
+  ].join("\n");
+  assert.deepEqual(
+    findNewUiEllipsis([
+      { path: "src/client/shell/Row.tsx", contents },
+      { path: "src/client/classic/Row.tsx", contents },
+      { path: "src/client/inbox/ReviewItemCard.tsx", contents },
+      { path: "src/client/shell/inbox/ReviewItemCard.tsx", contents },
+    ]),
+    [
+      "src/client/shell/Row.tsx",
+      "src/client/shell/inbox/ReviewItemCard.tsx",
+    ].flatMap((path) => [
+      `${path}:1: <span className="min-w-0 truncate">`,
+      `${path}:2: <span className="md:truncate">`,
+      `${path}:3: <p className="text-ellipsis">`,
+    ]),
   );
 });

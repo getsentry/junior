@@ -6,12 +6,15 @@ import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
 import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
+import { PreviewLinksProvider } from "./links";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
-import { MessageObjectsProvider } from "./resolvedObjects";
+import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { MentionText } from "./mentions";
 export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
+export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
@@ -30,6 +33,8 @@ export const DisplayText = memo(function DisplayText(props: {
   /**
    * Inline mode: show links as messages do. A bare URL shows its object
    * title, and a person shows as a chip. Only outside a link or a button.
+   * The links take the quiet look of a row preview, and resolve once the
+   * text shows, also past a clamp.
    */
   chips?: boolean;
   /** Keep body line height compact in narrow panels. */
@@ -44,26 +49,45 @@ export const DisplayText = memo(function DisplayText(props: {
   links?: boolean;
   /** People that the API resolved for this text. */
   mentions?: readonly ActorIdentity[] | undefined;
+  /**
+   * Inline mode with chips: keep the text's paragraphs, line breaks, and
+   * lists, for a preview with room for more than one line.
+   */
+  paragraphs?: boolean;
   text: string;
 }) {
+  const chips = Boolean(props.inline && props.chips);
   return (
     <MessageObjectsProvider>
       <MentionPeopleProvider
         links={props.links ?? true}
         mentions={props.mentions ?? NO_MENTIONS}
       >
-        {props.inline ? (
-          <MarkdownText chips={props.chips} inline text={props.text} />
-        ) : props.document ? (
-          // One tree, so reference links and footnotes resolve across fences.
-          <MarkdownText document text={props.text} />
-        ) : (
-          <DisplayTextBlocks
-            chat={props.chat}
-            compact={props.compact}
-            text={props.text}
-          />
-        )}
+        {/* Set in every mode, so text nested in a preview's hover card
+            draws its own links. */}
+        <PreviewLinksProvider value={chips}>
+          {chips ? (
+            <ResolveWhenVisible block={props.paragraphs ?? false}>
+              <MarkdownText
+                chips
+                inline
+                paragraphs={props.paragraphs}
+                text={props.text}
+              />
+            </ResolveWhenVisible>
+          ) : props.inline ? (
+            <MarkdownText inline text={props.text} />
+          ) : props.document ? (
+            // One tree, so reference links and footnotes resolve across fences.
+            <MarkdownText document text={props.text} />
+          ) : (
+            <DisplayTextBlocks
+              chat={props.chat}
+              compact={props.compact}
+              text={props.text}
+            />
+          )}
+        </PreviewLinksProvider>
       </MentionPeopleProvider>
     </MessageObjectsProvider>
   );
@@ -125,6 +149,7 @@ export function ClampedDisplayText(props: {
   /** What the clamp toggle expands, for its accessible name. */
   label: string;
   lines: number;
+  mentions?: readonly ActorIdentity[] | undefined;
   text: string;
 }) {
   const { prose, urls } = useMemo(
@@ -139,7 +164,7 @@ export function ClampedDisplayText(props: {
           label={props.label}
           lines={props.lines}
         >
-          <DisplayText text={prose} />
+          <DisplayText mentions={props.mentions} text={prose} />
         </ClampedPreview>
       ) : null}
       {urls.map((url, index) => (

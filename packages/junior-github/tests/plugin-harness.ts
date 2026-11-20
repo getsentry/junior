@@ -62,7 +62,7 @@ function memoryState(): PluginState {
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
-      return await callback();
+      return { acquired: true, value: await callback() };
     },
   };
 }
@@ -87,10 +87,20 @@ export function createPluginHarness(fixture: GitHubFixture) {
       notice: PluginReviewNotice;
     }>,
     published: [] as EventInput[],
+    /** Watches that the plugin made, with the events published before. */
+    subscribed: [] as Array<{
+      events: string[];
+      identifier: string;
+      publishedBefore: number;
+    }>,
   };
-  const watches = { comments: true, conflicts: true };
-  /** Review desk calls that fail before one succeeds. */
-  const failures = { upsert: 0 };
+  /**
+   * Whether any Watch gets comments and conflicts on 946, and whether the
+   * Conversation that asked for 946 has its own conflict Watch.
+   */
+  const watches = { comments: true, conflicts: true, ownConflicts: true };
+  /** Inbox and publish calls that fail before one succeeds. */
+  const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   /** Dedupe keys of the open review items. */
   const openNotices = new Set<string>();
@@ -105,6 +115,10 @@ export function createPluginHarness(fixture: GitHubFixture) {
       );
     },
     async publish(event) {
+      if (failures.publish > 0) {
+        failures.publish -= 1;
+        throw new Error("The event queue is down");
+      }
       recorded.published.push(event);
     },
   };
@@ -114,7 +128,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         async upsert(notice) {
           if (failures.upsert > 0) {
             failures.upsert -= 1;
-            throw new Error("The review desk is down");
+            throw new Error("The Inbox is down");
           }
           // Like core, an open item with the key only gets new content.
           if (openNotices.has(notice.dedupeKey)) return;
@@ -212,8 +226,57 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
+  /**
+   * A person picks a choice on an open item. Like core, the item closes
+   * first, then the plugin gets the answer.
+   */
+  async function answer(input: {
+    choice: string;
+    conversationId: string;
+    dedupeKey: string;
+    itemId: string;
+    nowMs: number;
+  }): Promise<void> {
+    expect(openNotices.delete(input.dedupeKey)).toBe(true);
+    await githubPlugin().hooks!.reviewItemAnswered!({
+      ...input,
+      cache,
+      db: fixture.db(),
+      events,
+      log: { error() {}, info() {}, warn() {} },
+      plugin: { name: "github" },
+      reviewItems,
+      state,
+      watches: {
+        canSubscribe: true,
+        // Only the Conversation's own Watch counts, not `hasMatch`.
+        async watching({ eventType, identifier }) {
+          return (
+            input.conversationId === "slack:C1:1.0" &&
+            identifier === "getsentry/junior#946" &&
+            eventType === "pull_request.merge_conflict" &&
+            watches.ownConflicts
+          );
+        },
+        async subscribe({ events: watched, resource }) {
+          recorded.subscribed.push({
+            events: watched,
+            identifier: resource.identifier,
+            publishedBefore: recorded.published.length,
+          });
+          if (watched.includes("pull_request.merge_conflict")) {
+            watches.conflicts = true;
+            watches.ownConflicts = true;
+          }
+          return { events: watched, id: "watch-1" };
+        },
+      },
+    });
+  }
+
   return {
     ...recorded,
+    answer,
     deliver,
     events,
     failures,

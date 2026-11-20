@@ -161,6 +161,33 @@ export function findComposerSafeAreaBottomPadding(files) {
   });
 }
 
+// The new UI fades text that does not fit, through client/textFade.ts,
+// instead of an ellipsis. These Inbox files also render in the
+// classic UI, which keeps its ellipsis.
+const NEW_UI_PATH_PATTERN = /\/client\/(?:shell|inbox)\//;
+const SHARED_WITH_CLASSIC_PATH_PATTERN =
+  /\/client\/inbox\/(?:ComposerQuestion|InboxSidebar|ReviewItemCard|ReviewItemChangeRow|ReviewItemDetails)\.tsx$/;
+const ELLIPSIS_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*(?:truncate|text-ellipsis)(?![\w-])/;
+
+/** Report ellipsis truncation in the new UI, which fades text instead. */
+export function findNewUiEllipsis(files) {
+  return files.flatMap((file) => {
+    if (
+      !NEW_UI_PATH_PATTERN.test(file.path) ||
+      SHARED_WITH_CLASSIC_PATH_PATTERN.test(file.path)
+    ) {
+      return [];
+    }
+    return file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return ELLIPSIS_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    });
+  });
+}
+
 // Structural fills, borders, and rings use dashboard tokens, not raw white or
 // black opacity steps. Shadows may still use black.
 const NEUTRAL_SURFACE_LITERAL_PATTERN =
@@ -276,6 +303,10 @@ function main() {
     {
       fix: "conversations/ComposerDock owns the bottom safe-area pad. Remove this safe-area math and let ComposerDock set it.",
       lines: findComposerSafeAreaBottomPadding(files),
+    },
+    {
+      fix: "In the new UI, fade text that does not fit with fadeTextClass, or fadeOverflowClass and fadeWhenOverflowing, from client/textFade.ts. Do not use truncate or text-ellipsis.",
+      lines: findNewUiEllipsis(files),
     },
     {
       fix: "Dashboard tests must not assert CSS utility classes. Assert the visible state, role, or text, or leave the look to visual QA.",

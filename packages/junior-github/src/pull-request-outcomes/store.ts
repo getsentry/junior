@@ -1,5 +1,6 @@
 import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
+import { codeChangeSizeSchema } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestAction,
@@ -23,6 +24,8 @@ const githubPullRequestOutcomeInputSchema = z
     pullRequestId: z.string().min(1),
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
+    /** Written to Junior's code index only, not to the GitHub row. */
+    size: codeChangeSizeSchema.optional(),
     state: githubPullRequestStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
@@ -321,35 +324,37 @@ export async function recordGitHubPullRequestLinkedIssues(
   input: GitHubPullRequestLinkedIssuesInput,
 ): Promise<boolean> {
   const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const inserted = await Promise.all(
-    association.linkedIssues.map((issue) =>
+  const list = (values: Array<string | number>) =>
+    sql.join(
+      values.map((value) => sql`${value}`),
+      sql`, `,
+    );
+  // One insert for every issue. It inserts nothing when the PR row is gone.
+  const issues = sql`unnest(
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.repositoryFullName))}]::text[],
+    ARRAY[${list(association.linkedIssues.map((issue) => issue.number))}]::integer[]
+  ) AS issue(repository_full_name, number)`;
+  const inserted = await db
+    .insert(juniorGitHubPullRequestIssues)
+    .select(
       db
-        .insert(juniorGitHubPullRequestIssues)
-        .select(
-          db
-            .select({
-              pullRequestId: juniorGitHubPullRequests.pullRequestId,
-              issueRepositoryFullName:
-                sql<string>`lower(${issue.repositoryFullName})`.as(
-                  "issue_repository_full_name",
-                ),
-              issueNumber: sql<number>`${issue.number}`.as("issue_number"),
-            })
-            .from(juniorGitHubPullRequests)
-            .where(
-              eq(
-                juniorGitHubPullRequests.pullRequestId,
-                association.pullRequestId,
-              ),
+        .select({
+          pullRequestId: juniorGitHubPullRequests.pullRequestId,
+          issueRepositoryFullName:
+            sql<string>`lower(issue.repository_full_name)`.as(
+              "issue_repository_full_name",
             ),
-        )
-        .onConflictDoNothing()
-        .returning({
-          issueNumber: juniorGitHubPullRequestIssues.issueNumber,
-        }),
-    ),
-  );
-  return inserted.some((rows) => rows.length > 0);
+          issueNumber: sql<number>`issue.number`.as("issue_number"),
+        })
+        .from(juniorGitHubPullRequests)
+        .crossJoin(issues)
+        .where(
+          eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
+        ),
+    )
+    .onConflictDoNothing()
+    .returning({ issueNumber: juniorGitHubPullRequestIssues.issueNumber });
+  return inserted.length > 0;
 }
 
 /** Match one pull request row by repository name, in any case, and number. */

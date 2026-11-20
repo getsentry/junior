@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
   audit,
+  expandRow,
   mockReviewItems,
   openRow,
   rollout,
@@ -28,6 +29,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(open ? close : toggle).toBeVisible();
   }
 
+  /** Wait until `read` gives the same value twice in a row. */
+  async function steady(read: () => Promise<number | string>) {
+    let last: number | string | undefined;
+    await expect
+      .poll(async () => {
+        const now = await read();
+        const same = now === last;
+        last = now;
+        return same;
+      })
+      .toBe(true);
+  }
+
   test("a row opens its Conversation, and Back or Esc restores the list", async ({
     dashboard,
     page,
@@ -37,32 +51,34 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const scroller = list.locator(".overflow-y-auto").first();
-    await rowHead(list, checkout).click();
+    const head = rowHead(list, checkout);
+    await expandRow(head);
+    // The row opens with a height animation. A scroll during it stops short,
+    // and the list keeps moving after the test reads the place.
+    const opened = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await steady(() =>
+      opened.evaluate((node) => (node as HTMLElement).offsetHeight),
+    );
     // The open row pushes this one below the fold, so the reader scrolls.
     const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
     await triage.scrollIntoViewIfNeeded();
-    // A pointer that rests on a compact row expands it in place, and the
-    // click may scroll to reach it. Back restores the place the reader left
-    // from, so read it once the row has settled.
+    // Back restores the place the reader left from, so scroll to Open and
+    // read the place once it holds.
     await triage.hover();
     const row = triage.locator("xpath=ancestor::*[@data-inbox-row][1]");
-    await expect(row).toHaveAttribute("data-grown", "true");
-    let last = "";
-    await expect
-      .poll(async () => {
-        const now = await scroller.evaluate(
-          (node, target) =>
-            `${node.scrollTop}:${(target as HTMLElement).offsetHeight}`,
-          await row.elementHandle(),
-        );
-        const settled = now === last;
-        last = now;
-        return settled;
-      })
-      .toBe(true);
+    const open = row.getByRole("link", { name: "Open conversation" }).first();
+    await open.scrollIntoViewIfNeeded();
+    const target = await row.elementHandle();
+    await steady(() =>
+      scroller.evaluate(
+        (node, card) =>
+          `${node.scrollTop}:${(card as HTMLElement).offsetHeight}`,
+        target,
+      ),
+    );
     const top = await scroller.evaluate((node) => node.scrollTop);
     expect(top).toBeGreaterThan(0);
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await open.click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
     const back = page.getByRole("link", { name: "Back to Conversations" });
     await expect(back).toBeVisible();
@@ -98,8 +114,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await openRow(
       page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: /^Checkout latency triage/ }),
+        .getByRole("region", { name: "To do" })
+        .locator("li[data-inbox-stack]")
+        .filter({ hasText: "Investigate checkout latency" })
+        .locator("li[data-inbox-row] [data-inbox-head]")
+        .first(),
     );
     await setDetails(page, true);
     await page.locator("body").focus();
@@ -133,34 +152,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-new-conversation", { lightTheme: true });
     await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  });
-
-  test("In flight lists running and pinned Conversations", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockReviewItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(
-      inFlight.getByRole("link", { name: new RegExp(checkout) }),
-    ).toBeVisible();
-
-    // A pin from a row joins In flight.
-    const today = page.getByRole("region", { name: "Today" });
-    await today.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
-    await today
-      .getByRole("button", { name: "Pin Roll out payments-v42" })
-      .click();
-    await expect(
-      inFlight.getByRole("link", { name: /Roll out payments-v42/ }),
-    ).toBeVisible();
-    await screenshot(page, "inbox-in-flight", { view: "desktop" });
-
-    await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
-    await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
-    await page.getByRole("link", { name: "Show all" }).click();
-    await expect(page).toHaveURL(/\/\?view=conversations$/);
   });
 
   test("the list loads older Conversations as it scrolls", async ({
@@ -231,6 +222,165 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
   });
 
+  test("a link to an ask that waits on someone else leaves the Inbox as it is", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = {
+      ...rollout,
+      addedByConversationId: "slack:COTHER:1770000000.000100",
+      rootConversationId: "slack:COTHER:1770000000.000100",
+      assignees: [],
+      canAct: false,
+      id: "item-other",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [rollout, other] });
+    await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
+    // The Inbox has no row for it, so the link leaves the URL.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await expect(page.getByText(other.title)).toHaveCount(0);
+  });
+
+  test("a link to an ask that waits on someone else keeps a linked row", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = {
+      ...rollout,
+      addedByConversationId: "slack:COTHER:1770000000.000100",
+      rootConversationId: "slack:COTHER:1770000000.000100",
+      assignees: [],
+      canAct: false,
+      id: "item-other",
+      title: "Pick the rollout window",
+    };
+    // Both linked items are past the first page, and later pages never
+    // load, so the linked row shows only while the link keeps its item.
+    const kept = { ...rollout, createdAt: "2026-08-06T09:00:00.000Z" };
+    await mockReviewItems(page, { open: [audit, kept, other], pageSize: 1 });
+    await page.route("**/api/review-items?**", (route) =>
+      new URL(route.request().url()).searchParams.has("cursor")
+        ? route.abort()
+        : route.fallback(),
+    );
+    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    const row = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
+    await expect(row).toHaveAttribute("data-expanded", "true");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await page.keyboard.press("Escape");
+    await expect(row).not.toHaveAttribute("data-expanded", "true");
+
+    // A link inside the app, as from a Slack card in the same tab.
+    await page.evaluate((url) => {
+      history.pushState(null, "", url);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, `/?item=${other.id}`);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(row).toHaveCount(1);
+    await expect(page.getByText(other.title)).toHaveCount(0);
+  });
+
+  test("a link to a sibling that waits on someone else keeps a linked row", async ({
+    dashboard,
+    page,
+  }) => {
+    // The kept item alone puts its Conversation in To do, so a sibling in
+    // the same Conversation that waits on someone else has no row either.
+    const kept = { ...rollout, createdAt: "2026-08-06T09:00:00.000Z" };
+    const sibling = {
+      ...kept,
+      assignees: [],
+      canAct: false,
+      createdAt: "2026-08-05T09:00:00.000Z",
+      id: "item-sibling",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [audit, kept, sibling], pageSize: 1 });
+    await page.route("**/api/review-items?**", (route) =>
+      new URL(route.request().url()).searchParams.has("cursor")
+        ? route.abort()
+        : route.fallback(),
+    );
+    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    const row = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
+    await expect(row).toHaveAttribute("data-expanded", "true");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await page.keyboard.press("Escape");
+    await expect(row).not.toHaveAttribute("data-expanded", "true");
+
+    await page.evaluate((url) => {
+      history.pushState(null, "", url);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, `/?item=${sibling.id}`);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    await expect(row).toHaveCount(1);
+    await expect(page.getByText(sibling.title)).toHaveCount(0);
+  });
+
+  test("a sibling link joins a kept item's stack once a page loads it", async ({
+    dashboard,
+    page,
+  }) => {
+    // The waiting sort pages audit, then kept, then the sibling. Kept's
+    // page waits until its link has added it, and the sibling's page never
+    // loads, so its link has to add it.
+    const kept = { ...rollout, createdAt: "2026-08-06T09:00:00.000Z" };
+    const sibling = {
+      ...kept,
+      assignees: [],
+      canAct: false,
+      createdAt: "2026-08-05T09:00:00.000Z",
+      id: "item-sibling",
+      title: "Pick the rollout window",
+    };
+    await mockReviewItems(page, { open: [audit, kept, sibling], pageSize: 1 });
+    let releaseKeptPage = () => {};
+    const keptPageHeld = new Promise<void>((resolve) => {
+      releaseKeptPage = resolve;
+    });
+    await page.route("**/api/review-items?**", async (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      if (cursor === "2") return route.abort();
+      if (cursor === "1") await keptPageHeld;
+      return route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/?item=${kept.id}`);
+    const keptRow = page.locator(`li[data-inbox-row="todo:${kept.id}"]`);
+    await expect(keptRow).toHaveAttribute("data-expanded", "true");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has("item"))
+      .toBe(false);
+    const keptPage = page.waitForResponse(
+      (response) => new URL(response.url()).searchParams.get("cursor") === "1",
+    );
+    releaseKeptPage();
+    await keptPage;
+    await page.keyboard.press("Escape");
+    await expect(keptRow).not.toHaveAttribute("data-expanded", "true");
+
+    // A loaded page holds the kept item now, so its stack stays when the
+    // sibling link replaces it, and the sibling's row opens there.
+    await page.evaluate((url) => {
+      history.pushState(null, "", url);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, `/?item=${sibling.id}`);
+    await expect(
+      page.locator(`li[data-inbox-row="todo:${sibling.id}"]`),
+    ).toHaveAttribute("data-expanded", "true");
+  });
+
   test("an item link and the Inbox tab share one place", async ({
     dashboard,
     page,
@@ -241,7 +391,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    await expect(asks).toContainText(rollout.request.question);
     const scroller = page
       .getByRole("region", { name: "Inbox" })
       .locator(".overflow-y-auto")
@@ -256,7 +406,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link", { name: /^Inbox/ })
       .click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(asks).toContainText(rollout.title);
+    await expect(asks).toContainText(rollout.request.question);
     await expect
       .poll(() => scroller.evaluate((node) => node.scrollTop))
       .toBe(top);
@@ -269,8 +419,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The linked item is past the first page, so its row loads on its own.
     await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
-    const asks = page.getByRole("region", { name: `${checkout}: asks` });
-    await expect(asks).toContainText(rollout.title);
+    const linkedRow = page.locator(`li[data-inbox-row="todo:${rollout.id}"]`);
+    await expect(linkedRow).toHaveAttribute("data-expanded", "true");
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     await primary.getByRole("link", { name: /^Automations/ }).click();
@@ -278,7 +428,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await primary.getByRole("link", { name: /^Inbox/ }).click();
     // `/` and `/?view=inbox` are one list with one place.
     await expect(page).toHaveURL(/\/(\?view=inbox)?$/);
-    await expect(asks).toContainText(rollout.title);
+    await expect(linkedRow).toHaveAttribute("data-expanded", "true");
   });
 
   test("an item link past the shown rows opens its row in view", async ({
@@ -299,7 +449,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         conversationId: `slack:CNEWER:${1770000000 + index}.000100`,
         displayTitle: `Newer conversation ${index + 1}`,
         pinnedAt: null,
-        status: "completed",
+        status: "done",
       }));
       return route.fulfill({
         response,
@@ -327,67 +477,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is in view.
     await expect(page).toHaveURL(/\/\?view=conversations$/);
-  });
-
-  test("In flight shows every pin past five running Conversations", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const conversation = (
-        index: number,
-        displayTitle: string,
-        fields: {
-          pinnedAt: string | null;
-          pinPosition?: number;
-          status: string;
-        },
-      ) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CFLIGHT:${1770000000 + index}.000100`,
-        displayTitle,
-        ...fields,
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          conversations: [
-            ...Array.from({ length: 6 }, (_, index) =>
-              conversation(index, `Running conversation ${index + 1}`, {
-                pinnedAt: null,
-                status: "active",
-              }),
-            ),
-            conversation(6, "Running pin", {
-              pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 0,
-              status: "active",
-            }),
-            conversation(7, "Idle pin", {
-              pinnedAt: "2026-08-07T10:00:00.000Z",
-              pinPosition: 1,
-              status: "completed",
-            }),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockReviewItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    // Pins always show. Running Conversations fill the rows left, up to five.
-    await expect(
-      inFlight.getByRole("link", { name: /Running pin/ }),
-    ).toBeVisible();
-    await expect(
-      inFlight.getByRole("link", { name: /Idle pin/ }),
-    ).toBeVisible();
-    await expect(inFlight.getByRole("listitem")).toHaveCount(5);
-    await expect(page.getByRole("link", { name: "Show all" })).toBeVisible();
   });
 
   test("a failed page still lets another list show its loaded rows", async ({
@@ -418,7 +507,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           lastSeenAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
           pinnedAt: undefined,
           startedAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
-          status: "completed",
+          status: "done",
         });
         return route.fulfill({
           json:
@@ -460,24 +549,22 @@ test.describe("new UI", { tag: "@new" }, () => {
     }).toPass();
     expect(oldestAttempts).toBe(1);
 
-    // The Inbox shows its first rows. The failure does not stop the rows
-    // that are already loaded from showing as the reader scrolls.
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Inbox\b/ })
-      .click();
+    // The Inbox lists no Conversations, so it reads no older page, and the
+    // failure does not show there.
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await nav.getByRole("link", { name: /^Inbox\b/ }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    const last = page.getByRole("link", { name: /Older conversation 40\b/ });
+    await expect(page.getByRole("region", { name: "To do" })).toBeVisible();
+    await scrollToEnd("Inbox");
+    await expect(retry).toHaveCount(0);
+    expect(oldestAttempts).toBe(1);
+
+    // Back in Conversations, Try again loads the failed page.
+    await nav.getByRole("link", { name: /^Conversations\b/ }).click();
     await expect(async () => {
-      await scrollToEnd("Inbox");
-      await expect(last).toBeVisible({ timeout: 1000 });
-    }).toPass();
-    // Once they all show, Try again loads the failed page.
-    await expect(async () => {
-      await scrollToEnd("Inbox");
+      await scrollToEnd("Conversations");
       await expect(retry).toBeVisible({ timeout: 1000 });
     }).toPass();
-    expect(oldestAttempts).toBe(1);
     await retry.click();
     await expect(
       page.getByRole("link", { name: /The oldest conversation/ }),
@@ -498,7 +585,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(page).toHaveURL(/\/\?view=inbox$/);
       await expect(
         page.getByRole("region", { name: `${checkout}: asks` }),
-      ).toContainText(rollout.title);
+      ).toContainText(rollout.request.question);
     });
 
     test("entries, then a list, then a Conversation, each with Back", async ({
@@ -519,9 +606,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       await screenshot(page, "inbox-phone-list", { lightTheme: true });
 
-      await rowHead(todo, checkout).click();
+      await rowHead(todo, rollout.title).click();
       const asks = page.getByRole("region", { name: `${checkout}: asks` });
-      await expect(asks).toContainText(rollout.title);
+      await expect(asks).toContainText(rollout.request.question);
       await asks.getByRole("link", { name: "Open conversation" }).click();
       await expect(page).toHaveURL(/\/conversations\//);
       await page.getByRole("link", { name: "Back to Inbox" }).click();
@@ -594,25 +681,32 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
-  test("a click expands a row in place, and Open opens its Conversation", async ({
+  test("a click or Enter on a row opens its Conversation, and a pill expands it", async ({
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
-    const head = rowHead(todo, checkout);
+    // A Conversations row names its Conversation; an Inbox row names its
+    // item.
+    await mockReviewItems(page, { open: [rollout] });
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = page.getByRole("region", { name: "Conversations" });
+    const head = rowHead(list, checkout);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
     const asks = page.getByRole("region", { name: `${checkout}: asks` });
 
+    // The head is a link to the Conversation, not a disclosure.
+    await expect(head).not.toHaveAttribute("aria-expanded");
     await head.click();
-    await expect(asks).toBeVisible();
-    await expect(head).toHaveAttribute("aria-expanded", "true");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await head.click();
-    await expect(asks).toHaveCount(0);
-    // Enter toggles it too.
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
     await head.press("Enter");
-    await expect(asks).toBeVisible();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    // A click on the head outside its link opens the Conversation too.
+    await row.locator('[data-inbox-slot="dot"]').click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    await expect(row).not.toHaveAttribute("data-expanded");
 
     // Ctrl/⌘-click keeps the link: a new tab opens, and the list stays.
     const [tab] = await Promise.all([
@@ -621,9 +715,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     await expect(tab).toHaveURL(/\/conversations\//);
     await tab.close();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(asks).toBeVisible();
+    // So does a middle click on the head outside its link.
+    const [middle] = await Promise.all([
+      page.context().waitForEvent("page"),
+      row.locator('[data-inbox-slot="dot"]').click({ button: "middle" }),
+    ]);
+    await expect(middle).toHaveURL(/\/conversations\//);
+    await middle.close();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
 
+    // An ask pill expands the row in place.
+    await expandRow(head);
+    await expect(asks).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
     await asks.getByRole("link", { name: "Open conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.goBack();
@@ -631,194 +735,27 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(/\/conversations\//);
   });
 
-  test("a drag in In flight moves only that pin in the stored order", async ({
+  test("a row keeps its height under the pointer, and a click opens its Conversation", async ({
     dashboard,
     page,
   }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const pin = (index: number, displayTitle: string, status: string) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CPINS:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        pinnedAt: "2026-08-07T10:00:00.000Z",
-        pinPosition: index,
-        status,
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
-          // shows it first.
-          conversations: [
-            pin(0, "Alpha pin", "completed"),
-            pin(1, "Bravo pin", "completed"),
-            pin(2, "Charlie pin", "active"),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockReviewItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Charlie pin/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await inFlight.getByRole("link", { name: /Bravo pin/ }).focus();
-    await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [
-        "slack:CPINS:1770000001.000100",
-        "slack:CPINS:1770000000.000100",
-        "slack:CPINS:1770000002.000100",
-      ],
-    });
-  });
-
-  test("every pin shows on the first feed page, and a reorder saves them all", async ({
-    dashboard,
-    page,
-  }) => {
-    // The server's first feed page has every pin, before the page by activity
-    // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
-    // more pages follow.
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const row = (index: number, displayTitle: string, pinned: boolean) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CFEED:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        lastMessageAt: pinned
-          ? "2026-07-01T10:00:00.000Z"
-          : "2026-08-07T10:00:00.000Z",
-        pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
-        pinPosition: pinned ? index : undefined,
-        status: "completed",
-      });
-      const cursor = new URL(route.request().url()).searchParams.get("cursor");
-      return route.fulfill({
-        response,
-        json: cursor
-          ? { ...feed, conversations: [], nextCursor: undefined }
-          : {
-              ...feed,
-              conversations: [
-                ...Array.from({ length: 4 }, (_, index) =>
-                  row(index, `Old pin ${index + 1}`, true),
-                ),
-                row(4, "Recent conversation", false),
-              ],
-              nextCursor: "page-2",
-            },
-      });
-    });
-    await mockReviewItems(page, { open: [] });
+    await page.clock.install();
+    await mockReviewItems(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    await expect(inFlight.getByRole("listitem")).toHaveCount(4);
-    const pinned = page.getByRole("region", { name: "Pinned" });
-    await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
-
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await rowHead(pinned, "Old pin 2").focus();
-    await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [1, 0, 2, 3].map(
-        (index) => `slack:CFEED:${1770000000 + index}.000100`,
-      ),
-    });
-  });
-
-  test("only pins drag in In flight", async ({ dashboard, page }) => {
-    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const row = (index: number, displayTitle: string, pinned: boolean) => ({
-        ...feed.conversations[0],
-        conversationId: `slack:CPINS:${1770000000 + index}.000100`,
-        displayTitle,
-        isParticipant: true,
-        pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
-        pinPosition: pinned ? index : undefined,
-        status: pinned ? "completed" : "active",
-      });
-      return route.fulfill({
-        response,
-        json: {
-          ...feed,
-          conversations: [
-            row(0, "Alpha pin", true),
-            row(1, "Bravo pin", true),
-            row(2, "Delta run", false),
-          ],
-          nextCursor: undefined,
-        },
-      });
-    });
-    await mockReviewItems(page, { open: [] });
-    const saves: unknown[] = [];
-    page.on("request", (request) => {
-      if (
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order")
-      )
-        saves.push(request.postDataJSON());
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    const inFlight = page.getByRole("list", { name: "In flight" });
-    // The running Conversation that is not pinned shows first.
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    const running = inFlight.getByRole("link", { name: /Delta run/ });
-    const alpha = inFlight.getByRole("link", { name: /Alpha pin/ });
-    const bravo = inFlight.getByRole("link", { name: /Bravo pin/ });
-    // A row that is not a pin offers no reorder keys, and a drag of it saves
-    // nothing and moves nothing.
-    await expect(running).not.toHaveAttribute("aria-keyshortcuts");
-    await expect(alpha).toHaveAttribute(
-      "aria-keyshortcuts",
-      "Alt+ArrowUp Alt+ArrowDown",
-    );
-    await running.dragTo(bravo, { steps: 10 });
-    await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
-      /Alpha pin/,
-      /Bravo pin/,
-    ]);
-    expect(saves).toEqual([]);
-    // A pin dropped on the running row lands on the nearest pin instead.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
-    );
-    await bravo.dragTo(running, { steps: 10 });
-    expect((await save).postDataJSON()).toEqual({
-      conversationIds: [
-        "slack:CPINS:1770000001.000100",
-        "slack:CPINS:1770000000.000100",
-      ],
-    });
+    const list = page.getByRole("region", { name: "Conversations" });
+    const head = rowHead(list, checkout);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await expect(head).toBeVisible();
+    const height = () =>
+      row.evaluate((node) => (node as HTMLElement).offsetHeight);
+    const before = await height();
+    await head.hover();
+    await page.clock.runFor(1000);
+    expect(await height()).toBe(before);
+    await head.click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.goBack();
+    await expect(row).not.toHaveAttribute("data-expanded");
   });
 
   test("Open conversation shows the row's ask, far back in the transcript", async ({

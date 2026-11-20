@@ -1,4 +1,4 @@
-import pLimit from "p-limit";
+import { mapBounded } from "@/chat/fan-out";
 import { randomBytes } from "node:crypto";
 import type { WebActor } from "@/chat/actor";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
@@ -13,9 +13,6 @@ import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 import { startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
-
-// OAuth plugins whose tokens one listing reads at once.
-const CONNECTION_READ_CONCURRENCY = 8;
 
 /** One plugin account that a user can connect and disconnect. */
 export interface Connection {
@@ -55,33 +52,28 @@ export async function listConnections(
   const plugins = pluginCatalogRuntime
     .getProviders()
     .filter((plugin) => Boolean(plugin.manifest.oauth));
-  const limit = pLimit(CONNECTION_READ_CONCURRENCY);
-  return await Promise.all(
-    plugins.map((plugin) =>
-      limit(async () => {
-        const tokens = await readConnectedOAuthTokens(
-          userId,
-          plugin,
-          userTokenStore,
-        );
-        const account = tokens?.account;
-        return {
-          provider: plugin.manifest.name,
-          displayName: plugin.manifest.displayName,
-          description: plugin.manifest.description,
-          connected: Boolean(tokens),
-          ...(account
-            ? {
-                account: {
-                  label: account.label ?? account.id,
-                  ...(account.url ? { url: account.url } : undefined),
-                },
-              }
-            : undefined),
-        };
-      }),
-    ),
-  );
+  return await mapBounded(plugins, async (plugin) => {
+    const tokens = await readConnectedOAuthTokens(
+      userId,
+      plugin,
+      userTokenStore,
+    );
+    const account = tokens?.account;
+    return {
+      provider: plugin.manifest.name,
+      displayName: plugin.manifest.displayName,
+      description: plugin.manifest.description,
+      connected: Boolean(tokens),
+      ...(account
+        ? {
+            account: {
+              label: account.label ?? account.id,
+              ...(account.url ? { url: account.url } : undefined),
+            },
+          }
+        : undefined),
+    };
+  });
 }
 
 /** True when the provider is an installed plugin with user OAuth. */

@@ -61,7 +61,7 @@ describe("sendMessage MCP tool", () => {
       url: expect.stringContaining("/conversations/"),
     });
     expect(read.structuredContent).toMatchObject({
-      conversation: { status: "active" },
+      conversation: { status: "working", turnActive: true },
       messages: [],
       pendingMessages,
     });

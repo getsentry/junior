@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import {
@@ -19,9 +18,6 @@ import {
   type ResolvedAssignees,
 } from "./assignees";
 import type { ReviewItem, ReviewItemVisibility } from "./store";
-
-// Conversations whose participants one check reads at once.
-const PARTICIPANT_READ_CONCURRENCY = 8;
 
 // Every Review item access rule lives in this file. Callers must not copy a
 // rule.
@@ -99,6 +95,20 @@ export function reviewItemNeedsSomeone(): SQL {
     eq(juniorReviewItems.status, "open"),
     eq(juniorReviewItems.kind, "action"),
     sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+  )!;
+}
+
+/**
+ * SQL: the Review item waits for a person's input: an open `action` item,
+ * whoever it is assigned to. An item with no assignees still waits for
+ * anyone who can answer it. The Conversation that added it shows
+ * `needs_input`. `junior_review_items_open_action_added_by_idx` has this
+ * predicate.
+ */
+export function reviewItemNeedsInput(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
   )!;
 }
 
@@ -232,7 +242,7 @@ export interface ReviewItemAgentScope {
 /**
  * Read the scope of an agent. The agent reads as its Conversation and
  * Automation, not as its Actor: an assignment lets a person see the item on
- * the review desk, not let an agent read it into another Conversation.
+ * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readReviewItemAgentScope(
   context: Pick<
@@ -278,6 +288,11 @@ export function reviewItemPlugin(dedupeKey: string): string | undefined {
     .slice(PLUGIN_REVIEW_ITEM_KEY_PREFIX.length)
     .split(":", 1)[0];
   return plugin || undefined;
+}
+
+/** Return whether a plugin added the item. Its answer goes to the plugin. */
+export function isPluginReviewItem(item: Pick<ReviewItem, "dedupeKey">) {
+  return reviewItemPlugin(item.dedupeKey) !== undefined;
 }
 
 /**
@@ -367,15 +382,11 @@ export async function requireReviewItemAssignees(args: {
   const others = args.assignees.userIds.filter(
     (id) => id !== args.scope.user?.id && id !== creatorId,
   );
-  const limit = pLimit(PARTICIPANT_READ_CONCURRENCY);
-  const participants = await Promise.all(
-    [...new Set(args.conversationIds)].map((conversationId) =>
-      limit(() =>
-        conversationParticipantUserIds(getDb(), conversationId, others),
-      ),
-    ),
+  const inConversation = await conversationParticipantUserIds(
+    getDb(),
+    args.conversationIds,
+    others,
   );
-  const inConversation = new Set(participants.flatMap((ids) => [...ids]));
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
       "A private item can be assigned only to people in its Conversation.",

@@ -21,6 +21,7 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
+import { mapBounded } from "@/chat/fan-out";
 import {
   AttachmentSourceUnavailableError,
   type AttachmentSource,
@@ -223,6 +224,7 @@ async function writeAttachmentObject(args: {
   // (5xx, throttling, a dropped connection); a lasting one fails every try.
   for (let attempt = 1; ; attempt += 1) {
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Retry with a fresh body only after the try before fails.
       return await writeAttachmentObjectOnce(args);
     } catch (error) {
       if (
@@ -232,6 +234,7 @@ async function writeAttachmentObject(args: {
       ) {
         // A write that committed before it failed leaves an object no row
         // points to.
+        // oxlint-disable-next-line no-await-in-loop -- This runs once, when the retry loop stops.
         await bestEffortDelete(args.storage, args.key);
         throw error;
       }
@@ -799,23 +802,19 @@ export async function storeAttachments(args: {
   nowMs?: number;
   storage: AttachmentStorage;
 }): Promise<StoredAttachment[]> {
-  const stored: StoredAttachment[] = [];
-  for (const file of args.files) {
-    stored.push(
-      await storeAttachment({
-        conversationId: args.conversationId,
-        db: args.db,
-        file: {
-          data: file.data,
-          filename: file.filename,
-          mimeType: file.mimeType,
-        },
-        ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
-        storage: args.storage,
-      }),
-    );
-  }
-  return stored;
+  return await mapBounded(args.files, (file) =>
+    storeAttachment({
+      conversationId: args.conversationId,
+      db: args.db,
+      file: {
+        data: file.data,
+        filename: file.filename,
+        mimeType: file.mimeType,
+      },
+      ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
+      storage: args.storage,
+    }),
+  );
 }
 
 /** Mark attachments unavailable when their conversation content is purged. */

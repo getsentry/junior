@@ -3,6 +3,7 @@ import * as z from "zod";
 import { automationExecutionStatusSchema } from "@/api/schema/automation";
 import {
   readViewerAutomationExecutions,
+  readViewerAutomationSummary,
   ViewerTaskNotFoundError,
 } from "@/chat/automations/read";
 import { mcpAutomation, mcpAutomationSchema } from "../automation";
@@ -49,9 +50,13 @@ export function registerGetAutomationTool(
     },
     async ({ id }) => {
       try {
-        const list = await readViewerAutomationExecutions(user, id);
+        const [automation, list] = await Promise.all([
+          readViewerAutomationSummary(user, id),
+          readViewerAutomationExecutions(user, id),
+        ]);
+        if (!automation) return mcpToolError("Automation not found.");
         return mcpToolResult({
-          automation: mcpAutomation(list.automation),
+          automation: mcpAutomation(automation),
           runs: list.executions
             .slice(0, RECENT_RUN_LIMIT)
             .map(({ conversationId, error, executedAt, status }) => ({

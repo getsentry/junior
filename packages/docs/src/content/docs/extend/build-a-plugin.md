@@ -81,6 +81,23 @@ This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
 
+### Placeholders
+
+Junior adds a credential only to a Sandbox request that asks for one. A tool
+asks by sending the placeholder from its auth env var, such as
+`Authorization: Bearer host_managed_credential`. A placeholder contains
+`host_managed_credential`, or equals `auth-token-placeholder`.
+
+- A request without the placeholder goes upstream with no credential.
+- A request that carries its own credential, such as a test login or a
+  browser cookie, keeps it.
+- A request from a browser, such as Chromium driven by Playwright, gets no
+  credential. Junior detects it by its `Sec-Fetch-Site` header.
+
+When your tools send no credential, such as `curl` with no auth header, set
+`tools-send-no-credential: true`. Junior then adds the credential to requests
+that carry none, except browser requests.
+
 ### Pre-registered MCP OAuth clients
 
 Junior registers itself as an OAuth client when an MCP server asks a user to
@@ -170,6 +187,22 @@ Other requests ask the actor to connect their own account, as before. An
 actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
 them may have.
+
+### Review context
+
+Use `review-context` to tell action review where the plugin's writes go. For
+example, say which content people outside the organization can read. Junior
+adds the review context of each plugin to the action review system prompt,
+sorted by plugin name, so the prompt stays the same between reviews. The agent
+does not see it, and it never grants authority.
+
+```yaml title="plugin.yaml"
+name: my-provider
+review-context: Pages in the Docs space are published on the public website.
+```
+
+An install can set or change it with
+`defineJuniorPlugins(..., { manifests: { "my-provider": { reviewContext } } })`.
 
 ### Audit events
 

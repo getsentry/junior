@@ -1,7 +1,7 @@
 /**
  * Authenticated REST access to memory.
  *
- * The signed-in User can read and forget public memory.
+ * The signed-in User can read, forget, and restore public memory.
  */
 import * as z from "zod";
 import {
@@ -25,6 +25,7 @@ import {
   type MemoryView,
 } from "./viewer";
 import { parseCapturedMemories, parseRecalledMemoryIds } from "./events";
+import { MemoryRestoreConflictError, restoreMemory } from "./restore";
 import {
   extractionCostFlow,
   memoryCostsByDay,
@@ -35,6 +36,9 @@ import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
   .object({
+    /** Set on an archived memory, which restore can make active again. */
+    archivedAt: z.iso.datetime().optional(),
+    archiveReason: z.string().min(1).optional(),
     content: z.string().min(1),
     createdAt: z.iso.datetime(),
     expiresAt: z.iso.datetime().optional(),
@@ -130,8 +134,12 @@ export type MemoryDashboardResponse = z.output<
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
 
+// `archived: false` restores an archived memory; `true` forgets it.
+const memoryPatchSchema = z.object({ archived: z.boolean() }).strict();
+
 const memoryListQuerySchema = z
   .object({
+    archived: z.literal("true").optional(),
     cursor: z.string().min(1).max(1_000).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(25),
     q: z.string().trim().max(200).optional(),
@@ -156,6 +164,12 @@ function json(body: unknown, status = 200): Response {
 
 function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
   return {
+    ...(memory.archivedAtMs !== undefined
+      ? { archivedAt: new Date(memory.archivedAtMs).toISOString() }
+      : undefined),
+    ...(memory.archiveReason !== undefined
+      ? { archiveReason: memory.archiveReason }
+      : undefined),
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
     ...(memory.expiresAtMs !== undefined
@@ -287,7 +301,8 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+      const isWrite = request.method === "DELETE" || request.method === "PATCH";
+      if (!isRead && !(memoryPath && isWrite)) {
         return json({ error: "Method not allowed." }, 405);
       }
 
@@ -349,11 +364,13 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
         if (isCollection && isRead) {
           const query = memoryListQuerySchema.parse({
+            archived: url.searchParams.get("archived") ?? undefined,
             cursor: url.searchParams.get("cursor") ?? undefined,
             limit: url.searchParams.get("limit") ?? undefined,
             q: url.searchParams.get("q") ?? undefined,
           });
           const page = await listMemories(options.db, {
+            ...(query.archived ? { archived: true } : undefined),
             cursor: query.cursor,
             limit: query.limit,
             ...(query.q ? { query: query.q } : undefined),
@@ -374,6 +391,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           const memory = await getMemory(
             options.db,
             decodeURIComponent(memoryPath[1]!),
+            { archived: url.searchParams.get("archived") === "true" },
           );
           const body = memoryApiSchema.parse(apiMemory(memory));
           return request.method === "HEAD"
@@ -382,6 +400,22 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
                 status: 200,
               })
             : json(body);
+        }
+
+        if (memoryPath && request.method === "PATCH") {
+          const id = decodeURIComponent(memoryPath[1]!);
+          const { archived } = memoryPatchSchema.parse(
+            await request.json().catch(() => undefined),
+          );
+          if (archived) await archiveMemory(options.db, id);
+          const memoryId = archived
+            ? id
+            : (await restoreMemory(options.db, { id, nowMs: Date.now() })).id;
+          return json(
+            memoryApiSchema.parse(
+              apiMemory(await getMemory(options.db, memoryId, { archived })),
+            ),
+          );
         }
 
         if (memoryPath && request.method === "DELETE") {
@@ -401,6 +435,9 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         }
         if (error instanceof MemoryNotFoundError) {
           return json({ error: error.message }, 404);
+        }
+        if (error instanceof MemoryRestoreConflictError) {
+          return json({ error: error.message }, 409);
         }
         throw error;
       }

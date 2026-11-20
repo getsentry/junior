@@ -16,19 +16,27 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import {
+  inboxSnoozesVersion,
+  reviewItemSnoozedBy,
+} from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  hasUserPhoto,
+  userAvatarUrlsFromIdentities,
+} from "@/chat/identities/avatar";
+import {
   juniorConversations,
+  juniorIdentities,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type {
-  UserInputAnswer,
-  UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -39,12 +47,13 @@ import {
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
+import type { ReviewItemRequest } from "./evidence";
 
 type ReviewItemKind = "notice" | "action";
 
 /**
  * Close reason of an action item that a person answered with a reply in
- * its thread instead of on the card or the review desk.
+ * its thread instead of on the card or the Inbox.
  */
 export const REVIEW_ITEM_REPLIED_REASON = "Replied in thread";
 export type ReviewItemStatus = "open" | "done" | "dismissed";
@@ -60,6 +69,8 @@ interface ReviewItemSubject {
 
 /** One assigned User of a Review item. */
 export interface ReviewItemAssignee {
+  /** Junior API path of the profile photo. */
+  avatarUrl?: string;
   displayName?: string;
   email: string;
   userId: string;
@@ -80,9 +91,14 @@ export interface ReviewItem {
   conversationIds: string[];
   createdAt: Date;
   dedupeKey: string;
+  /**
+   * The stored root of the Conversation that added the item. Only a search
+   * sets it; unset means unknown.
+   */
+  addedByRootConversationId?: string | null;
   id: string;
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   status: ReviewItemStatus;
   subject?: ReviewItemSubject;
   /** Provider tenant of the Conversation that added the item. */
@@ -100,7 +116,7 @@ export interface ReviewItemContent {
   body: string;
   conversationIds: string[];
   kind: ReviewItemKind;
-  request?: UserInputRequest;
+  request?: ReviewItemRequest;
   subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
@@ -108,29 +124,51 @@ export interface ReviewItemContent {
 
 type ItemRow = typeof juniorReviewItems.$inferSelect;
 
+const userPhotos = alias(juniorIdentities, "review_item_user_photos");
+
 async function readUsers(
   db: JuniorDatabase,
   userIds: readonly string[],
 ): Promise<Map<string, ReviewItemAssignee>> {
   if (userIds.length === 0) return new Map();
+  // One read returns each User with their photo Identities.
   const rows = await db
     .select({
       displayName: juniorUsers.displayName,
       email: juniorUsers.primaryEmail,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       userId: juniorUsers.id,
     })
     .from(juniorUsers)
+    .leftJoin(
+      userPhotos,
+      and(eq(userPhotos.userId, juniorUsers.id), hasUserPhoto(userPhotos)),
+    )
     .where(inArray(juniorUsers.id, [...new Set(userIds)]));
-  return new Map(
-    rows.map((row) => [
-      row.userId,
-      {
-        email: row.email,
-        userId: row.userId,
-        ...(row.displayName ? { displayName: row.displayName } : undefined),
-      },
-    ]),
+  const avatars = userAvatarUrlsFromIdentities(
+    rows.flatMap(({ photo, userId }) =>
+      photo?.identityId && photo.provider && photo.updatedAt
+        ? [{ ...photo, identityId: photo.identityId, userId }]
+        : [],
+    ),
   );
+  const users = new Map<string, ReviewItemAssignee>();
+  for (const row of rows) {
+    if (users.has(row.userId)) continue;
+    const avatarUrl = avatars.get(row.userId);
+    users.set(row.userId, {
+      email: row.email,
+      userId: row.userId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    });
+  }
+  return users;
 }
 
 async function hydrate(
@@ -353,6 +391,7 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
+    await touchConversationDetail(tx, [input.addedByConversationId]);
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -390,9 +429,13 @@ export async function updateReviewItemContent(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+        id: juniorReviewItems.id,
+      });
     if (!updated[0]) return false;
-    await replaceLinks(tx, input.id, input);
+    await replaceLinks(tx, updated[0].id, input);
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }
@@ -430,13 +473,19 @@ export async function closeReviewItem(
         eq(juniorReviewItems.status, "open"),
       ),
     )
-    .returning({ id: juniorReviewItems.id });
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(
+    db,
+    updated.map((row) => row.addedByConversationId),
+  );
   return updated.length > 0;
 }
 
 /**
- * Dismiss the open Review items that an Automation or a set of
- * Conversations added, when no agent can act on them any more. No person
+ * Dismiss open Review items by id, or the ones that an Automation or a set
+ * of Conversations added, when no agent can act on them any more. No person
  * closes them. It sends no message and does not change the Slack cards. A
  * close by Conversations skips the items of an Automation, because a later
  * run of the Automation can still change them. An Automation delete closes
@@ -447,10 +496,12 @@ export async function dismissOpenReviewItems(
   input: { nowMs: number; reason: string } & (
     | { addedByConversationIds: readonly string[] }
     | { automationId: string }
+    | { ids: readonly string[] }
   ),
 ): Promise<void> {
+  if ("ids" in input && input.ids.length === 0) return;
   const now = new Date(input.nowMs);
-  await db
+  const dismissed = await db
     .update(juniorReviewItems)
     .set({
       closeReason: input.reason,
@@ -461,16 +512,24 @@ export async function dismissOpenReviewItems(
     .where(
       and(
         eq(juniorReviewItems.status, "open"),
-        "automationId" in input
-          ? eq(juniorReviewItems.automationId, input.automationId)
-          : and(
-              inArray(juniorReviewItems.addedByConversationId, [
-                ...input.addedByConversationIds,
-              ]),
-              isNull(juniorReviewItems.automationId),
-            ),
+        "ids" in input
+          ? inArray(juniorReviewItems.id, [...input.ids])
+          : "automationId" in input
+            ? eq(juniorReviewItems.automationId, input.automationId)
+            : and(
+                inArray(juniorReviewItems.addedByConversationId, [
+                  ...input.addedByConversationIds,
+                ]),
+                isNull(juniorReviewItems.automationId),
+              ),
       ),
-    );
+    )
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(db, [
+    ...new Set(dismissed.map((row) => row.addedByConversationId)),
+  ]);
 }
 
 /**
@@ -491,7 +550,9 @@ export async function takeReviewItem(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+      });
     if (!updated[0]) return false;
     await tx
       .delete(juniorReviewItemAssignees)
@@ -499,6 +560,7 @@ export async function takeReviewItem(
     await tx
       .insert(juniorReviewItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }
@@ -556,6 +618,10 @@ export interface ReviewItemFilters {
    * (`reviewItemForUser`).
    */
   forUserId?: string;
+  /** Drop the items in Inbox rows that this User snoozed. */
+  awakeForUserId?: string;
+  /** Keep only the items in Inbox rows that this User snoozed. */
+  snoozedForUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
@@ -636,6 +702,12 @@ function searchConditions(
   if (filters.forUserId) {
     conditions.push(reviewItemForUser(filters.forUserId));
   }
+  if (filters.awakeForUserId) {
+    conditions.push(not(reviewItemSnoozedBy(filters.awakeForUserId)));
+  }
+  if (filters.snoozedForUserId) {
+    conditions.push(reviewItemSnoozedBy(filters.snoozedForUserId));
+  }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
@@ -649,9 +721,18 @@ function searchConditions(
 }
 
 /**
+ * SQL: the Review item needs the User now: `reviewItemNeedsUser`, and the
+ * User has not snoozed it.
+ */
+function reviewItemNeedsUserNow(userId: string): SQL {
+  return and(reviewItemNeedsUser(userId), not(reviewItemSnoozedBy(userId)))!;
+}
+
+/**
  * Count the open Review items that need a User (`reviewItemNeedsUser`), one
  * row per subject URL, with the ones that ask with a form as `decisions`.
- * The nav count and the Inbox bundle counts all read this one query.
+ * The nav count and the Inbox bundle counts all read this one query. A
+ * snoozed item does not count until it wakes.
  */
 export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
@@ -666,39 +747,15 @@ export async function countReviewItemsNeedingUserBySubject(
       total: count(),
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId))
+    .where(reviewItemNeedsUserNow(userId))
     .groupBy(juniorReviewItems.subjectUrl);
-}
-
-/**
- * Count the items in `ids` that are still open and that the reader's Inbox
- * lists (`reviewItemForUser`). Snoozes live in the browser, so the
- * dashboard names the newest item of each snoozed row.
- */
-export async function countOpenReviewItemsForUser(
-  db: JuniorDatabase,
-  reader: ReviewItemReader & { userId: string },
-  ids: readonly string[],
-): Promise<number> {
-  if (ids.length === 0) return 0;
-  const rows = await db
-    .select({ count: count() })
-    .from(juniorReviewItems)
-    .where(
-      and(
-        inArray(juniorReviewItems.id, [...ids]),
-        eq(juniorReviewItems.status, "open"),
-        reviewItemVisibleTo(reader),
-        reviewItemForUser(reader.userId),
-      ),
-    );
-  return rows[0]?.count ?? 0;
 }
 
 /**
  * Return a query for a token that changes when the open Review items that
  * need a User change. An item that is added or changed moves the newest
- * `updated_at`, and an item that closes or leaves the User changes the count.
+ * `updated_at`, and an item that closes, leaves the User, or is snoozed
+ * changes the count. A new or ended snooze also changes the token.
  */
 export function reviewItemsNeedingUserVersionQuery(
   db: JuniorDatabase,
@@ -706,10 +763,10 @@ export function reviewItemsNeedingUserVersionQuery(
 ) {
   return db
     .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}))`,
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${inboxSnoozesVersion(userId)})`,
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
+    .where(reviewItemNeedsUserNow(userId));
 }
 
 /**
@@ -729,8 +786,18 @@ export async function searchReviewItems(
   filters: ReviewItemFilters,
 ): Promise<ReviewItem[]> {
   const rows = await db
-    .select()
+    .select({
+      item: juniorReviewItems,
+      addedByRootConversationId: juniorConversations.rootConversationId,
+    })
     .from(juniorReviewItems)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItems.addedByConversationId,
+      ),
+    )
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
@@ -747,7 +814,14 @@ export async function searchReviewItems(
             : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
-  return await hydrate(db, rows);
+  const items = await hydrate(
+    db,
+    rows.map((row) => row.item),
+  );
+  return items.map((item, index) => ({
+    ...item,
+    addedByRootConversationId: rows[index]!.addedByRootConversationId,
+  }));
 }
 
 /** One open Review item that a Conversation waits on a User for. */
@@ -766,11 +840,39 @@ export type WaitingConversation = {
   waitingSince: string;
 };
 
+// The root of a linked Conversation. An item that a child agent adds links
+// the child, and the feed lists only roots.
+const waitingRootId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`;
+
+/**
+ * Return a query for the ids of the root Conversations that wait on a User,
+ * as `listWaitingConversations` lists them, to filter another query by.
+ */
+export function waitingConversationIdsQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  return db
+    .select({ conversationId: waitingRootId })
+    .from(juniorReviewItemConversations)
+    .innerJoin(
+      juniorReviewItems,
+      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
+    )
+    .where(reviewItemNeedsUserNow(userId));
+}
+
 /**
  * List the root Conversations that wait on a User: each root or one of its
- * child conversations is linked to an open item that needs the User
- * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
- * and the feed lists only roots.
+ * child conversations is linked to an open item that needs the User now
+ * (`reviewItemNeedsUserNow`), so a snoozed item leaves it out.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -778,7 +880,7 @@ export async function listWaitingConversations(
 ): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
+      conversationId: waitingRootId,
       itemId: juniorReviewItems.id,
       dedupeKey: juniorReviewItems.dedupeKey,
       title: juniorReviewItems.title,
@@ -796,7 +898,7 @@ export async function listWaitingConversations(
         juniorReviewItemConversations.conversationId,
       ),
     )
-    .where(reviewItemNeedsUser(userId))
+    .where(reviewItemNeedsUserNow(userId))
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {

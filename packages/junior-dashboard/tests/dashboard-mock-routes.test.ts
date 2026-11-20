@@ -50,7 +50,8 @@ describe("dashboard canonical-event mock routes", () => {
       lastProgressAt: lastSeenAt,
       lastSeenAt,
       startedAt,
-      status: "completed",
+      status: "done",
+      turnActive: false,
       surface: "slack",
     });
     const summaries = [
@@ -197,20 +198,27 @@ describe("dashboard canonical-event mock routes", () => {
       new Request("http://localhost/api/conversations/stats"),
     );
     const statsBody = (await stats.json()) as {
-      conversations: number;
-      costUsd?: number;
-      durationMs: number;
+      metricDays: Array<{
+        conversations: number;
+        costUsd?: number;
+        durationMs: number;
+      }>;
       windowEnd: string;
       windowStart: string;
     };
-    expect(statsBody.conversations).toBe(allConversations.length);
-    expect(statsBody.durationMs).toBe(
+    const statsDays = statsBody.metricDays;
+    expect(statsDays.reduce((sum, day) => sum + day.conversations, 0)).toBe(
+      allConversations.length,
+    );
+    expect(statsDays.reduce((sum, day) => sum + day.durationMs, 0)).toBe(
       allConversations.reduce(
         (sum, conversation) => sum + conversation.cumulativeDurationMs,
         0,
       ),
     );
-    expect(statsBody.costUsd).toBeGreaterThan(0);
+    expect(
+      statsDays.reduce((sum, day) => sum + (day.costUsd ?? 0), 0),
+    ).toBeGreaterThan(0);
     expect(statsBody.windowEnd).toBe(NOW);
     expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 
@@ -667,14 +675,14 @@ describe("dashboard mock sends", () => {
     expect(working).toMatchObject({
       displayTitle: "Draw the release checklist",
       isParticipant: true,
-      status: "active",
+      status: "working",
       surface: "api",
     });
     expect(messages(working)).toEqual(["user: Draw the release checklist"]);
 
     vi.advanceTimersByTime(2_000);
     const replied = await readDetail(accepted.conversationId);
-    expect(replied.status).toBe("completed");
+    expect(replied.status).toBe("done");
     expect(messages(replied)).toEqual([
       "user: Draw the release checklist",
       "assistant: Mock reply. No agent ran.\n\n> Draw the release checklist",
@@ -715,7 +723,7 @@ describe("dashboard mock sends", () => {
     );
     expect(response.status).toBe(200);
     const after = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
-    expect(after.status).toBe("active");
+    expect(after.status).toBe("working");
     expect(messages(after)).toEqual([
       ...messages(before),
       "user: One more thing",

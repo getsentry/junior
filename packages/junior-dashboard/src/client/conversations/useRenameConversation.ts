@@ -3,6 +3,8 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renameConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
+import { patchFeedConversation } from "./conversationArchive";
 import {
   mapConversationFeedCache,
   type ConversationFeedCache,
@@ -26,18 +28,16 @@ export function useRenameConversation(
     queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
       feed
         ? mapConversationFeedCache(feed, (conversations) =>
-            conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, displayTitle }
-                : conversation,
-            ),
+            patchFeedConversation(conversations, conversationId, {
+              displayTitle,
+            }),
           )
         : feed,
     );
-    // Clear the etag so the next read gets a full body, not a 304 that keeps
-    // this local value.
     queryClient.setQueryData<DetailCache>(detailQueryKey, (detail) =>
-      detail ? { ...detail, displayTitle, detailEtag: undefined } : detail,
+      detail
+        ? withoutVersion({ ...detail, displayTitle }, "detailEtag")
+        : detail,
     );
   };
   return useMutation({

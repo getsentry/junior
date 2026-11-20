@@ -52,6 +52,19 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   };
 });
 
+// Guardian reviews each bash call. These tests cover sandbox wiring, so the
+// reviewer allows every call.
+vi.mock("@/chat/guardian/reviewer", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises sandbox runtime behavior.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
+}));
+
 // Keep the provider as the integration boundary. The real Pi loop executes
 // the tools, handles abort, persists the toolResults, and invokes continue().
 vi.mock("@/chat/pi/traced-stream", () => ({
@@ -176,7 +189,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";
@@ -225,6 +238,8 @@ describe("tool timeout continuation composition", () => {
     const request = {
       conversationId: conversationId,
       turnId: turnId,
+      // Guardian review of a bash call needs the Actor of the Run.
+      actor: { platform: "local" as const, userId: "local-test" },
       instruction: {
         text: "Run the targeted test and create the PR.",
       },

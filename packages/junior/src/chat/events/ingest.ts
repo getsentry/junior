@@ -78,6 +78,7 @@ export async function ingestEvent(
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
+  /* oxlint-disable no-await-in-loop -- Deliver to Watches in order; dispatch takes an index lock that does not wait. */
   for (const subscription of ordered) {
     // A Quiet Event is delivered, but it is not enqueued: it starts no Turn.
     let quiet = false;
@@ -121,6 +122,7 @@ export async function ingestEvent(
       errors.push(error);
     }
   }
+  /* oxlint-enable no-await-in-loop */
   if (errors.length > 0) {
     throw new AggregateError(errors, "Failed to deliver one or more watches");
   }

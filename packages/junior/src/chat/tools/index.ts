@@ -1,4 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
+import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -240,7 +241,22 @@ const STATIC_TOOL_BINDERS = {
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
   searchConversationEvents: (run) =>
-    createSearchConversationEventsTool(run.context),
+    createSearchConversationEventsTool(
+      run.context,
+      isEventEmbeddingsEnabled()
+        ? {
+            embedder: createConversationEmbedder({
+              cost: {
+                conversationId: run.context.conversationId,
+                ...(run.context.turnId
+                  ? { turnId: run.context.turnId }
+                  : undefined),
+              },
+              operation: "conversation_search_embedding",
+            }),
+          }
+        : undefined,
+    ),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
   searchConversations: (run) =>
     createSearchConversationsTool({
@@ -344,10 +360,10 @@ const AGENT_TOOL_LIMIT = (turnTools: TurnTools) =>
     ? "A person's Turn in a Thread cannot use agent tools."
     : undefined;
 
-const REVIEW_DESK_LIMIT = (turnTools: TurnTools) =>
-  turnTools.reviewDesk
+const INBOX_LIMIT = (turnTools: TurnTools) =>
+  turnTools.inbox
     ? undefined
-    : `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`;
+    : `A child agent cannot use the Inbox. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`;
 
 // The listed tools that the Turn's own tools can disallow, with the reason
 // that the model sees. A Thread lists the tools of both senders, so one
@@ -378,9 +394,9 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
-  addReviewItem: REVIEW_DESK_LIMIT,
-  searchReviewItems: REVIEW_DESK_LIMIT,
-  updateReviewItem: REVIEW_DESK_LIMIT,
+  addReviewItem: INBOX_LIMIT,
+  searchReviewItems: INBOX_LIMIT,
+  updateReviewItem: INBOX_LIMIT,
 };
 
 function attachmentStore(run: ToolRun) {
@@ -537,6 +553,7 @@ const RUN_BUILT_TOOL_BUILDERS = {
       run.slack,
       run.state,
       (input) => readSandboxFileUpload(run.context.workspace, input),
+      run.context.conversationId,
       attachmentStore(run),
     );
   },

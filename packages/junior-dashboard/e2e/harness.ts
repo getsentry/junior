@@ -33,10 +33,19 @@ export function withRequestedMailbox<T extends { conversationId: string }>(
     : report;
 }
 
+/** The Conversation ids that a versions poll asks tokens for. */
+export function requestedConversationIds(route: Route): string[] {
+  const ids = new URL(route.request().url()).searchParams.get(
+    "conversationIds",
+  );
+  return ids ? ids.split(",") : [];
+}
+
 /**
- * Answer the versions poll with a tree token for the open Conversation, so
- * a mocked detail that sends the same token refreshes when it moves, as on
- * the server. The other tokens stay fixed.
+ * Answer the versions poll with one tree token for each requested
+ * Conversation, so a mocked detail that sends the same token refreshes when
+ * it moves, as on the server. Mock details send no token, so the others do
+ * not refresh. The other tokens stay fixed.
  */
 export async function routeConversationVersion(
   page: Page,
@@ -45,7 +54,12 @@ export async function routeConversationVersion(
   await page.route("**/api/versions*", (route) =>
     route.fulfill({
       json: {
-        conversation: conversationVersion(),
+        conversationDetails: Object.fromEntries(
+          requestedConversationIds(route).map((id) => [
+            id,
+            conversationVersion(),
+          ]),
+        ),
         conversations: "mock",
         reviewItems: "mock",
         spend: "mock",
@@ -370,73 +384,6 @@ export async function mockDashboardApis(
       });
       return;
     }
-    const automation = {
-      createdAt: "2026-07-28T16:00:00.000Z",
-      createdBy: "Morgan",
-      createdByEmail: "dev@example.com",
-      destination: {
-        channelId: "C123",
-        label: "#project-updates",
-        teamId: "T123",
-        visibility: "public" as const,
-      },
-      id,
-      task: {
-        kind: "instruction" as const,
-        instruction:
-          kind === "scheduled"
-            ? "Send the weekly project summary"
-            : "Summarize the closed issue",
-      },
-      kind,
-      credentialMode: "creator",
-      ownedByViewer: true,
-      costUsd:
-        kind === "scheduled"
-          ? { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 }
-          : { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
-      runs:
-        kind === "scheduled"
-          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
-          : { 1: 0, 7: 1, 30: 4, 90: 7 },
-      outcomes:
-        kind === "scheduled"
-          ? [
-              {
-                action: "send_message" as const,
-                destination: {
-                  channelId: "C123",
-                  platform: "slack" as const,
-                  teamId: "T123",
-                },
-              },
-            ]
-          : [],
-      title:
-        kind === "scheduled"
-          ? "Weekly project summary"
-          : "Closed issue summary",
-      recentRuns: [],
-      totalCostUsd: kind === "scheduled" ? 18.62 : 0.84,
-      totalRuns: kind === "scheduled" ? 48 : 7,
-      ...(kind === "scheduled"
-        ? {
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            schedule: "Every Monday at 9:00 AM",
-            timezone: "America/Los_Angeles",
-            status: "active" as const,
-          }
-        : {
-            resource: "Issue · ACME-42",
-            source: "github",
-            trigger: {
-              events: ["issue closed"],
-              filters: [],
-              problems: [],
-            },
-            status: "active",
-          }),
-    };
     const executionDays = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
@@ -484,7 +431,6 @@ export async function mockDashboardApis(
             status: "blocked",
           },
         ],
-        automation,
         truncated: false,
       },
     });
@@ -662,11 +608,6 @@ export async function mockDashboardApis(
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
-            active: 0,
-            activeDays: 90,
-            conversations: 180,
-            durationMs: 60_000,
-            failed: 0,
             firstSeenAt: "2026-03-15T00:00:00.000Z",
             lastSeenAt: "2026-06-12T00:00:00.000Z",
             actor: {

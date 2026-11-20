@@ -9,7 +9,14 @@
  * fresh runtime context; the next replacement removes it again.
  */
 import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import {
+  escapeTagTextAndQuotes,
+  findTag,
+  startsWithTag,
+  stripTags,
+} from "@sentry/junior-plugin-api";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
+import { renderThreadContext } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
@@ -61,7 +68,6 @@ import {
   withCompactionSpan,
   type CompactionMode,
 } from "@/chat/services/context-compaction-telemetry";
-import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 
@@ -155,17 +161,22 @@ function messageText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 function truncateToTokenBudget(text: string, maxTokens: number): string {
@@ -181,6 +192,7 @@ function isCompactionSummary(text: string): boolean {
 }
 
 function isPayloadHeavy(text: string): boolean {
+  // oxlint-disable-next-line junior/no-prompt-tag-matching -- provider payload, as in sanitizeText
   return /<data_base64>[\s\S]*?<\/data_base64>|data:image\/[a-z0-9.+-]+;base64,/i.test(
     text,
   );
@@ -201,27 +213,20 @@ function userMessageContent(message: PiMessage): unknown[] {
 }
 
 function hasTurnBootstrap(message: PiMessage): boolean {
-  return userMessageContent(message).some(
-    (part) => textPart(part)?.startsWith(`<${TURN_CONTEXT_TAG}>`) === true,
+  return userMessageContent(message).some((part) =>
+    isTurnContextText(textPart(part)),
   );
 }
 
 function isSessionTurnContext(text: string | undefined): text is string {
   return (
-    text?.startsWith(`<${TURN_CONTEXT_TAG}>`) === true &&
-    text.includes(`\n<${SESSION_CONTEXT_SECTION_TAG}>\n`)
+    isTurnContextText(text) &&
+    findTag(text, SESSION_CONTEXT_SECTION_TAG) !== undefined
   );
 }
 
-function withoutSections(text: string, tags: string[]): string {
-  return tags.reduce(
-    (result, tag) =>
-      result.replace(
-        new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
-        "",
-      ),
-    text,
-  );
+function isTurnContextText(text: string | undefined): text is string {
+  return text !== undefined && startsWithTag(text, [TURN_CONTEXT_TAG]);
 }
 
 /**
@@ -229,7 +234,7 @@ function withoutSections(text: string, tags: string[]): string {
  * plan deltas, which the `<plan>` snapshot of the summary replaces.
  */
 function withoutRequestContext(text: string): string {
-  return withoutSections(text, [
+  return stripTags(text, [
     ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
     PLAN_DELTA_TAG,
   ]);
@@ -243,10 +248,10 @@ function withoutRequestContext(text: string): string {
 function withoutCapabilitySections(content: unknown[]): unknown[] {
   return content.map((part) => {
     const text = textPart(part);
-    return text?.startsWith(`<${TURN_CONTEXT_TAG}>`)
+    return isTurnContextText(text)
       ? {
           ...(part as object),
-          text: withoutSections(text, Object.values(CAPABILITY_SECTION_TAG)),
+          text: stripTags(text, Object.values(CAPABILITY_SECTION_TAG)),
         }
       : part;
   });
@@ -524,19 +529,18 @@ async function loadRetainedUserMessages(
 }
 
 const COMPACTION_READ_BACK_NOTE =
-  "The summary replaced earlier messages and tool results. When you need an exact detail that the summary lacks, read the full text with the searchConversationEvents and readConversationEvent tools.";
+  "The summary replaced earlier messages and tool results and leaves out most of their details. Before you call a detail unknown or ask for it, search for it with a searchConversationEvents query, then read the full text with readConversationEvent.";
 
 /**
  * Keep generated text inside the existing evidence-only prompt boundary. The
  * last line says where replaced detail stays readable: without it, the model
- * often decides an exact value from a compacted tool result is gone.
+ * often decides a detail from a compacted tool result is gone, and asks the
+ * person for it.
  */
 export function renderCompactionSummary(summary: string): string {
   return [
     COMPACTION_SUMMARY_PREFIX,
-    '<thread-context authority="evidence-only">',
-    escapeXml(summary),
-    "</thread-context>",
+    renderThreadContext([escapeTagTextAndQuotes(summary)]),
     COMPACTION_READ_BACK_NOTE,
   ].join("\n");
 }

@@ -3,6 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import {
   FILE_ID_PATTERN,
@@ -32,6 +33,8 @@ function meetingRecordKind(title: string): "notes" | "transcript" | undefined {
 // Google can save a record a little before the scheduled start, when people
 // join early.
 const EARLY_START_MS = 30 * 60 * 1000;
+// Drive calls that one transcript read runs at once.
+const DRIVE_READ_CONCURRENCY = 5;
 
 const inputSchema = z
   .object({
@@ -118,6 +121,7 @@ const recordFileSchema = z.object({
   owners: z.array(z.object({ emailAddress: z.string() })).default([]),
   webViewLink: z.string().optional(),
 });
+type RecordFile = z.infer<typeof recordFileSchema>;
 
 const NO_RECORD_MESSAGE =
   "No transcript or Gemini notes are attached to this event yet. Someone in the call must turn on transcription or Gemini notes, and Google can take from some minutes to a few hours after the call ends to attach them. Google does not share them with invitees when more than 200 people in the organizer's domain are invited.";
@@ -147,6 +151,53 @@ async function readRecordFile(
     throw googleApiError(input.operation, response);
   }
   return response;
+}
+
+/**
+ * Read one attached Doc as a Meet record of this occurrence. Return
+ * `"unreadable"` when the account cannot open it, and nothing when it is not
+ * a record of this meeting.
+ */
+async function readRecord(
+  ctx: GoogleToolContext,
+  fileId: string,
+  organizer: string,
+  startMs: number,
+): Promise<
+  { file: RecordFile; fileId: string; text: string } | "unreadable" | undefined
+> {
+  const metadata = await readRecordFile(ctx, {
+    operation: "google.drive.file.get",
+    path: `/drive/v3/files/${fileId}`,
+    query: {
+      fields: "createdTime,id,mimeType,name,owners(emailAddress),webViewLink",
+      supportsAllDrives: "true",
+    },
+  });
+  if (!metadata) return "unreadable";
+  const file = recordFileSchema.parse(metadata.body);
+  // Read only a Doc that the organizer owns and that was made for this
+  // occurrence. This stops an attached Doc of someone else, or of an
+  // earlier meeting, such as an agenda, from being read here.
+  if (
+    file.mimeType !== googleFileMimeType("document") ||
+    file.owners[0]?.emailAddress.toLowerCase() !== organizer ||
+    Date.parse(file.createdTime) < startMs - EARLY_START_MS
+  ) {
+    return undefined;
+  }
+  const exported = await readRecordFile(ctx, {
+    headers: { Accept: "text/markdown" },
+    operation: "google.drive.file.export",
+    path: `/drive/v3/files/${fileId}/export`,
+    query: { mimeType: "text/markdown" },
+  });
+  if (!exported) return "unreadable";
+  return {
+    file,
+    fileId,
+    text: typeof exported.body === "string" ? exported.body : "",
+  };
 }
 
 /** Save the full text of a long record in the sandbox and return its path. */
@@ -274,63 +325,52 @@ export const readMeetingTranscriptTool = definePluginTool({
       return { ...base, message: NO_RECORD_MESSAGE, status: "no_record" };
     }
 
+    // Read the attached Docs at once. The content budget below then takes
+    // the records in attachment order.
+    const limit = pLimit(DRIVE_READ_CONCURRENCY);
+    const reads = await Promise.all(
+      fileIds.map((fileId) =>
+        limit(() => readRecord(ctx, fileId, organizer, startMs)),
+      ),
+    );
     const records: Output["records"] = [];
+    const fullRecords: {
+      fileId: string;
+      record: Output["records"][number];
+      text: string;
+    }[] = [];
     let chars = 0;
-    let truncated = false;
     let unreadable = 0;
-    for (const fileId of fileIds) {
-      const metadata = await readRecordFile(ctx, {
-        operation: "google.drive.file.get",
-        path: `/drive/v3/files/${fileId}`,
-        query: {
-          fields:
-            "createdTime,id,mimeType,name,owners(emailAddress),webViewLink",
-          supportsAllDrives: "true",
-        },
-      });
-      if (!metadata) {
+    for (const read of reads) {
+      if (read === "unreadable") {
         unreadable += 1;
         continue;
       }
-      const file = recordFileSchema.parse(metadata.body);
-      // Read only a Doc that the organizer owns and that was made for this
-      // occurrence. This stops an attached Doc of someone else, or of an
-      // earlier meeting, such as an agenda, from being read here.
-      if (
-        file.mimeType !== googleFileMimeType("document") ||
-        file.owners[0]?.emailAddress.toLowerCase() !== organizer ||
-        Date.parse(file.createdTime) < startMs - EARLY_START_MS
-      ) {
-        continue;
-      }
-      const exported = await readRecordFile(ctx, {
-        headers: { Accept: "text/markdown" },
-        operation: "google.drive.file.export",
-        path: `/drive/v3/files/${fileId}/export`,
-        query: { mimeType: "text/markdown" },
-      });
-      if (!exported) {
-        unreadable += 1;
-        continue;
-      }
-      const text = typeof exported.body === "string" ? exported.body : "";
+      if (!read) continue;
+      const { file, fileId, text } = read;
       const content = text.slice(0, Math.max(MAX_CONTENT_CHARS - chars, 0));
       chars += content.length;
-      // A transcript of a long meeting can be megabytes. Save the full text
-      // in the sandbox, so Junior can read all of it in parts.
-      const path =
-        content.length < text.length
-          ? await saveFullRecord(ctx, eventId, fileId, text)
-          : undefined;
-      truncated ||= path !== undefined;
-      records.push({
+      const record: Output["records"][number] = {
         content,
         kind: meetingRecordKind(file.name) ?? "document",
-        ...(path ? { path } : undefined),
         title: file.name,
         ...(file.webViewLink ? { url: file.webViewLink } : undefined),
-      });
+      };
+      records.push(record);
+      if (content.length < text.length) {
+        fullRecords.push({ fileId, record, text });
+      }
     }
+    // A transcript of a long meeting can be megabytes. Save the full text
+    // in the sandbox, so Junior can read all of it in parts.
+    await Promise.all(
+      fullRecords.map(({ fileId, record, text }) =>
+        limit(async () => {
+          record.path = await saveFullRecord(ctx, eventId, fileId, text);
+        }),
+      ),
+    );
+    const truncated = fullRecords.length > 0;
     const unreadableNote =
       unreadable > 0
         ? `${unreadable} attached Meet record(s) cannot be opened by your Google account (${ctx.accountEmail}). The Doc may be deleted, or not shared with invitees. Ask the organizer to share it with that account.`

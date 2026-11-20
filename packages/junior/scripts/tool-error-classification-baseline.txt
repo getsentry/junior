@@ -5,10 +5,12 @@
 packages/junior-github/src/tools/comment-on-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/comment-on-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
+packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call is already running; refusing to create a duplicate issue.", );
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but the runtime could not persist the completed issue state.", { cause: error }, );
 packages/junior-github/src/tools/create-issue.ts	throw new Error("GitHub issue creation returned an invalid response.");
 packages/junior-github/src/tools/create-issue.ts	throw new Error("Invalid GitHub createIssue idempotency state.", { cause: error, });
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.", );
+packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation for this tool call is already running; refusing to create a duplicate pull request.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation returned an invalid response.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but the runtime could not persist the completed pull request state.", { cause: error }, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
@@ -36,6 +38,10 @@ packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`, );
 packages/junior-google/src/tools/create-doc.ts	throw new Error( deleted ? `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc was deleted.` : `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc could not be deleted either. Your own Google account still owns it, so it is not private; delete it from that account's Drive.`, { cause: error }, );
 packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`, { cause: error }, );
+packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Google returned a slide thumbnail outside ${THUMBNAIL_HOST_SUFFIX}.`, );
+packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Could not download the slide thumbnail: ${download.stderr.trim() || `curl exited with ${download.exitCode}`}`, );
+packages/junior-google/src/tools/shared.ts	throw new Error( `${input.operation} changes a file, so it needs the file that requireEditableFile checked.`, );
+packages/junior-google/src/tools/update-slides.ts	throw new Error( `The edit applied${after ? ` at revision ${after}` : ""}, but reading the changed slides to check them failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");

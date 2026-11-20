@@ -46,6 +46,7 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function extractTitle(html: string): string | undefined {
+  // oxlint-disable-next-line junior/no-prompt-tag-matching -- a fetched HTML page
   const match = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   const title =
     match?.[1] !== undefined

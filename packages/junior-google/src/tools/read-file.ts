@@ -11,11 +11,11 @@ import {
   googleLinkFileType,
   MAX_CONTENT_CHARS,
   parseFileReference,
-  readGoogleFileMetadata,
 } from "./files";
 import { docOutputFields, readDocContent } from "./read-doc";
 import { readSheetContent, sheetOutputFields } from "./read-sheet";
 import { readSlidesContent, slidesOutputFields } from "./read-slides";
+import { readRequesterFile } from "./file-access";
 import type { GoogleToolContext } from "./shared";
 
 const inputSchema = z
@@ -66,7 +66,7 @@ export const readGoogleFileTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works for files shared with that account or with anyone who has the link. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+    "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works only for files that the requester can open too. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
   inputSchema,
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
@@ -74,7 +74,7 @@ export const readGoogleFileTool = definePluginTool({
     const linkType = URL.canParse(input.file)
       ? googleLinkFileType(new URL(input.file))
       : undefined;
-    const file = await readGoogleFileMetadata(
+    const file = await readRequesterFile(
       ctx,
       ref,
       linkType ? [linkType] : GOOGLE_FILE_TYPES,

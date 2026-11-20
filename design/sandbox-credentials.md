@@ -39,11 +39,10 @@ the plugin chooses: the plugin's own access, or the Actor's connected account.
 
 - Only domains that a plugin declares get credentials, and each domain has
   one owning plugin. Other traffic leaves the Sandbox unchanged.
-- An env var such as `SENTRY_AUTH_TOKEN` holds a placeholder. Printing the
-  env shows no secret.
 - A request with no credential gets one only when its plugin says that its
-  tools send none. Git is one such tool. Sentry tools always send the
-  placeholder, so a Sentry request without it gets no credential.
+  tools send none.
+- A request from a browser, such as one that Playwright drives, never gets a
+  credential, because page scripts are untrusted.
 - The Sentry plugin does not let Sandbox code create releases or upload
   sourcemaps or debug files with the Actor's account.
 - Junior never deletes a Sentry organization or project, whatever the

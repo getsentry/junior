@@ -1,4 +1,4 @@
-import pLimit from "p-limit";
+import { mapBounded } from "@/chat/fan-out";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
@@ -11,9 +11,6 @@ import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
-
-// Steering messages whose files one steer loads at once.
-const STEERING_INPUT_CONCURRENCY = 8;
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
@@ -91,24 +88,21 @@ export function createAgentRunner(
       const drainSteeringMessages = nextRun.durability?.drainSteeringMessages;
       if (drainSteeringMessages) {
         // Steered web messages carry stored files like the instruction does.
-        const limit = pLimit(STEERING_INPUT_CONCURRENCY);
         nextRun.durability = {
           ...nextRun.durability,
           drainSteeringMessages: (accept) =>
             drainSteeringMessages(async (messages) =>
               accept(
-                await Promise.all(
-                  messages.map(({ storedAttachments, ...message }) =>
-                    limit(async () =>
-                      storedAttachments?.length
-                        ? {
-                            ...message,
-                            attachments:
-                              await loadStoredAttachments(storedAttachments),
-                          }
-                        : message,
-                    ),
-                  ),
+                await mapBounded(
+                  messages,
+                  async ({ storedAttachments, ...message }) =>
+                    storedAttachments?.length
+                      ? {
+                          ...message,
+                          attachments:
+                            await loadStoredAttachments(storedAttachments),
+                        }
+                      : message,
                 ),
               ),
             ),

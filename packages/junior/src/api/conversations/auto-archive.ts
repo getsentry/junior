@@ -9,9 +9,10 @@
  * - no plugin reported unfinished work on it or a child conversation
  * - any reported work finished at least the grace period ago, and no human
  *   message arrived after it finished
- * - the root and every child conversation are idle and do not wait on a
- *   person to finish an authorization
- * - no open Review item on it waits on a person
+ * - the root and every child conversation are idle
+ * - nothing in the tree needs a person: no conversation in it has
+ *   `needs_input` status, no open Plan item in it is assigned to a person,
+ *   and no open Review item linked to it waits on a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
  *   period
@@ -32,6 +33,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   isNotNull,
   isNull,
   lte,
@@ -49,11 +51,13 @@ import {
 } from "@/chat/plugins/unfinished-work";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
-import { awaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import { isOpenPlanItemStatus, PLAN_ITEM_STATUSES } from "@/chat/plan/types";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorPlanItems,
   juniorReviewItemConversations,
   juniorReviewItems,
   juniorUsers,
@@ -92,10 +96,9 @@ function runCutoff(run: ArchiveRun): Date {
 }
 
 /**
- * True when the participant row's root and every child conversation are idle,
- * do not wait on a person to finish an authorization, and had no activity
- * after the cutoff. Child activity does not move the root's
- * `lastActivityAt`, so the whole tree is checked.
+ * True when the participant row's root and every child conversation are idle
+ * and had no activity after the cutoff. Child activity does not move the
+ * root's `lastActivityAt`, so the whole tree is checked.
  */
 function treeIsQuiet(run: ArchiveRun) {
   const active = getDb()
@@ -116,12 +119,59 @@ function treeIsQuiet(run: ArchiveRun) {
         or(
           ne(juniorConversations.executionStatus, "idle"),
           gt(juniorConversations.lastActivityAt, runCutoff(run)),
-          // A Turn parked for authorization leaves the conversation idle.
-          awaitsAuthorization(juniorConversations.conversationId),
         ),
       ),
     );
   return sql`not exists (${active})`;
+}
+
+const OPEN_PLAN_ITEM_STATUSES = PLAN_ITEM_STATUSES.filter(isOpenPlanItemStatus);
+
+/**
+ * True when nothing in the participant row's tree needs a person. No
+ * conversation in it has `needs_input` status: an open action Review item
+ * that it added, a sign-in wait, or work that waits on its starter, such
+ * as an answer that the starter has not read. No open Plan item in it is
+ * assigned to a person. Archive applies to everyone, so input that waits
+ * on anyone keeps the tree. An archived child counts for nothing, as in
+ * the tree state.
+ */
+function treeNeedsNoOne() {
+  const assignedToPerson = getDb()
+    .select({ id: juniorPlanItems.id })
+    .from(juniorPlanItems)
+    .where(
+      and(
+        eq(juniorPlanItems.conversationId, juniorConversations.conversationId),
+        isNotNull(juniorPlanItems.assigneeUserId),
+        inArray(juniorPlanItems.status, OPEN_PLAN_ITEM_STATUSES),
+      ),
+    );
+  const needing = getDb()
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        or(
+          eq(
+            juniorConversations.conversationId,
+            juniorConversationParticipants.rootConversationId,
+          ),
+          and(
+            eq(
+              juniorConversations.rootConversationId,
+              juniorConversationParticipants.rootConversationId,
+            ),
+            isNull(juniorConversations.archivedAt),
+          ),
+        ),
+        or(
+          sql`${conversationStatusSql(juniorConversations)} = 'needs_input'`,
+          sql`exists (${assignedToPerson})`,
+        ),
+      ),
+    );
+  return sql`not exists (${needing})`;
 }
 
 /**
@@ -225,6 +275,7 @@ function archivableRow(run: ArchiveRun) {
       ? sql`${juniorUsers.autoArchiveGraceHours} <= ${run.graceHours}`
       : undefined,
     treeIsQuiet(run),
+    treeNeedsNoOne(),
     notWaitingOnAnyone(),
   );
 }
@@ -304,13 +355,14 @@ async function selectDoneRoots(
 }
 
 /**
- * Archive one root for everyone when it is still archivable for the run's
- * user.
+ * Archive roots for everyone when they are still archivable for the run's
+ * user, in one statement, and count the archived roots.
  */
-async function archiveRoot(
+async function archiveRoots(
   run: ArchiveRun,
-  rootConversationId: string,
-): Promise<boolean> {
+  rootConversationIds: string[],
+): Promise<number> {
+  if (rootConversationIds.length === 0) return 0;
   const archivable = getDb()
     .select({ userId: juniorConversationParticipants.userId })
     .from(juniorConversationParticipants)
@@ -322,7 +374,7 @@ async function archiveRoot(
       and(
         eq(
           juniorConversationParticipants.rootConversationId,
-          rootConversationId,
+          juniorConversations.conversationId,
         ),
         archivableRow(run),
       ),
@@ -332,13 +384,13 @@ async function archiveRoot(
     .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
     .where(
       and(
-        eq(juniorConversations.conversationId, rootConversationId),
+        inArray(juniorConversations.conversationId, rootConversationIds),
         isNull(juniorConversations.archivedAt),
         sql`exists (${archivable})`,
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return updated.length > 0;
+  return updated.length;
 }
 
 /** Archive every done conversation of one user and count the rows. */
@@ -349,17 +401,20 @@ async function archiveUserDoneConversations(
   let after: CandidateCursor | undefined;
   let archived = 0;
   let scanned = 0;
+  /* oxlint-disable no-await-in-loop -- Each page starts after the last root of the page before. */
   for (;;) {
     const rows = await selectCandidateRoots(run, after);
     if (rows.length === 0) break;
     scanned += rows.length;
     const rootIds = rows.map((row) => row.rootConversationId);
-    for (const rootId of await selectDoneRoots(rootIds, cutoffMs)) {
-      if (await archiveRoot(run, rootId)) archived += 1;
-    }
+    archived += await archiveRoots(
+      run,
+      await selectDoneRoots(rootIds, cutoffMs),
+    );
     if (rows.length < AUTO_ARCHIVE_PAGE_SIZE) break;
     after = rows.at(-1);
   }
+  /* oxlint-enable no-await-in-loop */
   return { archived, scanned };
 }
 
@@ -404,6 +459,7 @@ export async function runAutoArchiveSweep(args: {
   let archived = 0;
   let scanned = 0;
   for (const user of await selectAutoArchiveUsers()) {
+    // oxlint-disable-next-line no-await-in-loop -- The sweep archives for one user at a time to keep database load low.
     const result = await archiveUserDoneConversations({
       graceHours: user.graceHours,
       kind: "scheduled",

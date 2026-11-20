@@ -32,12 +32,16 @@ import {
   gte,
   inArray,
   isNull,
+  lt,
+  min,
   or,
   sql,
 } from "drizzle-orm";
+import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
+import { JUNIOR_NATIVE_EVENT_NAMESPACE } from "@/chat/conversations/structured-events";
 import { getChatConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
@@ -48,6 +52,7 @@ import {
   juniorConversationEvents,
   juniorConversations,
 } from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -84,14 +89,6 @@ const CONVERSATION_BATCH_SIZE = 10;
 const CONVERSATION_PAGE_SIZE = 500;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
-// Agent history is stored with JSON.stringify, so its text is valid JSON.
-// jsonb rejects only some `\uXXXX` escapes, such as a NUL character or a
-// lone surrogate from text cut inside an emoji. This regex finds each
-// `\uXXXX` escape that is not itself escaped: it follows an even number of
-// backslashes.
-const UNICODE_ESCAPE = String.raw`\u`;
-const UNICODE_ESCAPE_PATTERN = String.raw`(?<!\\)((?:\\\\)*)\\u[0-9a-fA-F]{4}`;
-const UNICODE_ESCAPE_REPLACEMENT = String.raw`\1`;
 /**
  * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
  * most of its function time for the writes and the other heartbeat work.
@@ -129,8 +126,11 @@ interface ConversationRow {
 
 interface EventRow {
   conversationId: string;
-  /** `tool_result`: only a successful answer tool result. */
-  type: "assistant_message" | "tool_result" | "user_message";
+  /**
+   * `tool_result`: only a successful answer tool result. `warmup`: the cost
+   * event of one warmup call.
+   */
+  type: "assistant_message" | "tool_result" | "user_message" | "warmup";
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
   stopReason: string | null;
@@ -141,6 +141,8 @@ interface EventRow {
   modelId: string | null;
   cacheRead: string | null;
   cacheWrite: string | null;
+  /** Warmup: when its cost was recorded, just after the call. */
+  warmupAtMs: string | null;
 }
 
 /** One idle period of the stored history, as live recording would see it. */
@@ -154,6 +156,8 @@ export interface ReplayedIdlePeriod {
   prefixTokens: number;
   /** The call that ended it. Unset when no call came before now. */
   next?: { modelId: string | null; cacheRead: number; cacheWrite: number };
+  /** The last warmup call before the call that ended it, if any. */
+  lastWarmupMs?: number;
 }
 
 /**
@@ -229,6 +233,58 @@ export async function countHistoryConversations(
   return row?.count ?? 0;
 }
 
+// Each warmup call appends a `cache_warmup` cost event to its Conversation
+// (`core-model.ts`), also a warmup that missed.
+const isWarmupEvent = and(
+  eq(juniorConversationEvents.type, "structured_event"),
+  sql`${juniorConversationEvents.payload}->>'namespace' = ${JUNIOR_NATIVE_EVENT_NAMESPACE}`,
+  sql`${juniorConversationEvents.payload}->>'name' = 'cache_warmup'`,
+);
+
+/**
+ * Return the time of the first recorded warmup call of the install. Warming
+ * did not run before it. Unset when no warmup call was recorded.
+ */
+export async function firstWarmupMs(): Promise<number | undefined> {
+  const [row] = await getDb()
+    .select({ at: min(juniorConversationEvents.createdAt) })
+    .from(juniorConversationEvents)
+    .where(isWarmupEvent);
+  return row?.at ? row.at.getTime() : undefined;
+}
+
+/**
+ * Sum the recorded cost of the warmup calls on each UTC day from `start` up
+ * to `end`, not included. Warmups of idle periods with no return count too.
+ */
+export async function warmupCostUsdByDay(range: {
+  start: string;
+  end: string;
+}): Promise<Record<string, number>> {
+  const events = juniorConversationEvents;
+  const date = sql<string>`TO_CHAR(${events.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+  const cost = sql`CASE
+    WHEN jsonb_typeof(${events.payload}->'content'->'costUsd') = 'number'
+      THEN (${events.payload}->'content'->>'costUsd')::double precision
+    ELSE 0
+  END`;
+  const rows = await getDb()
+    .select({
+      date,
+      costUsd: sql<number>`SUM(${cost})::double precision`.mapWith(Number),
+    })
+    .from(events)
+    .where(
+      and(
+        isWarmupEvent,
+        gte(events.createdAt, new Date(range.start)),
+        lt(events.createdAt, new Date(range.end)),
+      ),
+    )
+    .groupBy(date);
+  return Object.fromEntries(rows.map((row) => [row.date, row.costUsd]));
+}
+
 // Agent history stores each model response as an `assistant_message` and
 // each instruction of a Turn as a `user_message`. Schema version 2 keeps the
 // message fields in a JSON string, version 1 keeps them in the payload.
@@ -238,22 +294,23 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
+  const isStructuredEvent = sql`${events.type} = 'structured_event'`;
   const messageText = sql`${events.payload}->>'message'`;
   // Newer rows keep the fields that replay reads as payload keys. Older rows
-  // keep them only in the message string. One message that jsonb rejects
-  // would fail the query of its whole batch, so the cast drops every Unicode
-  // escape. The fields that replay reads have none.
+  // keep them only in the message string. The fields that replay reads have
+  // no Unicode escapes, so the cast keeps their values.
   const message = sql`CASE
     WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
     WHEN ${events.schemaVersion} < 2 THEN ${events.payload}
     WHEN (${events.payload}->'timestamp') IS NOT NULL THEN ${events.payload}
-    WHEN strpos(${messageText}, ${UNICODE_ESCAPE}) = 0 THEN (${messageText})::jsonb
-    ELSE regexp_replace(${messageText}, ${UNICODE_ESCAPE_PATTERN}, ${UNICODE_ESCAPE_REPLACEMENT}, 'g')::jsonb
+    ELSE ${storedMessageJson(messageText)}
   END`;
   return await getDb()
     .select({
       conversationId: events.conversationId,
-      type: sql<EventRow["type"]>`${events.type}`,
+      type: sql<
+        EventRow["type"]
+      >`CASE WHEN ${isStructuredEvent} THEN 'warmup' ELSE ${events.type} END`,
       personInstruction: sql<
         boolean | null
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
@@ -263,6 +320,9 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       modelId: sql<string | null>`${events.payload}->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+      warmupAtMs: sql<
+        string | null
+      >`CASE WHEN ${isStructuredEvent} THEN (EXTRACT(EPOCH FROM ${events.createdAt}) * 1000)::bigint END`,
     })
     .from(events)
     .innerJoin(
@@ -287,6 +347,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
             isUserMessage,
             sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
           ),
+          isWarmupEvent,
         ),
         gte(events.createdAt, juniorConversations.createdAt),
       ),
@@ -345,6 +406,20 @@ function replayConversation(
     waitsOnPendingWork: boolean;
     childRunning: boolean;
   };
+  // A warmup runs only while the Conversation waits, so one between the
+  // start and the end of a period ran in that period. A warmup whose cost
+  // was recorded after the end does not count.
+  const warmupTimes = events.flatMap((event) =>
+    event.type === "warmup" ? [Number(event.warmupAtMs)] : [],
+  );
+  const lastWarmup = (sinceMs: number, untilMs: number) => {
+    const inPeriod = warmupTimes.filter(
+      (atMs) => atMs > sinceMs && atMs < untilMs,
+    );
+    return inPeriod.length > 0
+      ? { lastWarmupMs: Math.max(...inPeriod) }
+      : undefined;
+  };
   const close = (
     { waitsOnPendingWork, childRunning, ...idle }: Idle,
     untilMs: number,
@@ -357,7 +432,9 @@ function replayConversation(
     // a running child stands for one.
     if (waitsOnPendingWork && !childRunning && !next) return;
     const period: ReplayedIdlePeriod = { ...idle, gapMs };
-    if (next) period.next = next;
+    if (next) {
+      Object.assign(period, { next }, lastWarmup(idle.sinceMs, untilMs));
+    }
     periods.push(period);
   };
   let userActor = false;
@@ -387,7 +464,7 @@ function replayConversation(
     if (toolUse && ending) answerEndings.set(toolUse, ending);
   }
   for (const event of events) {
-    if (event.type === "tool_result") continue;
+    if (event.type === "tool_result" || event.type === "warmup") continue;
     if (event.type === "user_message") {
       if (!inTurn) {
         // `agent/index.ts` counts a Task as not started by a person.
@@ -416,6 +493,7 @@ function replayConversation(
         ...waiting,
         gapMs: startedAtMs - waiting.sinceMs,
         next,
+        ...lastWarmup(waiting.sinceMs, startedAtMs),
       });
     }
     waiting =
@@ -515,6 +593,7 @@ async function replayConversations(
     let children: ChildAgentRow[];
     try {
       const ids = batch.map((row) => row.conversationId);
+      // oxlint-disable-next-line no-await-in-loop -- Load one batch at a time to bound memory.
       [rows, children] = await Promise.all([
         loadEvents(ids),
         loadChildAgents(ids),
@@ -653,11 +732,15 @@ export async function backfillCacheWarmingGaps(args: {
       // Check before the scan, so live gaps that arrive during the scan do
       // not stop the fill. A list that has gaps now has live gaps, or gaps
       // from a run that failed while it wrote. Both are kept as they are.
-      const emptySegments = new Set<string>();
-      for (const segment of BACKFILL_SEGMENTS) {
-        const gaps = await state.getList(segmentGapsKey(segment));
-        if (gaps.length === 0) emptySegments.add(segment);
-      }
+      const segments = [...BACKFILL_SEGMENTS];
+      const gapCounts = await mapBounded(
+        segments,
+        async (segment) =>
+          (await state.getList(segmentGapsKey(segment))).length,
+      );
+      const emptySegments = new Set(
+        segments.filter((_segment, index) => gapCounts[index] === 0),
+      );
       const { periods, scanned, canceledBatches, budgetExceeded } =
         await scanIdlePeriods({
           windowStartMs: args.nowMs - GLOBAL_GAPS_TTL_MS,
@@ -687,6 +770,7 @@ export async function backfillCacheWarmingGaps(args: {
         const key = segmentGapsKey(segment);
         const newest = gaps.slice(-BACKFILL_GAPS_MAX);
         for (const gapMs of newest) {
+          // oxlint-disable-next-line no-await-in-loop -- Append the gaps of a list in time order.
           await state.appendToList(key, gapMs, {
             maxLength: GLOBAL_GAPS_MAX,
             ttlMs: GLOBAL_GAPS_TTL_MS,

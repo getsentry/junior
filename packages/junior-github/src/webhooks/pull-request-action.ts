@@ -1,14 +1,18 @@
 /**
  * The next action of a Junior pull request for its requester, and its one
- * item on the review desk.
+ * item in the Inbox.
  *
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, approved, auto-merge is off, and GitHub's merge state
  * is `clean`. Otherwise it is "review" when GitHub still asks the requester
- * for a review. The requester takes one of them, not both, so one item per
- * pull request shows the action. Each webhook that can change one of these
- * facts reads them again from GitHub. Junior saves the derived action and
- * changes the item only when the action changes.
+ * for a review, or when the requester's latest review requests changes and
+ * the pull request has new commits since then. GitHub stops asking a
+ * reviewer once they review, so without the second case a fixed pull
+ * request never asks the requester again. The requester takes one of them,
+ * not both, so one item per pull request shows the action. Each webhook
+ * that can change one of these facts reads them again from GitHub. Junior
+ * saves the derived action and changes the item only when the action
+ * changes.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. It is assigned to that person only when they are in that
@@ -20,6 +24,7 @@ import type {
   PluginLogger,
   PluginReviewItems,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
@@ -30,7 +35,7 @@ import {
 } from "../pull-request-outcomes/store.js";
 import {
   GITHUB_CONFLICT_GONE_REASON,
-  gitHubConflictNoticeKey,
+  gitHubConflictItemKey,
 } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
@@ -41,6 +46,9 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+
+// Pull requests that one delivery syncs at once, under GitHub rate limits.
+const PULL_REQUEST_SYNC_CONCURRENCY = 5;
 
 /**
  * A check normally takes a few seconds. After this time, a check that
@@ -72,19 +80,29 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
 const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-ready:",
   "pull-request-review-requested:",
-];
+] as const;
+
+function itemName(target: GitHubPullRequestTarget): string {
+  return `${target.repositoryFullName}#${target.number}`.toLowerCase();
+}
+
+function actionDedupeKey(target: GitHubPullRequestTarget): string {
+  return `pull-request-action:${itemName(target)}`;
+}
 
 async function closeLegacyItems(
   items: PluginReviewItems,
   name: string,
 ): Promise<void> {
-  for (const prefix of LEGACY_DEDUPE_PREFIXES) {
-    await items.close({
-      dedupeKey: `${prefix}${name}`,
-      reason: "One item now shows the next action.",
-      status: "dismissed",
-    });
-  }
+  await Promise.all(
+    LEGACY_DEDUPE_PREFIXES.map((prefix) =>
+      items.close({
+        dedupeKey: `${prefix}${name}`,
+        reason: "One item now shows the next action.",
+        status: "dismissed",
+      }),
+    ),
+  );
 }
 
 const pullRequestWebhookSchema = z.object({
@@ -120,7 +138,7 @@ function nextAction(
   state: GitHubPullRequestMergeState,
   requesterLogin: string | undefined,
   saved: GitHubPullRequestAction | undefined,
-): { action?: GitHubPullRequestAction } | undefined {
+): { action?: GitHubPullRequestAction; rereview?: true } | undefined {
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to.
   const canMerge = !state.draft && !state.autoMerge;
@@ -139,33 +157,40 @@ function nextAction(
   ) {
     return { action: "review" };
   }
+  if (
+    state.changesRequestedCommit &&
+    state.changesRequestedCommit !== state.headSha
+  ) {
+    return { action: "review", rereview: true };
+  }
   if (canMerge && !state.mergeableState) return undefined;
   return {};
 }
 
 type CloseReason = { reason: string; status: "done" | "dismissed" };
 
+type EndedState = Exclude<GitHubPullRequestMergeState["state"], "open">;
+
 /** Why an item closes when its pull request is no longer open. */
+const ENDED_REASONS: Record<EndedState, CloseReason> = {
+  closed: {
+    reason: "The pull request closed without merging.",
+    status: "dismissed",
+  },
+  merged: { reason: "The pull request merged.", status: "done" },
+};
+
 function endedReason(
-  state: GitHubPullRequestMergeState,
+  state: GitHubPullRequestMergeState["state"],
 ): CloseReason | undefined {
-  if (state.state === "merged") {
-    return { reason: "The pull request merged.", status: "done" };
-  }
-  if (state.state === "closed") {
-    return {
-      reason: "The pull request closed without merging.",
-      status: "dismissed",
-    };
-  }
-  return undefined;
+  return state === "open" ? undefined : ENDED_REASONS[state];
 }
 
 function closeReason(
   state: GitHubPullRequestMergeState,
   previous: GitHubPullRequestAction,
 ): CloseReason {
-  const ended = endedReason(state);
+  const ended = endedReason(state.state);
   if (ended) return ended;
   if (previous === "review") {
     return { reason: "The review request ended.", status: "done" };
@@ -187,6 +212,7 @@ async function showAction(
     identityId: string;
     number: number;
     previous: GitHubPullRequestAction | undefined;
+    rereview: boolean;
     state: GitHubPullRequestMergeState;
   },
 ): Promise<void> {
@@ -196,10 +222,14 @@ async function showAction(
       assigneeIdentityIds: [args.identityId],
       // The URL stands alone, so the dashboard shows the pull request as
       // one card that carries its title. The text names it by number only.
+      // The Inbox hides the review and merge text under a row head that
+      // says it, so keep it in step with `textRepeatsHead` there.
       body:
         action === "merge"
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
-          : `GitHub asks you to review #${number}.\n\n${state.url}`,
+          : args.rereview
+            ? `#${number} has new commits since you requested changes.\n\n${state.url}`
+            : `GitHub asks you to review #${number}.\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {
@@ -218,6 +248,45 @@ async function showAction(
       dedupeKey: args.dedupeKey,
       ...closeReason(state, args.previous),
     });
+  }
+}
+
+/**
+ * Close the next-action item and the merge conflict notice of a pull request
+ * that merged or closed. The outcome write calls this before it marks the
+ * chips, so no reader sees an ended pull request next to its open item. The
+ * items are optional, so a failure is logged. In a webhook, the next-action
+ * sync after it closes the item again.
+ */
+export async function closeEndedGitHubPullRequestItems(args: {
+  db: GitHubDb;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
+  reviewItems: PluginConversationReviewItems;
+  state: EndedState;
+  target: GitHubPullRequestTarget;
+}): Promise<void> {
+  const { target } = args;
+  try {
+    const opener = (
+      await listGitHubPullRequestOpeners(args.db, {
+        numbers: [target.number],
+        repositoryFullName: target.repositoryFullName,
+      })
+    ).get(target.number);
+    if (!opener?.conversationId) return;
+    const items = args.reviewItems.forConversation(opener.conversationId);
+    const reason = ENDED_REASONS[args.state];
+    await Promise.all([
+      items.close({ dedupeKey: actionDedupeKey(target), ...reason }),
+      items.close({ dedupeKey: gitHubConflictItemKey(target), ...reason }),
+    ]);
+  } catch (error) {
+    logFailOpenFailure(
+      args.log,
+      "GitHub ended pull request item close failed",
+      error,
+      { number: target.number, repository: target.repositoryFullName },
+    );
   }
 }
 
@@ -242,8 +311,8 @@ async function syncOne(
   // and a Conversation for the item.
   if (!opener?.conversationId) return;
   const items = args.reviewItems.forConversation(opener.conversationId);
-  const name = `${target.repositoryFullName}#${target.number}`.toLowerCase();
-  const dedupeKey = `pull-request-action:${name}`;
+  const name = itemName(target);
+  const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
   // One webhook at a time checks a pull request. A webhook that arrives
   // during a check asks again, and the running webhook checks once more with
@@ -259,51 +328,65 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
+  // One check: read GitHub, change the items, and return the saved action.
+  const check = async (
+    previous: GitHubPullRequestAction | undefined,
+  ): Promise<GitHubPullRequestAction | undefined> => {
+    const state = await loadPullRequestMergeState(
+      args.env,
+      target,
+      requesterLogin,
+    );
+    const next = nextAction(state, requesterLogin, previous);
+    // Act only on a change. So repeat events add no second item, and an
+    // item that a person closed does not come back until the action
+    // changes. When the action cannot be known yet, a later event decides.
+    const changed = next !== undefined && next.action !== previous;
+    if (changed) {
+      await showAction(items, {
+        action: next.action,
+        dedupeKey,
+        identityId: opener.identityId,
+        number: target.number,
+        previous,
+        rereview: next.rereview === true,
+        state,
+      });
+    }
+    // Close the old items only after the new one shows, so a failed show
+    // does not leave the Inbox with no next-action item.
+    await Promise.all([
+      closeLegacyItems(items, name),
+      // The same read closes the merge conflict item from
+      // `merge-conflict-checks/policy.ts` when the conflict is gone.
+      state.state !== "open" ||
+      (state.mergeableState && state.mergeableState !== "dirty")
+        ? items.close({
+            dedupeKey: gitHubConflictItemKey(target),
+            ...(endedReason(state.state) ?? {
+              reason: GITHUB_CONFLICT_GONE_REASON,
+              status: "done",
+            }),
+          })
+        : undefined,
+    ]);
+    if (!changed) return previous;
+    // Save after the items change, so a failure leaves the old action and
+    // the next event tries again.
+    await setGitHubPullRequestNextAction(args.db, {
+      ...target,
+      action: next.action,
+    });
+    return next.action;
+  };
   while (requests !== undefined) {
     try {
-      const state = await loadPullRequestMergeState(args.env, target);
-      const next = nextAction(state, requesterLogin, saved);
-      // Act only on a change. So repeat events add no second item, and an
-      // item that a person closed does not come back until the action
-      // changes. When the action cannot be known yet, a later event decides.
-      const changed = next !== undefined && next.action !== saved;
-      if (changed) {
-        await showAction(items, {
-          action: next.action,
-          dedupeKey,
-          identityId: opener.identityId,
-          number: target.number,
-          previous: saved,
-          state,
-        });
-      }
-      await closeLegacyItems(items, name);
-      // The same read closes the merge conflict notice from
-      // `merge-conflict-checks/policy.ts` when the conflict is gone.
-      if (
-        state.state !== "open" ||
-        (state.mergeableState && state.mergeableState !== "dirty")
-      ) {
-        await items.close({
-          dedupeKey: gitHubConflictNoticeKey(target),
-          ...(endedReason(state) ?? {
-            reason: GITHUB_CONFLICT_GONE_REASON,
-            status: "done",
-          }),
-        });
-      }
-      if (changed) {
-        // Save after the items change, so a failure leaves the old action
-        // and the next event tries again.
-        await setGitHubPullRequestNextAction(args.db, {
-          ...target,
-          action: next.action,
-        });
-        saved = next.action;
-      }
+      // oxlint-disable-next-line no-await-in-loop -- Each check reads GitHub again for the requests that came in during the check before.
+      saved = await check(saved);
     } catch (error) {
       failure ??= error;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each check reads GitHub again for the requests that came in during the check before.
     requests = await releaseGitHubPullRequestReadySync(args.db, target, {
       id,
       requests,
@@ -328,15 +411,23 @@ export async function syncGitHubPullRequestActions(args: {
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {
-  for (const target of args.targets) {
-    try {
-      await syncOne(args, target);
-    } catch (error) {
-      logFailOpenFailure(args.log, "GitHub pull request action failed", error, {
-        deliveryId: args.deliveryId,
-        number: target.number,
-        repository: target.repositoryFullName,
-      });
-    }
-  }
+  await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(
+    args.targets,
+    async (target) => {
+      try {
+        await syncOne(args, target);
+      } catch (error) {
+        logFailOpenFailure(
+          args.log,
+          "GitHub pull request action failed",
+          error,
+          {
+            deliveryId: args.deliveryId,
+            number: target.number,
+            repository: target.repositoryFullName,
+          },
+        );
+      }
+    },
+  );
 }

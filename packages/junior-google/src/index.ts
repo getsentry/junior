@@ -43,10 +43,13 @@ import { listGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { listCalendarEventsTool } from "./tools/list-events";
 import { readGoogleFileTool } from "./tools/read-file";
 import { readMeetingTranscriptTool } from "./tools/read-meeting-transcript";
+import { readGoogleSlidesLayoutTool } from "./tools/read-slides-layout";
 import { replaceGoogleDocContentTool } from "./tools/replace-doc-content";
 import { replaceGoogleDocTextTool } from "./tools/replace-doc-text";
 import { searchGoogleFilesTool } from "./tools/search-files";
+import { getGoogleSlideThumbnailTool } from "./tools/slide-thumbnail";
 import { updateCalendarEventTool } from "./tools/update-event";
+import { updateGoogleSlidesTool } from "./tools/update-slides";
 
 /** Register Junior's Google Workspace plugin. */
 export function googlePlugin(): PluginRegistration {
@@ -56,7 +59,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling, Meet transcripts, Google Docs writing, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
+        "Google Calendar scheduling, Meet transcripts, Google Docs and Slides editing, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
       domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
@@ -98,15 +101,18 @@ export function googlePlugin(): PluginRegistration {
             createCalendarEvent: createCalendarEventTool,
             createGoogleDoc: createGoogleDocTool,
             findMeetingTimes: findMeetingTimesTool,
+            getGoogleSlideThumbnail: getGoogleSlideThumbnailTool,
             insertGoogleDocContent: insertGoogleDocContentTool,
             listCalendarEvents: listCalendarEventsTool,
             listGoogleFileComments: listGoogleFileCommentsTool,
             readGoogleFile: readGoogleFileTool,
+            readGoogleSlidesLayout: readGoogleSlidesLayoutTool,
             readMeetingTranscript: readMeetingTranscriptTool,
             replaceGoogleDocContent: replaceGoogleDocContentTool,
             replaceGoogleDocText: replaceGoogleDocTextTool,
             searchGoogleFiles: searchGoogleFilesTool,
             updateCalendarEvent: updateCalendarEventTool,
+            updateGoogleSlides: updateGoogleSlidesTool,
           },
           (ctx): GoogleToolContext => ({
             accountEmail: config.accountEmail,
