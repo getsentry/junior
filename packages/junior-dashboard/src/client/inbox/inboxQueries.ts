@@ -12,6 +12,7 @@ import pLimit from "p-limit";
 
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
@@ -32,12 +33,10 @@ export function useInboxCountData(enabled: boolean) {
     enabled,
     placeholderData: keepPreviousData,
     queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemCountSchema,
-        "/api/review-items/count?include=automations,snoozed",
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      reviewItemCountSchema,
+      "/api/review-items/count?include=automations,snoozed",
+    ),
     retry: false,
   });
 }
