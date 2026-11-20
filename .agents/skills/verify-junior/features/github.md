@@ -5,10 +5,26 @@ A user asks Junior to work in a GitHub repository: read code, change it, open an
 ## Sub-features
 
 - `pr-draft` A user asks for a code change. Junior pushes a branch and opens a draft PR without asking first.
-- `pr-assign` The new PR is assigned to the user's linked GitHub account, and review goes to the user or the reviewers they named when it is ready.
+- `pr-assign` The new PR is assigned to the user's linked GitHub account.
 - `attribution` The body of a PR or issue that Junior creates names the requester and links back to the Conversation.
-- `pr-follow` A check fails or a person leaves review feedback on a Junior PR. Junior pushes a fix and replies on GitHub.
-- `draft-ready` The required checks of a Junior draft pass and no decision is open. Junior marks it ready.
+- `pr-follow` Given a Junior PR, when a check that the PR causes fails or a person leaves review feedback, then Junior pushes a fix and replies on GitHub. Nobody is asked, and Junior posts nothing in the Conversation.
+- `draft-ready` Given a Junior draft with no open decision, when its required checks pass, then Junior marks it ready. Nobody is asked, except by the review request that `review-request` sends.
+- `draft-held` Given a Junior draft that would ask code owners to review when it is ready, or whose repo `AGENTS.md` asks for drafts, when its required checks pass, then it stays a draft, and the requester gets one Review item that says it waits for their review and why. A new head commit with passing checks updates the same item.
+- `review-request` Given a Junior PR that is ready for review, when the required checks pass on its head commit, then GitHub asks the reviewers that the requester named, else the requester, once, and the requester gets one `Review requested` item. Before the checks pass, nobody is asked.
+- `rereview` Given a reviewer requested changes on a Junior PR, when Junior pushes the fix and the required checks pass on the new head commit, then GitHub asks that reviewer again, once. A reviewer who approved since is not asked. Only when that reviewer is the requester does `Review requested` show again.
+- `push-after-approval` Given an approved Junior PR, when Junior pushes a change to the PR's own diff, then the approver is asked again after the required checks pass, and `Ready to merge` waits for their new approval. A merge of the base branch that needs no conflict resolution keeps the approval.
+- `ready-to-merge` Given a Junior PR that is approved, has no open change request, passes its required checks, has no merge conflict, and has auto-merge off, then the requester gets one `Ready to merge` item. Junior does not merge it, also when a review says to ship it.
+- `auto-merge` Given a person turns on auto-merge for a Junior PR, then nobody gets `Ready to merge`, and an open `Ready to merge` item is dismissed.
+- `checks-unrelated` Given a required check fails for a reason that the PR does not cause, such as a flaky test or a broken base branch, then Junior runs the failed jobs again once and asks nobody. When they fail the same way again, the requester gets one Review item that names the check. Junior never skips, disables, or weakens a check.
+- `conflict-lazy` Given a Junior PR with a merge conflict, when the PR next needs a person, then Junior fixes the conflict first and asks nobody. The PR needs a person before Junior asks for a review or a re-review, when it is approved, and when a person pushes, reviews, or comments on it. A draft that Junior still works on gets the fix too.
+- `conflict-idle` Given a Junior PR with a merge conflict that nobody works on, then Junior does no fix and asks nobody, for any number of days.
+- `fix-unlanded` Given a Junior fix for a conflict, a check, or feedback, when it does not land and a second try does not land, then the requester gets one Review item that names what failed, with `Resume` and `Dismiss`. `Resume` tries again. `Dismiss` ends these asks on that PR for good.
+- `other-reviewers` Given a reviewer other than the requester reviews a Junior PR, then Junior acts on the feedback and replies on GitHub. GitHub asks that reviewer. Junior adds no Review item for them, and does not ask the requester about it.
+- `no-reminders` Given an ask on a Junior PR waits, such as a review that nobody gives, then it stays one Review item. Junior does not repeat, escalate, or reassign it, and does not close the PR.
+- `requester-gone` Given the requester left the Conversation or has no linked GitHub account, then nobody gets a Review item for the PR. Junior still does upkeep when a person acts on the PR.
+- `long-lived` Given a Junior PR that is still open, when a person reviews, comments, or pushes any number of days after it opened, then Junior does the upkeep as on the first day.
+- `pr-ended` Given a Junior PR merges or closes on GitHub, by anyone, then its Review items close, its Watch ends, and Junior posts nothing. Later replies in the Conversation know it.
+- `stack` Given Junior opens a PR on the branch of another open PR, then the PR joins a GitHub stack. Junior fixes a conflict in the stack with a rebase of the stack. Each PR asks for its own review. The requester gets one `Ready to merge` item for the stack, when the whole stack can merge.
 - `feedback-status` A person comments on a Junior PR. The comment gets 👀, then 👍 when Junior addresses it or 👎 when Junior declines it.
 - `issues` A user asks to create, update, or comment on an issue. Junior does it, with the same attribution.
 - `watch` A user asks Junior to watch a PR. Matching activity wakes the Conversation, and Junior does not poll.
@@ -33,7 +49,12 @@ Preconditions:
 - **Draft PR (`pr-draft`, `pr-assign`, `attribution`).** Run `node $S/browse.mjs --out $E/pr --timeout 600000 --goto / --fill "role=textbox[name=\"Start a conversation\"]=In $REPO, add a line 'verify-junior' to the end of README.md and open a PR." --press Enter --idle --expect 'text=/pull\/\d+/' --snap reply`. Then run `gh pr list -R $REPO --author app/<app slug> --json number,isDraft,assignees,body,url > $E/pr/prs.json`. One PR is a draft, assigned to the linked account, and its body names the requester and links the Conversation URL from `reply.url.txt`. Junior asked no question first.
 - **Card (`cards`).** Run `node $S/browse.mjs --out $E/cards --goto "$(cat $E/pr/reply.url.txt)" --expect "text=$REPO" --snap card`. The PR card shows. Unlink the GitHub account and load the page again: the card does not show.
 - **Feedback (`feedback-status`, `pr-follow`).** Comment `gh pr comment <n> -R $REPO -b "Please also add a trailing newline."`. Within a minute the comment has 👀. After Junior's push, it has 👍, and `gh pr view <n> -R $REPO --json commits` shows a new commit.
-- **Ready (`draft-ready`).** When the checks of the draft pass, `gh pr view <n> -R $REPO --json isDraft` returns `false`.
+- **Ready (`draft-ready`, `review-request`).** While the checks of the draft run, `gh pr view <n> -R $REPO --json reviewRequests` lists nobody. When they pass, `gh pr view <n> -R $REPO --json isDraft,reviewRequests` returns `false` and the linked account, and `node $S/browse.mjs --out $E/review --goto /inbox --expect 'role=region[name="Needs you"] >> role=link[name=/Review requested · #<n>/]' --snap inbox` shows one item.
+- **Re-review (`rereview`).** As the linked account, run `gh pr review <n> -R $REPO --request-changes -b "Use a heading, not a line."`. After Junior's push, `reviewRequests` stays empty until the required checks pass on the new head commit, then lists the linked account once.
+- **Ready to merge (`ready-to-merge`, `auto-merge`).** Run `gh pr review <n> -R $REPO --approve`. When the checks pass, the Inbox shows `Ready to merge · #<n>` under "Needs you", and the PR is still open a minute later. Run `gh pr merge <n> -R $REPO --auto --squash` on a second approved PR: no `Ready to merge` item shows for it.
+- **Unrelated failure (`checks-unrelated`).** On a scratch repo whose required check fails on purpose on the default branch, ask for a change. `gh run list -R $REPO --branch <head>` shows one rerun of the failed jobs. After it fails, the Inbox shows one item that names the check, and the workflow file is unchanged.
+- **Ended (`pr-ended`).** Merge or close a PR that has an open item. The item leaves "Needs you", and the Conversation gets no new reply.
+- **Other reviewer (`other-reviewers`).** As a second account, request changes. Junior pushes a fix and replies on GitHub, and the linked account's Inbox gets no new item.
 - **Issue (`issues`).** Ask `In $REPO, open an issue titled "verify-junior issue" that says the README needs a section on setup.` Then ask `Comment on that issue: done in the PR.` `gh issue view -R $REPO "verify-junior issue" --json body,comments` shows the attribution footer and the comment.
 - **Watch (`watch`).** Ask `Watch PR <n> in $REPO and tell me here when it is merged.` Merge it with `gh pr merge <n> -R $REPO --squash`. The Conversation gets a new message about the merge, and its event log has no repeated polling tool calls.
 - **Default repo (`default-repo`).** Ask `Use $REPO as my default repo.`, then in the next message `How many open issues are there?`. Junior answers for `$REPO` without asking which repo.
@@ -45,4 +66,6 @@ Preconditions:
 - Do not give the instance a personal token, such as your own `GITHUB_TOKEN`. Junior must act as its GitHub App, and the drive proves nothing otherwise.
 - Use a scratch repo. A drive opens PRs and issues, and merges one.
 - `pr-follow`, `feedback-status`, `draft-ready`, and `watch` need the webhook. Check the App's recent deliveries for `200` before you blame Junior.
+- `conflict-idle`, `no-reminders`, and `long-lived` need days of no activity. One run cannot drive them. Check them on an old scratch PR, and report the others as verified only for the paths that the run took.
+- `other-reviewers` needs a second GitHub account with write access to `$REPO`.
 - `instance.mjs stop` drops the local data, not the PRs and issues. Close them on GitHub after the run, and keep `$E` as the record.

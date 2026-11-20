@@ -49,23 +49,18 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Gaps
 
-- When Junior stops fixing a merge conflict on its pull request, after 2
-  days with no activity by a person or after 3 fixes, it adds a
-  `Merge conflict` notice for the requester in Slack and the Inbox. No agent
-  runs for it. This breaks "Junior owns the upkeep of its own work" and
-  "when Junior stops upkeep that it owns, it tells nobody".
-- Junior counts its own merges and force pushes for requested work as
-  merge conflict fixes. So the fix limit can stop fixes on a pull request
-  that people still work on. This breaks "Junior owns the upkeep of its own
-  work".
+- When Junior stops fixing merge conflicts on its pull request, because
+  nobody worked on it for 2 days or after 3 fixes in a row, it asks the
+  requester to `Resume` with a Review item (`github#conflict-idle`). This
+  breaks "when Junior stops upkeep that it owns, it tells nobody".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
   do".
 - Some asks are only a Slack message: a draft pull request that waits for
-  the requester's review, a decision on a watched issue, and a blocked
-  Automation. They add no Review item, so the Inbox does not show them. This
-  breaks "Junior asks a person only with a Review item" and "Slack and the
-  dashboard ask for attention for the same things".
+  the requester's review (`github#draft-held`), a decision on a watched
+  issue, and a blocked Automation. They add no Review item, so the Inbox
+  does not show them. This breaks "Junior asks a person only with a Review
+  item" and "Slack and the dashboard ask for attention for the same things".
 - In a dashboard Conversation, a Turn that ends with a question card and no
   reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".
