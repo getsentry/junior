@@ -45,16 +45,19 @@ also wake a Conversation or run an Event automation.
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" item, because a person merges.
+  the requester gets a "Ready to merge" Review item, because a person
+  merges.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 
 ## Gaps
 
-- Junior asks the requester to review again as soon as it pushes a fix or
-  marks a change request addressed, before the required checks pass. This
-  breaks "asks for a review only when the required checks pass".
-
+- Junior asks the requester to review again when it pushes a fix or marks
+  a change request addressed, before the required checks pass. This breaks
+  "asks for a review only when the required checks pass" (Attention).
+- A pull request that Junior opens ready for review asks for a review at
+  once, before the required checks pass. This breaks "asks for a review
+  only when the required checks pass" (Attention).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".

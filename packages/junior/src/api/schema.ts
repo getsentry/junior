@@ -337,12 +337,15 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheHealthReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";

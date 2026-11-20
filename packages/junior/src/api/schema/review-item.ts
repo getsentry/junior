@@ -25,9 +25,8 @@ const personSchema = z
 /** One Review item as the viewer sees it. */
 export const reviewItemSchema = z
   .object({
-    addedByConversationId: z.string().min(1),
     /**
-     * Names the Conversation that added the item when it is not
+     * Names the Conversation that owns the item when it is not
      * `rootConversationId`, such as a child agent's Thread title.
      */
     addedByLabel: z.string().min(1).optional(),
@@ -53,6 +52,17 @@ export const reviewItemSchema = z
     /** People that the title, body, and question mention. */
     mentions: z.array(actorIdentitySchema).optional(),
     /**
+     * What the item belongs to: the Conversation of the agent or plugin
+     * that added it, or the Automation of an Automation alert. Its kind
+     * decides the item's visibility and where the Inbox stacks it.
+     */
+    owner: z
+      .object({
+        id: z.string().min(1),
+        kind: z.enum(["conversation", "automation"]),
+      })
+      .strict(),
+    /**
      * Other open work that the viewer can see on the same subject or linked
      * work. Only an open item has it.
      */
@@ -74,11 +84,12 @@ export const reviewItemSchema = z
       .optional(),
     request: reviewItemRequestSchema.optional(),
     /**
-     * The top of the item's Conversation tree that the viewer can see, at
-     * any depth: the Conversation that added the item when it is a root, or
-     * when the viewer cannot see its root. The Inbox stacks items by it.
+     * The top of the owner Conversation's tree that the viewer can see, at
+     * any depth: the owner when it is a root, or when the viewer cannot see
+     * its root. The Inbox stacks items by it. Unset when the owner is not a
+     * Conversation; then the Inbox stacks items by their owner.
      */
-    rootConversationId: z.string().min(1),
+    rootConversationId: z.string().min(1).optional(),
     status: z.enum(["open", "done", "dismissed"]),
     subject: z
       .object({
@@ -124,6 +135,8 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /** `automation` lists only Automation alerts. */
+    owner: z.enum(["automation"]).optional(),
     /**
      * `true` lists only the open items in Inbox rows that the viewer
      * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
@@ -190,14 +203,16 @@ export const reviewItemCountQuerySchema = z
   .strict();
 
 /**
- * The counts behind the Inbox badge, which shows the sum of `needsViewer`
- * and `automations`, and behind the Inbox entries.
+ * The counts behind the Inbox badge, which shows `needsViewer`, and behind
+ * the Inbox entries. An Automation alert is a Review item, so
+ * `needsViewer` counts it.
  */
 export const reviewItemCountSchema = z
   .object({
     /**
-     * The viewer's own Automations that need attention, as the Inbox lists
-     * them (`scope=attention&owner=me`). Only with `include=automations`.
+     * The viewer's own Automations that need attention, as the Automations
+     * entry counts them (`scope=attention&owner=me`). Only with
+     * `include=automations`.
      */
     automations: z.number().int().nonnegative().optional(),
     /** The `needsViewer` items whose subject is a code change. */

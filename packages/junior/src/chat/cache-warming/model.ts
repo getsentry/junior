@@ -67,10 +67,30 @@ const MIN_GAP_SAMPLES = 20;
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 
 /**
+ * Cost of a warmup per prefix token, as a multiple of the cache read price.
+ * A warmup also pays for its output token and the request overhead. Measured
+ * warmups cost $0.22/MTok of prefix on Anthropic Opus, where a read costs
+ * $0.2/MTok. With a $5/MTok write, a warmup pays when the chance of a return
+ * in the next interval is at least 0.22/4.8, about 4.6%.
+ */
+const WARMUP_COST_PER_READ = 1.1;
+
+/** Price of one warmup per prefix token, in the unit of the read price. */
+export function warmupPrice(cacheReadPrice: number): number {
+  return cacheReadPrice * WARMUP_COST_PER_READ;
+}
+
+/**
  * Junior watches an idle period for this long. A person who replies later
  * counts as a person who did not reply. The reply chance of a warmup counts
  * only replies before this time. For a cache that outlives the horizon, this
  * is less than the real chance, so Junior warms less, never more.
+ *
+ * The horizon rarely stops warming. For most Conversations, the return chance
+ * per interval falls below breakeven after about 18 minutes, so
+ * `unlikely_return` stops nearly all warming first. A backtest without the
+ * cap changed almost nothing: late returns exist, but they are too rare to
+ * pay for warming every Conversation that long.
  *
  * The horizon message is signed when the idle period starts, and a queue
  * signature is valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other
@@ -97,10 +117,11 @@ export const TIMER_START_DELAY_MS = 2 * MINUTE_MS;
 
 /**
  * Latest timer due time, as idle time, that the timer floor warms for. A
- * warmup costs one cache read, and a miss costs one write minus one read, so
- * the floor sends fewer warmups than the miss costs in reads. The cache of
- * the last warmup must last until the timer's Turn starts. A later timer
- * changes nothing: warming for it costs more than it saves.
+ * warmup costs a bit more than one cache read (`WARMUP_COST_PER_READ`), and a
+ * miss costs one write minus one read, so the floor sends fewer warmups than
+ * the miss costs in warmups. The cache of the last warmup must last until the
+ * timer's Turn starts. A later timer changes nothing: warming for it costs
+ * more than it saves.
  */
 export function timerFloorMaxDueIdleMs(prices: {
   cacheReadPrice: number;
@@ -110,7 +131,8 @@ export function timerFloorMaxDueIdleMs(prices: {
   const savedPerReturn = prices.cacheWritePrice - prices.cacheReadPrice;
   // Without a read price or a saving, the floor cannot pay.
   if (prices.cacheReadPrice <= 0 || savedPerReturn <= 0) return 0;
-  const maxWarmups = Math.ceil(savedPerReturn / prices.cacheReadPrice) - 1;
+  const maxWarmups =
+    Math.ceil(savedPerReturn / warmupPrice(prices.cacheReadPrice)) - 1;
   return (
     prices.cacheTtlMs +
     maxWarmups * (prices.cacheTtlMs - WARMUP_MARGIN_MS) -
@@ -223,7 +245,10 @@ export interface GapSegmentInput {
  * who started the Turn and by how many Turns the Conversation had before it.
  * Turns that no person started rarely get a quick reply. In 30 days of
  * production data, segments by these two keys saved more than one histogram.
- * Local time of day did not improve the result, so it is not a key.
+ * Local time of day did not improve the result, so it is not a key. A
+ * finer per-Conversation hazard rule, segmented by what the idle period
+ * waits on, the work state, how the Turn ended, the Turn depth, and the
+ * prefix size, only matched these segments in a backtest.
  *
  * The work state lets the histograms learn how often anything returns after
  * the work is done. An event does not restore an archived Conversation, so
@@ -336,10 +361,12 @@ export interface WarmupDecision {
 /**
  * Decide whether to send the next warmup.
  *
- * A warmup costs one cache read of the prefix. A return to a warm cache saves
- * one write minus one read. So warming pays when the expected returns per
- * warmup are above read/(write − read). Earlier warmups are already paid, so
- * the threshold is the same for each warmup.
+ * A warmup costs one cache read of the prefix and a little more
+ * (`WARMUP_COST_PER_READ`). A return to a warm cache saves one write minus
+ * one read. So warming pays when the expected returns per warmup are above
+ * warmup/(write − read). Earlier warmups are already paid, so the threshold
+ * is the same for each warmup. Both sides scale with the prefix size, so the
+ * size cancels out of the threshold. It matters only through the segment.
  *
  * One warmup alone can be useless when people return a little after the next
  * TTL, while two or three warmups in a row would reach them. So the decision
@@ -351,11 +378,19 @@ export interface WarmupDecision {
  * starts, Junior warms even when no plan pays and after the horizon (reason
  * `timer`). The timer's Turn then reads the cache. The floor only adds
  * warmups, so it never warms less than the decision without a timer.
+ *
+ * In a backtest, warming for a fixed 20, 30, 55, or 90 minutes lost to this
+ * rule, and a longer fixed time lost more. Most of the loss that is left is
+ * returns after warming stopped. That is the expected price of the stop
+ * rule, not a cache failure: in nearly all sampled late returns, the last
+ * warmup read the cache.
  */
 export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
   const threshold =
-    savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
+    savedPerReturn > 0
+      ? Math.min(warmupPrice(input.cacheReadPrice) / savedPerReturn, 1)
+      : 1;
   const conversation = histogramOf(input.conversationGapsMs);
   const segments = [histogramOf(input.globalGapsMs)];
   for (const gapsMs of input.priorGapsMs ?? []) {

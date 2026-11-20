@@ -3,6 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
+import type { InboxSnoozeSubjectBody } from "@/api/schema/inbox-snooze";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
@@ -52,11 +53,11 @@ export async function addItem(
   assignees: User[],
   title: string,
   visibility: "private" | "public" = "public",
-  addedByConversationId = conversationId,
+  ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId,
+    owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
@@ -153,7 +154,7 @@ export async function addPullRequestItem(
   title: string,
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
@@ -187,7 +188,7 @@ export async function addNotice(
   title: string,
 ): Promise<string> {
   const item = await insertReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
@@ -222,10 +223,7 @@ export function api(fixture: ConversationFixture, viewer: User) {
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),
     /** Snooze a row until this time. */
-    snooze: (
-      subject: { conversationId: string; reviewItemId?: string },
-      wakeAtMs: number,
-    ) =>
+    snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
     /** The Events of a page that the viewer names for a snooze. */
     resource: (url: string) =>
@@ -234,7 +232,7 @@ export function api(fixture: ConversationFixture, viewer: User) {
       ),
     /** Snooze a row until an Event on each item's subject or a named page. */
     snoozeOn: (
-      subject: { conversationId: string; reviewItemId?: string },
+      subject: InboxSnoozeSubjectBody,
       triggers: {
         eventType: string;
         outcome: "resolve" | "wake";
@@ -255,8 +253,7 @@ export function api(fixture: ConversationFixture, viewer: User) {
           items: { subject?: unknown }[];
         }
       ).items.map((item) => item.subject),
-    unsnooze: (subject: { conversationId: string; reviewItemId?: string }) =>
-      snoozes("DELETE", subject),
+    unsnooze: (subject: InboxSnoozeSubjectBody) => snoozes("DELETE", subject),
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (

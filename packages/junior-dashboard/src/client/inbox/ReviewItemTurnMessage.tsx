@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { agentNamePossessive } from "../agentName";
 import { ClampedDisplayText } from "../display-text/DisplayText";
 import { fetchDashboardJson } from "../http";
+import { itemConversationId } from "./reviewItemFormat";
 
 // The last message Junior sent in the Turn, from its start to its end, with
 // the people it mentions. The page starts around the Turn's start, so a very
@@ -40,17 +41,17 @@ function turnLastMessage(
  * until then or when the read fails.
  */
 export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
-  const { addedByConversationId: conversationId, addedByTurnId: turnId } =
-    props.item;
+  const conversationId = itemConversationId(props.item);
+  const turnId = props.item.addedByTurnId;
   const { data: message } = useQuery({
-    enabled: Boolean(turnId),
+    enabled: Boolean(conversationId && turnId),
     // Not under ["dashboard", "conversations"]: every key there is a feed,
     // and the feed updates read each one as a feed.
     queryKey: ["dashboard", "conversation-turn", conversationId, turnId],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationEventPageSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/events?${new URLSearchParams({ turn: turnId! })}`,
+        `/api/conversations/${encodeURIComponent(conversationId!)}/events?${new URLSearchParams({ turn: turnId! })}`,
         signal,
       ),
     retry: false,

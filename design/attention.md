@@ -37,35 +37,30 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Rules
 
-- An Event about work that Junior owns starts a Turn for the agent, not a
+- An Event about work that Junior owns starts a Turn for the agent, not an
   ask for attention. When the agent finishes that work, it ends the Turn with
   no reply. An Automation posts what its instruction asks for.
 - When Junior stops upkeep that it owns, such as fixes on a pull request
   that nobody works on, it tells nobody.
-- When Junior is blocked, it says what the person must do. "Junior stopped"
-  with nothing to do takes attention and gives nothing back.
+- When Junior is blocked, it says what the person must do.
 - Junior asks a person only with a Review item
   ([Inbox](./inbox.md)).
 
 ## Gaps
 
-- When Junior stops fixing a merge conflict on its pull request, after 2
-  days with no activity by a person or after 3 fixes, it adds a
-  `Merge conflict` notice for the requester in Slack and the Inbox. No agent
-  runs for it. This breaks "Junior owns the upkeep of its own work" and
-  "when Junior stops upkeep that it owns, it tells nobody".
-- Junior counts its own merges and force pushes for requested work as
-  merge conflict fixes. So the fix limit can stop fixes on a pull request
-  that people still work on. This breaks "Junior owns the upkeep of its own
-  work".
+- When Junior stops fixing a merge conflict on its pull request, it asks
+  the requester to Resume with a `Merge conflict` Review item in Slack and
+  the Inbox. No agent runs for the stop. This breaks "Junior owns the upkeep
+  of its own work" and "when Junior stops upkeep that it owns, it tells
+  nobody".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
   do".
 - Some asks are only a Slack message: a draft pull request that waits for
   the requester's review, a decision on a watched issue, and a blocked
-  Automation. They add no Review item, so the Inbox does not show them. This
-  breaks "Junior asks a person only with a Review item" and "Slack and the
-  dashboard ask for attention for the same things".
+  Automation. They add no Review item. This breaks "Junior asks a person
+  only with a Review item" and "Slack and the dashboard ask for attention
+  for the same things".
 - In a dashboard Conversation, a Turn that ends with a question card and no
   reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".
