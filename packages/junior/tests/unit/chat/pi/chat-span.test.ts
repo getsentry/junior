@@ -185,6 +185,33 @@ describe("withChatSpanAttributes", () => {
     expect(span.setAttributes).not.toHaveBeenCalled();
   });
 
+  it("records AI Gateway routing from the provider stream", async () => {
+    const span = activeChatSpan();
+    const onProviderStreamEvent = vi.fn();
+    const event = {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      provider_metadata: {
+        gateway: { routing: { finalProvider: "bedrock" } },
+      },
+    };
+    let sent: Promise<void> = Promise.resolve();
+    const base: Provider = (requestModel, _context, options) => {
+      sent = (async () => {
+        await options?.onProviderStreamEvent?.(event, requestModel);
+      })();
+      return createAssistantMessageEventStream();
+    };
+    withChatSpanAttributes(base)(model, transcript([]), {
+      onProviderStreamEvent,
+    });
+    await sent;
+
+    expect(span.attributes["app.ai.gateway.provider"]).toBe("bedrock");
+    // The caller's hook still sees the event.
+    expect(onProviderStreamEvent).toHaveBeenCalledWith(event, model);
+  });
+
   it("hashes the provider request body and leaves it unchanged", async () => {
     // Runs one call whose provider builds `payload`, and returns the
     // `app.ai.request.*` attributes that the span got.

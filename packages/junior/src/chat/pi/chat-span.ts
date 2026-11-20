@@ -14,6 +14,7 @@ import {
 import * as Sentry from "@/chat/sentry";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import { getLogContextAttributesForSpan } from "@/chat/logging";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
   getCurrentConversationPrivacy,
@@ -187,6 +188,25 @@ function traceRequestPayload(
   };
 }
 
+// Wraps `onProviderStreamEvent`, which Pi calls with each raw provider stream
+// event. It records how AI Gateway routed the request.
+function traceGatewayRouting(
+  span: Sentry.Span,
+  options: SimpleStreamOptions,
+): SimpleStreamOptions {
+  const onProviderStreamEvent = options.onProviderStreamEvent;
+  return {
+    ...options,
+    onProviderStreamEvent: async (event, model) => {
+      const attributes = gatewayRoutingAttributes(event);
+      if (attributes) {
+        span.setAttributes(attributes);
+      }
+      await onProviderStreamEvent?.(event, model);
+    },
+  };
+}
+
 // The SDK types the message structurally, because it does not depend on pi-ai.
 function isAssistantMessage(
   message: PiAiSpanResult["response"],
@@ -238,7 +258,10 @@ export function withChatSpanAttributes(
     return base(
       model,
       context,
-      traceRequestPayload(span, traceResponseHeaders(span, options)),
+      traceGatewayRouting(
+        span,
+        traceRequestPayload(span, traceResponseHeaders(span, options)),
+      ),
     );
   };
 }
