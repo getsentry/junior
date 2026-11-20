@@ -1,11 +1,13 @@
+import type { ListOrganizationEventsData } from "@sentry/api";
 import * as z from "zod";
 import { breakerStates, connectedState } from "@/chat/cache-warming/request";
 import { botConfig } from "@/chat/config";
 import { mapBounded } from "@/chat/fan-out";
 import {
-  readSentryTelemetry,
   sentryTelemetry,
+  telemetryResponse,
   type SentryTelemetry,
+  type SentryTelemetryResponse,
 } from "@/chat/sentry-telemetry";
 import type { CacheHealthReport } from "../schema/cache-warming";
 
@@ -34,9 +36,14 @@ const cacheKey = (window: CacheHealthWindow) =>
 const tableSchema = z.object({
   data: z.array(z.record(z.string(), z.unknown())),
 });
-const seriesSchema = z.object({
-  data: z.array(
-    z.tuple([z.number(), z.array(z.object({ count: z.number().nullable() }))]),
+const timeseriesSchema = z.object({
+  timeSeries: z.array(
+    z.object({
+      yAxis: z.string(),
+      values: z.array(
+        z.object({ timestamp: z.number(), value: z.number().nullable() }),
+      ),
+    }),
   ),
 });
 
@@ -62,33 +69,50 @@ const usd = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 const label = (value: unknown) =>
   typeof value === "string" && value ? value : undefined;
-const bucketKey = (seconds: number) =>
-  new Date(seconds * 1_000).toISOString().slice(0, 13);
+const bucketKey = (ms: number) => new Date(ms).toISOString().slice(0, 13);
 
-function params(entries: Record<string, string | string[]>) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(entries)) {
-    for (const item of [value].flat()) search.append(key, item);
-  }
-  return search;
-}
+type Read = () => Promise<SentryTelemetryResponse<unknown>>;
 
 // The Sentry reads of one window, in the order that `healthData` reads them.
-function windowReads(window: CacheHealthWindow, nowMs: number) {
+function windowReads(
+  telemetry: SentryTelemetry,
+  window: CacheHealthWindow,
+  nowMs: number,
+): Read[] {
+  const { client, org, projectId } = telemetry;
   const { ms, interval } = WINDOWS[window];
   const calls = agentCalls(botConfig.modelId);
-  const recent = { statsPeriod: window };
-  const stats = (query: string, yAxis: string | string[]) => ({
-    endpoint: "events-stats" as const,
-    params: params({ ...recent, dataset: "spans", interval, query, yAxis }),
-  });
-  const table = (entries: Record<string, string | string[]>) => ({
-    endpoint: "events" as const,
-    params: params(entries),
-  });
+  const path = { organization_id_or_slug: org };
+  const timeseries =
+    (query: string, yAxis: string[]): Read =>
+    async () =>
+      telemetryResponse(
+        await client.listOrganizationEventsTimeseries({
+          path,
+          query: {
+            dataset: "spans",
+            project: [projectId],
+            statsPeriod: window,
+            interval,
+            query,
+            yAxis,
+          },
+        }),
+        "events-timeseries",
+      );
+  const table =
+    (query: Omit<ListOrganizationEventsData["query"], "project">): Read =>
+    async () =>
+      telemetryResponse(
+        await client.listOrganizationEvents({
+          path,
+          query: { ...query, project: [projectId] },
+        }),
+        "events",
+      );
   return [
-    stats(calls, CALL_AGGREGATES),
-    stats(`${calls} ${FULL_REWRITE}`, "count()"),
+    timeseries(calls, CALL_AGGREGATES),
+    timeseries(`${calls} ${FULL_REWRITE}`, ["count()"]),
     table({
       dataset: "spans",
       start: new Date(nowMs - WEEK_MS - ms).toISOString(),
@@ -97,7 +121,7 @@ function windowReads(window: CacheHealthWindow, nowMs: number) {
       field: CALL_AGGREGATES,
     }),
     table({
-      ...recent,
+      statsPeriod: window,
       dataset: "spans",
       query: "span.op:cache_warming.warmup",
       field: [
@@ -108,10 +132,10 @@ function windowReads(window: CacheHealthWindow, nowMs: number) {
         "count()",
         "sum(app.cost.total_usd)",
       ],
-      per_page: "100",
+      per_page: 100,
     }),
     table({
-      ...recent,
+      statsPeriod: window,
       dataset: "tracemetrics",
       field: [
         "app.cache_warming.idle_outcome",
@@ -120,21 +144,19 @@ function windowReads(window: CacheHealthWindow, nowMs: number) {
       ],
     }),
     table({
-      ...recent,
+      statsPeriod: window,
       dataset: "tracemetrics",
       field: ["app.cache_warming.breaker_event", BREAKER_METRIC],
     }),
   ];
 }
 
-// Series of a multi-axis read are keyed by axis. A one-axis read is the
-// series itself.
-function series(body: unknown, axis?: string) {
-  const value =
-    axis === undefined
-      ? body
-      : z.record(z.string(), z.unknown()).parse(body)[axis];
-  return seriesSchema.parse(value).data;
+// The values of one axis of a timeseries read, by bucket start.
+function series(body: unknown, axis: string): Map<number, number | null> {
+  const values =
+    timeseriesSchema.parse(body).timeSeries.find((item) => item.yAxis === axis)
+      ?.values ?? [];
+  return new Map(values.map((point) => [point.timestamp, point.value]));
 }
 
 function callTotals(row: Record<string, unknown> | undefined) {
@@ -208,21 +230,19 @@ function healthData(
   const [calls, inputTokens, cacheWriteTokens] = CALL_AGGREGATES.map((axis) =>
     series(callBody, axis),
   );
-  const rewrites = new Map(
-    series(rewriteBody).map(([seconds, values]) => [seconds, values[0]?.count]),
-  );
+  const rewrites = series(rewriteBody, "count()");
   return {
     status: "ok",
     window,
     modelId: botConfig.modelId,
     fetchedAt: new Date(nowMs).toISOString(),
     stale: false,
-    buckets: (calls ?? []).map(([seconds, values], index) => ({
-      start: bucketKey(seconds),
-      calls: count(values[0]?.count),
-      inputTokens: count(inputTokens?.[index]?.[1][0]?.count),
-      cacheWriteTokens: count(cacheWriteTokens?.[index]?.[1][0]?.count),
-      fullRewrites: count(rewrites.get(seconds)),
+    buckets: [...(calls ?? [])].map(([timestamp, value]) => ({
+      start: bucketKey(timestamp),
+      calls: count(value),
+      inputTokens: count(inputTokens?.get(timestamp)),
+      cacheWriteTokens: count(cacheWriteTokens?.get(timestamp)),
+      fullRewrites: count(rewrites.get(timestamp)),
     })),
     lastWeek: callTotals(tableSchema.parse(lastWeek).data[0]),
     warmups: warmupTotals(warmups),
@@ -239,14 +259,14 @@ async function readWindow(
   nowMs: number,
 ): Promise<SentryHealth | { status: "rate_limited" | "denied" }> {
   const answers = await mapBounded(
-    windowReads(window, nowMs),
-    (read) => readSentryTelemetry(telemetry, read.endpoint, read.params),
+    windowReads(telemetry, window, nowMs),
+    (read) => read(),
     READ_CONCURRENCY,
   );
   const bodies: unknown[] = [];
   for (const answer of answers) {
     if (answer.status !== "ok") return { status: answer.status };
-    bodies.push(answer.body);
+    bodies.push(answer.data);
   }
   return healthData(window, bodies, nowMs);
 }

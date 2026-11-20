@@ -3,9 +3,14 @@
  *
  * Junior sends its telemetry to the project of `SENTRY_DSN`, so it reads only
  * that project, in the `SENTRY_ORG_SLUG` org, with the `SENTRY_READ_TOKEN` org
- * read token. Only server code calls Sentry, so the token never reaches a
- * browser.
+ * read token, through the `@sentry/api` client. Only server code calls
+ * Sentry, so the token never reaches a browser.
  */
+import {
+  createSentryClient,
+  type SdkResult,
+  type SentryClient,
+} from "@sentry/api";
 
 /** Settings that the telemetry reads need. */
 export type SentryTelemetrySetting =
@@ -15,16 +20,14 @@ export type SentryTelemetrySetting =
 
 /** Where and how to read Junior's telemetry. */
 export interface SentryTelemetry {
-  /** API base URL, such as `https://us.sentry.io`. */
-  apiUrl: string;
+  client: SentryClient;
   org: string;
   projectId: string;
-  token: string;
 }
 
 /** The answer of one telemetry read that Sentry did not fail. */
-export type SentryTelemetryResponse =
-  | { status: "ok"; body: unknown }
+export type SentryTelemetryResponse<T> =
+  | { status: "ok"; data: T }
   /** Sentry rate limited the read. A later read can work. */
   | { status: "rate_limited" }
   /** The token cannot read the org or the project. */
@@ -63,32 +66,27 @@ export function sentryTelemetry():
       ],
     };
   }
-  return { apiUrl: apiUrlOf(url), org, projectId, token };
+  return {
+    client: createSentryClient({ baseUrl: apiUrlOf(url), auth: token }),
+    org,
+    projectId,
+  };
 }
 
 /**
- * Read one org events endpoint (`events` for tables, `events-stats` for time
- * series) for the telemetry project. Throw for any other failure.
+ * Return the answer of one telemetry read through the `@sentry/api` client.
+ * Throw for a failure that is not a rate limit or a denied token, naming
+ * `what` failed.
  */
-export async function readSentryTelemetry(
-  telemetry: SentryTelemetry,
-  endpoint: "events" | "events-stats",
-  params: URLSearchParams,
-): Promise<SentryTelemetryResponse> {
-  const query = new URLSearchParams(params);
-  query.set("project", telemetry.projectId);
-  const response = await fetch(
-    `${telemetry.apiUrl}/api/0/organizations/${encodeURIComponent(telemetry.org)}/${endpoint}/?${query}`,
-    { headers: { authorization: `Bearer ${telemetry.token}` } },
-  );
-  if (response.status === 429) return { status: "rate_limited" };
-  if (response.status === 401 || response.status === 403) {
-    return { status: "denied" };
-  }
-  if (!response.ok) {
-    throw new Error(
-      `Sentry ${endpoint} read failed with status ${response.status}.`,
-    );
-  }
-  return { status: "ok", body: await response.json() };
+export function telemetryResponse<T>(
+  result: SdkResult<T>,
+  what: string,
+): SentryTelemetryResponse<T> {
+  if (!("error" in result)) return { status: "ok", data: result.data };
+  const status = result.response?.status;
+  if (status === 429) return { status: "rate_limited" };
+  if (status === 401 || status === 403) return { status: "denied" };
+  throw new Error(`Sentry ${what} read failed with status ${status}.`, {
+    cause: result.error,
+  });
 }

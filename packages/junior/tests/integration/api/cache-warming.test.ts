@@ -30,7 +30,7 @@ const OUTCOMES_KEY = "junior:cache_warming:breaker:anthropic:outcomes";
 const HEALTH_KEY = "junior:cache_warming:health:24h";
 const SENTRY_EVENTS =
   "https://us.sentry.io/api/0/organizations/acme/:endpoint/";
-const HOUR_S = 60 * 60;
+const HOUR_MS = 60 * 60 * 1_000;
 
 /**
  * Fake the events API of Sentry's region host, with the answers of Junior's
@@ -38,10 +38,15 @@ const HOUR_S = 60 * 60;
  */
 function fakeSentryEvents(options: { status?: number } = {}) {
   const reads: URL[] = [];
-  const bucket = (seconds: number, value: number) => [
-    seconds,
-    [{ count: value }],
-  ];
+  const start = Date.parse("2031-05-09T07:00:00.000Z");
+  const timeSeries = (yAxis: string, first: number, second: number) => ({
+    yAxis,
+    values: [
+      { timestamp: start, value: first, incomplete: false },
+      { timestamp: start + HOUR_MS, value: second, incomplete: false },
+    ],
+    meta: {},
+  });
   const tables: Record<string, Array<Record<string, unknown>>> = {
     "span.op:cache_warming.warmup": [
       {
@@ -81,21 +86,23 @@ function fakeSentryEvents(options: { status?: number } = {}) {
         return new HttpResponse(null, { status: options.status });
       const query = url.searchParams.get("query") ?? "";
       const fields = url.searchParams.getAll("field");
-      if (params["endpoint"] === "events-stats") {
-        const start = Date.parse("2031-05-09T07:00:00.000Z") / 1_000;
+      if (params["endpoint"] === "events-timeseries") {
         if (query.includes("cache_creation.input_tokens:>50000")) {
           return HttpResponse.json({
-            data: [bucket(start, 1), bucket(start + HOUR_S, 3)],
+            timeSeries: [timeSeries("count()", 1, 3)],
           });
         }
+        // Sentry may order the series of a multi-axis read in any way.
         return HttpResponse.json({
-          "count()": { data: [bucket(start, 10), bucket(start + HOUR_S, 20)] },
-          "sum(gen_ai.usage.input_tokens)": {
-            data: [bucket(start, 1_000_000), bucket(start + HOUR_S, 2_000_000)],
-          },
-          "sum(gen_ai.usage.cache_creation.input_tokens)": {
-            data: [bucket(start, 50_000), bucket(start + HOUR_S, 400_000)],
-          },
+          timeSeries: [
+            timeSeries(
+              "sum(gen_ai.usage.cache_creation.input_tokens)",
+              50_000,
+              400_000,
+            ),
+            timeSeries("count()", 10, 20),
+            timeSeries("sum(gen_ai.usage.input_tokens)", 1_000_000, 2_000_000),
+          ],
         });
       }
       if (fields.includes("app.cache_warming.idle_outcome")) {
