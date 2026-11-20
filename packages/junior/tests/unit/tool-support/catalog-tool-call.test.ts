@@ -77,7 +77,7 @@ describe("catalog tool calls", () => {
         },
         { catalogDemo: definition },
       ),
-    ).toThrow("executeTool can only call catalog tools");
+    ).toThrow("`hiddenDemo` is not a catalog tool");
     expect(() =>
       resolveCatalogToolCall(
         {

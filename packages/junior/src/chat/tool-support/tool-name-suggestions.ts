@@ -13,15 +13,15 @@ export type ToolNameHint =
   | { source: string; tools: string[] };
 
 /**
- * A call named a tool that the caller cannot call. `hint` comes from
- * {@link findToolNameHint} and can be empty.
+ * A call named a tool that the caller cannot call. `message` already holds
+ * the rendered hint. `hint` comes from {@link findToolNameHint} and can be
+ * empty.
  */
 export class ToolNameMissError extends ToolInputError {
   readonly hint: ToolNameHint;
 
   constructor(message: string, hint: ToolNameHint) {
-    const text = renderToolNameHint(hint);
-    super(text ? `${message} ${text}` : message);
+    super(message);
     this.name = "ToolNameMissError";
     this.hint = hint;
   }
