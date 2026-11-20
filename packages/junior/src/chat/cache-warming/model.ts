@@ -75,9 +75,10 @@ export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
  */
 const WARMUP_COST_PER_READ = 1.1;
 
-// Price of one warmup per prefix token.
-const warmupPrice = (cacheReadPrice: number) =>
-  cacheReadPrice * WARMUP_COST_PER_READ;
+/** Price of one warmup per prefix token, in the unit of the read price. */
+export function warmupPrice(cacheReadPrice: number): number {
+  return cacheReadPrice * WARMUP_COST_PER_READ;
+}
 
 /**
  * Junior watches an idle period for this long. A person who replies later

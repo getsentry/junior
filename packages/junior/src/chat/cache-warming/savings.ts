@@ -15,7 +15,11 @@
 import { logWarn } from "@/chat/logging";
 import { usdToMicroUsd } from "@/db/micro-usd";
 import { addStats, firstStatDate, replaceStats, type Stat } from "@/stats";
-import { MIN_WARMUP_PREFIX_TOKENS, WARMUP_MARGIN_MS } from "./model";
+import {
+  MIN_WARMUP_PREFIX_TOKENS,
+  WARMUP_MARGIN_MS,
+  warmupPrice,
+} from "./model";
 
 /** `junior_stats` namespace of the cache warming counters. */
 export const SAVINGS_NAMESPACE = "cache_warming";
@@ -77,12 +81,14 @@ export function idlePeriodSavings(input: {
   const warmups = Math.ceil(lateMs / (input.cacheTtlMs - WARMUP_MARGIN_MS));
   const read = input.cacheReadPrice / 1_000_000;
   const write = input.cacheWritePrice / 1_000_000;
-  if (warmups * read >= write - read) return undefined;
+  // A warmup costs what the stop rule prices it at, a bit more than a read.
+  const warmup = warmupPrice(read);
+  if (warmups * warmup >= write - read) return undefined;
   const writeSavedUsd = input.prefixTokens * (write - read);
   const hit = input.cacheRead >= minTokens;
   return {
     hit,
-    oracleUsd: writeSavedUsd - warmups * input.prefixTokens * read,
+    oracleUsd: writeSavedUsd - warmups * input.prefixTokens * warmup,
     savedUsd: hit ? writeSavedUsd : 0,
   };
 }
