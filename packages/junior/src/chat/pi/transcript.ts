@@ -35,10 +35,6 @@ export const RUNTIME_CONTEXT_TEXT_STARTS = [
 
 type UserContentPart = Exclude<UserMessage["content"], string>[number];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function userMessageContent(message: PiMessage): UserContentPart[] | undefined {
   return message.role === "user" && Array.isArray(message.content)
     ? message.content
@@ -104,36 +100,55 @@ export function isStandaloneRuntimeContextMessage(
 
 /** Type guard for Pi SDK assistant messages. */
 export function isAssistantMessage(value: unknown): value is AssistantMessage {
-  return isRecord(value) && value["role"] === "assistant";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "role" in value &&
+    value.role === "assistant"
+  );
 }
 
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
 ): value is ToolResultMessage {
-  return isRecord(value) && value["role"] === "toolResult";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "role" in value &&
+    value.role === "toolResult"
+  );
 }
 
 /** Check whether a tool result carries an error flag. */
 export function isToolResultError(result: unknown): boolean {
-  return isRecord(result) && Boolean(result["isError"]);
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "isError" in result &&
+    Boolean(result.isError)
+  );
 }
 
 /** Extract the tool name from a raw tool result message. */
 export function normalizeToolNameFromResult(
   result: unknown,
 ): string | undefined {
-  if (!isRecord(result)) return undefined;
-  const { name, toolName } = result;
+  if (typeof result !== "object" || result === null) return undefined;
+  const toolName = "toolName" in result ? result.toolName : undefined;
   if (typeof toolName === "string" && toolName.length > 0) return toolName;
+  const name = "name" in result ? result.name : undefined;
   if (typeof name === "string" && name.length > 0) return name;
   return undefined;
 }
 
 /** Extract role string from a raw Pi message. */
 export function getPiMessageRole(value: unknown): string | undefined {
-  return isRecord(value) && typeof value["role"] === "string"
-    ? value["role"]
+  return typeof value === "object" &&
+    value !== null &&
+    "role" in value &&
+    typeof value.role === "string"
+    ? value.role
     : undefined;
 }
 

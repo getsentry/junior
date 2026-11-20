@@ -14,6 +14,7 @@ import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
   insertReviewItem,
+  ownerConversationId,
   updateReviewItemContent,
   type ReviewItemContent,
 } from "./store";
@@ -97,7 +98,7 @@ export function createPluginReviewItems(args: {
       if (
         existing &&
         isPrivate &&
-        existing.addedByConversationId !== conversationId
+        ownerConversationId(existing) !== conversationId
       ) {
         throw new Error(
           "A private review item links only to the Conversation that added it",
@@ -132,8 +133,8 @@ export function createPluginReviewItems(args: {
       }
       const item = await insertReviewItem(db, {
         ...content,
-        addedByConversationId: conversationId,
         dedupeKey: scopedKey(notice.dedupeKey),
+        owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
         ...(access.tenant ? { tenant: access.tenant } : undefined),
       });

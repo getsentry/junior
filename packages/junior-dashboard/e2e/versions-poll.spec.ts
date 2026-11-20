@@ -188,7 +188,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions",
       rootConversationId: releaseId,
     };
@@ -279,7 +279,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions-retry",
       rootConversationId: releaseId,
     };

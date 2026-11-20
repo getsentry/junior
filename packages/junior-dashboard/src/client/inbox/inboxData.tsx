@@ -17,7 +17,6 @@ import { foldNotices, fyiRows, viewRows, type InboxView } from "./inboxModel";
 import { inboxCounts } from "./inboxCounts";
 import { waitingPullRequestCount } from "./InboxPullRequests";
 import { useLinkedInboxItems } from "./inboxListState";
-import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnoozes";
 import {
   useClosingReviewItemIds,
@@ -26,11 +25,7 @@ import {
   useReviewItemStates,
   useReviewItemsData,
 } from "./queries";
-import {
-  useAutomationAttentionData,
-  useInboxCountData,
-  scrollPages,
-} from "./inboxQueries";
+import { useInboxCountData, scrollPages } from "./inboxQueries";
 import {
   inboxBundles,
   itemUpForGrabs,
@@ -233,14 +228,11 @@ function useBuildInboxData(input: {
       ? [...read, ...held, ...left]
       : read;
   }, [leaving, missing, read, states]);
-  const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer past the loaded pages. To do
   // pages on its own reads, so a count that is pending or failed cannot
   // stop it.
   const serverCounts = useInboxCountData(signedIn).data;
-  const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
-  const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
   const conversationById = useMemo(
@@ -252,17 +244,23 @@ function useBuildInboxData(input: {
   const missingIds = useMemo(
     () => [
       ...new Set(
-        list
-          .map((item) => item.rootConversationId)
-          .filter((id) => !conversationById.has(id)),
+        list.flatMap((item) =>
+          item.rootConversationId &&
+          !conversationById.has(item.rootConversationId)
+            ? [item.rootConversationId]
+            : [],
+        ),
       ),
     ],
     [conversationById, list],
   );
   const missingTitles = useLinkedConversationTitles(missingIds);
-  const titleOf = (id: string) =>
-    conversationById.get(id)?.displayTitle ??
-    missingTitles[missingIds.indexOf(id)];
+  // An item that no Conversation owns has no Conversation title.
+  const titleOf = (id: string | undefined) =>
+    id === undefined
+      ? undefined
+      : (conversationById.get(id)?.displayTitle ??
+        missingTitles[missingIds.indexOf(id)]);
 
   // The server leaves snoozed rows out of `list` and lists them in Snoozed.
   // A notice about the subject of an ask shows on that ask's row instead,
@@ -280,8 +278,8 @@ function useBuildInboxData(input: {
     (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
   );
   // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
-  const isPinned = (conversationId: string) =>
-    Boolean(conversationById.get(conversationId)?.pinnedAt);
+  const isPinned = (conversationId: string | undefined) =>
+    Boolean(conversationId && conversationById.get(conversationId)?.pinnedAt);
 
   // To do holds the asks that name the viewer. Asks for Everyone are up for
   // grabs, and notices are FYI.
@@ -299,8 +297,14 @@ function useBuildInboxData(input: {
 
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity, with its items. A Conversation outside the loaded feed joins
-  // when it has open items.
-  const rowsByTime = (bundles: InboxBundle[]) => {
+  // when it has open items. Items that no Conversation owns are in no
+  // Conversation row.
+  const rowsByTime = (all: InboxBundle[]) => {
+    const bundles = all.flatMap((bundle) =>
+      bundle.conversationId
+        ? [{ ...bundle, conversationId: bundle.conversationId }]
+        : [],
+    );
     const bundleByConversation = new Map(
       bundles.map((bundle) => [bundle.conversationId, bundle]),
     );
@@ -343,9 +347,6 @@ function useBuildInboxData(input: {
     ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
-  const todoAutomations = automations.filter(
-    (automation) => !alerts.hidden(automation),
-  );
   // Each badge counts its page's rows (`inboxCounts`). A row that leaves
   // after a read shows its items closed counts no more.
   const onPage = closedElsewhere.length
@@ -355,7 +356,6 @@ function useBuildInboxData(input: {
     ? list.filter((item) => !closedElsewhere.includes(item))
     : list;
   const pageCounts = inboxCounts({
-    automationCards: automationCards(),
     hasMore: itemsQuery.hasNextPage,
     known,
     loaded: itemsQuery.data ? loaded : undefined,
@@ -370,17 +370,6 @@ function useBuildInboxData(input: {
     },
     server: serverCounts,
   });
-  // Alerts put away in this browser leave To do. Only the attention list
-  // says which Automations they are. Until it loads, show no count: a count
-  // that drops after load marks a false update on a pinned tab. A failed
-  // list cannot say, so all count.
-  function automationCards(): number | undefined {
-    if (attention.data) return todoAutomations.length;
-    if (attention.error) return serverCounts?.automations;
-    if (!serverCounts) return undefined;
-    const counted = serverCounts.automations ?? 0;
-    return counted > 0 && alerts.anyPutAway ? undefined : counted;
-  }
   // Snoozed and Automations count on the server. Done has no count: it
   // would need every closed item.
   const counts: Partial<Record<InboxView | "automations", number>> = {
@@ -392,11 +381,6 @@ function useBuildInboxData(input: {
   };
 
   return {
-    alerts,
-    automations,
-    automationsError: Boolean(attention.error && !attention.data),
-    /** The Automations that need attention are in, so To do is complete. */
-    automationsLoaded: !signedIn || Boolean(attention.data),
     awake,
     /** The open row's items, held after a read shows them closed. */
     closedElsewhere,
@@ -445,8 +429,6 @@ function useBuildInboxData(input: {
       retry: () =>
         void (moreSnoozed ? fetchNextSnoozed() : snoozedQuery.refetch()),
     },
-    /** Automation alerts for To do: those the viewer has not put away. */
-    todoAutomations,
     snoozes,
     sweeper,
     titleOf,

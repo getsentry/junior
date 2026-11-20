@@ -318,7 +318,7 @@ describe("model message history", () => {
         .map(([input]) => input),
     ).toEqual(["fourth"]);
     expect(turnText.get("fourth")).toContain(
-      `- #${open!.id} (pending, assignee self): Renumber the migration`,
+      `- TODO-${open!.id} (pending, assignee self): Renumber the migration`,
     );
     expect(turnText.get("fourth")).not.toContain("Merge the runner");
   });

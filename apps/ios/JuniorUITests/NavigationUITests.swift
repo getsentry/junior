@@ -119,6 +119,15 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["answer-on-web"].waitForExistence(timeout: 10))
   }
 
+  func testDrawerLogsOut() {
+    let app = launch()
+    app.buttons["Open navigation"].tap()
+    let logOut = app.buttons["Log out"]
+    XCTAssertTrue(logOut.waitForExistence(timeout: 10))
+    logOut.tap()
+    XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
+  }
+
   func testAutomationShowsRuns() {
     let app = launch(open: "/automations")
     let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Listening' OR label CONTAINS 'Next'"))

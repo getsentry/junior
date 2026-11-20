@@ -1,6 +1,7 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { expectRequestBudget } from "./request-budget";
 import type { Page } from "@playwright/test";
+import { failedRunAlert } from "./inbox/inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -11,7 +12,7 @@ const viewer = {
 };
 
 const base = {
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
@@ -31,7 +32,7 @@ const conversationId = "slack:CQA123:1770003600.000200";
 // messages before it and a new one after it.
 const rollout = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
@@ -107,7 +108,7 @@ const answered = {
 // The agent added this item in the Conversation, so a message there closes it.
 const migration = {
   ...license,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
@@ -168,23 +169,6 @@ async function mockReviewItems(
       : route.fulfill({ json: { error: "Not found" }, status: 404 });
   });
   return actions;
-}
-
-/** Show no blocked Automations, so an empty inbox is empty. */
-async function mockNoBlockedAutomations(page: Page) {
-  await page.route(
-    (url) =>
-      url.pathname.endsWith("/api/automations") &&
-      url.searchParams.get("state") === "blocked",
-    async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      await route.fulfill({
-        response,
-        json: { ...body, automations: [], total: 0 },
-      });
-    },
-  );
 }
 
 test("an old /review link opens the item in the Inbox", async ({
@@ -512,8 +496,9 @@ test("a search lists open and archived items together", async ({
 });
 
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
+  // The mock reporting has blocked Automations. Their alerts are Review
+  // items, so they do not list again on their own.
   await mockReviewItems(page, { open: [] });
-  await mockNoBlockedAutomations(page);
   await page.goto(`${dashboard.baseURL}/inbox`);
   const detail = page.getByRole("region", { name: "Selected review item" });
   await expect(detail.getByText("Nothing needs you")).toBeVisible();
@@ -521,6 +506,61 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
     page.getByRole("link", { name: new RegExp(answered.title) }),
   ).toHaveCount(0);
   await screenshot(page, "review-desk-empty", { view: "desktop" });
+});
+
+test("a failed-run alert sends Pause to the server", async ({
+  dashboard,
+  page,
+}) => {
+  const alert = {
+    ...base,
+    body: "Last run failed.",
+    id: "item-run-alert",
+    owner: { id: "scheduled-1", kind: "automation" },
+    request: failedRunAlert("scheduled-1", "Weekly project summary").request,
+    rootConversationId: undefined,
+    title: "Weekly project summary",
+  };
+  const actions = await mockReviewItems(page, { open: [alert] });
+  await page.goto(`${dashboard.baseURL}/inbox`);
+  await page.getByRole("link", { name: /Weekly project summary/ }).click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(detail.getByRole("button", { name: "Run again" })).toBeVisible();
+  // Core takes the step and reads no words, so there is no Other….
+  await expect(detail.getByRole("button", { name: "Other…" })).toHaveCount(0);
+  await detail.getByRole("button", { name: "Pause" }).click();
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        body: { action: "submit", answer: { values: { step: ["Pause"] } } },
+        id: alert.id,
+      },
+    ]);
+});
+
+test("an Automation alert names its Automation as its source", async ({
+  dashboard,
+  page,
+}) => {
+  const alert = {
+    ...base,
+    body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    id: "item-alert",
+    owner: { id: "scheduled-1", kind: "automation" },
+    rootConversationId: undefined,
+    title: "Weekly project summary",
+  };
+  await mockReviewItems(page, { open: [alert] });
+  await page.goto(`${dashboard.baseURL}/inbox`);
+  const row = page.getByRole("link", { name: /Weekly project summary/ });
+  await expect(row).toContainText("Automation");
+  // It has no Conversation to excerpt, so it links to its Automation.
+  await row.click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(
+    detail.getByRole("link", { name: /Open automation/ }),
+  ).toBeVisible();
 });
 
 test("Send sends docked picks and asks before a message drops others", async ({
