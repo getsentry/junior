@@ -39,6 +39,10 @@ Workspace account, so the user connects nothing.
   domains.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
+- Google gets a Sandbox image for a presentation from a private copy,
+  through a download URL that expires within 5 minutes. The URL that the
+  deck keeps opens nothing after that, even when the copy is not deleted.
+  An install whose storage cannot sign reads inserts no Sandbox image.
 - Junior reads a file or its comments only for a requester who can open it
   through their own email, their domain when that domain owns the file, or
   a link that anyone can open.

@@ -1,6 +1,9 @@
 // oxlint-disable anti-slop/no-shape-in-symbol-names -- `shape` is a Slides API field.
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type PluginDownloadUrls,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src/index";
 import { ACCOUNT_EMAIL, stubGoogleEnv, withReadCheck } from "./fixture";
@@ -15,6 +18,9 @@ function slidesTools(
   responses: Response[],
   curlExitCode = 0,
   readableIds: readonly string[] = [DECK_ID],
+  /** Sandbox files by path. Any other path reads as the PNG stub. */
+  files: Record<string, Uint8Array | null> = {},
+  downloadUrls?: PluginDownloadUrls,
 ) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
@@ -23,8 +29,11 @@ function slidesTools(
     stderr: cmd === "curl" && curlExitCode ? "403 Forbidden" : "",
     stdout: "",
   }));
-  const readFile = vi.fn(async () => PNG);
+  const readFile = vi.fn(async (path: string) =>
+    path in files ? (files[path] ?? null) : PNG,
+  );
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
+    ...(downloadUrls ? { downloadUrls } : undefined),
     egress: { fetch: withReadCheck(fetch, readableIds) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
     users: {
@@ -38,13 +47,16 @@ function slidesTools(
     const tool = tools[name];
     return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
   };
-  /** Operation, URL, and JSON body of each Google request, in order. */
+  /** Operation, URL, and body of each Google request, in order. */
   const calls = async () =>
     Promise.all(
       fetch.mock.calls.map(async ([request]) => ({
-        body: request.request.body
-          ? await request.request.clone().json()
-          : undefined,
+        body: !request.request.body
+          ? undefined
+          : request.request.headers.get("content-type")?.includes("json")
+            ? await request.request.clone().json()
+            : new Uint8Array(await request.request.clone().arrayBuffer()),
+        contentType: request.request.headers.get("content-type"),
         operation: request.operation as string,
         url: new URL(request.request.url),
       })),
@@ -342,6 +354,248 @@ describe("Google Slides tools", () => {
         revision_id: "rev-1",
       }),
     ).rejects.toThrow("The edit applied at revision rev-2, but reading");
+  });
+
+  describe("sandbox images", () => {
+    const GRID = `${SANDBOX_ROOT}/slides/grid.png`;
+    const GRID_PNG = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
+    ]);
+    const editor = () =>
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER });
+    const createGrid = {
+      createImage: {
+        elementProperties: { pageObjectId: "s1" },
+        objectId: "grid",
+        url: GRID,
+      },
+    };
+    const input = (requests: Array<Record<string, unknown>>) => ({
+      presentation: DECK_LINK,
+      requests,
+      revision_id: "rev-1",
+    });
+    /** Download URLs that record each copy and each delete. */
+    const fakeDownloadUrls = (
+      options: { failDelete?: boolean; url?: string } = {},
+    ) => {
+      const copies: Array<{ body: Uint8Array; contentType: string }> = [];
+      const deleted: string[] = [];
+      const downloadUrls: PluginDownloadUrls = {
+        async create({ body, contentType }) {
+          const url =
+            options.url ??
+            `https://storage.example/downloads/${copies.length}?sig=1`;
+          copies.push({ body, contentType });
+          return {
+            async delete() {
+              if (options.failDelete) throw new Error("storage is down");
+              deleted.push(url);
+            },
+            url,
+          };
+        },
+      };
+      return { copies, deleted, downloadUrls };
+    };
+
+    it("inserts a sandbox image from a short-lived download URL and deletes the copy", async () => {
+      const urls = fakeDownloadUrls();
+      const { call, calls } = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          Response.json({
+            replies: [{ createImage: { objectId: "grid" } }, {}, {}],
+            writeControl: { requiredRevisionId: "rev-2" },
+          }),
+          checkedDeck({ objectId: "s1" }),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+        urls.downloadUrls,
+      );
+      const logo = {
+        replaceImage: {
+          imageObjectId: "logo",
+          url: "https://example.com/logo.png",
+        },
+      };
+      const swap = { replaceImage: { imageObjectId: "old_grid", url: GRID } };
+
+      await expect(
+        call("updateGoogleSlides", input([createGrid, logo, swap])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
+
+      const sent = await calls();
+      expect(sent.map((item) => item.operation)).toEqual([
+        "google.drive.file.get",
+        "google.drive.permissions.list",
+        "google.slides.presentation.batchUpdate",
+        "google.slides.presentation.get",
+      ]);
+      // One copy for the path that two requests use.
+      expect(urls.copies).toEqual([
+        { body: GRID_PNG, contentType: "image/png" },
+      ]);
+      const url = "https://storage.example/downloads/0?sig=1";
+      expect(sent[2]?.body).toEqual({
+        requests: [
+          { createImage: { ...createGrid.createImage, url } },
+          logo,
+          { replaceImage: { imageObjectId: "old_grid", url } },
+        ],
+        writeControl: { requiredRevisionId: "rev-1" },
+      });
+      expect(urls.deleted).toEqual([url]);
+    });
+
+    it("refuses a path outside the sandbox, a file that Google cannot insert, or an install without download URLs, before any edit", async () => {
+      const huge = new Uint8Array(50_000_000);
+      huge.set(GRID_PNG);
+      const refused: Array<
+        [string, Uint8Array | null, string, PluginDownloadUrls | undefined]
+      > = [
+        [
+          "/etc/grid.png",
+          GRID_PNG,
+          "normalized absolute path under /sandbox",
+          fakeDownloadUrls().downloadUrls,
+        ],
+        [
+          `${SANDBOX_ROOT}/../etc/grid.png`,
+          GRID_PNG,
+          "normalized absolute path under /sandbox",
+          fakeDownloadUrls().downloadUrls,
+        ],
+        [
+          GRID,
+          null,
+          `No sandbox file at ${GRID}.`,
+          fakeDownloadUrls().downloadUrls,
+        ],
+        [
+          GRID,
+          new TextEncoder().encode("<svg/>"),
+          "is not a PNG, JPEG, or GIF",
+          fakeDownloadUrls().downloadUrls,
+        ],
+        [
+          GRID,
+          huge,
+          "Google Slides takes images under 50 MB",
+          fakeDownloadUrls().downloadUrls,
+        ],
+        [
+          GRID,
+          GRID_PNG,
+          "cannot sign short-lived download URLs, so you cannot insert a sandbox image",
+          undefined,
+        ],
+      ];
+      for (const [path, file, message, downloadUrls] of refused) {
+        const tools = slidesTools(
+          [deckFile(), editor()],
+          0,
+          [DECK_ID],
+          { [path]: file },
+          downloadUrls,
+        );
+        await expect(
+          tools.call(
+            "updateGoogleSlides",
+            input([{ createImage: { ...createGrid.createImage, url: path } }]),
+          ),
+        ).rejects.toThrow(message);
+        expect((await tools.calls()).map((item) => item.operation)).toEqual([
+          "google.drive.file.get",
+          "google.drive.permissions.list",
+        ]);
+      }
+    });
+
+    it("deletes every copy when an image, its URL, or the edit fails", async () => {
+      // The second image is refused, but the first already has a copy.
+      const PHOTO = `${SANDBOX_ROOT}/photo.jpg`;
+      const partial = fakeDownloadUrls();
+      await expect(
+        slidesTools(
+          [deckFile(), editor()],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG, [PHOTO]: new Uint8Array([1, 2, 3]) },
+          partial.downloadUrls,
+        ).call(
+          "updateGoogleSlides",
+          input([
+            createGrid,
+            { createImage: { ...createGrid.createImage, url: PHOTO } },
+          ]),
+        ),
+      ).rejects.toThrow(`${PHOTO} is not a PNG, JPEG, or GIF.`);
+      expect(partial.copies).toHaveLength(1);
+      expect(partial.deleted).toHaveLength(1);
+
+      const long = fakeDownloadUrls({
+        url: `https://storage.example/${"x".repeat(2048)}`,
+      });
+      await expect(
+        slidesTools(
+          [deckFile(), editor()],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          long.downloadUrls,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("longer than the 2 KB that Google Slides takes");
+      expect(long.deleted).toHaveLength(1);
+
+      const refused = fakeDownloadUrls();
+      await expect(
+        slidesTools(
+          [
+            deckFile(),
+            editor(),
+            Response.json(
+              {
+                error: {
+                  message:
+                    "Invalid requests[0].createImage: Access to the provided image was forbidden.",
+                },
+              },
+              { status: 400 },
+            ),
+          ],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          refused.downloadUrls,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("Access to the provided image was forbidden.");
+      expect(refused.deleted).toHaveLength(1);
+    });
+
+    it("applies the edit when a copy cannot be deleted, because its URL expires anyway", async () => {
+      const { call } = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          Response.json({
+            replies: [{}],
+            writeControl: { requiredRevisionId: "rev-2" },
+          }),
+          checkedDeck({ objectId: "s1" }),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+        fakeDownloadUrls({ failDelete: true }).downloadUrls,
+      );
+      await expect(
+        call("updateGoogleSlides", input([createGrid])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
+    });
   });
 
   it("refuses edits that either account cannot make, and malformed requests", async () => {
