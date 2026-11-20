@@ -3,6 +3,8 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  lazy,
+  Suspense,
   useId,
   useState,
 } from "react";
@@ -19,12 +21,19 @@ import {
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { cn } from "../styles";
 import { formatTime } from "../time";
-import { EventSnoozeDialog } from "./EventSnoozeDialog";
 import {
   atLocalHour,
   snoozeChoicesAt,
   type EventSnooze,
 } from "./snoozeChoices";
+
+// The Event dialog and its pull request search load on first use, so the
+// Inbox's first paint skips their code.
+const EventSnoozeDialog = lazy(() =>
+  import("./EventSnoozeDialog").then((module) => ({
+    default: module.EventSnoozeDialog,
+  })),
+);
 
 const MENU_ROW_CLASS =
   "flex cursor-pointer items-baseline justify-between gap-3 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
@@ -188,10 +197,12 @@ export function RowSnoozeButton(props: {
         </PopoverContent>
       </Popover>
       {eventDialog && props.eventSnooze ? (
-        <EventSnoozeDialog
-          onClose={() => setEventDialog(false)}
-          snooze={props.eventSnooze}
-        />
+        <Suspense fallback={null}>
+          <EventSnoozeDialog
+            onClose={() => setEventDialog(false)}
+            snooze={props.eventSnooze}
+          />
+        </Suspense>
       ) : null}
     </>
   );

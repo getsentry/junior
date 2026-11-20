@@ -93,6 +93,10 @@ export const OTHER_PULL_REQUEST = {
   url: "https://github.com/getsentry/junior/pull/2",
 };
 
+/** A pull request of getsentry/junior that does not exist. */
+const MISSING_PULL_REQUEST_NUMBER = "999";
+export const MISSING_PULL_REQUEST_URL = `https://github.com/getsentry/junior/pull/${MISSING_PULL_REQUEST_NUMBER}`;
+
 /** Link a GitHub login to a User, as account linking does. */
 export async function linkGitHub(viewer: User, login: string): Promise<User> {
   await upsertLinkedIdentity(getSqlExecutor(), viewer.id, {
@@ -105,8 +109,9 @@ export async function linkGitHub(viewer: User, login: string): Promise<User> {
 }
 
 /**
- * Let the GitHub App read pull requests of getsentry/junior, and let only
- * these GitHub logins see the repository.
+ * Let the GitHub App read pull requests of getsentry/junior, except
+ * `MISSING_PULL_REQUEST_URL`, and let only these GitHub logins see the
+ * repository.
  */
 export function useGitHubRepository(readers: string[]): void {
   vi.stubEnv("GITHUB_APP_ID", "123");
@@ -125,13 +130,15 @@ export function useGitHubRepository(readers: string[]): void {
       }),
     ),
     http.get(`${api}/pulls/:number`, ({ params }) =>
-      HttpResponse.json({
-        html_url: `https://github.com/getsentry/junior/pull/${params["number"]}`,
-        merged: false,
-        number: Number(params["number"]),
-        state: "open",
-        title: `Pull request ${params["number"]}`,
-      }),
+      params["number"] === MISSING_PULL_REQUEST_NUMBER
+        ? HttpResponse.json({ message: "Not Found" }, { status: 404 })
+        : HttpResponse.json({
+            html_url: `https://github.com/getsentry/junior/pull/${params["number"]}`,
+            merged: false,
+            number: Number(params["number"]),
+            state: "open",
+            title: `Pull request ${params["number"]}`,
+          }),
     ),
   );
 }

@@ -27,6 +27,7 @@ import {
   linkGitHub,
   NOTHING_SNOOZED,
   NOW_MS,
+  MISSING_PULL_REQUEST_URL,
   OTHER_PULL_REQUEST,
   PRIVATE_ROOT,
   PULL_REQUEST,
@@ -290,7 +291,7 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["woken", "woken"]);
   });
 
-  it("rejects a page that the viewer cannot see or that has no Events", async () => {
+  it("rejects a page that the viewer cannot see, that is missing, or that has no Events", async () => {
     await useGitHubEvents();
     useGitHubRepository(["ana-gh"]);
     const ana = await linkGitHub(await user("ana@example.com"), "ana-gh");
@@ -324,6 +325,17 @@ describe("snoozes", () => {
     expect((await asBob.resource("https://github.com/getsentry")).status).toBe(
       404,
     );
+    // Ana can see the repository, but no Event comes from a missing page.
+    const asAna = api(fixture, ana);
+    expect((await asAna.resource(MISSING_PULL_REQUEST_URL)).status).toBe(404);
+    expect(
+      (
+        await asAna.snoozeOn(
+          { conversationId: ROOT },
+          merged(MISSING_PULL_REQUEST_URL),
+        )
+      ).status,
+    ).toBe(400);
     expect(await storedStates()).toEqual([]);
     expect((await asBob.inbox()).count).toBe(1);
     // Ana's account can see the repository, so the same snooze holds.
