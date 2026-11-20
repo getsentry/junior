@@ -117,6 +117,11 @@ export const reviewItemListQuerySchema = z
      * list keeps items assigned to the viewer, to Everyone, or to no one.
      */
     for: z.enum(["viewer"]).optional(),
+    /**
+     * `true` lists only the open items in Inbox rows that the viewer
+     * snoozed, the Snoozed view. Without it, `for=viewer` hides them.
+     */
+    snoozed: z.enum(["true"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /** Also list the newest done and dismissed items, with the first page. */

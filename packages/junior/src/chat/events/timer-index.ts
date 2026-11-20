@@ -3,11 +3,23 @@ import * as z from "zod";
 import { getChatConfig } from "@/chat/config";
 import { getDefaultRedisStateAdapterFor } from "@/chat/state/adapter";
 
-// Only pending timer Watches belong here. Claims move their score forward so
-// a crashed heartbeat leaves work available after a short lease.
-const DUE_KEY = "junior:watches:due";
+/**
+ * A sorted set of pending timers: ids with their fire times. Claims move a
+ * score forward, so a crashed heartbeat leaves work available after a short
+ * lease. `batchSize` bounds one claim.
+ */
+export interface TimerIndex {
+  batchSize: number;
+  key: string;
+}
+
+/** Pending timer Watches. */
+export const TIMER_WATCH_INDEX: TimerIndex = {
+  batchSize: 25,
+  key: "junior:watches:due",
+};
+
 const CLAIM_MS = 120_000;
-const BATCH_SIZE = 25;
 const entriesSchema = z.array(z.object({ id: z.string(), atMs: z.number() }));
 
 type Operation =
@@ -18,12 +30,13 @@ type Operation =
 /** Keep timer index operations atomic in Redis and the local memory adapter. */
 export async function updateTimerIndex(
   state: StateAdapter,
+  index: TimerIndex,
   operation: Operation,
 ): Promise<string[]> {
   const redis = await getDefaultRedisStateAdapterFor(state);
   if (redis) {
     const prefix = getChatConfig().state.keyPrefix;
-    const key = prefix ? `${prefix}:${DUE_KEY}` : DUE_KEY;
+    const key = prefix ? `${prefix}:${index.key}` : index.key;
     const client = redis.getClient();
     if (operation.kind === "add") {
       await client.sendCommand([
@@ -49,21 +62,21 @@ export async function updateTimerIndex(
       key,
       String(operation.nowMs),
       String(operation.nowMs + CLAIM_MS),
-      String(BATCH_SIZE),
+      String(index.batchSize),
     ]);
   }
 
   // Production uses the sorted set above. The local adapter has no sorted sets.
-  const lock = await state.acquireLock(`${DUE_KEY}:lock`, 10_000);
+  const lock = await state.acquireLock(`${index.key}:lock`, 10_000);
   if (!lock) throw new Error("Could not acquire timer index lock");
   try {
-    let entries = entriesSchema.parse((await state.get(DUE_KEY)) ?? []);
+    let entries = entriesSchema.parse((await state.get(index.key)) ?? []);
     let ids: string[] = [];
     if (operation.kind === "claim") {
       ids = entries
         .filter((entry) => entry.atMs <= operation.nowMs)
         .sort((a, b) => a.atMs - b.atMs)
-        .slice(0, BATCH_SIZE)
+        .slice(0, index.batchSize)
         .map((entry) => entry.id);
       const claimed = new Set(ids);
       entries = entries.map((entry) =>
@@ -77,7 +90,7 @@ export async function updateTimerIndex(
         entries.push({ id: operation.id, atMs: operation.atMs });
       }
     }
-    await state.set(DUE_KEY, entries);
+    await state.set(index.key, entries);
     return ids;
   } finally {
     await state.releaseLock(lock);
