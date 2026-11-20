@@ -23,9 +23,10 @@ const END = "(?![\\w-])";
 // A repository named in prose, such as "all in getsentry/sentry". Only the
 // configured owner makes `a/b` a repository, and not a path such as
 // `src/index.ts` or a word such as "and/or". A trailing period ends the
-// sentence.
+// sentence. `owner/repo.git` names `owner/repo`, and an SSH clone URL such
+// as `git@github.com:owner/repo` names nothing.
 const PROSE_REPOSITORY_PATTERN = new RegExp(
-  `${START}(?<owner>${LOGIN})\\/(?<repo>[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)(?![\\w/-])`,
+  `(?<![\\w.\\-/@&<\\\\:])(?<owner>${LOGIN})\\/(?<repo>[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)(?<!\\.git)(?![\\w/-])`,
   "g",
 );
 

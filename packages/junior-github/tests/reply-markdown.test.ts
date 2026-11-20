@@ -160,6 +160,20 @@ describe("GitHub reply markdown", () => {
     ).toBe(
       "Open, all in getsentry/sentry: [getsentry/sentry#131833](https://github.com/getsentry/sentry/issues/131833) and [getsentry/sentry#131843](https://github.com/getsentry/sentry/issues/131843).",
     );
+    // A clone URL names no repository, and `.git` is not part of the name.
+    expect(
+      linkifyGitHubReferences(
+        "clone git@github.com:getsentry/relay.git for #5",
+        { config },
+      ),
+    ).toBe(
+      "clone git@github.com:getsentry/relay.git for [getsentry/junior#5](https://github.com/getsentry/junior/issues/5)",
+    );
+    expect(
+      linkifyGitHubReferences("see getsentry/relay.git for #5", { config }),
+    ).toBe(
+      "see getsentry/relay.git for [getsentry/relay#5](https://github.com/getsentry/relay/issues/5)",
+    );
     // Paths, other owners, and words with a slash name no repository.
     expect(
       linkifyGitHubReferences(
