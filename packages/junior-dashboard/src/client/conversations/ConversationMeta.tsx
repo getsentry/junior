@@ -1,7 +1,10 @@
 import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
-import { objectPresentation } from "@sentry/junior-plugin-api";
+import {
+  objectPresentation,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -481,6 +484,22 @@ const SIDEBAR_ICON_PRESENTATION = {
   SidebarAnnotationIconName,
   { className: string; Icon: typeof CircleDot; label: string }
 >;
+
+/** The GitHub color and name of a code change state. */
+export function codeChangeTone(
+  state: CodeChangeState,
+  draft: boolean,
+): { className: string; label: string } {
+  return SIDEBAR_ICON_PRESENTATION[
+    state === "merged"
+      ? "git-merge"
+      : state === "closed"
+        ? "circle-x"
+        : draft
+          ? "circle-dashed"
+          : "circle-dot"
+  ];
+}
 
 /** Show a GitHub-style status icon for linked work, such as an open pull request. */
 export function SidebarAnnotationIcon(props: {

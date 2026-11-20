@@ -16,6 +16,7 @@ import {
   readMockPeopleDirectory,
   readMockPeopleProfile,
 } from "./fixtures";
+import { mockCodeChangeCard } from "./code-change-search";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
 // configured dashboard origin.
@@ -467,6 +468,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   const url = new URL(href);
   if (url.href === SENTAUR_PULL_REQUEST.url)
     return [{ object: SENTAUR_PULL_REQUEST, url: href }];
+  const codeChange = mockCodeChangeCard(url.href);
+  if (codeChange) return [{ object: codeChange, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);

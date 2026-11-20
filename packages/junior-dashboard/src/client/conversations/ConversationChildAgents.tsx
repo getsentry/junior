@@ -56,8 +56,12 @@ const errorToneClass: Partial<Record<StatusChipTone, string>> = {
 };
 
 /** Load the child agents of one Conversation with runtime status. */
-export function useConversationChildAgents(conversationId: string) {
+export function useConversationChildAgents(
+  conversationId: string,
+  enabled = true,
+) {
   return useQuery({
+    enabled,
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationChildAgentsReportSchema,

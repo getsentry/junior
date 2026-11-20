@@ -36,7 +36,13 @@ import {
   ComposerConversationContext,
   type ComposerConversation,
 } from "./ComposerMention";
-import { splitMentions } from "./composerMentionToken";
+import {
+  composerReferenceSchema,
+  referenceText,
+  splitComposerText,
+  type ComposerReference,
+} from "./composerReferences";
+import { useAttachLinkedWork } from "./composerLinkedWork";
 import type ComposerEditor from "./composer-editor/ComposerEditor";
 import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
@@ -116,6 +122,8 @@ type ConversationDraft = {
   lastSubmittedText: string;
   /** People mentioned in `text`, so a restored draft shows their names. */
   people?: MentionablePerson[] | undefined;
+  /** References in `text`, so a restored draft shows their kind and state. */
+  references?: ComposerReference[] | undefined;
   text: string;
 };
 
@@ -251,6 +259,16 @@ export const ConversationComposer = memo(function ConversationComposer(
   const peopleRef = useRef(
     new Map(initialDraft.people?.map((person) => [person.slackUserId, person])),
   );
+  // Keyed by message text, which is what a reference read back has.
+  const referencesRef = useRef(
+    new Map(
+      initialDraft.references?.map((reference) => [
+        referenceText(reference),
+        reference,
+      ]),
+    ),
+  );
+  const attachLinkedWork = useAttachLinkedWork(props.conversation);
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for
@@ -352,8 +370,10 @@ export const ConversationComposer = memo(function ConversationComposer(
     field.setSelectionRange(text.length, text.length);
   };
 
-  const mentionedPeople = (text: string) =>
-    text.includes("<@") ? peopleIn(text, peopleRef.current) : undefined;
+  const draftChips = (text: string) =>
+    text.includes("<")
+      ? chipsIn(text, peopleRef.current, referencesRef.current)
+      : { people: undefined, references: undefined };
 
   const scheduleDraftStorage = () => {
     if (storageTimerRef.current !== undefined) {
@@ -368,13 +388,13 @@ export const ConversationComposer = memo(function ConversationComposer(
   const setMessage = (text: string) => {
     const current = draftRef.current;
     if (current.text === text) return;
-    draftRef.current = { ...current, people: mentionedPeople(text), text };
+    draftRef.current = { ...current, ...draftChips(text), text };
     updateCanSend(text);
     scheduleDraftStorage();
   };
 
   const replaceMessage = (draft: ConversationDraft, caretAtEnd = false) => {
-    draftRef.current = { ...draft, people: mentionedPeople(draft.text) };
+    draftRef.current = { ...draft, ...draftChips(draft.text) };
     writeField(draft.text, caretAtEnd);
     updateCanSend(draft.text);
   };
@@ -449,6 +469,7 @@ export const ConversationComposer = memo(function ConversationComposer(
       setHoldPending(true);
       try {
         await send();
+        attachLinkedWork(text);
       } catch {
         // The parent shows the error. The draft stays for a retry, with
         // focus, so Enter sends it again.
@@ -470,7 +491,10 @@ export const ConversationComposer = memo(function ConversationComposer(
     queueMicrotask(() => {
       submittingRef.current = false;
     });
-    await send().catch(() => {});
+    await send().then(
+      () => attachLinkedWork(text),
+      () => {},
+    );
   };
 
   // Put queued text back ahead of anything the reader already typed.
@@ -682,14 +706,25 @@ export const ConversationComposer = memo(function ConversationComposer(
               enterKeyHint={enterSends ? "send" : "enter"}
               enterSends={enterSends}
               label={props.label}
-              lookupPerson={(slackUserId) => peopleRef.current.get(slackUserId)}
+              lookup={{
+                origin: window.location.origin,
+                person: (slackUserId) => peopleRef.current.get(slackUserId),
+                reference: (text) => referencesRef.current.get(text),
+              }}
               maxLength={DRAFT_MAX_LENGTH}
               onChange={setMessage}
               onEnter={() => void submit()}
               onFocus={props.onFocus}
-              onMention={(person) =>
-                peopleRef.current.set(person.slackUserId, person)
-              }
+              onChip={(chip) => {
+                if ("person" in chip) {
+                  peopleRef.current.set(chip.person.slackUserId, chip.person);
+                } else {
+                  referencesRef.current.set(
+                    referenceText(chip.reference),
+                    chip.reference,
+                  );
+                }
+              }}
               onPasteFiles={props.compact ? undefined : addFiles}
               placeholder={placeholder}
               placeholderClassName={textClass}
@@ -786,18 +821,30 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
 });
 
-/** The known people that the text mentions, once each. */
-function peopleIn(
+/** The known people and references in the text, once each. */
+function chipsIn(
   text: string,
-  known: ReadonlyMap<string, MentionablePerson>,
-): MentionablePerson[] {
-  const people = new Map<string, MentionablePerson>();
-  for (const part of splitMentions(text)) {
-    if (!("slackUserId" in part)) continue;
-    const person = known.get(part.slackUserId);
-    if (person) people.set(person.slackUserId, person);
+  people: ReadonlyMap<string, MentionablePerson>,
+  references: ReadonlyMap<string, ComposerReference>,
+): Pick<ConversationDraft, "people" | "references"> {
+  const found = {
+    people: new Set<MentionablePerson>(),
+    references: new Set<ComposerReference>(),
+  };
+  for (const part of splitComposerText(text, window.location.origin)) {
+    const person =
+      "slackUserId" in part ? people.get(part.slackUserId) : undefined;
+    const reference =
+      "reference" in part
+        ? references.get(referenceText(part.reference))
+        : undefined;
+    if (person) found.people.add(person);
+    if (reference) found.references.add(reference);
   }
-  return [...people.values()];
+  return {
+    people: found.people.size ? [...found.people] : undefined,
+    references: found.references.size ? [...found.references] : undefined,
+  };
 }
 
 function emptyDraft(): ConversationDraft {
@@ -834,6 +881,10 @@ function readStoredDraft(storageKey: string): ConversationDraft {
         "people" in draft
           ? mentionablePersonSchema.array().safeParse(draft.people).data
           : undefined;
+      const references =
+        "references" in draft
+          ? composerReferenceSchema.array().safeParse(draft.references).data
+          : undefined;
       const lastSubmittedText =
         "lastSubmittedText" in draft &&
         typeof draft.lastSubmittedText === "string"
@@ -850,6 +901,7 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             : draft.idempotencyKey,
         lastSubmittedText,
         people,
+        references,
         text,
       };
     }

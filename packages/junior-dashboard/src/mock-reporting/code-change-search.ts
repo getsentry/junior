@@ -5,6 +5,7 @@ import {
   codeChangeSearchReportSchema,
   type CodeChangeSearchReport,
   type MentionableCodeChange,
+  type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 import { errorResponse } from "./errors";
 
@@ -63,6 +64,29 @@ const MOCK_CODE_CHANGES: MentionableCodeChange[] = [
   ),
   mockChange("getsentry/junior", 3701, "Try a textarea composer", "closed"),
 ];
+
+/**
+ * The pull request card of a searchable mock change, so a composer
+ * reference to it can attach as linked work.
+ */
+export function mockCodeChangeCard(
+  url: string,
+): OwnedObjectAnnotation | undefined {
+  const change = MOCK_CODE_CHANGES.find((candidate) => candidate.url === url);
+  if (!change) return undefined;
+  const label = `${change.repository}#${change.number}`;
+  return {
+    kind: "object",
+    objectType: "code_change",
+    key: label,
+    label,
+    title: change.title ?? label,
+    displayType: "Pull request",
+    plugin: "github",
+    status: change.draft ? "draft" : change.state,
+    url: change.url,
+  };
+}
 
 /** Mount the mock `#` code change search route. */
 export function registerMockCodeChangeSearchRoutes(

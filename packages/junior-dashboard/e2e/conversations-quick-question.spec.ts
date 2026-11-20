@@ -287,7 +287,11 @@ test("finds people of this Conversation's workspace in a quick question", async 
     .getByRole("textbox", { name: "Quick question" });
   await composer.pressSequentially(" @c");
   await expect(
-    page.getByRole("listbox", { name: "People" }).getByRole("option").first(),
+    page
+      .getByRole("listbox", { name: "Mentions" })
+      .getByRole("group", { name: "People" })
+      .getByRole("option")
+      .first(),
   ).toBeVisible();
   expect(searches.length).toBeGreaterThan(0);
   expect(new Set(searches)).toEqual(new Set([conversationId]));

@@ -71,7 +71,8 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   );
 
   await composer.pressSequentially("Hi @c");
-  const people = page.getByRole("listbox", { name: "People" });
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  const people = mentions.getByRole("group", { name: "People" });
   await expect(people.getByRole("option")).toHaveText([
     /Casey Nguyen/,
     /Avery Chen/,
@@ -79,18 +80,22 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   await expect(
     people.getByRole("option", { name: /Casey Nguyen/ }),
   ).toHaveAttribute("aria-selected", "true");
+  // The Conversations below People come from a slower search.
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
 
   // Arrows move the choice and wrap. Escape closes the menu.
   await composer.press("ArrowDown");
   await expect(
     people.getByRole("option", { name: /Avery Chen/ }),
   ).toHaveAttribute("aria-selected", "true");
-  await composer.press("ArrowDown");
-  await expect(
-    people.getByRole("option", { name: /Casey Nguyen/ }),
-  ).toHaveAttribute("aria-selected", "true");
+  await composer.press("ArrowUp");
+  await composer.press("ArrowUp");
+  await expect(mentions.getByRole("option").last()).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await composer.press("Escape");
-  await expect(people).toBeHidden();
+  await expect(mentions).toBeHidden();
 
   // The menu stays closed until the caret leaves that reference.
   await composer.pressSequentially("h");
@@ -123,14 +128,16 @@ test("an earlier row cannot be inserted while the next search loads", async ({
     PUBLIC_CONVERSATION_ID,
   );
   await composer.pressSequentially("@av");
-  const people = page.getByRole("listbox", { name: "People" });
-  await expect(people.getByRole("option")).toHaveText([/Avery Chen/]);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  await expect(
+    mentions.getByRole("group", { name: "People" }).getByRole("option"),
+  ).toHaveText([/Avery Chen/]);
 
   // The next search does not answer yet. Only the API knows whether it
   // matches Avery, by a name the menu may not show.
   await page.route("**/api/people/search?*", () => {});
   await composer.pressSequentially("e");
-  await expect(people).toHaveAttribute("aria-busy", "true");
+  await expect(mentions).toHaveAttribute("aria-busy", "true");
   // Neither inserts the earlier row nor sends the half-typed mention.
   await composer.press("Tab");
   await composer.press("Enter");

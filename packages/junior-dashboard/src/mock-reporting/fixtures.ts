@@ -1381,6 +1381,41 @@ function threadConversation(
 }
 
 /**
+ * Attach files to a Thread's follow-up message, so the composer can mention
+ * files that are already in the Conversation.
+ */
+function withFollowUpFiles(conversation: MockConversation): MockConversation {
+  const followUp = `${conversation.conversationId}:follow-up`;
+  return {
+    ...conversation,
+    events: conversation.events.map((event) =>
+      event.data.type === "message" && event.data.messageId === followUp
+        ? {
+            ...event,
+            data: {
+              ...event.data,
+              attachments: [
+                {
+                  id: "qa-chart-png",
+                  filename: "pin-order-reload.png",
+                  contentType: "image/png",
+                  bytes: 18211,
+                },
+                {
+                  id: "qa-notes-txt",
+                  filename: "pinned-rows.txt",
+                  contentType: "text/plain",
+                  bytes: 22,
+                },
+              ],
+            },
+          }
+        : event,
+    ),
+  };
+}
+
+/**
  * Add a Watch Event that reached a child after its last reply. The child runs
  * it as an agent invocation, so the input names the invocation and the Event.
  */
@@ -2390,12 +2425,14 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     {
       ...withChildWatchEvent(
-        threadConversation(
-          nowMs,
-          DASHBOARD_QA_THREAD_ID,
-          "Check pinned row order",
-          "Check that pinned rows keep their order after a reload.",
-          -3 * 60 * 60_000,
+        withFollowUpFiles(
+          threadConversation(
+            nowMs,
+            DASHBOARD_QA_THREAD_ID,
+            "Check pinned row order",
+            "Check that pinned rows keep their order after a reload.",
+            -3 * 60 * 60_000,
+          ),
         ),
       ),
       // The nested Thread below.

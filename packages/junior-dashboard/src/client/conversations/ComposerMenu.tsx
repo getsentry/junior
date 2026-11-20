@@ -1,19 +1,23 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { MentionablePerson } from "@sentry/junior/api/schema";
+import { MatchedLabel } from "../components/MatchedLabel";
+import { Kbd } from "../components/ui/kbd";
 import { cn } from "../styles";
+import type { ComposerReference } from "./composerReferences";
 
 /** A key that the open menu can take from the editor. */
 export type ComposerMenuKey = "down" | "up" | "select" | "close" | "view";
 
-/** What a menu row puts in place of the `$` or `@` reference. */
+/** What a menu row puts in place of the `$`, `@`, or `#` reference. */
 export type ComposerInsertion =
   | { text: string }
-  | { person: MentionablePerson };
+  | { person: MentionablePerson }
+  | { reference: ComposerReference };
 
 /**
- * The editor side of one `$` or `@` menu. The editor finds the reference at
+ * The editor side of one `$`, `@`, or `#` menu. The editor finds the reference at
  * the caret and owns the text; the menu owns the rows. Nothing here depends
  * on the editor library.
  */
@@ -52,28 +56,58 @@ export type ComposerTypeahead = {
 };
 
 /**
- * Suggest rows while the reader types a reference. Focus stays in the text
- * box: arrows move, Enter or Tab inserts, Escape closes. While `pending`,
- * the rows are from an earlier query, or there are none yet: Enter and Tab
- * do nothing, so they neither insert a stale row nor send the message.
+ * One menu row: what it shows, the details pane of the active row, and what
+ * it inserts.
  */
-export function ComposerMenu<Row>(props: {
-  children(row: Row): ReactNode;
+export type ComposerMenuRow = {
+  key: string;
+  /** The source that the row shows under, such as `People`. */
+  group: string;
+  icon: ReactNode;
   label: string;
-  onSelect(row: Row): void;
-  pending?: boolean | undefined;
-  rowKey(row: Row): string;
-  rows: readonly Row[];
+  /** UTF-16 indices in `label` that the query matched. */
+  labelMatches?: number[] | undefined;
+  /** Muted text after the label, when the menu has no details pane. */
+  hint?: string | undefined;
+  details: ReactNode;
+  insertion: ComposerInsertion;
+  /**
+   * The row is from an earlier query of its source. Only the API knows
+   * whether it still matches, so Enter, Tab, and a click do nothing.
+   */
+  stale?: boolean | undefined;
+};
+
+/** The rows of one source, such as People, and whether it still loads. */
+export type ComposerMenuSource = { pending: boolean; rows: ComposerMenuRow[] };
+
+/**
+ * Suggest rows while the reader types a reference, under a heading for each
+ * source. Focus stays in the text box: arrows move at once, the pointer
+ * after it rests on a row, Enter or Tab inserts, Escape closes. At 32rem
+ * (`@lg`) a 14rem list sits beside the details of the active row. While
+ * a source is `pending`, the menu is busy. Before its first rows, Enter and
+ * Tab do nothing, so they do not send the half-typed reference.
+ */
+export function ComposerMenu(props: {
+  label: string;
+  sources: readonly ComposerMenuSource[];
   typeahead: ComposerTypeahead;
 }) {
-  const { rows, typeahead } = props;
+  const { typeahead } = props;
+  const pending = props.sources.some((source) => source.pending);
+  const rows = sourceRows(props.sources);
   const listboxId = useId();
+  const detailsId = useId();
   const [activeIndex, setActiveIndex] = useState(0);
   const [placement, setPlacement] = useState<MenuPlacement>();
+  // A row becomes active after the pointer rests on it. Each move restarts
+  // the wait, so a diagonal move to the details pane keeps the row.
+  const hoverTimer = useRef<number>(undefined);
+  const cancelHover = () => window.clearTimeout(hoverTimer.current);
   const open = typeahead.query !== undefined && rows.length > 0;
   const active = Math.min(activeIndex, rows.length - 1);
   const optionId = (index: number) => `${listboxId}-${index}`;
-  const { onSelect, pending } = props;
 
   // A new query starts at the first row.
   const [lastQuery, setLastQuery] = useState(typeahead.query);
@@ -94,20 +128,28 @@ export function ComposerMenu<Row>(props: {
 
   useEffect(() => {
     if (!open) return;
+    const move = (delta: number) => {
+      cancelHover();
+      setActiveIndex((active + delta + rows.length) % rows.length);
+    };
     const actions: Partial<Record<ComposerMenuKey, () => void>> = {
-      down: () => setActiveIndex((active + 1) % rows.length),
-      up: () => setActiveIndex((active - 1 + rows.length) % rows.length),
+      down: () => move(1),
+      up: () => move(-1),
       select: () => {
-        if (!pending) onSelect(rows[active]!);
+        const row = rows[active]!;
+        if (!row.stale) typeahead.insert(row.insertion);
       },
-      close: () => typeahead.dismiss(),
+      close: () => {
+        cancelHover();
+        typeahead.dismiss();
+      },
     };
     return typeahead.registerKeys((key) => {
       const action = actions[key];
       action?.();
       return action !== undefined;
     });
-  }, [active, onSelect, open, pending, rows, typeahead]);
+  }, [active, open, rows, typeahead]);
 
   // Before the first rows arrive there is no menu, so Enter would send the
   // half-typed reference and Tab would leave the text box. Hold both.
@@ -135,10 +177,11 @@ export function ComposerMenu<Row>(props: {
   // browsers fire that blur after `pointerup`, so the click ends the press.
   // A drag or a scroll ends with no click, so the next press outside the
   // menu also ends it.
+  const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const endPress = (event: PointerEvent) => {
-      const menu = document.getElementById(listboxId);
+      const menu = menuRef.current;
       if (!(event.target instanceof Node) || !menu?.contains(event.target)) {
         typeahead.holdOpen(false);
       }
@@ -147,47 +190,146 @@ export function ComposerMenu<Row>(props: {
     return () => {
       document.removeEventListener("pointerdown", endPress, true);
       typeahead.holdOpen(false);
+      cancelHover();
     };
-  }, [listboxId, open, typeahead]);
+  }, [open, typeahead]);
 
   // A portal, because docks around the composer clip their overflow.
   if (!open || !placement) return null;
+  const groups = groupRows(rows);
   return createPortal(
     <div
-      aria-busy={pending}
-      aria-label={props.label}
-      className="thin-scrollbar fixed z-50 overflow-y-auto overscroll-contain rounded-lg border border-input bg-secondary p-1.5 shadow-lg"
-      id={listboxId}
+      className="@container fixed z-50 flex overflow-hidden rounded-lg border border-input bg-secondary shadow-lg"
       // Keep focus and the caret in the text box on desktop.
       onMouseDown={(event) => event.preventDefault()}
       onPointerCancel={() => typeahead.holdOpen(false)}
       onPointerDown={() => typeahead.holdOpen(true)}
-      role="listbox"
+      ref={menuRef}
       style={placement}
     >
-      {rows.map((row, index) => (
-        <div
-          aria-selected={index === active}
-          className={cn(
-            "flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-1.5 font-sans text-sm text-foreground select-none",
-            index === active && "bg-dashboard-fill-hover",
-          )}
-          id={optionId(index)}
-          key={props.rowKey(row)}
-          onClick={() => {
-            typeahead.holdOpen(false);
-            if (!pending) onSelect(row);
-          }}
-          onMouseMove={
-            index === active ? undefined : () => setActiveIndex(index)
-          }
-          role="option"
-        >
-          {props.children(row)}
+      <div
+        aria-busy={pending}
+        aria-label={props.label}
+        className="thin-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain p-1.5 @lg:w-56 @lg:flex-none"
+        id={listboxId}
+        onMouseLeave={cancelHover}
+        role="listbox"
+      >
+        {groups.map((group) => (
+          <div aria-label={group.label} key={group.label} role="group">
+            <div
+              aria-hidden="true"
+              className="px-2.5 pt-1.5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted"
+            >
+              {group.label}
+            </div>
+            {group.rows.map(({ index, row }) => (
+              <div
+                aria-describedby={index === active ? detailsId : undefined}
+                aria-selected={index === active}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-1.5 font-sans text-sm text-foreground select-none",
+                  index === active && "bg-dashboard-fill-hover",
+                )}
+                id={optionId(index)}
+                key={row.key}
+                onClick={() => {
+                  cancelHover();
+                  typeahead.holdOpen(false);
+                  if (!row.stale) typeahead.insert(row.insertion);
+                }}
+                onMouseMove={() => {
+                  cancelHover();
+                  if (index === active) return;
+                  hoverTimer.current = window.setTimeout(
+                    () => setActiveIndex(index),
+                    HOVER_DWELL_MS,
+                  );
+                }}
+                role="option"
+              >
+                {row.icon}
+                <span className="min-w-0 truncate">
+                  <MatchedLabel label={row.label} matches={row.labelMatches} />
+                </span>
+                {row.hint ? (
+                  <span className="ml-auto min-w-0 shrink truncate text-xs text-dashboard-text-muted @lg:hidden">
+                    {row.hint}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div
+        className="hidden min-w-0 flex-1 flex-col gap-3 border-l border-input p-3 font-sans @lg:flex"
+        id={detailsId}
+      >
+        {rows[active]!.details}
+        <div className="mt-auto flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-dashboard-text-muted">
+          <Kbd>Enter</Kbd> insert · <Kbd>Esc</Kbd> close
         </div>
-      ))}
+      </div>
     </div>,
     document.body,
+  );
+}
+
+const HOVER_DWELL_MS = 120;
+
+// Rows keep their order. Each source's rows are next to each other.
+// A source that still loads can add rows above the sources after it, so
+// their rows cannot be inserted yet.
+function sourceRows(sources: readonly ComposerMenuSource[]): ComposerMenuRow[] {
+  const rows: ComposerMenuRow[] = [];
+  let waiting = false;
+  for (const source of sources) {
+    for (const row of source.rows)
+      rows.push(waiting ? { ...row, stale: true } : row);
+    waiting ||= source.pending;
+  }
+  return rows;
+}
+
+function groupRows(rows: readonly ComposerMenuRow[]) {
+  const groups: {
+    label: string;
+    rows: { index: number; row: ComposerMenuRow }[];
+  }[] = [];
+  for (const [index, row] of rows.entries()) {
+    const last = groups.at(-1);
+    if (last?.label === row.group) last.rows.push({ index, row });
+    else groups.push({ label: row.group, rows: [{ index, row }] });
+  }
+  return groups;
+}
+
+/**
+ * The details of one menu row: its name, a line of facts, and longer text,
+ * which scrolls.
+ */
+export function ComposerMenuDetails(props: {
+  icon?: ReactNode;
+  meta?: string | undefined;
+  body?: string | undefined;
+  title: string;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <div className="flex items-center gap-2 text-sm font-semibold [overflow-wrap:anywhere] text-foreground">
+        {props.icon}
+        <span className="min-w-0">{props.title}</span>
+      </div>
+      {props.meta ? (
+        <div className="text-xs text-dashboard-text-muted">{props.meta}</div>
+      ) : null}
+      {props.body ? (
+        <p className="thin-scrollbar m-0 mt-1 min-h-0 overflow-y-auto overscroll-contain text-sm [overflow-wrap:anywhere] whitespace-pre-line text-foreground">
+          {props.body}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
