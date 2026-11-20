@@ -26,7 +26,11 @@ import {
 
 import { DisplayText } from "../display-text/DisplayText";
 import { deleteDashboardResource } from "../http";
-import { revalidatedJsonQuery } from "../revalidation";
+import {
+  revalidatedJsonQuery,
+  withoutVersion,
+  type ContentVersioned,
+} from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
   Collapsible,
@@ -64,15 +68,19 @@ export function useCancelConversationWatch(conversationId: string) {
       ),
     onMutate: async (watch) => {
       await queryClient.cancelQueries({ queryKey });
-      queryClient.setQueryData<ConversationWatchesReport>(
+      queryClient.setQueryData<ContentVersioned<ConversationWatchesReport>>(
         queryKey,
         (report) =>
-          report && {
-            ...report,
-            watches: report.watches.filter(
-              (candidate) => candidate.id !== watch.id,
-            ),
-          },
+          report &&
+          withoutVersion(
+            {
+              ...report,
+              watches: report.watches.filter(
+                (candidate) => candidate.id !== watch.id,
+              ),
+            },
+            "contentVersion",
+          ),
       );
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey }),

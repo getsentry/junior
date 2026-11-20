@@ -37,6 +37,21 @@ test("lists a Conversation's Watches and cancels one", async ({
   await page.reload();
   await expect(alert).toBeVisible();
   await expect(timer).toHaveCount(0);
+
+  // A failed cancel brings the Watch back.
+  let failCancel = () => {};
+  const cancelFails = new Promise<void>((resolve) => {
+    failCancel = resolve;
+  });
+  await page.route("**/watches/*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    await cancelFails;
+    await route.fulfill({ json: { error: "Cancel failed." }, status: 500 });
+  });
+  await details.getByRole("button", { name: `Cancel ${ALERT_INTENT}` }).click();
+  await expect(alert).toHaveCount(0);
+  failCancel();
+  await expect(alert).toBeVisible();
 });
 
 test("shows Watches in the mobile details sheet", async ({
