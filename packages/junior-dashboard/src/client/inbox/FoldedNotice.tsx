@@ -48,6 +48,7 @@ export function FoldedNotice(props: {
             className="max-w-[80ch] leading-6"
             label={notice.title}
             lines={4}
+            mentions={notice.mentions}
             text={reviewItemText(notice)}
           />
         </ReviewItemObjects>
