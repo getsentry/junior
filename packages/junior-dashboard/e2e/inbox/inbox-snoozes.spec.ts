@@ -347,6 +347,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("many conditions keep Snooze on a short screen", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 560, width: 1280 });
+    await mockReviewItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Custom…" }).click();
+    const dialog = customOf(page);
+    for (let i = 0; i < 8; i += 1) {
+      await dialog.getByRole("button", { name: "Add condition" }).click();
+    }
+    await expect(
+      dialog.getByRole("button", { exact: true, name: "Snooze" }),
+    ).toBeInViewport({ ratio: 1 });
+  });
+
   test("an Event wakes an ask that the viewer cannot dismiss", async ({
     dashboard,
     page,

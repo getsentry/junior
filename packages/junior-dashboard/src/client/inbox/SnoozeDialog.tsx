@@ -155,8 +155,8 @@ export function SnoozeDialog(props: {
       <DialogContent
         {...sheet.contentProps}
         // Pinned to the top, the dialog grows down as conditions are added
-        // instead of moving to stay centered.
-        className="flex max-h-[min(40rem,90dvh)] max-w-lg flex-col gap-3 overflow-hidden p-4 sm:top-[15dvh] sm:translate-y-0"
+        // instead of moving to stay centered, and stops above the bottom.
+        className="flex max-h-[min(40rem,90dvh)] max-w-lg flex-col gap-3 overflow-hidden p-4 sm:top-[15dvh] sm:max-h-[min(40rem,80dvh)] sm:translate-y-0"
       >
         <DialogTitle className="text-base">Custom snooze</DialogTitle>
         <div className="grid gap-1.5">
