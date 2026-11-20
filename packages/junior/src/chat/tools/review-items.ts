@@ -521,6 +521,7 @@ export function createAddReviewItemTool(
           item,
           nowMs: Date.now(),
         });
+        await publishWaiting(context, item);
         return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
@@ -544,20 +545,29 @@ export function createAddReviewItemTool(
         item,
         nowMs: Date.now(),
       });
-      // An action item means the Conversation now waits on a person.
-      if (item.kind === "action") {
-        await publishConversationStatus(
-          context.conversationId,
-          { type: "waiting", reviewItemId: item.id },
-          {
-            queue:
-              context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
-          },
-        );
-      }
+      await publishWaiting(context, item);
       return { created: true, item: itemResult(item) };
     },
   });
+}
+
+/**
+ * Report that the Conversation waits on a person when the item is an action,
+ * also when an update makes a notice an action. The Event key is the item, so
+ * a later update of the same action does not report it again.
+ */
+async function publishWaiting(
+  context: ReviewItemToolContext,
+  item: { id: string; kind: string },
+): Promise<void> {
+  if (item.kind !== "action") return;
+  await publishConversationStatus(
+    context.conversationId,
+    { type: "waiting", reviewItemId: item.id },
+    {
+      queue: context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+    },
+  );
 }
 
 export const updateReviewItemToolDefinition = zodToolDefinition({

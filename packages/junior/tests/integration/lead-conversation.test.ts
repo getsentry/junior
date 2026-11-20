@@ -27,6 +27,8 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
+import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import {
   juniorConversationParticipants,
@@ -35,7 +37,10 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import {
+  createConversationWorkHarness,
+  createConversationWorkQueueTestAdapter,
+} from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
 
 /**
@@ -328,6 +333,39 @@ describe("Lead", () => {
       { type: "waiting", reviewItemId: "lead-watch-item" },
       { queue: harness.queue, state: harness.state },
     );
+    // An update that makes a notice an action reports the root as waiting.
+    const addItem = createAddReviewItemTool(
+      {
+        conversationId: started.conversation_id,
+        conversationWorkQueue: harness.queue,
+        resolveActorIdentity: async () => undefined,
+        source: { kind: "scheduled_automation" },
+      },
+      createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+    ) as any;
+    const item = {
+      assignees: ["everyone"],
+      body: "Check the deploy.",
+      dedupe_key: "deploy-check",
+      title: "Deploy check",
+    };
+    const request = {
+      question: "Ship it?",
+      fields: [
+        {
+          id: "ship",
+          kind: "choice",
+          label: "Ship",
+          options: [{ label: "Yes" }, { label: "No" }],
+        },
+      ],
+    };
+    for (const input of [
+      { ...item, kind: "notice" },
+      { ...item, kind: "action", request },
+    ]) {
+      await addItem.execute(addItem.prepareArguments(input), {});
+    }
     await stopConversation({
       conversationId: started.conversation_id,
       queue: harness.queue,
@@ -344,6 +382,7 @@ describe("Lead", () => {
       expect.stringContaining("conversation.completed"),
       expect.stringContaining("conversation.failed"),
       expect.stringContaining("conversation.completed"),
+      expect.stringContaining("conversation.waiting"),
       expect.stringContaining("conversation.waiting"),
       expect.stringContaining("conversation.stopped"),
     ];
@@ -365,6 +404,6 @@ describe("Lead", () => {
       .where(eq(juniorDestinations.id, root!.destinationId!));
     await endTurn("root-turn-4", ["person-message-4"]);
     expect(await heard(lead.conversationId)).toEqual(statuses);
-    expect(await heard(boWork.conversationId)).toHaveLength(6);
+    expect(await heard(boWork.conversationId)).toHaveLength(7);
   });
 });
