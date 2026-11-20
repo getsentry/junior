@@ -11,25 +11,28 @@ import {
   getReviewItem,
   waitingConversationIdsQuery,
 } from "@/chat/review-items/store";
-import {
-  juniorInboxSnoozes,
-  juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-} from "@/db/schema";
+import { juniorInboxSnoozes, juniorReviewItemAssignees } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
+import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
   addItem,
   addNotice,
+  addPullRequestItem,
   api,
   conversation,
+  linkGitHub,
   NOTHING_SNOOZED,
   NOW_MS,
+  MISSING_PULL_REQUEST_URL,
+  OTHER_PULL_REQUEST,
   PRIVATE_ROOT,
+  PULL_REQUEST,
   ROOT,
+  useGitHubRepository,
   user,
 } from "../../../fixtures/snoozes";
 
@@ -50,38 +53,19 @@ async function feedWaitingIds(userId: string) {
   return [...new Set(rows.map((row) => row.conversationId))];
 }
 
-/** A GitHub-style Event about one pull request. */
-function pullRequestEvent(eventType: string): Event {
+/** A GitHub Event about `PULL_REQUEST`, or another pull request. */
+function pullRequestEvent(
+  eventType: string,
+  identifier = PULL_REQUEST.identifier,
+): Event {
   return {
-    eventKey: `${eventType}:1`,
+    eventKey: `${eventType}:${identifier}`,
     eventType,
-    identifier: "getsentry/junior#1",
+    identifier,
     namespace: "github",
     occurredAtMs: Date.now(),
     trustedSummary: "Pull request changed.",
   };
-}
-
-/** Add a trigger on a pull request Event to every stored snooze. */
-async function addPullRequestTrigger(
-  outcome: "resolve" | "wake",
-  eventType: string,
-) {
-  const snoozes = await getDb()
-    .select({ id: juniorInboxSnoozes.id })
-    .from(juniorInboxSnoozes)
-    .where(eq(juniorInboxSnoozes.state, "snoozed"));
-  await getDb()
-    .insert(juniorInboxSnoozeTriggers)
-    .values(
-      snoozes.map((snooze) => ({
-        eventType,
-        identifier: "getsentry/junior#1",
-        namespace: "github",
-        outcome,
-        snoozeId: snooze.id,
-      })),
-    );
 }
 
 describe("snoozes", () => {
@@ -109,6 +93,7 @@ describe("snoozes", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     await closeConversationFixture();
   });
 
@@ -240,32 +225,167 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["snoozed"]);
   });
 
-  it("wakes on a published Event that a trigger names", async () => {
+  it("wakes on the Event of its subject that the viewer picked", async () => {
+    await useGitHubEvents();
     const ana = await user("ana@example.com");
-    await addItem(ROOT, [ana], "Review acme entry");
+    await addPullRequestItem(ROOT, [ana], "Review acme entry");
     const asAna = api(fixture, ana);
-    await asAna.snooze({ conversationId: ROOT }, NOW_MS + HOUR_MS);
-    await addPullRequestTrigger("wake", "pull_request.review_requested");
+    // The item names its pull request, so the menu can offer its Events.
+    const [subject] = (await asAna.subjects()) as {
+      resource: { events: string[] };
+    }[];
+    expect(subject?.resource).toMatchObject({
+      namespace: "github",
+      phrases: { "pull_request.checks.passed": "passes its checks" },
+      resourceType: "pull_request",
+    });
+    expect(subject?.resource.events).toContain("pull_request.checks.passed");
+
+    const snoozed = await asAna.snoozeOn({ conversationId: ROOT }, [
+      { eventType: "pull_request.checks.passed", outcome: "wake" },
+    ]);
+    expect(snoozed.status).toBe(201);
+    expect((await asAna.inbox()).count).toBe(0);
 
     // Another Event on the resource does not fire the trigger.
     await publisher().publish(pullRequestEvent("pull_request.merged"));
     expect((await asAna.inbox()).count).toBe(0);
-    const event = pullRequestEvent("pull_request.review_requested");
+    const event = pullRequestEvent("pull_request.checks.passed");
     expect(await publisher().hasMatch([event])).toBe(true);
     await publisher().publish(event);
     expect((await asAna.inbox()).count).toBe(1);
+    expect(await storedStates()).toEqual(["woken"]);
     expect(await publisher().hasMatch([event])).toBe(false);
   });
 
+  it("takes every Event of its subject at once", async () => {
+    await useGitHubEvents();
+    const ana = await user("ana@example.com");
+    await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    const asAna = api(fixture, ana);
+    const [subject] = (await asAna.subjects()) as {
+      resource: { events: string[] };
+    }[];
+    const events = subject?.resource.events ?? [];
+    expect(events.length).toBeGreaterThan(10);
+
+    const snoozed = await asAna.snoozeOn(
+      { conversationId: ROOT },
+      events.map((eventType) => ({ eventType, outcome: "wake" as const })),
+    );
+    expect(snoozed.status).toBe(201);
+    expect((await asAna.inbox()).count).toBe(0);
+  });
+
+  it("wakes on an Event of another pull request that the viewer names", async () => {
+    await useGitHubEvents();
+    useGitHubRepository(["ana-gh"]);
+    const ana = await linkGitHub(await user("ana@example.com"), "ana-gh");
+    await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    // An item without a subject can wait on a named page too.
+    await addItem(ROOT, [ana], "Review globex entry");
+    const asAna = api(fixture, ana);
+    // The menu reads the Events of the pull request that Ana pastes, with
+    // how the GitHub plugin says each one reads.
+    const resource = await asAna.resource(OTHER_PULL_REQUEST.url);
+    expect(resource.status).toBe(200);
+    expect(await resource.json()).toMatchObject({
+      namespace: "github",
+      phrases: { "pull_request.merged": "is merged" },
+      resourceType: "pull_request",
+    });
+
+    const snoozed = await asAna.snoozeOn({ conversationId: ROOT }, [
+      {
+        eventType: "pull_request.merged",
+        outcome: "wake",
+        resourceUrl: OTHER_PULL_REQUEST.url,
+      },
+    ]);
+    expect(snoozed.status).toBe(201);
+    // The same Event on the item's own pull request does not wake it.
+    await publisher().publish(pullRequestEvent("pull_request.merged"));
+    expect((await asAna.inbox()).count).toBe(0);
+    await publisher().publish(
+      pullRequestEvent("pull_request.merged", OTHER_PULL_REQUEST.identifier),
+    );
+    expect((await asAna.inbox()).count).toBe(2);
+    expect(await storedStates()).toEqual(["woken", "woken"]);
+  });
+
+  it("rejects a page that the viewer cannot see, that is missing, or that has no Events", async () => {
+    await useGitHubEvents();
+    useGitHubRepository(["ana-gh"]);
+    const ana = await linkGitHub(await user("ana@example.com"), "ana-gh");
+    const bob = await linkGitHub(await user("bob@example.com"), "bob-gh");
+    const carol = await user("carol@example.com");
+    await addPullRequestItem(ROOT, [ana, bob, carol], "Review acme entry");
+    const merged = (resourceUrl: string) => [
+      {
+        eventType: "pull_request.merged",
+        outcome: "wake" as const,
+        resourceUrl,
+      },
+    ];
+    // Bob's GitHub account cannot see the repository, and Carol has none.
+    for (const viewer of [bob, carol]) {
+      const asViewer = api(fixture, viewer);
+      expect((await asViewer.resource(OTHER_PULL_REQUEST.url)).status).toBe(
+        404,
+      );
+      expect(
+        (
+          await asViewer.snoozeOn(
+            { conversationId: ROOT },
+            merged(OTHER_PULL_REQUEST.url),
+          )
+        ).status,
+      ).toBe(400);
+    }
+    // A page with no Event resource, such as a profile.
+    const asBob = api(fixture, bob);
+    expect((await asBob.resource("https://github.com/getsentry")).status).toBe(
+      404,
+    );
+    // Ana can see the repository, but no Event comes from a missing page.
+    const asAna = api(fixture, ana);
+    expect((await asAna.resource(MISSING_PULL_REQUEST_URL)).status).toBe(404);
+    expect(
+      (
+        await asAna.snoozeOn(
+          { conversationId: ROOT },
+          merged(MISSING_PULL_REQUEST_URL),
+        )
+      ).status,
+    ).toBe(400);
+    expect(await storedStates()).toEqual([]);
+    expect((await asBob.inbox()).count).toBe(1);
+    // Ana's account can see the repository, so the same snooze holds.
+    expect(
+      (
+        await api(fixture, ana).snoozeOn(
+          { conversationId: ROOT },
+          merged(OTHER_PULL_REQUEST.url),
+        )
+      ).status,
+    ).toBe(201);
+  });
+
   it("lets the first trigger win when resolve races wake", async () => {
+    await useGitHubEvents();
     const ana = await user("ana@example.com");
     const asAna = api(fixture, ana);
     const merged = pullRequestEvent("pull_request.merged");
+    const resolveOnMerge = (wakeAtMs: number) =>
+      asAna.snoozeOn(
+        { conversationId: ROOT },
+        [{ eventType: "pull_request.merged", outcome: "resolve" }],
+        wakeAtMs,
+      );
 
     // Resolve first: the item is dismissed, and the timer does nothing.
-    const first = await addItem(ROOT, [ana], "Review acme entry");
-    await asAna.snooze({ conversationId: ROOT }, NOW_MS + 60_000);
-    await addPullRequestTrigger("resolve", "pull_request.merged");
+    const first = await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    expect((await resolveOnMerge(NOW_MS + 60_000)).status).toBe(201);
     await publisher().publish(merged);
     expect((await getReviewItem(getDb(), first))?.status).toBe("dismissed");
     vi.setSystemTime(NOW_MS + 60_000);
@@ -274,15 +394,57 @@ describe("snoozes", () => {
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
 
     // Wake first: the item comes back, and a later resolve does nothing.
-    const second = await addItem(ROOT, [ana], "Review globex entry");
-    await asAna.snooze({ conversationId: ROOT }, NOW_MS + 120_000);
-    await addPullRequestTrigger("resolve", "pull_request.merged");
+    const second = await addPullRequestItem(ROOT, [ana], "Review globex entry");
+    expect((await resolveOnMerge(NOW_MS + 120_000)).status).toBe(201);
     vi.setSystemTime(NOW_MS + 120_000);
     await heartbeat();
     await publisher().publish(merged);
     expect((await getReviewItem(getDb(), second))?.status).toBe("open");
     expect(await storedStates()).toEqual(["cancelled", "woken"]);
     expect((await asAna.inbox()).inbox).toEqual(["Review globex entry"]);
+  });
+
+  it("takes only Events that each item's subject has, from a person who can act", async () => {
+    await useGitHubEvents();
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const own = await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    const asAna = api(fixture, ana);
+    const merged = {
+      eventType: "pull_request.merged",
+      outcome: "wake" as const,
+    };
+
+    // Neither a time nor an Event.
+    expect(
+      (await asAna.snoozeOn({ conversationId: ROOT, reviewItemId: own }, []))
+        .status,
+    ).toBe(400);
+    // An Event that the pull request has no type for.
+    expect(
+      (
+        await asAna.snoozeOn({ conversationId: ROOT, reviewItemId: own }, [
+          { eventType: "issue.closed", outcome: "wake" },
+        ])
+      ).status,
+    ).toBe(400);
+    // Ana can see Bob's item, but only Bob can dismiss it.
+    const bobs = await addPullRequestItem(ROOT, [bob], "Review initech entry");
+    const resolve = {
+      eventType: "pull_request.merged",
+      outcome: "resolve" as const,
+    };
+    const subject = { conversationId: ROOT, reviewItemId: bobs };
+    expect((await asAna.snoozeOn(subject, [resolve])).status).toBe(400);
+    expect(await storedStates()).toEqual([]);
+    // A row snoozes only the items that take the Event: not an item that
+    // names no resource, nor one that Ana cannot dismiss.
+    await addItem(ROOT, [ana], "Review globex entry");
+    const snoozed = await asAna.snoozeOn({ conversationId: ROOT }, [resolve]);
+    expect(snoozed.status).toBe(201);
+    expect(await snoozed.json()).toEqual({ reviewItemIds: [own] });
+    expect((await asAna.inbox()).inbox).toContain("Review globex entry");
+    expect((await asAna.snoozeOn(subject, [merged])).status).toBe(201);
   });
 
   it("keeps one snooze per item: a second one replaces the first", async () => {

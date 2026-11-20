@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { viewerSnoozeResource } from "@/chat/inbox-snoozes/subject";
 import {
   createViewerSnooze,
   InboxRowNotFoundError,
@@ -9,6 +11,8 @@ import { emptyResponse, jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   inboxSnoozeCreateSchema,
+  inboxSnoozeResourceQuerySchema,
+  inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
 } from "../schema/inbox-snooze";
@@ -27,11 +31,12 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
     requireViewer,
     validateRequest("json", inboxSnoozeCreateSchema, "Invalid snooze."),
     async (context) => {
-      const { wakeAt, ...subject } = context.req.valid("json");
+      const { triggers, wakeAt, ...subject } = context.req.valid("json");
       try {
         const reviewItemIds = await createViewerSnooze(context.get("viewer"), {
           subject,
-          wakeAtMs: Date.parse(wakeAt),
+          ...(triggers ? { triggers } : undefined),
+          ...(wakeAt ? { wakeAtMs: Date.parse(wakeAt) } : undefined),
         });
         return jsonResponse(
           inboxSnoozeSchema,
@@ -47,6 +52,28 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
         }
         throw error;
       }
+    },
+  );
+
+  // The Events of a page that the viewer names for a snooze, such as
+  // another pull request. A page that they cannot see is not found.
+  app.get(
+    "/resource",
+    requireViewer,
+    validateRequest("query", inboxSnoozeResourceQuerySchema, "Invalid link."),
+    async (context) => {
+      const resource = await viewerSnoozeResource(
+        context.get("viewer"),
+        getEventCatalog(),
+        context.req.valid("query").url,
+      );
+      if (!resource) throwApiError(404, "A snooze cannot wait on this link.");
+      return jsonResponse(inboxSnoozeResourceSchema, {
+        events: [...resource.events],
+        namespace: resource.namespace,
+        phrases: { ...resource.phrases },
+        resourceType: resource.resourceType,
+      });
     },
   );
 

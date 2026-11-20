@@ -1,11 +1,9 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import type {
-  AutomationListItem,
-  ReviewItemPayload,
-} from "@sentry/junior/api/schema";
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
+import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
 import { HeaderBar } from "../components/layout/HeaderBar";
@@ -20,7 +18,6 @@ import {
 import { useReorderPinnedConversations } from "../conversations/useReorderPinnedConversations";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { InboxAutomationRow } from "./InboxAutomationRow";
 import {
   useInboxData,
   type ConversationRow,
@@ -51,6 +48,7 @@ import {
   viewSections,
 } from "./inboxModel";
 import { InboxRow } from "./InboxRow";
+import type { SnoozeEnd } from "./inboxSnoozes";
 import { PageEnd, RetryRow } from "./PageEnd";
 import {
   inboxCardActions,
@@ -61,13 +59,15 @@ import { useLeaveCard, useLeaveRow } from "./rowMotion";
 import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
+import { eventSnoozeOf } from "./snoozeChoices";
 import { useReviewItemData, useReviewItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
   conversationAnswerLine,
-  itemNeedsViewer,
-  itemUpForGrabs,
   type InboxBundle,
+  itemNeedsViewer,
+  itemOwnerPath,
+  itemUpForGrabs,
 } from "./reviewItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
@@ -113,6 +113,8 @@ export function InboxList(props: {
   const { view } = state;
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
   const { nowMs, readSnoozed, snoozes, sweeper, titleOf } = data;
+  const conversationOf = (id: string | undefined) =>
+    id === undefined ? undefined : data.conversationById.get(id);
   useEffect(readSnoozed, [readSnoozed]);
   const done = useReviewItemsData({
     closed: true,
@@ -351,7 +353,7 @@ export function InboxList(props: {
     leave,
     leaveCard,
     setSnoozeKey,
-    snoozeItem: (item, untilMs) => void snoozes.snoozeItem(item, untilMs),
+    snoozeItem: (item, end) => void snoozes.snoozeItem(item, end),
     snoozeKey,
   });
 
@@ -383,6 +385,14 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     const title = titleOf(row.conversationId) ?? row.newest.title;
     const acted = { items: row.items, key, passing: options.passing, title };
+    const snoozeRow = options.snoozed
+      ? undefined
+      : (end: SnoozeEnd) => {
+          setSnoozeKey(undefined);
+          // The snooze hides the row before it saves, and brings it back
+          // with a toast when the save fails.
+          leave(key, () => void snoozes.snooze(row, end));
+        };
     return (
       <InboxRow
         answered={options.answered}
@@ -395,8 +405,7 @@ export function InboxList(props: {
           // stack's title names its Conversation.
           options.stacked || options.itemRow
             ? undefined
-            : (options.conversation ??
-              data.conversationById.get(row.conversationId))
+            : (options.conversation ?? conversationOf(row.conversationId))
         }
         conversationId={row.conversationId}
         drag={options.drag}
@@ -405,10 +414,7 @@ export function InboxList(props: {
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSize={
           options.itemRow
-            ? subjectSize(
-                row.newest,
-                data.conversationById.get(row.conversationId),
-              )
+            ? subjectSize(row.newest, conversationOf(row.conversationId))
             : undefined
         }
         itemSubtitle={
@@ -427,16 +433,8 @@ export function InboxList(props: {
         }
         key={key}
         onItemAction={(item, body) => act(acted, [item], body)}
-        onSnooze={
-          options.snoozed
-            ? undefined
-            : (untilMs) => {
-                setSnoozeKey(undefined);
-                // The snooze hides the row before it saves, and brings it
-                // back with a toast when the save fails.
-                leave(key, () => void snoozes.snooze(row, untilMs));
-              }
-        }
+        eventSnooze={eventSnoozeOf(row.items, snoozeRow)}
+        onSnooze={snoozeRow}
         onWake={
           options.snoozed
             ? () =>
@@ -499,8 +497,7 @@ export function InboxList(props: {
     const title = titleOf(row.conversationId) ?? row.newest.title;
     return (
       <InboxStack
-        conversation={data.conversationById.get(row.conversationId)}
-        conversationId={row.conversationId}
+        conversation={conversationOf(row.conversationId)}
         expandedKey={state.expandedKey}
         key={stackKey}
         keys={rows.map((stacked) => stacked.key)}
@@ -512,13 +509,18 @@ export function InboxList(props: {
           keys: rows.map((stacked) => stacked.key),
           stackKey,
           title,
-          snooze: (untilMs) => {
+          snooze: (end) => {
             setSnoozeKey(undefined);
-            leave(stackKey, () => void snoozes.snooze(row, untilMs));
+            leave(stackKey, () => void snoozes.snooze(row, end));
           },
           snoozed: options.snoozed,
         })}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
+        path={
+          row.conversationId
+            ? conversationPath(row.conversationId)
+            : itemOwnerPath(row.newest)
+        }
         snoozeMenuOpen={snoozeKey === stackKey}
         title={title}
       >
@@ -567,37 +569,6 @@ export function InboxList(props: {
       />
     );
   };
-  // In To do, an alert can be dismissed or snoozed in this browser.
-  const automationRow = (
-    automation: AutomationListItem,
-    options: { todo?: boolean } = {},
-  ) => {
-    const key = `automation:${automation.id}`;
-    return (
-      <InboxAutomationRow
-        automation={automation}
-        expanded={state.expandedKey === key}
-        key={key}
-        onToggle={() => toggle(key)}
-        putAway={
-          options.todo
-            ? {
-                menuOpen: snoozeKey === key,
-                onDismiss: () =>
-                  leave(key, () => data.alerts.dismiss(automation)),
-                onMenu: (open) => setSnoozeKey(open ? key : undefined),
-                onSnooze: (untilMs) => {
-                  setSnoozeKey(undefined);
-                  leave(key, () => data.alerts.snooze(automation, untilMs));
-                },
-              }
-            : undefined
-        }
-        rowKey={key}
-      />
-    );
-  };
-
   // Infinite scroll: stream rows render a page at a time as the end comes
   // into view. When every loaded row shows, the next page of what the list
   // reads loads: the feed, the open asks, or Done.
@@ -716,10 +687,6 @@ export function InboxList(props: {
     );
   };
 
-  // A failed read must not look like nothing needs attention.
-  const automationsError = data.automationsError ? (
-    <InlineError className="py-3">Could not load your Automations.</InlineError>
-  ) : null;
   let body;
   if (data.itemsError) {
     body = (
@@ -728,16 +695,9 @@ export function InboxList(props: {
   } else if (!ready) {
     body = <RowsLoading />;
   } else if (view === "inbox") {
-    // Empty only once Automations are in: they can still add To do cards,
-    // and a failed read must not read as nothing left.
     const nothingLeft =
-      data.automationsLoaded &&
       !todoMore &&
-      data.todoRows.length +
-        data.todoAutomations.length +
-        data.grabRows.length +
-        data.fyiRows.length ===
-        0;
+      data.todoRows.length + data.grabRows.length + data.fyiRows.length === 0;
     const pinnedTodo = data.todoRows.filter((row) =>
       data.isPinned(row.conversationId),
     );
@@ -759,8 +719,7 @@ export function InboxList(props: {
             // or have failed.
             count={
               data.todoCount ||
-              rowCount(data.todoRows, STACK_ROW_KEYS.todo, true) +
-                data.todoAutomations.length
+              rowCount(data.todoRows, STACK_ROW_KEYS.todo, true)
             }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
@@ -769,9 +728,6 @@ export function InboxList(props: {
               ...pinnedTodo,
               ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
             ].map((row) => stackRow(row, STACK_ROW_KEYS.todo, { todo: true }))}
-            {data.todoAutomations.map((automation) =>
-              automationRow(automation, { todo: true }),
-            )}
           </InboxSection>
         ) : null}
         <InboxSection
@@ -794,7 +750,6 @@ export function InboxList(props: {
         >
           {data.fyiRows.map((row) => stackRow(row, STACK_ROW_KEYS.fyi, {}))}
         </InboxSection>
-        {automationsError}
         {nothingLeft ? <InboxEmptyState label="Nothing left here" /> : null}
       </>
     );

@@ -13,7 +13,10 @@ import pLimit from "p-limit";
 import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
-import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
+import {
+  invalidateReviewItemCollections,
+  REVIEW_ITEMS_QUERY_KEY,
+} from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
 // attention. The current UI does not load them.
@@ -43,14 +46,14 @@ export function useInboxCountData(enabled: boolean) {
 
 /**
  * Refresh the reads that one Automation change can affect: every list, the
- * runs list, which shows titles, and the Inbox count, which counts the
- * Automations that need attention.
+ * runs list, which shows titles, and the Review item collections, because
+ * the change can close or add the Automation's alert.
  */
 function invalidateAutomationListReads(queryClient: QueryClient) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: automationKeys.lists() }),
     queryClient.invalidateQueries({ queryKey: automationKeys.runs() }),
-    queryClient.invalidateQueries({ queryKey: REVIEW_ITEM_COUNT_QUERY_KEY }),
+    invalidateReviewItemCollections(queryClient),
   ]);
 }
 

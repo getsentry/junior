@@ -83,9 +83,15 @@ import {
   type InboxCardActions,
 } from "./RowHoverActions";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import type { EventSnooze } from "./snoozeChoices";
 import type { InboxBundle } from "./reviewItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
+import {
+  itemConversationId,
+  itemOwnerLinkLabel,
+  itemOwnerPath,
+} from "./reviewItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly ReviewItemPayload[] = [];
@@ -109,19 +115,31 @@ function rowSummary(conversation: Conversation | undefined) {
 }
 
 /**
- * Where the row opens. A row for one item, as in a stack, opens the
- * Conversation that added it, also a child's, at the ask's record. A row for
- * a Conversation opens it, at its newest ask when that Conversation added it.
+ * Where the row opens. A row for one item, as in a stack, opens the item's
+ * owner: the Conversation that added it, also a child's, at the ask's
+ * record, or its Automation. So does the row of an owner that is not a
+ * Conversation. A row for a Conversation opens it, at its newest ask when
+ * that Conversation added it.
  */
-function rowConversationPath(props: InboxRowProps): string {
+/**
+ * What the row's Open action opens: an item row's owner, such as its
+ * Automation, or the row's Conversation.
+ */
+function rowOpenTarget(props: InboxRowProps): { label: string; path: string } {
   const newest = props.bundle?.newest;
-  const id =
-    newest && props.itemTitle !== undefined
-      ? newest.addedByConversationId
-      : props.conversationId;
-  return conversationPath(id, {
-    askItemId: newest?.addedByConversationId === id ? newest.id : undefined,
-  });
+  const id = props.conversationId;
+  if (newest && (props.itemTitle !== undefined || id === undefined))
+    return {
+      label: itemOwnerLinkLabel(newest),
+      path: itemOwnerPath(newest, { askItemId: newest.id }),
+    };
+  return {
+    label: "Open conversation",
+    path: conversationPath(id!, {
+      askItemId:
+        newest && itemConversationId(newest) === id ? newest.id : undefined,
+    }),
+  };
 }
 
 type InboxRowProps = {
@@ -133,7 +151,11 @@ type InboxRowProps = {
   /** A row with one ask shows its Snooze and Dismiss on hover. */
   itemActions?: boolean;
   conversation?: Conversation;
-  conversationId: string;
+  /**
+   * The row's root Conversation. Undefined for the stack of an owner that
+   * is not a Conversation, which always has a `bundle`.
+   */
+  conversationId: string | undefined;
   /** Set on a pinned row of a list that drags pins into a new order. */
   drag?: PinnedRowDrag;
   expanded: boolean;
@@ -153,6 +175,8 @@ type InboxRowProps = {
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
   onSnooze?(untilMs: number): void;
+  /** Snooze on an Event of the subject that the row's items share. */
+  eventSnooze?: EventSnooze | undefined;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
@@ -189,7 +213,7 @@ export function InboxRow(props: InboxRowProps) {
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
-        to={rowConversationPath(props)}
+        open={rowOpenTarget(props)}
       />
     ) : undefined;
   return props.conversation ? (
@@ -246,7 +270,7 @@ function ConversationInboxRow(
   // meta's cell, so they never cover the title or summary.
   const hoverActions = props.quickActions ?? (
     <>
-      <RowOpenLink to={rowConversationPath(props)} />
+      <RowOpenLink {...rowOpenTarget(props)} />
       {participant && !actions.archived ? (
         <RowActionButton
           disabled={actions.pending.pin}
@@ -352,7 +376,7 @@ function ConversationInboxRow(
 
 function RowSummary(props: {
   comfortable: boolean;
-  conversationId: string;
+  conversationId: string | undefined;
   expanded: boolean;
   /** The row's linked work, so the summary's links show their chips. */
   objects: readonly OwnedObjectAnnotation[];
@@ -408,7 +432,7 @@ function InboxRowBody(
   // A row that names its Conversation opens it. A row for one item names
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
-  const path = rowConversationPath(props);
+  const { path } = rowOpenTarget(props);
   const openConversation = useOpenPath(path);
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
@@ -700,7 +724,7 @@ function InboxRowBody(
             className="grid min-w-0 cursor-pointer gap-3 pr-4 pb-3 pl-8"
             {...rowClick}
           >
-            {images ? (
+            {images && props.conversationId ? (
               <InboxImageStrip
                 askToggle={{
                   controls,
@@ -720,7 +744,7 @@ function InboxRowBody(
             {links.length > 0 ? (
               <InboxLinkCards links={links} main={main} />
             ) : null}
-            {files.length > 0 ? (
+            {files.length > 0 && props.conversationId ? (
               <InboxFiles conversationId={props.conversationId} files={files} />
             ) : null}
           </div>
@@ -742,7 +766,6 @@ function InboxRowBody(
         >
           {openItems.map((item) => (
             <InboxRowCard
-              conversationId={props.conversationId}
               actions={props.cardActions?.(item)}
               headTitled={Boolean(props.itemTitle)}
               item={item}
@@ -768,12 +791,12 @@ function rowActions(props: InboxRowProps, inline = false) {
       conversation={props.conversation}
       inline={inline}
       // A stack of one card snoozes on the card.
-      onSnooze={
-        (props.bundle?.items.length ?? 0) > 1 ? props.onSnooze : undefined
-      }
+      {...((props.bundle?.items.length ?? 0) > 1
+        ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
+        : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      openPath={rowConversationPath(props)}
+      open={rowOpenTarget(props)}
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );
@@ -782,7 +805,8 @@ function rowActions(props: InboxRowProps, inline = false) {
 function ExpandedActions(props: {
   conversation?: Conversation;
   inline: boolean;
-  openPath: string;
+  eventSnooze?: EventSnooze | undefined;
+  open: { label: string; path: string };
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
@@ -792,10 +816,10 @@ function ExpandedActions(props: {
     <>
       <Link
         className={buttonVariants({ variant: "ghost" })}
-        to={props.openPath}
+        to={props.open.path}
       >
         <ArrowUpRight aria-hidden="true" size={15} />
-        Open conversation
+        {props.open.label}
       </Link>
       {props.conversation?.isParticipant ? (
         <ExpandedPin conversation={props.conversation} />
@@ -808,6 +832,7 @@ function ExpandedActions(props: {
       ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
+          eventSnooze={props.eventSnooze}
           label="Snooze all"
           onOpenChange={props.onSnoozeMenu}
           onSnooze={props.onSnooze}

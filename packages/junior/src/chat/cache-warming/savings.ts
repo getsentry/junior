@@ -13,6 +13,7 @@
  * period (`tool-wait.ts`).
  */
 import { logWarn } from "@/chat/logging";
+import { metrics } from "@/chat/sentry";
 import { usdToMicroUsd } from "@/db/micro-usd";
 import { addStats, firstStatDate, replaceStats, type Stat } from "@/stats";
 import { MIN_WARMUP_PREFIX_TOKENS, WARMUP_MARGIN_MS } from "./model";
@@ -37,6 +38,16 @@ const TTL_START_DELAY_MS = 10_000;
 // whose cached tokens are below it had a smaller context, as after compaction,
 // or no usage.
 const PREFIX_SHARE = 0.5;
+
+// Warmups that keep the cache until a return `gapMs` after the request that
+// started the idle period. Each one keeps it for one more TTL, less the warmup
+// margin. None when the cache lives through the gap.
+function warmupsNeeded(input: { cacheTtlMs: number; gapMs: number }): number {
+  const lateMs = input.gapMs - input.cacheTtlMs - TTL_START_DELAY_MS;
+  return lateMs <= 0
+    ? 0
+    : Math.ceil(lateMs / (input.cacheTtlMs - WARMUP_MARGIN_MS));
+}
 
 /** Dollar savings of one idle period that counts. */
 export interface IdlePeriodSavings {
@@ -70,11 +81,10 @@ export function idlePeriodSavings(input: {
   ) {
     return undefined;
   }
-  const lateMs = input.gapMs - input.cacheTtlMs - TTL_START_DELAY_MS;
-  if (lateMs <= 0) return undefined;
+  const warmups = warmupsNeeded(input);
+  if (warmups <= 0) return undefined;
   const minTokens = PREFIX_SHARE * input.prefixTokens;
   if (input.cacheRead + input.cacheWrite < minTokens) return undefined;
-  const warmups = Math.ceil(lateMs / (input.cacheTtlMs - WARMUP_MARGIN_MS));
   const read = input.cacheReadPrice / 1_000_000;
   const write = input.cacheWritePrice / 1_000_000;
   if (warmups * read >= write - read) return undefined;
@@ -106,6 +116,31 @@ export function historyPeriodSavings(
     input.sinceLastWarmupMs !== undefined &&
     input.sinceLastWarmupMs <= input.cacheTtlMs + TTL_START_DELAY_MS;
   return reached ? savings : { ...savings, hit: false, savedUsd: 0 };
+}
+
+/**
+ * What happened to an idle period that counts. `stopped_early`: warmups
+ * stopped before the return, so its cache expired. `cache_lost`: the warmups
+ * reached the return, but the provider no longer had the cache.
+ */
+export type IdlePeriodOutcome =
+  | "saved"
+  | "not_warmed"
+  | "stopped_early"
+  | "cache_lost";
+
+/**
+ * Return the outcome of an idle period that `idlePeriodSavings` counted.
+ * `warmups` is the count of warmups that refreshed its cache.
+ */
+export function idlePeriodOutcome(
+  input: { cacheTtlMs: number; gapMs: number },
+  savings: IdlePeriodSavings,
+  warmups: number,
+): IdlePeriodOutcome {
+  if (savings.hit) return "saved";
+  if (warmups === 0) return "not_warmed";
+  return warmups < warmupsNeeded(input) ? "stopped_early" : "cache_lost";
 }
 
 /** Counter amounts, by metric. */
@@ -158,13 +193,27 @@ async function addSavingsStats(
 /**
  * Count one idle period that counts, as `idlePeriodSavings` returned it.
  * `warmed` is false for a period with no warm state.
+ *
+ * The System page reads the outcomes of recent periods from the unsampled
+ * `cache_warming.idle_period.saved_usd` metric: one value per period, with
+ * its outcome. The daily counters stay in Postgres.
  */
 export async function recordIdlePeriodSavings(
   modelId: string,
   savings: IdlePeriodSavings,
-  warmed: boolean,
+  period: { warmed: boolean; outcome: IdlePeriodOutcome },
 ): Promise<void> {
-  await addSavingsStats(modelId, periodCounts(savings, warmed));
+  metrics.distribution(
+    "cache_warming.idle_period.saved_usd",
+    savings.savedUsd,
+    {
+      attributes: {
+        "app.cache_warming.idle_outcome": period.outcome,
+        "gen_ai.request.model": modelId,
+      },
+    },
+  );
+  await addSavingsStats(modelId, periodCounts(savings, period.warmed));
 }
 
 /** Add the cost of one warmup call. */

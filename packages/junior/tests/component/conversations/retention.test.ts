@@ -38,7 +38,11 @@ import {
   getReviewItem,
   insertReviewItem,
 } from "@/chat/review-items/store";
-import { snoozeInboxItems, unsnoozeInboxRow } from "@/chat/inbox-snoozes/store";
+import {
+  snoozeInboxItems,
+  snoozeTimerTrigger,
+  unsnoozeInboxRow,
+} from "@/chat/inbox-snoozes/store";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -111,7 +115,7 @@ describe("retention purge job", () => {
       visibility: "public" | "private" = "public",
     ) =>
       (await insertReviewItem(fixture.sql.db(), {
-        addedByConversationId: conversationId,
+        owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [],
         ...(automationId ? { automationId } : undefined),
@@ -247,7 +251,7 @@ describe("retention purge job", () => {
         updatedAt: new Date(BASE_MS),
       });
     const item = await insertReviewItem(fixture.sql.db(), {
-      addedByConversationId: "snoozed",
+      owner: { id: "snoozed", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
       body: "The rollout waits on an answer.",
@@ -260,9 +264,13 @@ describe("retention purge job", () => {
     });
     const snooze = async (nowMs: number) => {
       const [id] = await snoozeInboxItems(fixture.sql.db(), {
+        items: [
+          {
+            reviewItemId: item!.id,
+            triggers: [snoozeTimerTrigger(`inbox-snooze:${nowMs}`)],
+          },
+        ],
         nowMs,
-        reviewItemIds: [item!.id],
-        timerId: `inbox-snooze:${nowMs}`,
         userId: "user:snoozer",
       });
       return id!;
@@ -708,7 +716,8 @@ describe("retention purge job", () => {
       conversationId: string,
       visibility: "public" | "private",
     ) => ({
-      addedByConversationId: conversationId,
+      ownerId: conversationId,
+      ownerKind: "conversation" as const,
       body: `${conversationId} body`,
       createdAt: new Date(BASE_MS),
       dedupeKey: `${conversationId}-key`,

@@ -3,23 +3,28 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
-  useId,
+  lazy,
+  Suspense,
   useState,
 } from "react";
 
 import { Button } from "../components/ui/button";
-import { FieldError } from "../components/ui/field";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
-import { cn } from "../styles";
 import { formatTime } from "../time";
-import { atLocalHour, snoozeChoicesAt } from "./snoozeChoices";
+import { snoozeChoicesAt, type EventSnooze } from "./snoozeChoices";
+
+// The custom snooze dialog and its pull request search load on first use,
+// so the Inbox's first paint skips their code.
+const SnoozeDialog = lazy(() =>
+  import("./SnoozeDialog").then((module) => ({
+    default: module.SnoozeDialog,
+  })),
+);
 
 const MENU_ROW_CLASS =
   "flex cursor-pointer items-baseline justify-between gap-3 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
@@ -36,19 +41,15 @@ function targetTime(untilMs: number, nowMs: number): string {
   });
 }
 
-/** The `datetime-local` value of a time, in the browser's timezone. */
-function localInputValue(ms: number): string {
-  const date = new Date(ms);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
- * of the snooze times, and Custom… for a picked date and time. Number keys
- * pick the menu rows.
+ * of the snooze times, and Custom…, which opens a dialog to pick a date
+ * and time, Events on the subject of the row's items or on a pull request
+ * or issue that the viewer names, or both. Number keys pick the menu rows.
  */
 export function RowSnoozeButton(props: {
+  /** Set when the row can snooze until an Event. */
+  eventSnooze?: EventSnooze | undefined;
   /** The action bar's look by default (`ButtonLook`). */
   look?: ButtonLook;
   /** "Snooze" by default. */
@@ -62,155 +63,95 @@ export function RowSnoozeButton(props: {
   /** Another trigger, such as a row's quick action. */
   trigger?: ReactElement;
 }) {
-  const [custom, setCustom] = useState(false);
-  // Back from the picker focuses Custom… again, so the keys still work.
-  const [back, setBack] = useState(false);
+  const [dialog, setDialog] = useState(false);
   // The menu reads the clock when it opens: each open renders it again.
   const nowMs = Date.now();
   const choices = snoozeChoicesAt(nowMs);
+  // The dialog outlives the menu, which closes as it opens.
+  const openDialog = () => {
+    props.onOpenChange(false);
+    setDialog(true);
+  };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (custom || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = Number(event.key) - 1;
     if (!Number.isInteger(index) || index < 0) return;
     const choice = choices[index];
     if (choice) props.onSnooze(choice.untilMs(nowMs));
-    else if (index === choices.length) setCustom(true);
+    else if (index === choices.length) openDialog();
     else return;
     event.preventDefault();
   };
   return (
-    <Popover
-      onOpenChange={(open) => {
-        if (open) {
-          setCustom(false);
-          setBack(false);
-        }
-        props.onOpenChange(open);
-      }}
-      open={props.open}
-    >
-      <PopoverTrigger
-        render={
-          props.trigger ?? (
-            <Button
-              aria-label={props.name}
-              className={props.look && LOOK_CLASSES[props.look]}
-              title={
-                props.look === "icon" ? (props.label ?? "Snooze") : undefined
-              }
-              variant="ghost"
-            >
-              <Clock3
-                aria-hidden="true"
-                className={ATTENTION_TONE_CLASS}
-                size={15}
-              />
-              <ButtonLabel look={props.look}>
-                {props.label ?? "Snooze"}
-              </ButtonLabel>
-            </Button>
-          )
-        }
-      />
-      <PopoverContent
-        align="start"
-        aria-label="Snooze until"
-        // The date and time field needs more room than the times.
-        className={cn("grid gap-0.5 p-1", custom ? "w-72" : "w-56")}
-        onKeyDown={onKeyDown}
-      >
-        {custom ? (
-          <CustomSnooze
-            nowMs={nowMs}
-            onBack={() => {
-              setCustom(false);
-              setBack(true);
-            }}
-            onSnooze={props.onSnooze}
-          />
-        ) : (
-          <>
-            {choices.map((choice, index) => (
-              <button
-                aria-keyshortcuts={String(index + 1)}
-                className={MENU_ROW_CLASS}
-                key={choice.label}
-                onClick={() => props.onSnooze(choice.untilMs(nowMs))}
-                type="button"
+    <>
+      <Popover onOpenChange={props.onOpenChange} open={props.open}>
+        <PopoverTrigger
+          render={
+            props.trigger ?? (
+              <Button
+                aria-label={props.name}
+                className={props.look && LOOK_CLASSES[props.look]}
+                title={
+                  props.look === "icon" ? (props.label ?? "Snooze") : undefined
+                }
+                variant="ghost"
               >
-                {choice.label}
-                <span className="text-xs text-dashboard-text-faint tabular-nums">
-                  {targetTime(choice.untilMs(nowMs), nowMs)}
-                </span>
-              </button>
-            ))}
+                <Clock3
+                  aria-hidden="true"
+                  className={ATTENTION_TONE_CLASS}
+                  size={15}
+                />
+                <ButtonLabel look={props.look}>
+                  {props.label ?? "Snooze"}
+                </ButtonLabel>
+              </Button>
+            )
+          }
+        />
+        <PopoverContent
+          align="start"
+          aria-label="Snooze until"
+          className="grid w-56 gap-0.5 p-1"
+          onKeyDown={onKeyDown}
+        >
+          {choices.map((choice, index) => (
             <button
-              aria-keyshortcuts={String(choices.length + 1)}
-              autoFocus={back}
+              aria-keyshortcuts={String(index + 1)}
               className={MENU_ROW_CLASS}
-              onClick={() => setCustom(true)}
+              key={choice.label}
+              onClick={() => props.onSnooze(choice.untilMs(nowMs))}
               type="button"
             >
-              Custom…
+              {choice.label}
+              <span className="text-xs text-dashboard-text-faint tabular-nums">
+                {targetTime(choice.untilMs(nowMs), nowMs)}
+              </span>
             </button>
-          </>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** Pick a date and time to snooze until. It starts at tomorrow 09:00. */
-function CustomSnooze(props: {
-  nowMs: number;
-  onBack(): void;
-  onSnooze(untilMs: number): void;
-}) {
-  const id = useId();
-  const [value, setValue] = useState(() =>
-    localInputValue(atLocalHour(props.nowMs, 1, 9)),
-  );
-  const [error, setError] = useState<string>();
-  return (
-    <form
-      className="grid gap-2 p-1.5"
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        // A `datetime-local` value has no offset, so it parses as local time.
-        const untilMs = new Date(value).getTime();
-        if (Number.isNaN(untilMs)) setError("Pick a date and time.");
-        else if (untilMs <= Date.now()) setError("Pick a time in the future.");
-        else props.onSnooze(untilMs);
-      }}
-    >
-      <Label className="text-xs text-muted-foreground" htmlFor={`${id}-at`}>
-        Date and time
-      </Label>
-      <Input
-        aria-describedby={error ? `${id}-error` : undefined}
-        aria-invalid={error ? true : undefined}
-        autoFocus
-        id={`${id}-at`}
-        min={localInputValue(props.nowMs)}
-        onChange={(event) => {
-          setValue(event.target.value);
-          setError(undefined);
-        }}
-        size="comfortable"
-        type="datetime-local"
-        value={value}
-      />
-      <FieldError id={`${id}-error`}>{error}</FieldError>
-      <div className="flex justify-end gap-1">
-        <Button onClick={props.onBack} type="button" variant="ghost">
-          Back
-        </Button>
-        <Button type="submit" variant="outline">
-          Snooze
-        </Button>
-      </div>
-    </form>
+          ))}
+          <button
+            aria-keyshortcuts={String(choices.length + 1)}
+            className={MENU_ROW_CLASS}
+            onClick={openDialog}
+            type="button"
+          >
+            Custom…
+          </button>
+        </PopoverContent>
+      </Popover>
+      {dialog ? (
+        <Suspense fallback={null}>
+          <SnoozeDialog
+            events={props.eventSnooze}
+            nowMs={nowMs}
+            onClose={() => setDialog(false)}
+            onSnooze={(end) => {
+              if (end.triggers.length > 0) props.eventSnooze?.onSnooze(end);
+              else if (end.untilMs !== undefined) props.onSnooze(end.untilMs);
+            }}
+          />
+        </Suspense>
+      ) : null}
+    </>
   );
 }
 

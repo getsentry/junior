@@ -29,7 +29,7 @@ import {
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
-import { gitHubResourceUrl } from "./events/resource-url.js";
+import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestConflictHistory,
@@ -240,6 +240,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceForUrl: gitHubUrlResource,
       resourceUrl: gitHubResourceUrl,
     },
     manifest: {
