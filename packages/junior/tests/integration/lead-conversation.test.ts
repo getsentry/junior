@@ -280,6 +280,10 @@ describe("Lead", () => {
     });
     await watch(lead.conversationId, child);
     await watch(boWork.conversationId, child);
+    // Its parent already gets its results, so a Watch would repeat them.
+    await expect(watch(started.conversation_id, child)).rejects.toThrow(
+      `${child} is a child agent of this Conversation.`,
+    );
     // A private Conversation in another tree and Destination is not. A
     // missing Conversation gets the same error.
     for (const [watcher, target] of [

@@ -12,7 +12,8 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { canReadConversation } from "@/api/conversations/access";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import { watchRepeatsChildResults } from "@/chat/conversations/kind-behavior";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
@@ -115,7 +116,9 @@ function ttlMs(input: Input): number {
 
 /**
  * A Watch on a Conversation reads its status, so the watcher must be able to
- * read it. "Not found" and "no access" get the same error.
+ * read it. "Not found" and "no access" get the same error. A child agent's
+ * results already reach its parent, so a Watch on it would deliver each
+ * result twice.
  */
 async function requireWatchableConversation(
   watcherConversationId: string,
@@ -126,6 +129,12 @@ async function requireWatchableConversation(
   ) {
     throw new ToolInputError(
       `Conversation is not accessible: ${conversationId}`,
+    );
+  }
+  const target = await getConversationStore().get({ conversationId });
+  if (target && watchRepeatsChildResults(target, watcherConversationId)) {
+    throw new ToolInputError(
+      `${conversationId} is a child agent of this Conversation. Its results and messages already arrive here without a Watch.`,
     );
   }
 }

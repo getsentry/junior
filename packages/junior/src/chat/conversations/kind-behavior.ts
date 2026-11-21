@@ -278,6 +278,17 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation" || kind === "lead";
 }
 
+/**
+ * Return whether a Watch on this Conversation would repeat what already
+ * reaches the watcher: a child agent's results and messages go to its parent.
+ */
+export function watchRepeatsChildResults(
+  target: { parentConversationId?: string },
+  watcherConversationId: string,
+): boolean {
+  return target.parentConversationId === watcherConversationId;
+}
+
 /** Return whether a person sent input from this Source. */
 export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";
