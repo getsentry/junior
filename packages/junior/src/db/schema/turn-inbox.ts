@@ -14,6 +14,12 @@ import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
 
+/** What an input is. */
+export type TurnInputKind = "message" | "account_connected";
+
+/** The trace of the source request that sent an input. */
+export type TurnInputTraceContext = { sentryTrace: string; baggage?: string };
+
 /**
  * Inputs for a Conversation. The scheduler sets `turn_id` when the row
  * arrives. A row is read when the Conversation's history has an event with
@@ -24,7 +30,7 @@ export const juniorTurnInbox = pgTable(
   {
     id: uuid("id").primaryKey(),
     conversationId: text("conversation_id").notNull(),
-    kind: text("kind").$type<"message" | "account_connected">().notNull(),
+    kind: text("kind").$type<TurnInputKind>().notNull(),
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
@@ -33,10 +39,7 @@ export const juniorTurnInbox = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     // The trace of the source request, so the Turn that takes the input
     // continues it.
-    traceContext: jsonb("trace_context").$type<{
-      sentryTrace: string;
-      baggage?: string;
-    }>(),
+    traceContext: jsonb("trace_context").$type<TurnInputTraceContext>(),
     turnId: uuid("turn_id")
       .notNull()
       .references(() => juniorTurns.id),
