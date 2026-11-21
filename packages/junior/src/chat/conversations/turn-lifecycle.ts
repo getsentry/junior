@@ -42,6 +42,11 @@ export interface ConversationTurnLifecycle {
   fail(input: FailConversationTurnInput): Promise<void>;
 }
 
+// The key of the event that records a Turn's start.
+function turnStartedKey(turnId: string): string {
+  return `turn:${turnId}:started`;
+}
+
 /** Persist correlated turn lifecycle facts with retry-safe terminal exclusion. */
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
   private readonly events: ConversationEventStore;
@@ -54,7 +59,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   async start(input: StartConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
       {
-        idempotencyKey: `turn:${input.turnId}:started`,
+        idempotencyKey: turnStartedKey(input.turnId),
         createdAtMs: input.createdAtMs,
         data: {
           type: "turn_started",
@@ -76,11 +81,23 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   ): Promise<string[] | undefined> {
     const event = await this.events.loadByIdempotencyKey(
       conversationId,
-      `turn:${turnId}:started`,
+      turnStartedKey(turnId),
     );
     return event?.data.type === "turn_started"
       ? event.data.inputMessageIds
       : undefined;
+  }
+
+  /** Return the time a Turn started, or undefined before its `turn_started` event. */
+  async loadStartedAtMs(
+    conversationId: string,
+    turnId: string,
+  ): Promise<number | undefined> {
+    const event = await this.events.loadByIdempotencyKey(
+      conversationId,
+      turnStartedKey(turnId),
+    );
+    return event?.data.type === "turn_started" ? event.createdAtMs : undefined;
   }
 
   /** Record a completion that is not a failure once. */

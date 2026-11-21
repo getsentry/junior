@@ -1,15 +1,32 @@
-import { actorSchema } from "@sentry/junior-plugin-api";
+import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { and, desc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
-import { credentialContextSchema } from "@/chat/credentials/context";
+import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  getConversationStoppedAtMs,
+  resumeStoppedConversationTree,
+} from "@/chat/conversations/session-stop";
+import {
+  credentialContextSchema,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { InboundMessage } from "@/chat/task-execution/store";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import {
+  appendInboundMessage,
+  dropPendingMessages,
+  getConversationWorkState,
+  releaseInboundMessage,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { loadForkHistory } from "./fork-history";
+import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_PARENT_MESSAGE_EVENT_TYPE,
@@ -47,6 +64,165 @@ export type ParentMessage = z.output<typeof parentMessageSchema>;
  */
 export function parentMessageAuthorId(parentConversationId: string): string {
   return `parent-agent:${parentConversationId}`;
+}
+
+/**
+ * Build the parent message that gives one task or message to a child that no
+ * Agent invocation names. It has the mailbox id that an Agent invocation with
+ * the same idempotency key would have, so a replay is a duplicate.
+ */
+export function buildParentMessage(args: {
+  actor: Actor;
+  childConversationId: string;
+  credentialContext?: CredentialContext | undefined;
+  fork?: true | undefined;
+  idempotencyKey: string;
+  nowMs: number;
+  parentConversationId: string;
+  parentToolCallId: string;
+  text: string;
+  trustedSummary: string;
+}): InboundMessage {
+  const inboundMessageId = getAgentInvocationMessageId(
+    getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
+  );
+  return {
+    conversationId: args.childConversationId,
+    createdAtMs: args.nowMs,
+    delivery: "defer",
+    inboundMessageId,
+    input: {
+      authorId: parentMessageAuthorId(args.parentConversationId),
+      // A parent agent wrote the text, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
+      metadata: {
+        actor: args.actor,
+        ...(args.credentialContext
+          ? { credentialContext: args.credentialContext }
+          : undefined),
+        event: {
+          eventKey: inboundMessageId,
+          eventType: AGENT_PARENT_MESSAGE_EVENT_TYPE,
+          identifier: args.parentConversationId,
+          namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+          trustedSummary: args.trustedSummary,
+        },
+        ...(args.fork ? { fork: true } : undefined),
+        kind: "event",
+        parentToolCallId: args.parentToolCallId,
+      },
+      text: args.text,
+    },
+    receivedAtMs: args.nowMs,
+    source: "event",
+  };
+}
+
+/**
+ * How a parent message reaches its child. `new_child` is the task of a
+ * spawn that created the child in the same SQL transaction. `message` is
+ * new work for a child that exists.
+ */
+export type ParentMessageDelivery = "message" | "new_child";
+
+/**
+ * Append one parent message to its child's mailbox without a wake.
+ *
+ * A new child gets its task even when the mailbox already saw its id: a
+ * spawn that rolled back after its mailbox write left that id, and the child
+ * dropped the task because no stored parent sent it. SQL decides: the child
+ * exists only when this transaction commits.
+ *
+ * New work for a child that exists ends the stop of the child and of the
+ * child agents below it, as an Agent invocation does. The stop already
+ * dropped the parent messages that waited then. A message that already
+ * reached the mailbox changes nothing, so a replay does not end a later
+ * stop.
+ */
+export async function appendParentMessage(
+  message: InboundMessage,
+  delivery: ParentMessageDelivery,
+  options: {
+    conversationStore?: ConversationStore | undefined;
+    state?: StateAdapter | undefined;
+  },
+): Promise<void> {
+  const conversationId = message.conversationId;
+  const work = await getConversationWorkState({
+    conversationId,
+    state: options.state,
+  });
+  // A task that a rolled-back spawn left still waits, so this append
+  // replaces it.
+  const waiting = work?.messages.some(
+    (pending) => pending.inboundMessageId === message.inboundMessageId,
+  );
+  if (delivery === "new_child") {
+    if (!waiting) {
+      await releaseInboundMessage({ message, state: options.state });
+    }
+  } else {
+    // A replay is not new work, even after a stop dropped it: a drop keeps
+    // the id, so check it before the stop ends.
+    if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
+      return;
+    }
+    await endStopForParentMessage(message);
+  }
+  const { status } = await appendInboundMessage({
+    message,
+    ...(options.conversationStore
+      ? { conversationStore: options.conversationStore }
+      : undefined),
+    nowMs: message.receivedAtMs,
+    ...(options.state ? { state: options.state } : undefined),
+  });
+  if (delivery === "new_child") {
+    if (status === "duplicate" && !waiting) {
+      // A worker took the stale id between the release and this append.
+      throw new Error(
+        `Task of new child ${conversationId} was taken before it was appended`,
+      );
+    }
+  }
+}
+
+async function endStopForParentMessage(message: InboundMessage): Promise<void> {
+  const stoppedAtMs = await getConversationStoppedAtMs(message.conversationId);
+  if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
+    await resumeStoppedConversationTree(
+      message.conversationId,
+      message.createdAtMs,
+    );
+  }
+}
+
+/**
+ * Drop every parent message that waits in a Conversation's mailbox. A stop
+ * calls this before it saves its stop request: no task from before the stop
+ * runs, and an idle Conversation gets no stop request that could cancel its
+ * next Turn after the stop ends.
+ */
+export async function dropWaitingParentMessages(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  const work = await getConversationWorkState({ conversationId, state });
+  const waiting = (work?.messages ?? []).flatMap((message) => {
+    const parentMessage = readParentMessage(message);
+    return parentMessage ? [{ message, parentMessage }] : [];
+  });
+  if (waiting.length === 0) {
+    return;
+  }
+  await dropPendingMessages({
+    conversationId,
+    inboundMessageIds: waiting.map(({ message }) => message.inboundMessageId),
+    ...(state ? { state } : undefined),
+  });
+  for (const { message, parentMessage } of waiting) {
+    logDroppedParentMessage(message, parentMessage);
+  }
 }
 
 /**

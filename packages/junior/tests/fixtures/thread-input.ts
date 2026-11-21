@@ -1,12 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import {
+  completedAgentRun,
+  type AgentRunOutcome,
+} from "@/chat/runtime/agent-run-outcome";
+import { buildTurnResult } from "@/chat/services/turn-result";
+import type { TurnAnswer } from "@/chat/turn-answer";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -20,6 +26,7 @@ import {
   prepareSlackParentConversation,
   slackDestination,
   slackInvocationInput,
+  slackParentConversationId,
 } from "./agent-invocations";
 import { webTestActor } from "./conversation";
 import { createConversationWorkHarness } from "./conversation-work";
@@ -170,6 +177,29 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
   };
 }
 
+/**
+ * End a run's Turn with `answer`, as the agent does when it calls `reply` or
+ * `noReply`.
+ */
+export async function finishRun(
+  run: AgentRun,
+  answer: TurnAnswer = { noReply: {} },
+): Promise<AgentRunOutcome> {
+  await commitRunInput(run);
+  return completedAgentRun(
+    buildTurnResult({
+      answer,
+      generatedFileCount: 0,
+      modelId: "test-model",
+      newMessages: [],
+      reasoningLevel: "medium",
+      shouldTrace: false,
+      toolCalls: [],
+      userInput: run.instruction.text,
+    }),
+  );
+}
+
 /** Finish the open Agent invocation of a child, then report its result. */
 export async function finishInvocation(
   harness: Harness,
@@ -215,6 +245,36 @@ export async function startThread(
     },
   );
   return created.childConversationId;
+}
+
+/** The Run of the shared Slack parent Turn that spawns and messages children. */
+export function slackParentRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    actor: slackInvocationInput.actor,
+    conversationId: slackParentConversationId,
+    destination: slackDestination,
+    instruction: { text: "Coordinate the work." },
+    source: createSlackSource({
+      channelId: "C123",
+      teamId: "T123",
+      threadTs: "1712345.0001",
+      visibility: "public",
+    }),
+    turnId: "parent-turn",
+    ...overrides,
+  };
+}
+
+export async function spawnThread(harness: Harness, toolCallId: string) {
+  const { childConversationId } = await bindSpawnAgent(slackParentRun(), {
+    conversationStore: harness.conversationStore,
+    queue: harness.queue,
+    state: harness.state,
+  })!(
+    { kind: "thread", name: harness.agentName, task: "Check the deploy." },
+    { toolCallId },
+  );
+  return childConversationId;
 }
 
 export async function sendPersonMessage(

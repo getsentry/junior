@@ -4,6 +4,7 @@ import {
   AgentMessagePausedError,
   AgentMessageQueueFullError,
   AgentMessageTargetError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -17,9 +18,9 @@ const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
 const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Target conversation ID"),
   delivery: z
-    .enum(["started", "queued"])
+    .enum(["started", "queued", "noted"])
     .describe(
-      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work.",
+      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work. noted: this conversation is stopped, so the child agent got the message as a note that it sees when it next runs, and it started no work. Do not send it again.",
     ),
 });
 
@@ -93,6 +94,14 @@ export function createMessageAgentTool(
             { cause: error },
           );
         }
+        if (error instanceof AgentStoppedError) {
+          throw new ToolInputError(
+            `${error.message}. Do not start more work. End this turn.`,
+            { cause: error },
+          );
+        }
+        // TODO(dcramer): Remove this mapping with AgentMessageQueueFullError
+        // when children stop writing Agent invocations (#3060 step 7).
         if (error instanceof AgentMessageQueueFullError) {
           throw new ToolInputError(
             `${error.message}. Wait for its result, then send one message with everything it needs.`,

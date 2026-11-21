@@ -81,6 +81,7 @@ import {
 } from "./store";
 import { renderUntrustedTag } from "@/chat/input-tags";
 import { listUnreportedSiblingAgents } from "./list";
+import { recordChildAgentEnded } from "./markers";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
@@ -295,10 +296,9 @@ export async function enqueueAgentInvocationResult(
     // there, so a `replaced` result of the parent reports now.
     const replaced = replied
       ? undefined
-      : await reportReplacedWithoutOpenWork(
-          invocation.parentConversationId,
+      : await reportReplacedWithoutOpenWork(invocation.parentConversationId, {
           nowMs,
-        );
+        });
     if (replaced && isTerminalAgentInvocation(replaced)) {
       await enqueueAgentInvocationResult(replaced, options);
     }
@@ -511,6 +511,12 @@ export async function enqueueChildResultToParent(args: {
   });
 }
 
+const PARENT_RESULT_OUTCOMES = {
+  blocked: "blocked",
+  failed: "error",
+  reply: "success",
+} as const satisfies Record<ParentResult["kind"], string>;
+
 /**
  * Build the parent delivery of child agent Turns that run on the
  * Conversation loop. Such a Turn has no open agent invocation, so its
@@ -532,6 +538,11 @@ export function createDeliverToParent(options: {
     if (!sender) {
       throw new Error(`Conversation ${conversationId} has no parent agent`);
     }
+    await recordChildAgentEnded(
+      conversationId,
+      PARENT_RESULT_OUTCOMES[result.kind],
+      options,
+    );
     await enqueueChildResultToParent({
       actor,
       result,
@@ -549,9 +560,11 @@ export function createDeliverToParent(options: {
 
 /**
  * End the work of a child Conversation whose last attempt lost its worker.
- * Its open agent invocations end as before. A Turn on the Conversation loop
- * has none, so a Task tells its parent that it failed, as a failed Turn
- * does. A Thread keeps the stored failure and its telemetry.
+ * Its open Agent invocations end as before. Without them, its open markers
+ * end with `error`. Then a Task tells its parent that it failed, as a failed
+ * Turn does. A Thread keeps the stored failure and its telemetry, and
+ * reports the `replaced` result of its parent now, so its grandparent does
+ * not wait for it.
  */
 export function createEndStoppedChildWork(options: {
   queue: ConversationWorkQueue;
@@ -569,12 +582,23 @@ export function createEndStoppedChildWork(options: {
       await endAgentInvocationsOfStoppedWork(conversationId, inboundMessageIds);
       return;
     }
+    // The worker gave up on all of the child's input.
+    await recordChildAgentEnded(conversationId, "error", {
+      includeWaiting: true,
+    });
     const conversation = await getConversationStore().get({ conversationId });
     if (
       !conversation ||
       turnBehavior({ kind: conversation.kind, personInput: false })
         .failureNotice !== "parent"
     ) {
+      // A Thread sends no notice, so the `replaced` result of its parent
+      // reports now, or the grandparent would wait for it forever. Its own
+      // work stops after this, so it does not count as open.
+      await reportParentWithoutOpenWork(conversationId, {
+        ...options,
+        ending: true,
+      });
       return;
     }
     const turns = await listActiveMailboxTurns(conversationId);
@@ -832,6 +856,8 @@ export function createChildConversationWorker(
     }
     const result = await options.runTurn(context, kept);
     if (result.status === "completed") {
+      // A Turn that sent no result, such as a Thread's, ends its work here.
+      await recordChildAgentEnded(context.conversationId, "success", options);
       await reportParentWithoutOpenWork(context.conversationId, options);
     }
     return result;
@@ -848,14 +874,20 @@ export function createChildConversationWorker(
  */
 async function reportParentWithoutOpenWork(
   conversationId: string,
-  options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
+  options: {
+    ending?: boolean;
+    queue: ConversationWorkQueue;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   if (await getLatestAgentInvocationForConversation(conversationId)) {
     return;
   }
   const sender = await readChildConversationSender(conversationId);
   const replaced = sender
-    ? await reportReplacedWithoutOpenWork(sender.parentConversationId)
+    ? await reportReplacedWithoutOpenWork(sender.parentConversationId, {
+        endingChildConversationId: options.ending ? conversationId : undefined,
+      })
     : undefined;
   if (replaced && isTerminalAgentInvocation(replaced)) {
     await enqueueAgentInvocationResult(replaced, options);

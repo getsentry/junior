@@ -150,7 +150,9 @@ describe("stopping child agents", () => {
         }),
       ).resolves.toBe(true);
       // The worker sees the stop request and aborts the run.
-      await expect(processing).resolves.toMatchObject({ status: "completed" });
+      await expect(processing).resolves.toMatchObject({
+        status: "completed",
+      });
 
       await expect(
         getAgentInvocation(running.invocationId),
@@ -451,7 +453,9 @@ describe("stopping child agents", () => {
           state: harness.state,
         }),
       ).resolves.toMatchObject({ status: "requested" });
-      await expect(processing).resolves.toMatchObject({ status: "completed" });
+      await expect(processing).resolves.toMatchObject({
+        status: "completed",
+      });
       await expect(
         getAgentInvocation(external.invocationId),
       ).resolves.toMatchObject({
