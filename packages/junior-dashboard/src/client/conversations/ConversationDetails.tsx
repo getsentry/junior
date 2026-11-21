@@ -28,7 +28,7 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "./conversationMemory";
-import { ConversationPlan } from "./ConversationPlan";
+import { ConversationTodos } from "./ConversationTodos";
 import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import { formatRelativeTime, formatTime } from "../time";
@@ -48,7 +48,7 @@ export function ConversationDetails(props: {
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
-  /** True when the viewer can close Plan items and cancel Watches. */
+  /** True when the viewer can close To-dos and cancel Watches. */
   isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
@@ -163,7 +163,7 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        <ConversationPlan
+        <ConversationTodos
           canEdit={props.isParticipant}
           conversationId={props.conversationId}
         />

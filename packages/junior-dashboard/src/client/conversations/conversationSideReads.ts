@@ -8,7 +8,7 @@ import {
 const CONVERSATION_SIDE_READS = [
   "agents",
   "memories",
-  "plan",
+  "todos",
   "watches",
 ] as const;
 
