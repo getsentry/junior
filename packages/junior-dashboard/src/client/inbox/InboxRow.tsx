@@ -870,9 +870,13 @@ function ExpandedActions(props: {
         <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
       {props.onWake ? (
-        <Button onClick={props.onWake} variant="ghost">
+        <Button
+          className={props.look && LOOK_CLASSES[props.look]}
+          onClick={props.onWake}
+          variant="ghost"
+        >
           <AlarmClockOff aria-hidden="true" size={15} />
-          Wake
+          <ButtonLabel look={props.look}>Wake</ButtonLabel>
         </Button>
       ) : null}
       {props.onSnooze ? (
