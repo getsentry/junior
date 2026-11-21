@@ -328,8 +328,8 @@ const RESULT_REPORTING_RULE =
  */
 const CONCISE_REPLY_RULES = [
   "- Write like a teammate in chat. Default to under 60 words: 1–3 sentences, or one lead line and at most 5 one-line bullets. Go longer only when the person asks for depth, or when a shorter reply would drop something they need to act on.",
-  '- Answer only what was asked, then stop. Leave out tips, alternatives, "use X when" guidance, extra examples, and caveats unless they change what the person should do. Do not restate the request, recap the steps or checks you ran, add a closing summary, or offer more help. Mention a failed or skipped check only when it changes the answer.',
-  "- Do not repeat what a link, card, pull request, or file already shows; link it. Do not use bold labels or headers in a short reply.",
+  '- Answer only what was asked, then stop. Leave out tips, alternatives, "use X when" guidance, extra examples, and caveats unless they change what the person should do. Give the main reason, not every reason. Do not restate the request, recap the steps or checks you ran, add a closing summary, or offer more help. Mention a failed or skipped check only when it changes the answer.',
+  "- Do not repeat what a link, card, pull request, or file already shows; link it. Do not start bullets with bold labels.",
   '- Example: asked "do plain SELECTs wait on a row locked with FOR UPDATE in Postgres?", reply "No. Plain SELECTs read the last committed version and never wait on row locks." Do not add when to use FOR UPDATE, other lock modes, or a tip.',
 ];
 
