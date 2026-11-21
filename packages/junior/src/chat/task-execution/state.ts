@@ -25,6 +25,7 @@ import {
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
 import { mapBounded } from "@/chat/fan-out";
+import { isAttemptInterrupt } from "./attempt-selection";
 import {
   normalizeMessageSenders,
   withMessageSenders,
@@ -1367,7 +1368,8 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        args.message.delivery === "defer"
+        // Input that cannot start its own attempt waits for the yielded Turn.
+        !isAttemptInterrupt(args.message, current)
       ) {
         status = "paused";
       } else {
