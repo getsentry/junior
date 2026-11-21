@@ -68,7 +68,9 @@ struct HomeScreen: View {
           if !collapsed.wrappedValue {
             VStack(spacing: 8) {
               ForEach(section.rows) { row in
-                ConversationCard(row: row, onArchive: { archive(row) }, onPin: { pin(row) })
+                ConversationCard(
+                  row: row, threadsExpanded: model.expandedThreads.contains(row.conversationId),
+                  onArchive: { archive(row) }, onPin: { pin(row) }, onToggleThreads: { toggleThreads(row) })
               }
             }
           }
@@ -149,6 +151,10 @@ struct HomeScreen: View {
 }
 
 extension HomeScreen {
+  private func toggleThreads(_ row: MCPConversation) {
+    if model.expandedThreads.remove(row.conversationId) == nil { model.expandedThreads.insert(row.conversationId) }
+  }
+
   private func pin(_ row: MCPConversation) {
     Task {
       do {
@@ -188,14 +194,32 @@ private struct NewConversationRow: View {
 }
 
 /// One home card (`ConversationHomeList.tsx`): title, state, time, and where
-/// the Conversation lives.
+/// the Conversation lives, then its Threads.
 struct ConversationCard: View {
   @Environment(AppModel.self) private var app
   let row: MCPConversation
+  let threadsExpanded: Bool
   let onArchive: () -> Void
   let onPin: () -> Void
+  let onToggleThreads: () -> Void
 
   var body: some View {
+    let threads = threadRows(row.threads, expanded: threadsExpanded, selectedId: openId)
+    VStack(spacing: 0) {
+      card
+      if !threads.rows.isEmpty {
+        ConversationThreadList(threads: threads, expanded: threadsExpanded, onToggle: onToggleThreads)
+      }
+    }
+    .listCard(selected: app.path.first == route)
+  }
+
+  private var openId: String? {
+    guard case .conversation(let id)? = app.path.first else { return nil }
+    return id
+  }
+
+  private var card: some View {
     Button {
       app.path = [route]
     } label: {
@@ -221,7 +245,6 @@ struct ConversationCard: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard(selected: app.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))

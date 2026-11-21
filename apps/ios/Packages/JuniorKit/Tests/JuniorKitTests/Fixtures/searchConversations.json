@@ -93,7 +93,31 @@
       "surface": "internal",
       "startedAt": "2026-08-07T07:00:00.000Z",
       "lastSeenAt": "2026-08-07T08:00:00.000Z",
-      "url": "http://127.0.0.1:4317/conversations/internal%3Adashboard-qa"
+      "url": "http://127.0.0.1:4317/conversations/internal%3Adashboard-qa",
+      "threads": [
+        {
+          "conversationId": "junior:internal:dashboard-qa:thread",
+          "title": "Check pinned row order",
+          "status": "done",
+          "turnActive": false,
+          "surface": "internal",
+          "startedAt": "2026-08-07T09:00:00.000Z",
+          "lastSeenAt": "2026-08-07T09:00:30.000Z",
+          "url": "http://127.0.0.1:4317/conversations/junior%3Ainternal%3Adashboard-qa%3Athread",
+          "threads": [
+            {
+              "conversationId": "junior:internal:dashboard-qa:thread:nested",
+              "title": "Recheck pin order in Safari",
+              "status": "needs_input",
+              "turnActive": false,
+              "surface": "internal",
+              "startedAt": "2026-08-07T09:06:00.000Z",
+              "lastSeenAt": "2026-08-07T09:06:30.000Z",
+              "url": "http://127.0.0.1:4317/conversations/junior%3Ainternal%3Adashboard-qa%3Athread%3Anested"
+            }
+          ]
+        }
+      ]
     },
     {
       "conversationId": "slack:CQA999:1770010800.000400",
