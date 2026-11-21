@@ -365,6 +365,7 @@ describe("chooseIdleCompaction", () => {
       prefixTokens: 360_000,
       compactedTokens: 120_000,
       canWarm: true,
+      prefixChanged: false,
       ...overrides,
     });
 
@@ -403,6 +404,15 @@ describe("chooseIdleCompaction", () => {
     });
 
     expect(choice.choice).toBe("warm");
+  });
+
+  it("prices a return before expiry as a write after a prompt change", () => {
+    const inside = gaps(100, 4.5 * MINUTE);
+
+    expect(slot(inside, { canWarm: false }).choice).toBe("stop");
+    expect(slot(inside, { canWarm: false, prefixChanged: true }).choice).toBe(
+      "compact",
+    );
   });
 
   it("compacts when too few gaps show the return chances", () => {

@@ -835,6 +835,7 @@ export async function runCacheWarmup(
             ...returns,
             compactedTokens,
             canWarm: !late && !breaker && !promptChanged,
+            prefixChanged: promptChanged,
           }),
       });
       if (idleCompaction) {
