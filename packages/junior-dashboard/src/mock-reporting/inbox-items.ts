@@ -832,7 +832,11 @@ export function actOnMockInboxItem(
 ): InboxItemPayload | undefined {
   const item = readMockInboxItem(nowMs, id);
   if (!item || item.status !== "open") return item;
-  if (body.action === "take") return item;
+  // Like the API, a take brings back an item that the viewer dismissed.
+  if (body.action === "take") {
+    hides.delete(id);
+    return readMockInboxItem(nowMs, id);
+  }
   // Like the API, Dismiss on an item that others share hides it for the
   // viewer only, and ends their snooze.
   if (

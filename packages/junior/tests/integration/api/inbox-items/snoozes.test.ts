@@ -274,6 +274,21 @@ describe("snoozes", () => {
     }
   });
 
+  it("brings back a dismissed shared item when its person takes it", async () => {
+    const ana = await user("ana@example.com");
+    const id = await addEveryoneItem(ROOT, "Review globex entry");
+    const asAna = api(fixture, ana);
+    await asAna.act(id, { action: "dismiss" });
+    expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    const taken = await asAna.act(id, { action: "take" });
+    expect(await taken.json()).not.toHaveProperty("hiddenFromViewer");
+    expect(await asAna.inbox()).toEqual({
+      count: 1,
+      inbox: ["Review globex entry"],
+      waiting: [ROOT],
+    });
+  });
+
   it("dismisses an item for one person for everyone", async () => {
     const ana = await user("ana@example.com");
     const id = await addItem(ROOT, [ana], "Review acme entry");

@@ -7,6 +7,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   hideInboxItem,
   readInboxItemDismissedUserIds,
+  unhideInboxItem,
 } from "@/chat/inbox-snoozes/store";
 import {
   isEmptyUserInputAnswer,
@@ -178,6 +179,9 @@ export async function actOnInboxItem(args: {
     ) {
       throw new InboxItemActionError("conflict", "Inbox item is closed.");
     }
+    // A person who takes an item they dismissed wants it back. Left hidden,
+    // their own item would wait in no Inbox.
+    await unhideInboxItem(db, { inboxItemId: item.id, userId: user.id });
     const taken = await readInboxItemForUser(user, item.id);
     await deliverInboxItemChange({
       change: reviewItemChange(action, user),

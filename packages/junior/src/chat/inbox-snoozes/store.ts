@@ -204,6 +204,21 @@ export async function hideInboxItem(
   });
 }
 
+/** End one User's dismiss of an Inbox item, such as when they take it. */
+export async function unhideInboxItem(
+  db: JuniorDatabase,
+  input: { inboxItemId: string; userId: string },
+): Promise<void> {
+  await db
+    .delete(juniorInboxHides)
+    .where(
+      and(
+        eq(juniorInboxHides.inboxItemId, input.inboxItemId),
+        eq(juniorInboxHides.userId, input.userId),
+      ),
+    );
+}
+
 /** Return which of these Users dismissed the Inbox item for themselves. */
 export async function readInboxItemDismissedUserIds(
   db: JuniorDatabase,
