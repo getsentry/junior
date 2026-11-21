@@ -46,7 +46,6 @@ async function addInput(
 function assignTurn(
   openTurn: Turn | undefined,
 ): { join: Turn } | { create: { priority: number } } {
-  // v1 has one Actor, so an input joins the open Turn or starts one.
   return openTurn ? { join: openTurn } : { create: { priority: 0 } };
 }
 
