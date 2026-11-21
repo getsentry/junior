@@ -640,8 +640,16 @@ people work on it:
 - In the first 2 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day,
   and at most 3 times in a row with no activity by a person between them.
-- After that, Junior publishes no event. It adds a Review item with a
-  **Resume** button for the person who asked for the pull request. The item
+- After that, Junior publishes no event and tells nobody. The next push,
+  review, or comment by a person starts the count again.
+- An approved pull request would be ready to merge but for the conflict. It
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
+- When the head commit is the same a day after its fix, the fix did not
+  land. Then Junior adds a Review item with a **Resume** button for the
+  person who asked for the pull request. It adds the item once after each
+  Resume, so **Dismiss** ends these asks for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
   closes.
 - **Resume** counts as activity by a person, so the count starts again. It
@@ -650,19 +658,13 @@ people work on it:
   after it, Junior publishes no event. If no fix lands in a day, Junior
   adds the item again. Resume on a draft, or on a pull request that GitHub
   can merge, does nothing.
-- After 3 days without activity by a person, Junior does nothing.
-- An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, up to
-  the limit of 3 in a row. The ready to merge notice needs a clean merge
-  state, so it comes after the fix.
 
 For each conflict, Junior reads the pull request's timeline and review
 decision from GitHub, for the latest activity by a person. Only the events
 that Junior published for a fix count as fixes, so a merge or force push for
-work that a person asked for does not. Junior stores those, with the time of
-the latest Resume. Each head commit publishes one event. When the head
-commit is the same a day after its fix, the fix did not land, and Junior
-adds the item.
+work that a person asked for does not. Junior stores those, with the times
+of the latest Resume and the latest item. Each head commit publishes one
+event.
 
 </details>
 
