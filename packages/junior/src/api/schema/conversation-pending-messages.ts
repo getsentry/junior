@@ -95,15 +95,27 @@ export const conversationUnchangedDetailWithMailboxSchema = z
 /** Optional filters for cancelling accepted mailbox rows. */
 export const cancelConversationPendingMessagesBodySchema = z
   .object({
-    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
-    receivedBefore: z.string().datetime().optional(),
+    inboundMessageIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe("Drop only these waiting messages."),
+    receivedBefore: z
+      .string()
+      .datetime()
+      .optional()
+      .describe("Drop only the waiting messages received before this time."),
   })
   .strict();
 
 /** Result of cancelling accepted human-facing mailbox rows. */
 export const cancelConversationPendingMessagesResponseSchema = z
   .object({
-    cancelledCount: z.number().int().nonnegative(),
+    cancelledCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Messages dropped."),
     cancelledInboundMessageIds: z.array(z.string().min(1)),
     conversationId: z.string().min(1),
   })

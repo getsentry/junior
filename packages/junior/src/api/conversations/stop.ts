@@ -35,8 +35,9 @@ export async function stopConversationTurnForViewer(
     [conversationId],
     viewer,
   );
+  // A non-participant learns nothing, not even that the Conversation exists.
   if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(403, "Only conversation participants can stop this turn.");
+    throwApiError(404, "Conversation not found.");
   }
 
   try {
