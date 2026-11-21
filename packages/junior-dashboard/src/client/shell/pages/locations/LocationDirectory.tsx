@@ -1,5 +1,5 @@
 import { Duration } from "../../../components/Duration";
-import { Hash } from "lucide-react";
+import { Hash, LayoutDashboard } from "lucide-react";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../../components/EmptyTelemetry";
@@ -70,7 +70,17 @@ export function LocationDirectory(props: {
               description={
                 <>Last active {formatRelativeTime(location.lastSeenAt)}</>
               }
-              icon={<Hash aria-hidden="true" size={16} strokeWidth={1.8} />}
+              icon={
+                location.provider === "local" ? (
+                  <LayoutDashboard
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                ) : (
+                  <Hash aria-hidden="true" size={16} strokeWidth={1.8} />
+                )
+              }
               iconClassName="bg-dashboard-fill-soft text-dashboard-text-muted group-hover:border-dashboard-border-strong"
               title={location.label}
             />
