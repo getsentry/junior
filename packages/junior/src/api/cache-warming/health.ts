@@ -63,6 +63,9 @@ const CALL_AGGREGATES = [
 const IDLE_PERIOD_METRIC =
   "cache_warming.idle_period.saved_usd,distribution,none";
 const BREAKER_METRIC = "sum(value,cache_warming.breaker,counter,none)";
+// Sentry resolves an untyped custom attribute as a string and rejects
+// `sum(app.cost.total_usd)` with a 400, so the cost names its type.
+const WARMUP_COST = "sum(tags[app.cost.total_usd,number])";
 
 const count = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value)
@@ -133,7 +136,7 @@ function windowReads(
         "app.cache_warming.turn_ending",
         "app.cache_warming.skip_reason",
         "count()",
-        "sum(app.cost.total_usd)",
+        WARMUP_COST,
       ],
       per_page: 100,
     }),
@@ -178,7 +181,7 @@ function warmupTotals(body: unknown): CacheHealthData["warmups"] {
   let costUsd = 0;
   for (const row of tableSchema.parse(body).data) {
     const rows = count(row["count()"]);
-    costUsd += usd(row["sum(app.cost.total_usd)"]);
+    costUsd += usd(row[WARMUP_COST]);
     const outcome = label(row["app.cache_warming.outcome"]);
     if (outcome === "skipped") {
       const reason = label(row["app.cache_warming.skip_reason"]) ?? "unknown";
