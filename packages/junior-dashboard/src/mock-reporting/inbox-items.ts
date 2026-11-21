@@ -65,6 +65,7 @@ export type MockItemSeed = Pick<
   | "status"
   | "subject"
   | "title"
+  | "wake"
 > &
   Partial<
     Pick<
@@ -280,7 +281,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
         id: "https://github.com/getsentry/junior/pull/2188",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "Retry Slack uploads on rate limits",
+        title: "fix(slack): Retry Slack uploads on rate limits",
+        titleParts: {
+          scope: "slack",
+          text: "Retry Slack uploads on rate limits",
+          type: "Fix",
+        },
         url: "https://github.com/getsentry/junior/pull/2188",
       },
       title: "Merge conflict · #2188",
@@ -357,7 +363,14 @@ export function seeds(nowMs: number): MockItemSeed[] {
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         // As the GitHub plugin names it, with its number.
-        title: "Retry a canary stage once on a lost agent (#418)",
+        title: "ref(gocd)!: Retry a canary stage once on a lost agent (#418)",
+        // As the GitHub plugin parses the title.
+        titleParts: {
+          breaking: true,
+          scope: "gocd",
+          text: "Retry a canary stage once on a lost agent",
+          type: "Refactor",
+        },
         url: "https://github.com/getsentry/sentaur/pull/418",
       },
       title: "Review requested · #418",
@@ -477,10 +490,22 @@ export function seeds(nowMs: number): MockItemSeed[] {
         id: "https://github.com/getsentry/junior/pull/3052",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "Tabs in the dashboard sidebar",
+        title: "feat(dashboard): Tabs in the dashboard sidebar (#3052)",
+        titleParts: {
+          scope: "dashboard",
+          text: "Tabs in the dashboard sidebar",
+          type: "Feature",
+        },
         url: "https://github.com/getsentry/junior/pull/3052",
       },
       title: "Review requested · #3052",
+      // The viewer snoozed it until #3037 merged.
+      wake: {
+        eventType: "pull_request.merged",
+        kind: "event",
+        phrase: "is merged",
+        resource: "getsentry/junior#3037",
+      },
     },
     {
       body: "**Fix the stable list order** merged into main: https://github.com/getsentry/junior/pull/3037",
@@ -530,6 +555,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       },
       status: "open",
       title: "Tighten the checkout latency alert",
+      wake: { kind: "time" },
     },
     // Closed items, for Done: one this week, one earlier.
     {
@@ -604,10 +630,21 @@ const changes = new Map<string, MockItemChange>();
 /** When each snoozed item wakes, by item id, like the server's snoozes. */
 const snoozes = new Map<string, number>();
 
+/** The woken items that the viewer opened or acted on, by id. */
+const openedWakes = new Set<string>();
+
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockInboxItems(): void {
   changes.clear();
   snoozes.clear();
+  openedWakes.clear();
+}
+
+/**
+ * Forget why these items woke, like `DELETE /api/inbox/snoozes/wakes`.
+ */
+export function openMockWakes(inboxItemIds: readonly string[]): void {
+  for (const id of inboxItemIds) openedWakes.add(id);
 }
 
 /** The items that a snooze hides now. */
@@ -635,6 +672,7 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
   // A snooze with no time waits for its Event, which mock data never sends.
   const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
   for (const id of inboxItemIds) snoozes.set(id, wakeAtMs);
+  openMockWakes(inboxItemIds);
   return { inboxItemIds };
 }
 
@@ -698,6 +736,7 @@ function payload(
     conversationId,
     linkedConversationIds = [],
     plugin: _plugin,
+    wake,
     ...rest
   } = seed;
   const root = rootOf(seed);
@@ -724,6 +763,9 @@ function payload(
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
+    ...(wake && item.status === "open" && !openedWakes.has(seed.id)
+      ? { wake }
+      : undefined),
     ...(item.status !== "open"
       ? {
           closedAt: item.closedAt ?? seed.createdAt,
@@ -788,7 +830,8 @@ export function actOnMockInboxItem(
 ): InboxItemPayload | undefined {
   const item = readMockInboxItem(nowMs, id);
   if (!item || item.status !== "open") return item;
-  if (body.action === "take") return item;
+  openMockWakes([id]);
+  if (body.action === "take") return readMockInboxItem(nowMs, id);
   changes.set(id, {
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,

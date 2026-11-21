@@ -1,5 +1,5 @@
 {
-  "id": "b8d26d4f-f6c9-4bed-aaad-c0a8c0240e4f",
+  "id": "0467c4ef-64d2-4496-9691-573866872db4",
   "prevId": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "version": "7",
   "dialect": "postgresql",
@@ -488,12 +488,6 @@
         },
         "delete_requested_at": {
           "name": "delete_requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -4452,6 +4446,12 @@
         "subject_url": {
           "name": "subject_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

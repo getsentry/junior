@@ -1027,22 +1027,43 @@
     {
       "idx": 146,
       "version": "7",
-      "when": 1795286465669,
-      "tag": "0146_artifact_expiry",
+      "when": 1795286127229,
+      "tag": "0146_inbox_item_subject_title_parts",
       "breakpoints": true
     },
     {
       "idx": 147,
       "version": "7",
-      "when": 1795286467576,
-      "tag": "0147_artifact_permanent_sha_index",
+      "when": 1795290103913,
+      "tag": "0147_inbox_snooze_wake_reason",
       "breakpoints": true
     },
     {
       "idx": 148,
       "version": "7",
-      "when": 1795286469457,
-      "tag": "0148_artifact_drop_public_sha_index",
+      "when": 1795299840612,
+      "tag": "0148_authorization_request_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1795303247937,
+      "tag": "0149_artifact_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1795303249512,
+      "tag": "0150_artifact_permanent_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1795303251108,
+      "tag": "0151_artifact_drop_public_sha_index",
       "breakpoints": true
     }
   ]
