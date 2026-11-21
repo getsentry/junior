@@ -18,10 +18,8 @@ import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
-import {
-  createCacheWarmingRecorder,
-  runCacheWarmup,
-} from "@/chat/cache-warming/warmup";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
+import { runCacheWarmup } from "@/chat/cache-warming/warmup";
 import {
   MINUTE,
   conversationId,

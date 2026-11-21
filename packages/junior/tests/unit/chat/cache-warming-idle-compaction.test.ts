@@ -25,8 +25,9 @@ vi.mock("@/chat/cache-warming/queue", async (importOriginal) => ({
   sendCacheWarmup: mocks.sendCacheWarmup,
 }));
 
-const { createCacheWarmingRecorder, runCacheWarmup } =
-  await import("@/chat/cache-warming/warmup");
+const { createCacheWarmingRecorder } =
+  await import("@/chat/cache-warming/recorder");
+const { runCacheWarmup } = await import("@/chat/cache-warming/warmup");
 
 const MINUTE = 60_000;
 const GAPS_KEY = "junior:cache_warming:gaps:user:1:none";
