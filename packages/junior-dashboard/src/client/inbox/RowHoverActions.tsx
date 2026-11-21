@@ -19,7 +19,8 @@ export type InboxCardActions = {
   snoozeMenuOpen: boolean;
 };
 
-const ROW_ACTION_BUTTON_CLASS =
+/** The box of one icon action on a row. */
+export const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-raised text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
 
 /** An icon action on a row, such as Pin, with its name as a tooltip. */
@@ -59,12 +60,15 @@ export function RowActionButton(props: {
 export function RowQuickActions(props: {
   actions: InboxCardActions;
   expanded: boolean;
+  /** An action before Open, such as the code change's own page. */
+  lead?: ReactNode;
   open: { label: string; path: string };
 }) {
   const { actions } = props;
   if (props.expanded) return null;
   return (
     <>
+      {props.lead}
       <RowOpenLink {...props.open} />
       {actions.onSnooze ? (
         <RowSnoozeButton

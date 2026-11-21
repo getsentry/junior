@@ -1,5 +1,5 @@
 {
-  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "0467c4ef-64d2-4496-9691-573866872db4",
   "prevId": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "version": "7",
   "dialect": "postgresql",
@@ -3776,11 +3776,11 @@
       "checkConstraints": {
         "junior_conversations_kind_check": {
           "name": "junior_conversations_kind_check",
-          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead', 'thread', 'task')"
+          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'thread', 'task')"
         },
         "junior_conversations_kind_parent_check": {
           "name": "junior_conversations_kind_parent_check",
-          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
         }
       },
       "isRLSEnabled": false
@@ -4446,6 +4446,12 @@
         "subject_url": {
           "name": "subject_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

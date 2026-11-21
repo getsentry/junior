@@ -348,7 +348,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: "Review requested · #91" });
+      .filter({ hasText: "Pin the release train" });
     await expect(page.getByRole("button", { name: "Snooze" })).toBeVisible();
     // Hold the reads that follow the snooze, so only the page hides the row.
     let release = () => {};
@@ -372,7 +372,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: "Review requested · #91" });
+      .filter({ hasText: "Pin the release train" });
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await screenshot(page, "inbox-snooze-event-menu", {
