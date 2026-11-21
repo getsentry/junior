@@ -6,6 +6,7 @@ import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
+import { conversationKindSchema } from "./conversation-kind";
 import { conversationTitleSchema } from "./conversation-title";
 import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
@@ -39,9 +40,6 @@ export const conversationReportStatusSchema = z.enum([
   "working",
   "done",
 ]);
-
-/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
