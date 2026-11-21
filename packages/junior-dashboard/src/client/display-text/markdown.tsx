@@ -334,20 +334,29 @@ const COMPONENTS: Components = {
   ),
   table: ({ children }) => (
     <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-faint">
-      <Table className="w-max min-w-full">{children}</Table>
+      <Table>{children}</Table>
     </div>
   ),
   tbody: ({ children }) => <TableBody>{children}</TableBody>,
+  // Cells wrap so prose tables fit the column. They reset the inherited
+  // `overflow-wrap:anywhere`, which lets auto layout shrink a column until
+  // words break mid-letter. Wide tables still scroll in `Table`.
   td: ({ children, style }) => (
     <TableCell
-      className={cn("px-2.5 py-1.5 align-top", alignClass(style?.textAlign))}
+      className={cn(
+        "min-w-[12ch] px-2.5 py-1.5 align-top whitespace-normal [overflow-wrap:break-word]",
+        alignClass(style?.textAlign),
+      )}
     >
       {renderText(children)}
     </TableCell>
   ),
   th: ({ children, style }) => (
     <TableHead
-      className={cn("px-2.5 py-1.5", alignClass(style?.textAlign))}
+      className={cn(
+        "min-w-[12ch] px-2.5 py-1.5 align-bottom whitespace-normal [overflow-wrap:break-word]",
+        alignClass(style?.textAlign),
+      )}
       scope="col"
     >
       {renderText(children)}
