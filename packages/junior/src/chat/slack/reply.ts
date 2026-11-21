@@ -12,6 +12,7 @@ import {
   buildSlackReplyFooter,
   formatReplyAttribution,
 } from "@/chat/slack/footer";
+import { detailsToMarkdown } from "@/chat/slack/details";
 import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
 import { resolveHandleMentions } from "@/chat/events/people";
 import { logWarn } from "@/chat/logging";
@@ -153,7 +154,12 @@ export async function sendSlackReply(args: {
     const entities = cards.flatMap((card) =>
       card.entity ? [card.entity] : [],
     );
-    const accessibleText = [text, ...cards.map((card) => card.text)]
+    // Notifications and clients without blocks show this text, so collapsed
+    // sections read as labeled text there.
+    const accessibleText = [
+      detailsToMarkdown(text),
+      ...cards.map((card) => card.text),
+    ]
       .filter(Boolean)
       .join("\n\n");
     const fallbackText =

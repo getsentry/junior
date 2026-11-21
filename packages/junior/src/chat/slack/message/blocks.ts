@@ -6,6 +6,7 @@ const MAX_NODES = 5_000;
 // Bound recursive work before attachment-level output truncation handles size.
 const CHILD_KEYS = [
   "blocks",
+  "child_blocks",
   "elements",
   "fields",
   "accessory",

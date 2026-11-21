@@ -104,6 +104,65 @@ describe("sendSlackReply", () => {
     );
   });
 
+  it("posts a details section as a collapsed container", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: [
+        "**Recommendation**",
+        "- **Hold.** Canary errors doubled.",
+        "<details>",
+        "<summary>Details</summary>",
+        "",
+        "- **State:** [run 42](https://deploy.example.com/42) paused.",
+        "- **Gaps:** <https://example.com/logs|pod logs> unavailable.",
+        "</details>",
+      ].join("\n"),
+      threadTs: "1700000000.000100",
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post?.params["blocks"]).toEqual([
+      {
+        type: "markdown",
+        text: "**Recommendation**\n\n- **Hold.** Canary errors doubled.",
+      },
+      {
+        type: "container",
+        title: { type: "plain_text", text: "Details" },
+        is_collapsible: true,
+        default_collapsed: true,
+        child_blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                "• *State:* <https://deploy.example.com/42|run 42> paused.",
+                "• *Gaps:* <https://example.com/logs|pod logs> unavailable.",
+              ].join("\n"),
+            },
+          },
+        ],
+      },
+      expect.objectContaining({ type: "context" }),
+    ]);
+    expect(post?.params["text"]).not.toContain("<details>");
+    expect(post?.params["text"]).toContain("**Details**");
+  });
+
+  it("shows a details section without its closing tag as text", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: "Summary\n<details>\n<summary>Details</summary>\n\n- one",
+      threadTs: "1700000000.000100",
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post && markdownBody(post)).toBe("Summary\n\n**Details**\n\n- one");
+  });
+
   it("starts every chunked post of a table with its header rows", async () => {
     const header = "| Shard | Tests | Time |\n|---|---|---|";
     const rows = Array.from(
