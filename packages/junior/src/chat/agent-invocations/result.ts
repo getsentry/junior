@@ -264,8 +264,8 @@ function buildResultInboundMessage(
  * Append one terminal agent invocation result to the parent mailbox and wake
  * the parent. Repeat calls are safe.
  *
- * Results do not go through `admitAutomatedTurn`, so the automated-turn limit
- * never drops them. Result Turns still count toward that limit.
+ * A stopped parent holds the result. Result Turns count toward the
+ * automated-turn limit.
  * TODO(dcramer): Add a per-parent total invocation limit as the loop guard
  * for spawn -> result -> spawn chains (#881).
  */
