@@ -438,6 +438,8 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
+          responses: ctx.state,
+          tokens: new Map(),
         };
         return [
           createGitHubWebhookRoute({
@@ -486,6 +488,7 @@ export function githubPlugin(
             events: ctx.events,
             reviewItems: ctx.reviewItems,
             state: ctx.state,
+            tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
