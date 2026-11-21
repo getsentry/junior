@@ -534,6 +534,7 @@ export function InboxList(props: {
           },
           snoozed: options.snoozed,
         })}
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
         path={
           row.conversationId

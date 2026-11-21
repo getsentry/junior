@@ -48,6 +48,8 @@ export function InboxStack(props: {
   /** Snooze: every row of the stack. A snoozed stack has none. */
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
+  /** Runs when its header opens what it names. */
+  onOpen?(): void;
   snoozeMenuOpen: boolean;
   /** Where its header opens: its root Conversation, or its owner. */
   path: string;
@@ -60,7 +62,11 @@ export function InboxStack(props: {
   const [density] = useConversationDensity();
   const more = props.keys.length - STACK_FOLD;
   const folded = more > 0 && !unfolded && openIndex < STACK_FOLD;
-  const headerClick = openOnClick(useOpenPath(props.path));
+  const openPath = useOpenPath(props.path);
+  const headerClick = openOnClick((event) => {
+    props.onOpen?.();
+    openPath(event);
+  });
   const stack = {
     "aria-label": props.title,
     className: INBOX_STACK_CLASS,
@@ -79,6 +85,7 @@ export function InboxStack(props: {
       >
         <Link
           className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          onClick={props.onOpen}
           to={props.path}
         >
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>

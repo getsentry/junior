@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   expandRow,
   license,
+  conversationId,
   mockInboxItems,
   rollout,
   rowHead,
@@ -97,5 +98,37 @@ test.describe("new UI", { tag: "@new" }, () => {
       row.locator('[data-inbox-card="qa-merged-3037"]'),
     ).not.toContainText("Woke:");
     await screenshot(page, "inbox-wake-reason-card", { lightTheme: true });
+  });
+
+  test("opening a stack's root forgets why its items woke", async ({
+    dashboard,
+    page,
+  }) => {
+    const sibling = {
+      ...rollout,
+      createdAt: "2026-08-07T11:50:00.000Z",
+      id: "item-rollout-check",
+      title: "Check the payments-v42 canary",
+    };
+    await mockInboxItems(page, { open: [timed, sibling] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = page.locator(
+      `li[data-inbox-stack][data-dock-key$=":${conversationId}"]`,
+    );
+    await expect(stack).toContainText("Woke: snooze time reached");
+
+    // The root opens in a new tab, so the stack stays in view.
+    const cleared = wakesCleared(page);
+    const tab = page.context().waitForEvent("page");
+    await stack
+      .locator("[data-inbox-stack-head]")
+      .getByRole("link")
+      .first()
+      .click({ modifiers: ["ControlOrMeta"] });
+    expect((await cleared).postDataJSON()).toEqual({
+      inboxItemIds: [timed.id],
+    });
+    await (await tab).close();
+    await expect(stack).not.toContainText("Woke:");
   });
 });
