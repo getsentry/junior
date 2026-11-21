@@ -1,4 +1,4 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -9,6 +9,7 @@ import {
 } from "../components/ui/tooltip";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
+import { onLinkOpen } from "./rowClick";
 
 /** What one card does by itself: its Dismiss and Snooze. */
 export type InboxCardActions = {
@@ -54,22 +55,25 @@ export function RowActionButton(props: {
 }
 
 /**
- * The quick actions of a row with one ask: Open, Snooze and Dismiss. While
- * the row is open, its card's action line holds all three, so these go.
+ * The quick actions of a row with one ask: Dismiss, Snooze, and its main
+ * step at the right end, as on the open card. A row with no main step,
+ * such as a question, gets Expand. While the row is open, its card's
+ * action line holds them, so these go.
  */
 export function RowQuickActions(props: {
   actions: InboxCardActions;
   expanded: boolean;
-  /** An action before Open, such as the code change's own page. */
-  lead?: ReactNode;
-  open: { label: string; path: string };
+  /** The row's main step, such as opening the code change on its site. */
+  main?: ReactNode;
+  onExpand(): void;
 }) {
   const { actions } = props;
   if (props.expanded) return null;
   return (
     <>
-      {props.lead}
-      <RowOpenLink {...props.open} />
+      {actions.onDismiss ? (
+        <RowDismissButton look="icon" onClick={actions.onDismiss} />
+      ) : null}
       {actions.onSnooze ? (
         <RowSnoozeButton
           eventSnooze={actions.eventSnooze}
@@ -79,10 +83,15 @@ export function RowQuickActions(props: {
           open={actions.snoozeMenuOpen}
         />
       ) : null}
-      {/* Dismiss is the main action, so it goes right-most. */}
-      {actions.onDismiss ? (
-        <RowDismissButton look="icon" onClick={actions.onDismiss} />
-      ) : null}
+      {props.main ?? (
+        <RowActionButton
+          disabled={false}
+          icon={<ChevronDown aria-hidden="true" size={14} />}
+          label="Expand"
+          onClick={props.onExpand}
+          tooltip="Expand"
+        />
+      )}
     </>
   );
 }
@@ -91,7 +100,12 @@ export function RowQuickActions(props: {
  * The hover action that opens the row's Conversation, or another owner such
  * as an Automation, in the main area.
  */
-export function RowOpenLink(props: { label: string; path: string }) {
+export function RowOpenLink(props: {
+  label: string;
+  /** Runs when the link opens. */
+  onClick?(): void;
+  path: string;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -101,6 +115,7 @@ export function RowOpenLink(props: { label: string; path: string }) {
           <Link
             aria-label={props.label}
             className={ROW_ACTION_BUTTON_CLASS}
+            {...onLinkOpen(props.onClick)}
             to={props.path}
           >
             <ArrowUpRight aria-hidden="true" size={14} />
