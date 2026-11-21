@@ -342,13 +342,14 @@ export function githubPlugin(
           ),
         };
       },
-      formatMarkdown({ config, mention, platform, provider, text }) {
+      formatMarkdown({ config, mention, objectUrl, platform, provider, text }) {
         return linkifyGitHubReferences(text, {
           // The dashboard shows a bare GitHub link as a card.
           bareUrls: platform === "web",
           config,
           githubText: provider === "github",
           mention: (login) => mention({ provider: "github", handle: login }),
+          objectUrl,
         });
       },
       systemPrompt() {

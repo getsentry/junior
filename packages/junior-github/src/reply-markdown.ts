@@ -2,6 +2,7 @@ import type { Nodes } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
+import { githubObjectKey } from "./annotations.js";
 import {
   configuredRepository,
   type Repository,
@@ -167,8 +168,6 @@ function repositoryAt(
   return nearest;
 }
 
-const issueUrl = (owner: string, name: string, issue: string) =>
-  `https://github.com/${owner}/${name}/issues/${issue}`;
 const commitUrl = (owner: string, name: string, sha: string) =>
   `https://github.com/${owner}/${name}/commit/${sha}`;
 
@@ -187,11 +186,13 @@ function linkifyTextReferences(
   text: string,
   start: number,
   context: {
+    issueUrl: (owner: string, name: string, issue: string) => string;
     linkProfiles: boolean;
     mention: (login: string) => string | undefined;
     repositoryAt: (offset: number) => Repository | undefined;
   },
 ): string {
+  const { issueUrl } = context;
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
     const groups = args.at(-1) as Record<string, string | undefined>;
     // `replace` passes the match offset before the input and the groups.
@@ -258,6 +259,7 @@ export function linkifyGitHubReferences(
     config?: Record<string, string>;
     githubText?: boolean;
     mention?: (login: string) => string | undefined;
+    objectUrl?: (key: string) => string | undefined;
   } = {},
 ): string {
   const config = options.config ?? {};
@@ -269,6 +271,12 @@ export function linkifyGitHubReferences(
     configured?.owner ?? config["org"]?.trim(),
   );
   const context = {
+    // `#123` does not say if it is an issue or a pull request. Use the URL
+    // that the Conversation stored for it. Else link the issue URL, which
+    // GitHub redirects for a pull request.
+    issueUrl: (owner: string, name: string, issue: string) =>
+      options.objectUrl?.(githubObjectKey(`${owner}/${name}`, Number(issue))) ??
+      `https://github.com/${owner}/${name}/issues/${issue}`,
     linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
     repositoryAt: (offset: number) => repositoryAt(named, configured, offset),
