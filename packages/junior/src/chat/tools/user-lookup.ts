@@ -1,7 +1,9 @@
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
+import type { PluginEgress } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
+import { searchPluginUsers } from "@/chat/plugins/user-search-hooks";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { SlackActionError } from "@/chat/slack/client";
 import { slackMention } from "@/chat/slack/mrkdwn";
@@ -46,7 +48,16 @@ type UserLookupResult = {
   mention?: string;
   user?: UserLookupMatch | undefined;
   users?: UserLookupMatch[];
+  accounts?: UnlinkedAccount[];
 } & Partial<UserLookupSearchMeta>;
+
+/** A provider account that matched, which no known person has linked. */
+type UnlinkedAccount = {
+  provider: string;
+  handle?: string | undefined;
+  display_name?: string | undefined;
+  url?: string | undefined;
+};
 
 /** The people that one identity provider matched, as Slack profiles. */
 type ProviderMatches = {
@@ -282,6 +293,80 @@ async function findStoredUsers(
 }
 
 /**
+ * Ask provider plugins for accounts that match, then link each account to
+ * the Slack user of the person who connected it. Return accounts that no
+ * known person connected on their own.
+ */
+async function findPluginUsers(
+  teamId: SlackTeamId,
+  egress: PluginEgress,
+  providers: string[],
+  query: string,
+): Promise<{ matches: ProviderMatches[]; accounts: UnlinkedAccount[] }> {
+  const results = (
+    await searchPluginUsers({ egress, providers, query })
+  ).filter((result) => result.accounts.length > 0);
+  if (results.length === 0) return { matches: [], accounts: [] };
+  const rows = await getSqlExecutor()
+    .db()
+    .select({
+      provider: juniorIdentities.provider,
+      subjectId: juniorIdentities.providerSubjectId,
+      slack: linkedSlackIdentity,
+    })
+    .from(juniorIdentities)
+    .innerJoin(
+      linkedSlackIdentity,
+      and(
+        eq(linkedSlackIdentity.userId, juniorIdentities.userId),
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, teamId),
+      ),
+    )
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        or(
+          ...results.map((result) =>
+            and(
+              eq(juniorIdentities.provider, result.provider),
+              inArray(
+                juniorIdentities.providerSubjectId,
+                result.accounts.map((account) => account.id),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  const slackBySubject = new Map(
+    rows.map((row) => [`${row.provider}:${row.subjectId}`, row.slack]),
+  );
+  return {
+    matches: results.map((result) => ({
+      provider: result.provider,
+      users: result.accounts.flatMap((account) => {
+        const slack = slackBySubject.get(`${result.provider}:${account.id}`);
+        return slack ? [slackMentionProfileFromIdentity(slack)] : [];
+      }),
+    })),
+    accounts: results.flatMap((result) =>
+      result.accounts
+        .filter(
+          (account) => !slackBySubject.has(`${result.provider}:${account.id}`),
+        )
+        .map((account) => ({
+          provider: result.provider,
+          handle: account.handle,
+          display_name: account.displayName,
+          url: account.url,
+        })),
+    ),
+  };
+}
+
+/**
  * Merge each provider's matches into one candidate per person, in provider
  * order, with the providers that matched and the person's linked accounts.
  */
@@ -291,13 +376,16 @@ async function lookupResult(args: {
   provider?: string | undefined;
   query: string;
   matches: ProviderMatches[];
+  accounts: UnlinkedAccount[];
 }): Promise<UserLookupResult> {
   const byUserId = new Map<string, UserLookupMatch>();
   for (const { provider, users } of args.matches) {
     for (const user of users) {
       const existing = byUserId.get(user.id);
       if (existing) {
-        existing.matched_providers.push(provider);
+        if (!existing.matched_providers.includes(provider)) {
+          existing.matched_providers.push(provider);
+        }
         continue;
       }
       byUserId.set(user.id, {
@@ -324,10 +412,11 @@ async function lookupResult(args: {
     ...(args.provider ? { provider: args.provider } : undefined),
     query: args.query,
     count: users.length,
-    ambiguous: users.length > 1,
+    ambiguous: users.length + args.accounts.length > 1,
     ...(users.length === 1
       ? { mention: users[0]!.mention, user: users[0] }
       : { users }),
+    ...(args.accounts.length > 0 ? { accounts: args.accounts } : undefined),
     ...search,
   };
 }
@@ -335,10 +424,11 @@ async function lookupResult(args: {
 /** Run the search of one provider, or of every enabled provider. */
 async function findMatches(
   teamId: SlackTeamId,
+  egress: PluginEgress,
   providers: string[],
   provider: string | undefined,
   query: string,
-): Promise<ProviderMatches[]> {
+): Promise<{ matches: ProviderMatches[]; accounts: UnlinkedAccount[] }> {
   if (provider === "slack") {
     const slack = await findSlackUsers(teamId, query);
     if (slack.users.length === 0 && looksLikeEmail(query)) {
@@ -346,11 +436,13 @@ async function findMatches(
         `No Slack user found with email address ${query}.`,
       );
     }
-    return [slack];
+    return { matches: [slack], accounts: [] };
   }
-  if (provider) return await findStoredUsers(teamId, [provider], query);
-  const [slack, stored] = await Promise.all([
-    providers.includes("slack")
+  const otherProviders = provider
+    ? [provider]
+    : providers.filter((name) => name !== "slack");
+  const [slack, stored, plugin] = await Promise.all([
+    !provider && providers.includes("slack")
       ? findSlackUsers(teamId, query).catch((error: unknown) => {
           // An ID that is not a Slack user can still match another provider.
           if (isSlackUserNotFound(error)) {
@@ -359,20 +451,20 @@ async function findMatches(
           throw error;
         })
       : undefined,
-    findStoredUsers(
-      teamId,
-      providers.filter((name) => name !== "slack"),
-      query,
-    ),
+    findStoredUsers(teamId, otherProviders, query),
+    findPluginUsers(teamId, egress, otherProviders, query),
   ]);
-  return slack ? [slack, ...stored] : stored;
+  return {
+    matches: [...(slack ? [slack] : []), ...stored, ...plugin.matches],
+    accounts: plugin.accounts,
+  };
 }
 
 /** Static definition of `userLookup` for these identity providers. */
 export function userLookupToolDefinition(providers: [string, ...string[]]) {
   return zodToolDefinition({
     description:
-      "Look up people across identity providers, or in one. Name search can miss people in large workspaces. Each match has a Slack `mention` (`<@U…>`), the providers that matched (`matched_providers`), and the verified handles of accounts the person linked to you (`linked_identities`), such as `github`. When `ambiguous` is true, ask which person the user means.",
+      "Look up people across identity providers, or in one. Name search can miss people in large workspaces. Each match has a Slack `mention` (`<@U…>`), the providers that matched (`matched_providers`), and the verified handles of accounts the person linked to you (`linked_identities`), such as `github`. `accounts` lists provider accounts that no known person linked. When `ambiguous` is true, ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -404,6 +496,7 @@ export function userLookupToolDefinition(providers: [string, ...string[]]) {
 export function createUserLookupTool(
   teamId: SlackTeamId,
   providers: [string, ...string[]],
+  egress: PluginEgress,
 ) {
   return zodTool({
     ...userLookupToolDefinition(providers),
@@ -414,7 +507,7 @@ export function createUserLookupTool(
           providers,
           provider,
           query,
-          matches: await findMatches(teamId, providers, provider, query),
+          ...(await findMatches(teamId, egress, providers, provider, query)),
         });
       } catch (error) {
         if (error instanceof SlackActionError) {

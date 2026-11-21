@@ -1,7 +1,11 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { parseSlackTeamId } from "@/chat/slack/ids";
@@ -30,7 +34,11 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 function lookupTool() {
   const teamId = parseSlackTeamId("T0TEST");
   if (!teamId) throw new Error("invalid test team id");
-  return createUserLookupTool(teamId, ["slack", "github"]);
+  return createUserLookupTool(teamId, ["slack", "github"], {
+    fetch: async () => {
+      throw new Error("userLookup tests make no provider requests");
+    },
+  });
 }
 
 async function seedLinkedIdentities(input: {
@@ -864,6 +872,51 @@ describe("userLookup", () => {
           expect.objectContaining({ id: "U2", matched_providers: ["github"] }),
         ]),
       );
+    });
+
+    it("links accounts that a plugin search finds", async () => {
+      await seedLinkedIdentities({
+        githubId: "12345",
+        githubHandle: "dcramer",
+        slackUserId: "U039RR91S",
+        slackHandle: "david",
+      });
+      queueSlackApiResponse("users.list", { body: usersListPage() });
+      await createApp({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "github",
+              displayName: "GitHub",
+              description: "Searches test accounts",
+            },
+            hooks: {
+              searchUsers: ({ query }) =>
+                query === "dcramer"
+                  ? [
+                      { id: "12345", handle: "dcramer" },
+                      {
+                        id: "67890",
+                        handle: "dcramer-alt",
+                        displayName: "Alt",
+                      },
+                    ]
+                  : [],
+            },
+          }),
+        ]),
+      });
+
+      const result = await executeTool(lookupTool(), { query: "dcramer" });
+
+      expect(result).toMatchObject({
+        count: 1,
+        ambiguous: true,
+        user: { id: "U039RR91S", matched_providers: ["github"] },
+        accounts: [
+          { provider: "github", handle: "dcramer-alt", display_name: "Alt" },
+        ],
+      });
     });
 
     it("returns no candidates when nobody matches an exact ID", async () => {
