@@ -42,6 +42,9 @@ export const juniorTurnInbox = pgTable(
       .references(() => juniorTurns.id),
     // The time the source gives for the input, such as a Slack message ts.
     sentAt: timestamptz("sent_at").notNull(),
+    // Set when a model Step was first given the input. It decides whether a
+    // failed Turn drops the input or moves it. It does not mean read.
+    attemptedAt: timestamptz("attempted_at"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [

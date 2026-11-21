@@ -7,6 +7,7 @@ CREATE TABLE "junior_turn_inbox" (
 	"trace_context" jsonb,
 	"turn_id" uuid NOT NULL,
 	"sent_at" timestamp with time zone NOT NULL,
+	"attempted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "junior_turn_inbox_payload_check" CHECK (jsonb_typeof("junior_turn_inbox"."payload") = 'object')
 );

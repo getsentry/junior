@@ -4,12 +4,28 @@
 // can reach a worker that does not see the Turn yet: the claim finds nothing,
 // the message is acknowledged, and the Turn never runs. `assignTurn` picks
 // which Turn takes the input.
+//
+// When a Turn ends, `turnEnded` moves a failed Turn's inputs that no model
+// step was given to the Turn that `assignTurn` picks, then publishes the
+// Conversation's queued Turn. Every part of it is safe to repeat, so it needs
+// no marker: it runs on every end path, and again on a redelivery.
 import { randomUUID } from "node:crypto";
+import { inArray } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
-import { findInputTurn, type TurnInput } from "@/core/turn/inbox";
+import {
+  findInputTurn,
+  findUnreadInputs,
+  type TurnInput,
+} from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
-import { createTurn, findOpenTurn, type Turn } from "@/core/turn/state";
+import {
+  createTurn,
+  findOpenTurn,
+  findTurn,
+  type Turn,
+  type TurnRecord,
+} from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurnInbox } from "@/db/schema";
 
@@ -100,4 +116,80 @@ export async function scheduleInput(
     await publishTurnStep(placement.turnId);
   }
   return { turnId: placement.turnId, created: placement.created };
+}
+
+// Not exported, like addInput: only turnEnded moves inputs, under the
+// Conversation lock. A row keeps its id and idempotency key.
+async function moveInputs(
+  executor: JuniorSqlDatabase,
+  inputIds: string[],
+  turnId: string,
+): Promise<void> {
+  await executor
+    .db()
+    .update(juniorTurnInbox)
+    .set({ turnId })
+    .where(inArray(juniorTurnInbox.id, inputIds));
+}
+
+/**
+ * Moves the unread inputs of a failed Turn that no model step was given to
+ * the Turn that `assignTurn` picks. The failed Turn keeps, and so drops, the
+ * inputs that a step was given.
+ */
+async function moveLeftovers(
+  executor: JuniorSqlDatabase,
+  ended: TurnRecord,
+): Promise<void> {
+  const leftovers = (await findUnreadInputs(executor, ended.turnId)).filter(
+    (input) => input.attemptedAt === null,
+  );
+  const [first] = leftovers;
+  if (!first) {
+    return;
+  }
+  const choice = assignTurn(await findOpenTurn(executor, ended.conversationId));
+  const target =
+    "join" in choice
+      ? choice.join
+      : await createTurn(executor, {
+          conversationId: ended.conversationId,
+          actorIdentityId: first.actorIdentityId,
+          source: ended.source,
+          priority: choice.create.priority,
+        });
+  await moveInputs(
+    executor,
+    leftovers.map((input) => input.inputId),
+    target.turnId,
+  );
+}
+
+/**
+ * The end work of a Turn: a failed Turn hands on its inputs that no model
+ * step was given, then the Conversation's queued Turn is published. It does
+ * nothing for a Turn that has not ended. Safe to run any number of times.
+ * Call it outside a transaction: it publishes after its own commit.
+ */
+export async function turnEnded(
+  executor: JuniorSqlDatabase,
+  turnId: string,
+): Promise<void> {
+  const ended = await findTurn(executor, turnId);
+  if (!ended || ended.state === "queued" || ended.state === "running") {
+    return;
+  }
+  const openTurn = await withConversationEventLock(
+    executor,
+    ended.conversationId,
+    async () => {
+      if (ended.state === "failed") {
+        await moveLeftovers(executor, ended);
+      }
+      return findOpenTurn(executor, ended.conversationId);
+    },
+  );
+  if (openTurn?.state === "queued") {
+    await publishTurnStep(openTurn.turnId);
+  }
 }

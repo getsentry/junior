@@ -73,8 +73,8 @@ const carriedPayloadSchema = z.looseObject({
 let fixture: LocalJuniorSqlFixture;
 let turnId: string;
 let worker: QueueWorker;
-// Step messages of this test's Turn, and the marker that ends a delivery check.
-let published: number;
+// The Turn ids of the step messages, and the marker that ends a delivery check.
+let stepMessages: string[];
 let markerSeen: boolean;
 
 beforeEach(async () => {
@@ -102,25 +102,25 @@ beforeEach(async () => {
     source: "slack",
   });
 
-  published = 0;
+  stepMessages = [];
   markerSeen = false;
   const provider = getQueueProvider();
   if (!provider.startWorker) {
     throw new Error("The BullMQ provider must start workers");
   }
-  // The topic is fixed, so the worker counts only messages of this Turn.
+  // The topic is fixed, so a count takes only the messages of one Turn.
   worker = await provider.startWorker([
     {
       ...turnStepCallback(() => Promise.resolve()).consumer,
       handler: async (payload) => {
         const parsed = carriedPayloadSchema.safeParse(payload);
-        if (!parsed.success || parsed.data.turnId !== turnId) {
+        if (!parsed.success) {
           return;
         }
-        if (parsed.data.marker) {
+        if (!parsed.data.marker) {
+          stepMessages.push(parsed.data.turnId);
+        } else if (parsed.data.turnId === turnId) {
           markerSeen = true;
-        } else {
-          published += 1;
         }
       },
     },
@@ -133,8 +133,11 @@ afterEach(async () => {
   await fixture.close();
 });
 
-/** Waits until every step message sent so far is delivered, and counts them. */
-async function deliveredStepMessages(): Promise<number> {
+/**
+ * Waits until every step message sent so far is delivered, and counts those
+ * of one Turn.
+ */
+async function deliveredStepMessages(forTurnId = turnId): Promise<number> {
   await getQueueProvider().send(TURN_STEP_TOPIC, { turnId, marker: true });
   const deadline = Date.now() + 10_000;
   while (!markerSeen) {
@@ -143,7 +146,7 @@ async function deliveredStepMessages(): Promise<number> {
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  return published;
+  return stepMessages.filter((id) => id === forTurnId).length;
 }
 
 async function readTurn() {
@@ -195,6 +198,28 @@ async function addTestInput(text: string) {
       sentAt: new Date(),
     });
   return inputId;
+}
+
+async function readInputs() {
+  return fixture.sql
+    .db()
+    .select({
+      id: juniorTurnInbox.id,
+      turnId: juniorTurnInbox.turnId,
+      idempotencyKey: juniorTurnInbox.idempotencyKey,
+    })
+    .from(juniorTurnInbox)
+    .orderBy(juniorTurnInbox.createdAt);
+}
+
+/** The Turn that took the inputs of the test's Turn. */
+async function readOtherTurn() {
+  const turns = await fixture.sql
+    .db()
+    .select({ id: juniorTurns.id, state: juniorTurns.state })
+    .from(juniorTurns)
+    .where(eq(juniorTurns.conversationId, CONVERSATION_ID));
+  return turns.find((turn) => turn.id !== turnId);
 }
 
 function userText(text: string) {
@@ -392,7 +417,10 @@ describe("advanceTurn", () => {
       expect(prepare).not.toHaveBeenCalled();
       await expect(readTurn()).resolves.toEqual(before);
       await expect(loadHistory()).resolves.toEqual([]);
-      await expect(deliveredStepMessages()).resolves.toBe(0);
+      // Only cancelTurn's own message.
+      await expect(deliveredStepMessages()).resolves.toBe(
+        state === "cancelled" ? 1 : 0,
+      );
     },
   );
 
@@ -405,7 +433,8 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(loadHistory()).resolves.toEqual([]);
-    await expect(deliveredStepMessages()).resolves.toBe(0);
+    // Only cancelTurn's own message.
+    await expect(deliveredStepMessages()).resolves.toBe(1);
   });
 
   it("writes nothing when the model request throws its own error after a cancel", async () => {
@@ -426,7 +455,8 @@ describe("advanceTurn", () => {
 
     await expect(readTurn()).resolves.toMatchObject({ state: "cancelled" });
     await expect(loadHistory()).resolves.toEqual([]);
-    await expect(deliveredStepMessages()).resolves.toBe(0);
+    // Only cancelTurn's own message.
+    await expect(deliveredStepMessages()).resolves.toBe(1);
   });
 
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
@@ -471,8 +501,8 @@ describe("advanceTurn", () => {
       stepSeq: 1,
     });
     await expect(loadHistory()).resolves.toEqual([reply]);
-    // Only the step that the first advance committed.
-    await expect(deliveredStepMessages()).resolves.toBe(1);
+    // The step that the first advance committed, and cancelTurn's message.
+    await expect(deliveredStepMessages()).resolves.toBe(2);
   });
 
   // Holding a table lock needs a second database session, which PGlite lacks.
@@ -748,6 +778,91 @@ describe("advanceTurn", () => {
     await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId }),
     ]);
+  });
+
+  it("drops the input a failed model step was given, and moves one that joined during it to a new Turn", async () => {
+    const givenId = await addTestInput("How many Turns?");
+    const step = prepareWith([
+      createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
+    ]);
+    let joinedId: string | undefined;
+
+    await advance({
+      prepare: step.prepare,
+      client: {
+        complete: async (request, signal) => {
+          joinedId = await addTestInput("And how many failed?");
+          return step.client.complete(request, signal);
+        },
+      },
+    });
+
+    await expect(readTurn()).resolves.toMatchObject({ state: "failed" });
+    const next = await readOtherTurn();
+    expect(next).toMatchObject({ state: "queued" });
+    await expect(readInputs()).resolves.toEqual([
+      { id: givenId, turnId, idempotencyKey: `slack-event:${givenId}` },
+      {
+        id: joinedId,
+        turnId: next!.id,
+        idempotencyKey: `slack-event:${joinedId}`,
+      },
+    ]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+      expect.objectContaining({
+        inputId: givenId,
+        attemptedAt: expect.any(Date),
+      }),
+    ]);
+    await expect(deliveredStepMessages(next!.id)).resolves.toBe(1);
+  });
+
+  it("moves every unread input when a Turn fails on a tool step after its last try", async () => {
+    await advance(prepareWith([sendCallReply()]));
+    const firstId = await addTestInput("Stop.");
+    const secondId = await addTestInput("Really, stop.");
+    const failure = new Error("The system prompt could not be built");
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      await expect(
+        advance({ prepare: () => Promise.reject(failure) }),
+      ).rejects.toBe(failure);
+    }
+
+    await advance(prepareWith([]));
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "failed",
+      endReason: "attempts_exhausted",
+    });
+    const next = await readOtherTurn();
+    expect(next).toMatchObject({ state: "queued" });
+    await expect(readInputs()).resolves.toEqual([
+      expect.objectContaining({ id: firstId, turnId: next!.id }),
+      expect.objectContaining({ id: secondId, turnId: next!.id }),
+    ]);
+    await expect(deliveredStepMessages(next!.id)).resolves.toBe(1);
+  });
+
+  it("finishes the end work of a failed Turn on a redelivered message", async () => {
+    const inputId = await addTestInput("How many Turns?");
+    // A crash right after the fail commit: the end work never ran.
+    await fixture.sql
+      .db()
+      .update(juniorTurns)
+      .set({ state: "failed", endedAt: sql`now()` })
+      .where(eq(juniorTurns.id, turnId));
+    const step = prepareWith([]);
+    const prepare = vi.fn(step.prepare);
+
+    await advance({ ...step, prepare });
+
+    expect(prepare).not.toHaveBeenCalled();
+    const next = await readOtherTurn();
+    expect(next).toMatchObject({ state: "queued" });
+    await expect(readInputs()).resolves.toEqual([
+      expect.objectContaining({ id: inputId, turnId: next!.id }),
+    ]);
+    await expect(deliveredStepMessages(next!.id)).resolves.toBe(1);
   });
 
   it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
