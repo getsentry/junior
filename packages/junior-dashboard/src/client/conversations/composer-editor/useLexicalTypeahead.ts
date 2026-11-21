@@ -29,7 +29,7 @@ import type {
 } from "../ComposerMenu";
 import type { ComposerToken } from "../composerSkillToken";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
-import { $isInCode } from "./composerMarkdown";
+import { $isInCode } from "./composerLiveMarkdown";
 import { $createComposerReferenceNode } from "./ComposerReferenceNode";
 
 type CaretToken = ComposerToken & {

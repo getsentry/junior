@@ -3,10 +3,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
-import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
-import { ListPlugin } from "@lexical/react/LexicalListPlugin";
-import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
-import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import {
   $getRoot,
   $getSelection,
@@ -16,13 +13,14 @@ import {
   COMMAND_PRIORITY_NORMAL,
   DROP_COMMAND,
   HISTORIC_TAG,
-  INSERT_PARAGRAPH_COMMAND,
-  $isRangeSelection,
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_LOW,
+  FOCUS_COMMAND,
   KEY_ENTER_COMMAND,
   mergeRegister,
   PASTE_COMMAND,
+  RootNode,
   SKIP_SCROLL_INTO_VIEW_TAG,
-  TextNode,
 } from "lexical";
 import {
   useEffect,
@@ -40,21 +38,19 @@ import { ComposerSkillMenu } from "../ComposerSkillMenu";
 import { mentionTokenAt } from "../composerMentionToken";
 import { hashTokenAt } from "../composerReferences";
 import { skillTokenAt } from "../composerSkillToken";
+import { ComposerMarkerNode } from "./ComposerMarkerNode";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
 import {
-  $insertComposerMarkdown,
   $readComposerText,
-  $replaceComposerTokens,
   $writeComposerText,
   type ComposerLookup,
 } from "./composerEditorText";
 import {
-  $isInMultilineBlock,
-  COMPOSER_MARKDOWN,
-  COMPOSER_MARKDOWN_NODES,
-  COMPOSER_THEME,
-} from "./composerMarkdown";
+  $styleComposerDraft,
+  placeCaretOutsideHiddenMarkers,
+  syncComposerMarkers,
+} from "./composerLiveMarkdown";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
 
 /** Imperative actions on the draft editor. */
@@ -103,10 +99,10 @@ type ComposerEditorProps = {
 };
 
 /**
- * The composer's draft editor: Markdown that renders as you type, with
- * inline mentions and reference chips, built on Lexical. The draft text
- * stays Markdown. The `$`, `@`, and `#` menus run inside it. The composer
- * lazy-loads this module, because Lexical is large.
+ * The composer's draft editor: plain text with inline mentions and
+ * reference chips, built on Lexical. The `$`, `@`, and `#` menus run inside
+ * it. The composer lazy-loads
+ * this module, because Lexical is large.
  */
 export default function ComposerEditor(props: ComposerEditorProps) {
   const initialText = useRef(props.readText());
@@ -116,13 +112,12 @@ export default function ComposerEditor(props: ComposerEditorProps) {
     <LexicalComposer
       initialConfig={{
         editable: props.editable,
-        editorState: () => $writeComposerText(initialText.current, lookup),
+        editorState: () => {
+          $writeComposerText(initialText.current);
+          $styleComposerDraft(lookup);
+        },
         namespace: "junior-composer",
-        nodes: [
-          ComposerMentionNode,
-          ComposerReferenceNode,
-          ...COMPOSER_MARKDOWN_NODES,
-        ],
+        nodes: [ComposerMarkerNode, ComposerMentionNode, ComposerReferenceNode],
         onError: (error) => {
           throw error;
         },
@@ -130,7 +125,7 @@ export default function ComposerEditor(props: ComposerEditorProps) {
       }}
     >
       <div className="relative min-w-0">
-        <RichTextPlugin
+        <PlainTextPlugin
           contentEditable={
             <ContentEditable
               aria-autocomplete="list"
@@ -167,9 +162,6 @@ export default function ComposerEditor(props: ComposerEditorProps) {
         />
       </div>
       <HistoryPlugin />
-      <ListPlugin />
-      <LinkPlugin />
-      <MarkdownShortcutPlugin transformers={COMPOSER_MARKDOWN} />
       <ComposerBehavior
         {...props}
         initialText={initialText.current}
@@ -198,7 +190,7 @@ function ComposerBehavior(
   const setText = (text: string, caretAtEnd: boolean) => {
     editor.update(
       () => {
-        $writeComposerText(text, callbacks.current.lookup);
+        $writeComposerText(text);
         if (caretAtEnd) $getRoot().selectEnd();
         else $setSelection(null);
       },
@@ -259,34 +251,51 @@ function ComposerBehavior(
             callbacks.current.onChange(text);
           },
         ),
-        // Pasted or restored `<@U…>` and reference tokens become chips.
-        editor.registerNodeTransform(TextNode, (node) =>
-          $replaceComposerTokens(node, callbacks.current.lookup),
+        // Last in each update: style the Markdown of the draft, and turn
+        // pasted or restored `<@U…>` and reference tokens into chips. Not
+        // while an input method composes, which a new node would break.
+        editor.registerNodeTransform(RootNode, () => {
+          if (!editor.isComposing()) {
+            $styleComposerDraft(callbacks.current.lookup);
+          }
+        }),
+        // Reveal the markers at the caret, after the caret leaves any
+        // that are hidden.
+        editor.registerUpdateListener(() => {
+          placeCaretOutsideHiddenMarkers(editor);
+          syncComposerMarkers(editor);
+        }),
+        editor.registerCommand(
+          FOCUS_COMMAND,
+          () => {
+            syncComposerMarkers(editor);
+            return false;
+          },
+          COMMAND_PRIORITY_LOW,
+        ),
+        editor.registerCommand(
+          BLUR_COMMAND,
+          () => {
+            // Focus moves after the blur event.
+            requestAnimationFrame(() => syncComposerMarkers(editor));
+            return false;
+          },
+          COMMAND_PRIORITY_LOW,
         ),
         // Below the menus, which take Enter while they are open.
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (event) => {
-            if (!event || event.isComposing) return false;
-            // Shift+Enter starts a new paragraph, not a line break, so a
-            // Markdown block shortcut works on the new line. Enter adds a
-            // line in a code block or a list.
-            const newLine =
-              event.shiftKey ||
+            if (
               !callbacks.current.enterSends ||
-              editor.getEditorState().read(() => {
-                const selection = $getSelection();
-                return (
-                  $isRangeSelection(selection) &&
-                  $isInMultilineBlock(selection.anchor.getNode())
-                );
-              });
-            event.preventDefault();
-            if (newLine) {
-              editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
-            } else {
-              callbacks.current.onEnter();
+              !event ||
+              event.shiftKey ||
+              event.isComposing
+            ) {
+              return false;
             }
+            event.preventDefault();
+            callbacks.current.onEnter();
             return true;
           },
           COMMAND_PRIORITY_NORMAL,
@@ -299,20 +308,9 @@ function ComposerBehavior(
               event instanceof ClipboardEvent
                 ? Array.from(event.clipboardData?.files ?? [])
                 : [];
-            if (onPasteFiles && files.length) {
-              event.preventDefault();
-              onPasteFiles(files);
-              return true;
-            }
-            // Paste text as Markdown and render it, as if it was typed.
-            // Formatting from a web page or another editor does not come in.
-            const text =
-              event instanceof ClipboardEvent
-                ? event.clipboardData?.getData("text/plain")
-                : undefined;
-            if (!text) return false;
+            if (!onPasteFiles || !files.length) return false;
             event.preventDefault();
-            editor.update(() => $insertComposerMarkdown(text));
+            onPasteFiles(files);
             return true;
           },
           COMMAND_PRIORITY_HIGH,
@@ -336,3 +334,16 @@ function ComposerBehavior(
     </>
   );
 }
+
+// Rendered Markdown, close to how the transcript shows it. Links underline,
+// because Markdown links are the only underlined text.
+const COMPOSER_THEME = {
+  paragraph: "m-0",
+  text: {
+    bold: "font-semibold",
+    code: "rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em]",
+    italic: "italic",
+    strikethrough: "line-through",
+    underline: "text-dashboard-accent-text underline underline-offset-2",
+  },
+};
