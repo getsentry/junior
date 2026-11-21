@@ -54,15 +54,8 @@ import { getDashboardAgentName } from "../agentName";
 const MAX_EXPANDED_PENDING_ROWS = 5;
 const COLLAPSED_PENDING_ROW_COUNT = 4;
 
-// The steer button and the steered status share an icon, so a steered row
-// shows the icon of the action that the reader used.
-const STEER_ICON = Zap;
-
 function pendingDeliveryMeta(
-  message: Pick<
-    ConversationMailboxMessage,
-    "clientStatus" | "delivery" | "source"
-  >,
+  message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
 ): { icon: LucideIcon | typeof Spinner; label: string; tooltip: string } {
   if (message.clientStatus === "failed") {
     return {
@@ -74,20 +67,11 @@ function pendingDeliveryMeta(
   if (message.clientStatus === "sending") {
     return { icon: Spinner, label: "Sending", tooltip: "Sending" };
   }
-  // Only a dashboard steer turns a web message into an interrupt. Other
-  // sources, such as a Slack mention, arrive as interrupts.
-  if (message.delivery === "interrupt" && message.source !== "web") {
+  if (message.delivery === "interrupt") {
     return {
       icon: SkipForward,
       label: "Next step",
       tooltip: `${getDashboardAgentName()} reads it at its next step`,
-    };
-  }
-  if (message.delivery === "interrupt") {
-    return {
-      icon: STEER_ICON,
-      label: "Steered",
-      tooltip: `Steered: ${getDashboardAgentName()} reads it at its next step`,
     };
   }
   return {
@@ -199,7 +183,7 @@ function PendingMetaIcons(props: {
       {props.onSteer ? (
         <PendingActionButton
           disabled={props.actionsDisabled}
-          icon={STEER_ICON}
+          icon={Zap}
           label="Steer queued message"
           onClick={props.onSteer}
           pending={props.steerPending}
