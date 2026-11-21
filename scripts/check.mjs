@@ -9,7 +9,7 @@ import {
   parentPort,
   workerData,
 } from "node:worker_threads";
-import { mapBounded } from "./lib/map-bounded.mjs";
+import pLimit from "p-limit";
 import { listRepoFiles } from "./lib/repo-files.mjs";
 
 /**
@@ -67,9 +67,8 @@ async function main(names, args) {
   const lintOnly = names.length === 0;
   const selected = lintOnly ? known : names;
   const context = { root: ROOT, files: listRepoFiles(ROOT), args };
-  const results = await mapBounded(
+  const results = await pLimit(os.availableParallelism()).map(
     selected,
-    os.availableParallelism(),
     (name) => runInWorker(name, lintOnly, context),
   );
   let failed = false;
