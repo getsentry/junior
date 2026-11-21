@@ -3287,14 +3287,11 @@ describe("createTestSandbox", () => {
   );
 
   it.each([
-    {
-      persistent: false,
-      notice: expect.stringContaining("check the checkout"),
-    },
-    { persistent: true, notice: undefined },
+    { persistent: false, replaced: true },
+    { persistent: true, replaced: false },
   ])(
     "tells a later Run that its new session lost the files of the last tool call (persistent: $persistent)",
-    async ({ persistent, notice }) => {
+    async ({ persistent, replaced }) => {
       const firstSandbox = makeSandbox("sbx_idle_resume", { persistent });
       sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
       let storedRef: SandboxRef | undefined;
@@ -3313,19 +3310,29 @@ describe("createTestSandbox", () => {
       // The idle session stopped, and the next Run resumes a new one.
       const resumedSandbox = makeSandbox("sbx_idle_resume", { persistent });
       resumedSandbox.session.sessionId = "sbx_idle_resume_next_session";
+      resumedSandbox.fs.readFile.mockRejectedValueOnce(
+        new Error("File not found: /vercel/sandbox/notes.md"),
+      );
       sandboxGetMock.mockResolvedValueOnce(resumedSandbox);
       const nextRun = createTestSandbox({ sandboxRef: storedRef });
       nextRun.configureSkills([]);
-      const bash = (command: string) =>
-        nextRun.execute<StructuredSandboxResult>({
-          toolName: "bash",
-          input: { command },
-        });
 
-      const resumed = await bash("git rev-parse HEAD");
-      const again = await bash("git status");
+      // The file is gone with the old session, so the edit fails.
+      const edit = nextRun.execute({
+        toolName: "editFile",
+        input: { path: "notes.md", edits: [{ oldText: "a", newText: "b" }] },
+      });
+      const again = await nextRun.execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: { command: "git status" },
+      });
 
-      expect(resumed.result.details["sandbox_notice"]).toEqual(notice);
+      const message = await edit.then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      expect(message).toContain("File not found: notes.md");
+      expect(message.includes("check the checkout")).toBe(replaced);
       expect(again.result.details).not.toHaveProperty("sandbox_notice");
     },
   );

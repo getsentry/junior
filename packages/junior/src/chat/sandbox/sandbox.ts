@@ -705,6 +705,15 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           { cause: error },
         );
       }
+      if (context.sandboxReplaced && error instanceof ToolInputError) {
+        // A failed call is the only report that the old files are gone.
+        throw new ToolInputError(
+          `${error.message} ${SANDBOX_REPLACED_NOTICE}`,
+          {
+            cause: error,
+          },
+        );
+      }
       throw error;
     }
 
