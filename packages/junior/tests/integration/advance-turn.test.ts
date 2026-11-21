@@ -128,6 +128,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await worker.close();
   await fixture.close();
 });
@@ -666,6 +667,48 @@ describe("advanceTurn", () => {
       expect.objectContaining({ role: "toolResult", isError: true }),
     ]);
   });
+  it("runs the next step on a redelivery when the send after a continue commit fails", async () => {
+    const executed: string[] = [];
+    const reply = sendCallReply();
+    const failure = new Error("The queue is unreachable");
+    // Stands in for the process dying after the commit, before the send.
+    vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
+
+    await expect(advance(prepareWith([reply]))).rejects.toBe(failure);
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 1,
+      attempts: 0,
+      leaseOwner: null,
+    });
+
+    // The queue delivers the same message again.
+    await advance(prepareWith([], [sendTool(executed)]));
+
+    // A first attempt, so the tool that must not run twice runs.
+    expect(executed).toEqual(["call-1"]);
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 2,
+    });
+
+    const done = createAssistantMessage({ type: "text", text: "Sent." });
+    await advance(prepareWith([done]));
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "completed",
+      stepSeq: 3,
+    });
+    await expect(loadHistory()).resolves.toEqual([
+      reply,
+      expect.objectContaining({ role: "toolResult", isError: false }),
+      done,
+    ]);
+    // Only the tool step's send went out.
+    await expect(deliveredStepMessages()).resolves.toBe(1);
+  });
+
   it("reads an unread input into the history before the reply", async () => {
     const inputId = await addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });

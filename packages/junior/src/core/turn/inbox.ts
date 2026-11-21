@@ -1,7 +1,6 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
-import { randomUUID } from "node:crypto";
 import type { UserMessage } from "@earendil-works/pi-ai";
 import { and, asc, eq, notExists, sql } from "drizzle-orm";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -32,20 +31,6 @@ export type TurnInput = {
   sentAt: Date;
   traceContext?: TurnInputTraceContext;
 };
-
-/**
- * Adds an input to a Turn of the same Conversation. It resolves once the row
- * is written and throws on any failure, such as a duplicate idempotency key.
- */
-export async function addInput(
-  executor: JuniorSqlDatabase,
-  input: TurnInput & { turnId: string },
-): Promise<void> {
-  await executor
-    .db()
-    .insert(juniorTurnInbox)
-    .values({ ...input, id: randomUUID() });
-}
 
 /**
  * Finds the Turn of the input that has this idempotency key in the
