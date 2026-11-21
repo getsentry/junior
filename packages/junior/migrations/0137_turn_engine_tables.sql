@@ -1,7 +1,6 @@
 CREATE TABLE "junior_turn_inbox" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"conversation_id" text NOT NULL,
-	"kind" text NOT NULL,
 	"actor_identity_id" text NOT NULL,
 	"payload" jsonb NOT NULL,
 	"idempotency_key" text NOT NULL,
@@ -9,7 +8,6 @@ CREATE TABLE "junior_turn_inbox" (
 	"turn_id" uuid NOT NULL,
 	"sent_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "junior_turn_inbox_kind_check" CHECK ("junior_turn_inbox"."kind" in ('message', 'account_connected')),
 	CONSTRAINT "junior_turn_inbox_payload_check" CHECK (jsonb_typeof("junior_turn_inbox"."payload") = 'object')
 );
 --> statement-breakpoint

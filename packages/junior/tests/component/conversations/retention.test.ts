@@ -114,7 +114,6 @@ async function seedTurn(
     .values({
       id: randomUUID(),
       conversationId,
-      kind: "message",
       actorIdentityId: "identity:turn-actor",
       payload: { text: "private input" },
       idempotencyKey: `slack-event:${conversationId}`,

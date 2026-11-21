@@ -14,9 +14,6 @@ import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
 
-/** What an input is. */
-export type TurnInputKind = "message" | "account_connected";
-
 /** The trace of the source request that sent an input. */
 export type TurnInputTraceContext = { sentryTrace: string; baggage?: string };
 
@@ -30,7 +27,6 @@ export const juniorTurnInbox = pgTable(
   {
     id: uuid("id").primaryKey(),
     conversationId: text("conversation_id").notNull(),
-    kind: text("kind").$type<TurnInputKind>().notNull(),
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
@@ -54,10 +50,6 @@ export const juniorTurnInbox = pgTable(
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }).onDelete("cascade"),
-    check(
-      "junior_turn_inbox_kind_check",
-      sql`${table.kind} in ('message', 'account_connected')`,
-    ),
     check(
       "junior_turn_inbox_payload_check",
       sql`jsonb_typeof(${table.payload}) = 'object'`,
