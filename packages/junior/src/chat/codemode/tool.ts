@@ -8,6 +8,12 @@
  * tool pipeline cuts long results for the model, the same as for other tools.
  */
 import {
+  PARAMS_PREVIEW_HINT,
+  SEARCH_TOOLS_NAME,
+  summarizeModelVisibleDescription,
+} from "@/chat/tool-support/catalog-search";
+import { EXECUTE_TOOL_NAME } from "@/chat/tool-support/catalog-tool-call";
+import {
   renderToolSignature,
   type CodemodeJsonSchema,
 } from "@earendil-works/pi-codemode";
@@ -24,13 +30,7 @@ import {
 } from "@/chat/codemode/result";
 import { MAX_TOOL_ACTION_BATCH } from "@/chat/guardian/gate";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
-import {
-  PARAMS_PREVIEW_HINT,
-  SEARCH_TOOLS_NAME,
-  summarizeModelVisibleDescription,
-} from "@/chat/tools/search-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { renderToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

@@ -14,7 +14,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { todoRef } from "./tool-output";
 import type { Todo, TodoStatus } from "./types";
 

@@ -5,7 +5,7 @@ import { setTodoStatusByUser } from "@/chat/todos/store";
 import { parseTodoRef } from "@/chat/todos/tool-output";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";

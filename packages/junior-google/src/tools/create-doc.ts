@@ -11,16 +11,16 @@ import {
   docUrl,
   insertMarkdownRequests,
   markdownContentSchema,
-} from "./doc-edits";
-import { newEditableFile } from "./editable-file";
-import { googleFileRequest } from "./files";
+} from "../docs/edits";
+import { newEditableFile } from "../drive/editable-file";
+import { googleFileRequest } from "../drive/files";
 import {
   googleApiError,
   googleApiRequest,
   requesterEmail,
   requireAllowedEmails,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
 
 const inputSchema = z
   .object({

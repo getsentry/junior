@@ -15,7 +15,7 @@ import {
   openAiPolicyDisablesImplicitInvocation,
   parseSkillFile,
 } from "@/chat/skills";
-import type { SandboxCommandRunner } from "@/chat/tools/sandbox/file-utils";
+import type { SandboxCommandRunner } from "@/chat/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
 // Codex's model-visible wrapper of repository instructions.

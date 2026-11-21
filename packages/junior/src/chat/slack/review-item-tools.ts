@@ -1,10 +1,10 @@
+import type { ReviewItemToolServices } from "@/chat/review-items/tool-support";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { createSlackActor } from "@/chat/actor";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import type { ReviewItemToolServices } from "@/chat/tools/review-items";
 import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { parseSlackUserId } from "./ids";
 import { createSlackReviewItemShow } from "./review-item-card-sync";
 

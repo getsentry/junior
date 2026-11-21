@@ -32,7 +32,7 @@ import type {
   ViewImageToolDeps,
   WebFetchToolDeps,
   WebSearchToolDeps,
-} from "@/chat/tools/types";
+} from "@/chat/tool-support/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";

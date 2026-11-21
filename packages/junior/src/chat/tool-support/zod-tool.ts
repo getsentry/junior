@@ -5,8 +5,8 @@ import type {
   AnyToolDefinition,
   JsonSchemaObject,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   AnyToolDefinition,

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
-import { CONTENT_VERSION_HEADER } from "./schema/common";
+import { CONTENT_VERSION_HEADER } from "./schema/response";
 
 /**
  * Hash a response body without its top-level `generatedAt`, the read time,
