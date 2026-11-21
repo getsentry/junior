@@ -35,7 +35,8 @@ export const juniorTurnInbox = pgTable(
       .notNull()
       .references(() => juniorIdentities.id),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
-    // The source's id for the input, such as a Slack event id.
+    // The same key on every delivery of the input. The Source gives it, for
+    // example the Slack message id or the `idempotencyKey` a web client sends.
     idempotencyKey: text("idempotency_key").notNull(),
     // The trace of the source request, so the Turn that takes the input
     // continues it.
