@@ -42,6 +42,9 @@ also wake a Conversation or run an Event automation.
   the Inbox stops asking. A requester who approved since is not asked.
 - Junior cannot fork or administer a repo, and never pushes to or deletes
   the default branch.
+- Junior never moves an existing branch to a commit that GitHub already
+  has, such as old `main`. That can leave a PR with no commits ahead of its
+  base, and GitHub then closes the PR.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.

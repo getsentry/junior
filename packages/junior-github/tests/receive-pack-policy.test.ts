@@ -12,12 +12,24 @@ import { mswServer } from "./msw";
 const PUSH_URL = "https://github.com/getsentry/junior.git/git-receive-pack";
 const ORIGINAL_ENV = process.env;
 
-function update(ref: string, deletes = false): PluginGitRefUpdate {
-  return { deletes, ref };
+function update(
+  ref: string,
+  input?: { creates?: boolean; deletes?: boolean },
+): PluginGitRefUpdate {
+  return {
+    creates: input?.creates ?? false,
+    deletes: input?.deletes ?? false,
+    ref,
+  };
 }
 
 function commands(...updates: PluginGitRefUpdate[]): PluginGitPush {
-  return { kind: "commands", updates };
+  return { kind: "commands", packObjectCount: 1, updates };
+}
+
+/** A push whose pack has no objects: GitHub already has every commit. */
+function existingCommit(...updates: PluginGitRefUpdate[]): PluginGitPush {
+  return { kind: "commands", packObjectCount: 0, updates };
 }
 
 function memoryCache(): PluginCache {
@@ -116,7 +128,7 @@ describe("GitHub Git push policy", () => {
   it("allows a branch delete with no pack", async () => {
     mockRepository();
     const grant = await grantForPush(
-      commands(update("refs/heads/feat/x", true)),
+      existingCommit(update("refs/heads/feat/x", { deletes: true })),
     );
 
     expect(grant?.auditAttributes?.["app.github.refs"]).toEqual([
@@ -152,7 +164,9 @@ describe("GitHub Git push policy", () => {
 
   it("refuses to delete the default branch", async () => {
     mockRepository();
-    const error = await denial(commands(update("refs/heads/main", true)));
+    const error = await denial(
+      existingCommit(update("refs/heads/main", { deletes: true })),
+    );
 
     expect(error.message).toContain(
       "The runtime never deletes the default branch",
@@ -196,6 +210,32 @@ describe("GitHub Git push policy", () => {
 
     expect(error.message).toContain(message);
     expect(lookups).toEqual([]);
+  });
+
+  it("refuses to move an existing branch to a commit that GitHub already has", async () => {
+    mockRepository();
+    const error = await denial(existingCommit(update("refs/heads/feat/x")));
+
+    expect(error.name).toBe("EgressPolicyDenied");
+    expect(error.message).toContain(
+      "The runtime refused to move feat/x to a commit that GitHub already has",
+    );
+    expect(error.message).toContain("push a new revert commit");
+    expect(error.auditAttributes).toEqual({
+      "app.github.default_branch": "main",
+      "app.github.default_branch_targeted": false,
+      "app.github.moved_to_existing_commit": true,
+      "app.github.refs": ["refs/heads/feat/x"],
+    });
+  });
+
+  it("allows a new branch at a commit that GitHub already has", async () => {
+    mockRepository();
+    const grant = await grantForPush(
+      existingCommit(update("refs/heads/feat/x", { creates: true })),
+    );
+
+    expect(grant?.name).toBe("installation-write");
   });
 
   it("refuses the push when the default branch lookup fails", async () => {

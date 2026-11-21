@@ -12,8 +12,11 @@ function pkt(line: string): string {
   return `${length.toString(16).padStart(4, "0")}${line}`;
 }
 
-function command(ref: string, input?: { caps?: string; newId?: string }) {
-  const line = `${OLD_ID} ${input?.newId ?? NEW_ID} ${ref}`;
+function command(
+  ref: string,
+  input?: { caps?: string; newId?: string; oldId?: string },
+) {
+  const line = `${input?.oldId ?? OLD_ID} ${input?.newId ?? NEW_ID} ${ref}`;
   return pkt(input?.caps ? `${line}\0${input.caps}` : line);
 }
 
@@ -41,14 +44,15 @@ describe("readGitPush", () => {
       ),
     ).toEqual({
       kind: "commands",
+      packObjectCount: 0,
       updates: [
-        { deletes: false, ref: "refs/heads/feat/x" },
-        { deletes: false, ref: "refs/heads/main" },
+        { creates: false, deletes: false, ref: "refs/heads/feat/x" },
+        { creates: false, deletes: false, ref: "refs/heads/main" },
       ],
     });
   });
 
-  it("stops at the first flush, before push options and pack data", () => {
+  it("skips push options and reads the pack object count", () => {
     const push = readGitPush(
       binaryBody(
         `${pkt(`shallow ${OLD_ID}`)}${command("refs/heads/feat/x", { caps: "push-options" })}${FLUSH}${pkt("ci.skip")}${FLUSH}${PACK}`,
@@ -57,25 +61,33 @@ describe("readGitPush", () => {
 
     expect(push).toMatchObject({
       kind: "commands",
+      packObjectCount: 1,
       updates: [{ ref: "refs/heads/feat/x" }],
     });
   });
 
-  it("marks a delete and decodes UTF-8 ref names", () => {
+  it("marks a create and a delete and decodes UTF-8 ref names", () => {
     expect(
       readGitPush(
         body(
-          `${command("refs/heads/fix/café", { caps: "delete-refs", newId: ZERO_ID })}${FLUSH}`,
+          `${command("refs/heads/fix/café", { caps: "delete-refs", newId: ZERO_ID })}${command("refs/heads/feat/new", { oldId: ZERO_ID })}${FLUSH}`,
         ),
       ),
     ).toMatchObject({
       kind: "commands",
-      updates: [{ deletes: true, ref: "refs/heads/fix/café" }],
+      updates: [
+        { creates: false, deletes: true, ref: "refs/heads/fix/café" },
+        { creates: true, deletes: false, ref: "refs/heads/feat/new" },
+      ],
     });
   });
 
   it("reads the lone flush of an auth probe as no updates", () => {
-    expect(readGitPush(body(FLUSH))).toEqual({ kind: "commands", updates: [] });
+    expect(readGitPush(body(FLUSH))).toEqual({
+      kind: "commands",
+      packObjectCount: 0,
+      updates: [],
+    });
   });
 
   it.each([
@@ -90,6 +102,7 @@ describe("readGitPush", () => {
     ["unterminated", undefined],
     ["malformed", body(`${pkt("not a command")}${FLUSH}`)],
     ["malformed", body(`zzzz${FLUSH}`)],
+    ["malformed", body(`${command("refs/heads/feat/x")}${FLUSH}not a pack`)],
   ])("reports a %s push as unreadable", (reason, input) => {
     expect(readGitPush(input)).toEqual({ kind: "unreadable", reason });
   });

@@ -330,10 +330,15 @@ function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array([
     ...new TextEncoder().encode(commands),
     ...new TextEncoder().encode("PACK"),
+    // Pack version 2, then one object.
     0x00,
     0x00,
     0x00,
     0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
     0x9c,
     0xff,
     0x80,

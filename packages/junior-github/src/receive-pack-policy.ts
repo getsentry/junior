@@ -4,7 +4,9 @@
  * Junior pushes with the App installation token, so a push lands as the App
  * no matter who asked. Junior proposes changes through pull requests. It
  * never updates or deletes the repository's default branch, and it pushes
- * only branches. Other protected branches rely on GitHub rulesets.
+ * only branches. It never moves an existing branch to a commit that GitHub
+ * already has, because that can close the branch's pull request. Other
+ * protected branches rely on GitHub rulesets.
  */
 import {
   EgressPolicyDenied,
@@ -17,8 +19,12 @@ import type { GitHubRepository } from "./credential-support.js";
 import { loadDefaultBranch } from "./default-branch.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 
-const DENIAL_SUFFIX =
-  "This is a runtime policy denial, not a GitHub permission failure. Push to a new branch and open a pull request with github_createPullRequest.";
+const DENIAL_NOTE =
+  "This is a runtime policy denial, not a GitHub permission failure.";
+const NEW_BRANCH_GUIDANCE =
+  "Push to a new branch and open a pull request with github_createPullRequest.";
+const EXISTING_COMMIT_GUIDANCE =
+  "Check that the local branch has the intended commits before you push again. To undo a commit, push a new revert commit.";
 
 const UNREADABLE_MESSAGES: Record<PluginGitPushUnreadableReason, string> = {
   gzip: "The runtime cannot read a gzip-compressed Git push.",
@@ -30,14 +36,20 @@ const UNREADABLE_MESSAGES: Record<PluginGitPushUnreadableReason, string> = {
 
 function deny(
   message: string,
-  options?: { auditAttributes?: PluginAuditAttributes; cause?: unknown },
+  options?: {
+    auditAttributes?: PluginAuditAttributes;
+    cause?: unknown;
+    guidance?: string;
+  },
 ): never {
-  throw new EgressPolicyDenied(`${message} ${DENIAL_SUFFIX}`, options);
+  const { guidance = NEW_BRANCH_GUIDANCE, ...rest } = options ?? {};
+  throw new EgressPolicyDenied(`${message} ${DENIAL_NOTE} ${guidance}`, rest);
 }
 
 /**
- * Refuse a Git push that changes the default branch or a ref outside
- * `refs/heads/`. Returns the audit attributes for an allowed push.
+ * Refuse a Git push that changes the default branch, changes a ref outside
+ * `refs/heads/`, or moves an existing branch to a commit that GitHub already
+ * has. Returns the audit attributes for an allowed push.
  */
 export async function assertGitHubPushAllowed(input: {
   cache: PluginCache;
@@ -90,6 +102,29 @@ export async function assertGitHubPushAllowed(input: {
     deny(
       `The runtime never ${defaultUpdate.deletes ? "deletes" : "pushes to"} the default branch (${defaultBranch}) of ${input.repository.owner}/${input.repository.name}.`,
       { auditAttributes: attributes },
+    );
+  }
+  // An existing branch moved to a commit that GitHub already has, such as
+  // old main, can be left with no commits ahead of a pull request's base.
+  // GitHub then closes the pull request. The pack shows this without a
+  // GitHub request: Git sends no objects that the remote already has.
+  const movedToExisting =
+    input.gitPush.packObjectCount === 0
+      ? updates.filter((update) => !update.creates && !update.deletes)
+      : [];
+  if (movedToExisting.length > 0) {
+    const branches = movedToExisting.map((update) =>
+      update.ref.slice("refs/heads/".length),
+    );
+    deny(
+      `The runtime refused to move ${branches.join(", ")} to a commit that GitHub already has, such as an older commit or another branch's commit. If the branch has an open pull request, GitHub would close it when the branch has no commits ahead of its base.`,
+      {
+        auditAttributes: {
+          ...attributes,
+          "app.github.moved_to_existing_commit": true,
+        },
+        guidance: EXISTING_COMMIT_GUIDANCE,
+      },
     );
   }
   return attributes;

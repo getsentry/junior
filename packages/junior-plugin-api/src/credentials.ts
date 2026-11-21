@@ -170,6 +170,8 @@ export type PluginGrant = z.output<typeof pluginGrantSchema>;
 
 /** One ref update command in a Git push. */
 export interface PluginGitRefUpdate {
+  /** True when the push creates the ref: its old object id is all zeros. */
+  creates: boolean;
   /** True when the push deletes the ref: its new object id is all zeros. */
   deletes: boolean;
   /** Full ref name, such as `refs/heads/main`. */
@@ -185,11 +187,20 @@ export type PluginGitPushUnreadableReason =
 
 /**
  * Ref updates of a Git smart HTTP push (`git-receive-pack`), which the host
- * reads from the body before the pack data. An `unreadable` push changes
- * refs that the host cannot name.
+ * reads from the body before the pack data, and the object count of the
+ * pack. An `unreadable` push changes refs that the host cannot name.
  */
 export type PluginGitPush =
-  | { kind: "commands"; updates: PluginGitRefUpdate[] }
+  | {
+      kind: "commands";
+      /**
+       * Objects in the pack. Git sends only the objects that the remote does
+       * not have, so zero means the remote already has every commit that
+       * the push sets a ref to. Zero also when the push sends no pack.
+       */
+      packObjectCount: number;
+      updates: PluginGitRefUpdate[];
+    }
   | { kind: "unreadable"; reason: PluginGitPushUnreadableReason };
 
 /** One field that a GraphQL operation selects. */
