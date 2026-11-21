@@ -359,7 +359,7 @@ export function checkDatabaseTestFixtures(files) {
 }
 
 /** Check test harness, database fixture, and agent test rules. */
-export function run({ root, files }) {
+export async function run({ root, files }) {
   const collect = (roots, pattern) =>
     readRepoFiles(
       root,
@@ -375,11 +375,11 @@ export function run({ root, files }) {
     fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
   );
   const errors = [
-    ...checkIntegrationTestArchitecture(tests(TEST_ROOTS)),
-    ...checkDatabaseTestFixtures(tests(DATABASE_TEST_ROOTS)),
-    ...checkAgentTestArchitecture(sources(AGENT_TEST_ROOTS), baseline),
+    ...checkIntegrationTestArchitecture(await tests(TEST_ROOTS)),
+    ...checkDatabaseTestFixtures(await tests(DATABASE_TEST_ROOTS)),
+    ...checkAgentTestArchitecture(await sources(AGENT_TEST_ROOTS), baseline),
     ...checkAgentTestArchitecture(
-      sources(SOURCE_ROOTS),
+      await sources(SOURCE_ROOTS),
       baseline,
       SOURCE_RULES,
     ),

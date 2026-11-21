@@ -6,6 +6,7 @@ import {
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
+  inboxSnoozeWakesClearSchema,
   inboxItemActionSchema,
   inboxItemCountSchema,
   inboxItemListSchema,
@@ -15,6 +16,7 @@ import {
 import { NOW_MS } from "./fixtures";
 import {
   actOnMockInboxItem,
+  openMockWakes,
   readMockInboxItem,
   readMockInboxItemCounts,
   readMockInboxItems,
@@ -106,6 +108,12 @@ export function addMockInboxItemRoutes(
     return jsonResponse(inboxSnoozeSchema, snoozeMockRow(NOW_MS, body.data), {
       status: 201,
     });
+  });
+  app.delete("/inbox/snoozes/wakes", async (c) => {
+    const body = inboxSnoozeWakesClearSchema.safeParse(await c.req.json());
+    if (!body.success) return errorResponse("Invalid items.", 400);
+    openMockWakes(body.data.inboxItemIds);
+    return new Response(null, { status: 204 });
   });
   app.delete("/inbox/snoozes", async (c) => {
     const body = inboxSnoozeSubjectSchema.safeParse(await c.req.json());

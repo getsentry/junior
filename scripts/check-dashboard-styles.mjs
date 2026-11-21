@@ -234,7 +234,7 @@ export function findUnknownDashboardColorTokens(files, tokens) {
 }
 
 /** Check dashboard source for raw colors, type sizes, and viewport padding. */
-export function run({ root, files: repoFiles }) {
+export async function run({ root, files: repoFiles }) {
   const read = (directory) =>
     readRepoFiles(
       root,
@@ -243,8 +243,8 @@ export function run({ root, files: repoFiles }) {
           file.startsWith(`${directory}/`) && /\.(?:ts|tsx)$/.test(file),
       ),
     );
-  const files = read("packages/junior-dashboard/src/client");
-  const testFiles = read("packages/junior-dashboard/tests");
+  const files = await read("packages/junior-dashboard/src/client");
+  const testFiles = await read("packages/junior-dashboard/tests");
   const tokens = dashboardColorTokens(
     fs.readFileSync(
       path.join(root, "packages/junior-dashboard/src/tailwind.css"),

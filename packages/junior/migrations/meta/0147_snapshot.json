@@ -1,5 +1,5 @@
 {
-  "id": "b1b1209c-2b0e-4765-a2a5-051fc87c9e0d",
+  "id": "394b8a22-6d6d-4b95-9e49-5667cc140029",
   "prevId": "0467c4ef-64d2-4496-9691-573866872db4",
   "version": "7",
   "dialect": "postgresql",
@@ -4721,7 +4721,7 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%' or \"junior_inbox_items\".\"dedupe_key\" like 'todo:%') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",
@@ -4880,6 +4880,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "wake_reason": {
+          "name": "wake_reason",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

@@ -7,6 +7,9 @@ import { parseAllDocuments } from "yaml";
 const RULES_DIRECTORY = "ast-grep/rules";
 const execFileAsync = promisify(execFile);
 
+// `ast-grep:lint` runs this check after the ast-grep scan.
+export const lint = false;
+
 // ast-grep reports unused inline `ast-grep-ignore` comments, but not a
 // rule-level `ignores` glob that exempts nothing. Without this check, a stale
 // allowlist entry stays forever and reads as a place to add more files.

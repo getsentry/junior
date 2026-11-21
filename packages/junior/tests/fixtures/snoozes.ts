@@ -219,13 +219,6 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
-    /** Take one person action on an Inbox item, such as Done. */
-    act: (id: string, action: string) =>
-      app.request(`http://localhost/api/inbox-items/${id}/actions`, {
-        body: JSON.stringify({ action }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      }),
     /** Read one API path, with these request headers. */
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),
@@ -261,6 +254,29 @@ export function api(fixture: ConversationFixture, viewer: User) {
         }
       ).items.map((item) => item.subject),
     unsnooze: (subject: InboxSnoozeSubjectBody) => snoozes("DELETE", subject),
+    /** Why each item in the viewer's Inbox woke, by title. */
+    wakes: async () =>
+      Object.fromEntries(
+        (
+          (await json("/inbox-items?for=viewer")) as {
+            items: { title: string; wake?: unknown }[];
+          }
+        ).items.map((item) => [item.title, item.wake]),
+      ),
+    /** Open these items, so they no longer say why they woke. */
+    openWoken: (inboxItemIds: string[]) =>
+      app.request("http://localhost/api/inbox/snoozes/wakes", {
+        body: JSON.stringify({ inboxItemIds }),
+        headers: { "content-type": "application/json" },
+        method: "DELETE",
+      }),
+    /** Take, answer, or dismiss an item. */
+    act: (inboxItemId: string, body: unknown) =>
+      app.request(`http://localhost/api/inbox-items/${inboxItemId}/actions`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (

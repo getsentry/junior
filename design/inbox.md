@@ -86,6 +86,11 @@ how the dashboard groups and acts on its rows.
 - When the agent closes, drops, or removes the To-do, or gives it to
   itself or a child agent, its item closes. A To-do that goes to another
   person takes its item along. A To-do that opens again gets a new item.
+- When a time or an Event wakes a snooze, the item's Inbox row and card
+  say why in a muted line, such as "Woke: getsentry/junior#12 is merged".
+  Only the person whose snooze woke sees it. It goes when they open the
+  item from the Inbox, act on it, or snooze it again. A Wake that they
+  pick, and a trigger that resolves the item, show nothing.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.
