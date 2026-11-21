@@ -483,12 +483,14 @@ export {
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
+  inboxSnoozeWakesClearSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
   InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
+  InboxSnoozeWake,
 } from "./schema/inbox-snooze";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

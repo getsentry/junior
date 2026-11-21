@@ -209,7 +209,9 @@ describe("conversation watches API", () => {
         namespace: "slack",
         resourceType: "channel",
       },
-      { nowMs: NOW_MS },
+      // The timer reads the test clock, which restarts for each test, so
+      // NOW_MS can be before or after it. Create the event Watch after it.
+      { nowMs: timer.createdAtMs + 1_000 },
     );
     const other = await createWatch(
       {

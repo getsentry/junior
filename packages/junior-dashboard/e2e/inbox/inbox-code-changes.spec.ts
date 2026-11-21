@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { mockInboxItems, prMerge, prReview } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
@@ -101,28 +101,49 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, { open: [breakingReview] });
     await page.goto(`${dashboard.baseURL}/`);
     const review = row(page, "Pin the release train");
-    // Closed, the row's hover actions open the pull request before the
-    // Conversation.
+    // Closed, the row's hover actions end with the pull request, after
+    // Dismiss and Snooze.
     await review.locator("[data-inbox-head]").hover();
-    const hoverLinks = review.locator('[data-inbox-slot="meta"] a');
-    await expect(hoverLinks.first()).toHaveAccessibleName("Review on GitHub");
-    await expect(hoverLinks.first()).toHaveAttribute(
-      "href",
-      breakingReview.subject.url,
+    const hover = await actionNames(
+      review.locator('[data-inbox-slot="meta"] :is(a, button)'),
     );
-    // A click still expands the row. Its first action opens the pull
-    // request in a new tab.
+    expect(hover[0]).toBe("Dismiss");
+    expect(hover.at(-1)).toBe("Review on GitHub");
+    expect(hover).not.toContain("Open conversation");
+    await expect(
+      review.locator('[data-inbox-slot="meta"] a').last(),
+    ).toHaveAttribute("href", breakingReview.subject.url);
+    // A click still expands the row. Its main action opens the pull
+    // request in a new tab, at the end of the line: Dismiss, Snooze, the
+    // Conversation, then Review.
     await review.locator("[data-inbox-head]").click();
     await expect(review).toHaveAttribute("data-expanded", "true");
     const open = review.getByRole("link", { name: "Review on GitHub" });
     await expect(open).toHaveAttribute("href", breakingReview.subject.url);
     await expect(open).toHaveAttribute("target", "_blank");
-    const actions = await review
-      .locator("[data-inbox-card] :is(a, button)")
-      .allInnerTexts();
-    expect(actions.indexOf("Review")).toBeLessThan(
-      actions.indexOf("Open conversation"),
+    const conversation = review.getByRole("link", {
+      name: "Open conversation",
+    });
+    await expect(conversation).toHaveText("Conversation");
+    const actions = await actionNames(
+      review.locator("[data-inbox-card] :is(a, button)"),
     );
+    const order = ["Dismiss", "Open conversation", "Review on GitHub"].map(
+      (name) => actions.indexOf(name),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order[0]).toBeGreaterThanOrEqual(0);
+    expect(actions.at(-1)).toBe("Review on GitHub");
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });
   });
 });
+
+/** The accessible names of `actions`, in page order. */
+async function actionNames(actions: Locator): Promise<string[]> {
+  return actions.evaluateAll((nodes) =>
+    nodes.map(
+      (node) =>
+        node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+    ),
+  );
+}
