@@ -60,9 +60,9 @@ export async function markConversationsStopped(
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   const ids = [...conversationIds];
   const db = getSqlExecutor().db();
-  // Only a Conversation that was not stopped reports a stop. A retried or
-  // cascaded stop moves `stoppedAt` later but does not wake its Watches again.
-  const stopped = await db
+  // One statement claims each unstopped Conversation, so of concurrent stops
+  // only the first reports it.
+  const claimed = await db
     .update(juniorConversations)
     .set({ stoppedAt, detailVersion: nextDetailVersion })
     .where(
@@ -72,6 +72,30 @@ export async function markConversationsStopped(
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
+  // A retry of a stop that failed before its report finds its own claim, and
+  // reports it again. The Event key holds the stop time, so it delivers once.
+  const retried = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        eq(juniorConversations.stoppedAt, stoppedAt),
+      ),
+    );
+  const reported = new Set(
+    [...claimed, ...retried].map(({ conversationId }) => conversationId),
+  );
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await mapBounded([...reported], (conversationId) =>
+    publishConversationStatus(
+      conversationId,
+      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
+      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+    ),
+  );
+  // A retried or cascaded stop of a stopped Conversation moves `stoppedAt`
+  // later. It reported nothing above, because the stop time differs.
   await db
     .update(juniorConversations)
     .set({ stoppedAt, detailVersion: nextDetailVersion })
@@ -81,14 +105,6 @@ export async function markConversationsStopped(
         lt(juniorConversations.stoppedAt, stoppedAt),
       ),
     );
-  const queue = options.queue ?? getVercelConversationWorkQueue();
-  await mapBounded(stopped, ({ conversationId }) =>
-    publishConversationStatus(
-      conversationId,
-      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
-      { nowMs: stoppedAt.getTime(), queue, state: options.state },
-    ),
-  );
 }
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
