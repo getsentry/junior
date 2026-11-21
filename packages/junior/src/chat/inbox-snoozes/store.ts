@@ -163,9 +163,7 @@ export async function snoozeInboxItems(
  */
 export async function unsnoozeInboxRow(
   db: JuniorDatabase,
-  input: {
-    rootConversationId: string;
-    reviewItemId?: string;
+  input: ({ reviewItemId: string } | { rootConversationId: string }) & {
     userId: string;
   },
 ): Promise<void> {
@@ -173,7 +171,7 @@ export async function unsnoozeInboxRow(
     .select({ id: juniorReviewItems.id })
     .from(juniorReviewItems)
     .where(
-      input.reviewItemId
+      "reviewItemId" in input
         ? eq(juniorReviewItems.id, input.reviewItemId)
         : reviewItemInRow(input.rootConversationId),
     );

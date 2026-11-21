@@ -13,7 +13,6 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import {
   createHarness,
   type DescribeEvalOptions,
@@ -99,11 +98,7 @@ async function buildAgentTools(): Promise<AgentTools> {
   // createApp registers the plugins as a host does. The database client it
   // makes does not connect.
   await createApp({
-    plugins: defineJuniorPlugins([
-      githubPlugin(),
-      memoryPlugin(),
-      trackerPlugin,
-    ]),
+    plugins: defineJuniorPlugins([githubPlugin(), trackerPlugin]),
   });
   return createPiAgentTools(
     createTools(

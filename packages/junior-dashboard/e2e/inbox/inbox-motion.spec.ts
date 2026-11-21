@@ -207,13 +207,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       { ...prReview, createdAt: "2026-08-07T08:00:00.000Z" },
       {
         ...license,
-        addedByConversationId: "slack:CLICENSE:1770003600.000400",
+        owner: { id: "slack:CLICENSE:1770003600.000400", kind: "conversation" },
         rootConversationId: "slack:CLICENSE:1770003600.000400",
         createdAt: "2026-08-07T08:10:00.000Z",
       },
       {
         ...audit,
-        addedByConversationId: "slack:CAUDIT:1770003600.000500",
+        owner: { id: "slack:CAUDIT:1770003600.000500", kind: "conversation" },
         rootConversationId: "slack:CAUDIT:1770003600.000500",
         createdAt: "2026-08-07T08:20:00.000Z",
       },
@@ -313,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     const newer = {
       ...license,
-      addedByConversationId: "slack:CNEWER:1770003600.000600",
+      owner: { id: "slack:CNEWER:1770003600.000600", kind: "conversation" },
       rootConversationId: "slack:CNEWER:1770003600.000600",
       createdAt: "2026-08-07T08:30:00.000Z",
       id: "item-newer",

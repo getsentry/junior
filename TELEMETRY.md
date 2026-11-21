@@ -83,7 +83,7 @@ attributes. Nested logs and spans inherit them.
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
-| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `chat/memory/`                                                  |
 | Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
@@ -93,6 +93,7 @@ attributes. Nested logs and spans inherit them.
 | Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
+| Idle period outcomes or breaker      | metrics `cache_warming.idle_period.saved_usd` (`app.cache_warming.idle_outcome`), `cache_warming.breaker` (`app.cache_warming.breaker_event`) | `chat/cache-warming/savings.ts`, `chat/cache-warming/request.ts` |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
@@ -223,5 +224,6 @@ sort=-timestamp
 | `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>`          |
 | `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` or `SENTRY_SPOTLIGHT` is set |
 | `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                                 |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                               |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links, System page cache health | unset                                               |
+| `SENTRY_READ_TOKEN`         | System page cache health reads of the `SENTRY_DSN` project | unset                                     |
 | `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                         |

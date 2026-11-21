@@ -1,8 +1,9 @@
 import { ArrowUpRight, TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { AutomationListItem } from "@sentry/junior/api/schema";
 
-import { useAutomationExecutionsData } from "../api";
+import { useAutomationData, useAutomationExecutionsData } from "../api";
 import { FormNotice } from "../components/FormNotice";
 import { useConversationDensity } from "../conversations/conversationDensity";
 import { Button } from "../components/ui/button";
@@ -18,7 +19,6 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { formatRelativeTime } from "../time";
 import { fadeTextClass } from "../textFade";
 
@@ -52,14 +52,13 @@ function attentionStatus(automation: AutomationListItem): string {
 }
 
 /**
- * An Automation that needs attention, as an inbox row, on the same columns
- * as a Conversation row: its icon in the dot's place, then its title, its
- * status where the summary goes, and "Automation" with the ages. A click
- * expands it in place with its last run, the run's error when the status
- * gives no reason, and the actions that the Automation API supports. Only
- * the labelled buttons leave the inbox. A sweep never clears it; it leaves
- * when the Automation is fixed or resumed, or, in To do, when the viewer
- * dismisses or snoozes this alert.
+ * An Automation that needs attention, as a row of its own on the
+ * Automations page, on the same columns as a Conversation row: its icon in
+ * the dot's place, then its title, its status where the summary goes, and
+ * "Automation" with the ages. A click expands it in place with its
+ * attention details (`AutomationAttentionDetails`). It leaves when the
+ * Automation is fixed or resumed. In the Inbox, the Automation's alert is a
+ * Review item instead, with the same details.
  */
 export function InboxAutomationRow(props: {
   automation: AutomationListItem;
@@ -67,27 +66,14 @@ export function InboxAutomationRow(props: {
   /** Names the row for keys and focus. */
   rowKey: string;
   onToggle(): void;
-  /** In To do: Snooze and Dismiss, which hide the alert in this browser. */
-  putAway?: {
-    menuOpen: boolean;
-    onDismiss(): void;
-    onMenu(open: boolean): void;
-    onSnooze(untilMs: number): void;
-  };
+  /** Actions on the Automation's alert, such as Snooze and Dismiss. */
+  children?: ReactNode;
 }) {
-  const { putAway } = props;
   const { automation } = props;
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const status = attentionStatus(automation);
-  const problems =
-    automation.kind === "event" ? automation.trigger.problems : [];
-  const detail = automation.statusReason ?? problems[0];
-  const lastRun = lastRunLine(automation);
-  // The header says why the card is here. With no reason of its own, a
-  // failed or blocked run's error says it.
-  const why = useLastRunError(automation, props.expanded && !detail);
-  const resume = useAutomationLifecycle(automation, "resume");
+  const detail = attentionDetail(automation);
   const regionId = `inbox-automation-${automation.id}`;
   return (
     <li
@@ -148,79 +134,111 @@ export function InboxAutomationRow(props: {
           id={regionId}
           role="region"
         >
-          <dl className="m-0 grid gap-1.5">
-            {why ? (
-              <div className="flex min-w-0 gap-2">
-                <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
-                <dd className="m-0 min-w-0 text-dashboard-text">{why}</dd>
-              </div>
-            ) : null}
-            {problems.slice(automation.statusReason ? 0 : 1).map((problem) => (
-              <div className="flex min-w-0 gap-2" key={problem}>
-                <dt className="w-20 shrink-0 text-dashboard-text-muted">
-                  Trigger
-                </dt>
-                <dd className="m-0 min-w-0 text-dashboard-text">{problem}</dd>
-              </div>
-            ))}
-            <div className="flex min-w-0 gap-2">
-              <dt className="w-20 shrink-0 text-dashboard-text-muted">
-                Last run
-              </dt>
-              <dd className="m-0 min-w-0 text-dashboard-text">
-                {lastRun ?? "No runs yet"}
-              </dd>
-            </div>
-          </dl>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* The lifecycle API resumes a blocked Automation. Other
-                attention reasons need an edit. */}
-            {automation.status === "blocked" ? (
-              <Button
-                disabled={resume.isPending}
-                onClick={() => resume.mutate()}
-                variant="outline"
-              >
-                {resume.isPending ? "Resuming…" : "Resume"}
-              </Button>
-            ) : null}
-            {automation.lastConversationId ? (
-              <Link
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-dashboard-text no-underline hover:underline"
-                to={conversationPath(automation.lastConversationId)}
-              >
-                Open last run
-                <ArrowUpRight aria-hidden="true" size={14} />
-              </Link>
-            ) : null}
-            <Link
-              className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-dashboard-text no-underline hover:underline"
-              to={automationPath(automation.id, "edit")}
-            >
-              Open editor
-              <ArrowUpRight aria-hidden="true" size={14} />
-            </Link>
-            {putAway ? (
-              <>
-                <RowSnoozeButton
-                  onOpenChange={putAway.onMenu}
-                  onSnooze={putAway.onSnooze}
-                  open={putAway.menuOpen}
-                />
-                <RowDismissButton onClick={putAway.onDismiss} />
-              </>
-            ) : null}
-          </div>
-          {resume.error ? (
-            <FormNotice tone="error" title="Could not resume this automation.">
-              {resume.error instanceof DashboardApiError
-                ? (resume.error.apiError ?? "Try again.")
-                : resume.error.message}
-            </FormNotice>
-          ) : null}
+          <AutomationAttentionDetails automation={automation}>
+            {props.children}
+          </AutomationAttentionDetails>
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The Automation of an alert, read when the alert's card opens, with its
+ * attention details. Until it loads, the alert's own text says why.
+ */
+export function AutomationAlertDetails(props: { automationId: string }) {
+  const automation = useAutomationData(true, props.automationId).data;
+  return automation ? (
+    <AutomationAttentionDetails automation={automation} />
+  ) : null;
+}
+
+/**
+ * Why an Automation needs attention: its last run, the run's error when the
+ * status gives no reason, its trigger problems, and the actions that the
+ * Automation API supports. Only the labelled links leave the page.
+ */
+function AutomationAttentionDetails(props: {
+  automation: AutomationListItem;
+  children?: ReactNode;
+}) {
+  const { automation } = props;
+  const problems =
+    automation.kind === "event" ? automation.trigger.problems : [];
+  const lastRun = lastRunLine(automation);
+  // The header says why the card is here. With no reason of its own, a
+  // failed or blocked run's error says it.
+  const why = useLastRunError(automation, !attentionDetail(automation));
+  const resume = useAutomationLifecycle(automation, "resume");
+  return (
+    <>
+      <dl className="m-0 grid gap-1.5">
+        {why ? (
+          <div className="flex min-w-0 gap-2">
+            <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
+            <dd className="m-0 min-w-0 text-dashboard-text">{why}</dd>
+          </div>
+        ) : null}
+        {problems.slice(automation.statusReason ? 0 : 1).map((problem) => (
+          <div className="flex min-w-0 gap-2" key={problem}>
+            <dt className="w-20 shrink-0 text-dashboard-text-muted">Trigger</dt>
+            <dd className="m-0 min-w-0 text-dashboard-text">{problem}</dd>
+          </div>
+        ))}
+        <div className="flex min-w-0 gap-2">
+          <dt className="w-20 shrink-0 text-dashboard-text-muted">Last run</dt>
+          <dd className="m-0 min-w-0 text-dashboard-text">
+            {lastRun ?? "No runs yet"}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* The lifecycle API resumes a blocked Automation. Other attention
+            reasons need an edit. */}
+        {automation.status === "blocked" ? (
+          <Button
+            disabled={resume.isPending}
+            onClick={() => resume.mutate()}
+            variant="outline"
+          >
+            {resume.isPending ? "Resuming…" : "Resume"}
+          </Button>
+        ) : null}
+        {automation.lastConversationId ? (
+          <Link
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-dashboard-text no-underline hover:underline"
+            to={conversationPath(automation.lastConversationId)}
+          >
+            Open last run
+            <ArrowUpRight aria-hidden="true" size={14} />
+          </Link>
+        ) : null}
+        <Link
+          className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-dashboard-text no-underline hover:underline"
+          to={automationPath(automation.id, "edit")}
+        >
+          Open editor
+          <ArrowUpRight aria-hidden="true" size={14} />
+        </Link>
+        {props.children}
+      </div>
+      {resume.error ? (
+        <FormNotice tone="error" title="Could not resume this automation.">
+          {resume.error instanceof DashboardApiError
+            ? (resume.error.apiError ?? "Try again.")
+            : resume.error.message}
+        </FormNotice>
+      ) : null}
+    </>
+  );
+}
+
+/** The reason that the status line adds: the status reason or a trigger problem. */
+function attentionDetail(automation: AutomationListItem): string | undefined {
+  return (
+    automation.statusReason ??
+    (automation.kind === "event" ? automation.trigger.problems[0] : undefined)
   );
 }
 

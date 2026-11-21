@@ -201,7 +201,7 @@ private struct AutomationRow: View {
 
   var body: some View {
     Button {
-      app.path.append(.automation(automation.id))
+      app.path = [.automation(automation.id)]
     } label: {
       HStack(alignment: .center, spacing: 24) {
         VStack(alignment: .leading, spacing: 4) {
@@ -232,11 +232,16 @@ private struct AutomationRow: View {
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 12)
+      .background(selected ? Tokens.fillHover : .clear)
       .contentShape(Rectangle())
     }
     .buttonStyle(PressableStyle(radius: 0, pressedFill: Tokens.fillSoft))
     .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? .isSelected : [])
   }
+
+  /// Open beside the list.
+  private var selected: Bool { app.path.first == .automation(automation.id) }
 
   private var statusLine: String {
     switch automation.status {

@@ -20,7 +20,7 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import { reviewItemTitleText } from "./reviewItemFormat";
+import { itemConversationId, reviewItemTitleText } from "./reviewItemFormat";
 
 type UnsentAnswers = {
   conversationId: string;
@@ -71,7 +71,7 @@ export function useReportUnsentAnswer(
     item.status === "open" &&
     item.canAct &&
     !item.assignedToEveryone &&
-    item.addedByConversationId === context?.conversationId;
+    itemConversationId(item) === context?.conversationId;
   const title = reviewItemTitleText(item);
   useEffect(() => {
     if (!context || !closesOnReply || !unsent) return;

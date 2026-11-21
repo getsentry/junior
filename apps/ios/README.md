@@ -1,9 +1,9 @@
 # Junior for iOS
 
-A native SwiftUI client for Junior. It matches the mobile layout of the
-dashboard (the `classic` shell): Conversations, the Inbox, Automations, and the
-navigation drawer, in dark and light themes. It uses only Junior's public API,
-the MCP server at `/api/mcp`, and signs in with its OAuth flow.
+A native SwiftUI client for Junior, laid out like the dashboard (the `classic`
+shell): Conversations, the Inbox, Automations, and the drawer, in dark and light
+themes. On a phone it has the mobile layout; on an iPad, each list shows beside
+the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
 
 ## Layout
 
@@ -73,10 +73,11 @@ boots, and deletes the device that it created. To use a simulator that is
 already booted, set `JUNIOR_IOS_REUSE_UDID`; the script installs the app there,
 removes it at the end, and does not shut that simulator down.
 
-`xcbuild.sh` shares one compilation cache per machine
-(`~/Library/Caches/ios-agent-build.noindex`) and keeps DerivedData in this
-checkout (`.build.noindex`). Checkout paths are remapped out of cache keys, so
-a new worktree reuses compiled work.
+## Logs
+
+Logs use the subsystem `io.sentry.junior`. Message text shows only in a debugger.
+Stream with `log stream --level debug --predicate 'subsystem == "io.sentry.junior"'`,
+use Console.app with the iPhone connected, or use Settings › Copy logs.
 
 ## Launch arguments
 

@@ -211,4 +211,21 @@ describe("searchMcpTools", () => {
       searchMcpTools.execute!({ provider: "linear" }, {}),
     ).resolves.toMatchObject({ available_providers: [] });
   });
+
+  it("requires an intent with a provider", () => {
+    const searchMcpTools = createSearchMcpToolsTool(buildManager());
+
+    expect(() =>
+      searchMcpTools.prepareArguments({ provider: "demo", query: "issue" }),
+    ).toThrow("Pass intent with provider.");
+    expect(
+      searchMcpTools.prepareArguments({
+        provider: "demo",
+        intent: "file the bug in Demo",
+      }),
+    ).toEqual({ provider: "demo", intent: "file the bug in Demo" });
+    expect(searchMcpTools.prepareArguments({ query: "issue" })).toEqual({
+      query: "issue",
+    });
+  });
 });

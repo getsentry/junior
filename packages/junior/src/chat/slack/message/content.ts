@@ -6,7 +6,6 @@
  */
 import { SlackFormatConverter } from "@chat-adapter/slack";
 import { stringifyMarkdown, type Message } from "chat";
-import { isRecord } from "@/chat/coerce";
 import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { renderBlockText } from "@/chat/slack/message/blocks";
 import { SLACK_USER_MENTION_RE } from "@/chat/slack/mrkdwn";
@@ -101,7 +100,11 @@ function renderTopLevelText(
   if (
     Array.isArray(blocks) &&
     blocks.some(
-      (block: unknown) => isRecord(block) && block["type"] === "section",
+      (block: unknown) =>
+        typeof block === "object" &&
+        block !== null &&
+        "type" in block &&
+        block.type === "section",
     ) &&
     blockText
   ) {

@@ -2,6 +2,7 @@ import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
 import type { ComposerToken } from "./composerSkillToken";
+import { CONVERSATION_PATH } from "./conversationRoutes";
 
 /**
  * Something other than a person that a composer chip stands for. Its
@@ -100,7 +101,6 @@ export type ComposerTextPart =
 // same characters.
 const TOKEN =
   /<@([A-Z0-9]+)>|<#(C[A-Z0-9]+)\|([^<>|]+)>|<(https?:\/\/[^\s|<>]+)\|([^<>]+)>/g;
-const CONVERSATION_PATH = /^\/conversations\/[^/]+$/;
 const PULL_REQUEST_PATH = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/;
 
 /**

@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { onTestFinished } from "vitest";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -288,7 +288,7 @@ export async function insertReviewItem(args: {
   }
   const conversationId = await insertCreationThread(args.destination);
   const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [identity.userId],
     body: args.body,
@@ -319,7 +319,7 @@ export async function insertWebReviewItem(args: {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
   if (!user) throw new Error(`No User for ${args.viewerEmail}`);
   const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: args.conversationId,
+    owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [user.id],
     body: args.item.body,

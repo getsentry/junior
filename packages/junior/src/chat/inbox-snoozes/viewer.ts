@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { mapBounded } from "@/chat/fan-out";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   canActOnReviewItem,
@@ -23,14 +24,20 @@ import {
   unsnoozeInboxRow,
   type InboxSnoozeTriggerInput,
 } from "./store";
-import { snoozeSubjectResource } from "./subject";
+import {
+  snoozeSubjectResource,
+  viewerSnoozeResource,
+  type SnoozeResource,
+} from "./subject";
 import { scheduleInboxSnoozeTimer } from "./triggers";
 
-/** The Inbox row of a snooze: a root Conversation, or one item in it. */
-export interface InboxSnoozeSubject {
-  conversationId: string;
-  reviewItemId?: string;
-}
+/**
+ * The Inbox row of a snooze: a root Conversation, one item in it, or one
+ * item on its own.
+ */
+export type InboxSnoozeSubject =
+  | { conversationId: string; reviewItemId?: string }
+  | { conversationId?: undefined; reviewItemId: string };
 
 /** A snooze request that the viewer may not make, such as a past time. */
 export class InboxSnoozeInputError extends Error {}
@@ -77,20 +84,25 @@ interface RowItem {
 
 /**
  * Return the open Review items of the row that the viewer can see: the one
- * item, or every item in the root Conversation's row. A missing row and a
- * hidden row look the same.
+ * item, in the root Conversation's row when a root is given, or every item
+ * in the root Conversation's row. A missing row and a hidden row look the
+ * same.
  */
 async function visibleRowItems(
   user: User,
-  root: string,
+  root: string | undefined,
   reviewItemId: string | undefined,
 ): Promise<RowItem[]> {
   if (reviewItemId) {
     const item = await getReviewItem(getDb(), reviewItemId);
-    const roots = item ? await rootConversationIds(item.conversationIds) : [];
+    const inRow =
+      root === undefined ||
+      (item ? await rootConversationIds(item.conversationIds) : []).includes(
+        root,
+      );
     if (
       item?.status === "open" &&
-      roots.includes(root) &&
+      inRow &&
       (await canUserReadReviewItem(item, user))
     ) {
       return [
@@ -103,6 +115,7 @@ async function visibleRowItems(
     }
     return [];
   }
+  if (!root) return [];
   const reader = await reviewItemReaderForUserInConversation(user, root);
   return getDb()
     .select({
@@ -121,31 +134,65 @@ async function visibleRowItems(
 }
 
 /**
- * An Event on each snoozed item's subject that ends its snooze: `wake`
- * shows the item again, and `resolve` dismisses it.
+ * An Event that ends a snooze: `wake` shows the item again, and `resolve`
+ * dismisses it. It is on the page at `resourceUrl`, or on each item's
+ * subject.
  */
 interface ViewerSnoozeTrigger {
   eventType: string;
   outcome: "wake" | "resolve";
+  resourceUrl?: string;
 }
 
 /**
- * Aim each trigger at the resource of the item's subject. The item names
- * the resource, so a viewer cannot wait on a resource that no item they
- * see names. A `resolve` dismisses the item, so it needs a viewer who can
- * dismiss it. Returns undefined when a trigger does not apply to the item.
+ * Read the resource of each page that the triggers name. The viewer must
+ * be allowed to see each one, so a snooze cannot learn about a page that
+ * they cannot see.
  */
-function subjectTriggers(
+async function namedResources(
+  user: User,
+  triggers: readonly ViewerSnoozeTrigger[],
+): Promise<Map<string, SnoozeResource>> {
+  const urls = [
+    ...new Set(triggers.flatMap((trigger) => trigger.resourceUrl ?? [])),
+  ];
+  const catalog = getEventCatalog();
+  const resources = await mapBounded(urls, (url) =>
+    viewerSnoozeResource(user, catalog, url),
+  );
+  const named = new Map<string, SnoozeResource>();
+  for (const [index, url] of urls.entries()) {
+    const resource = resources[index];
+    if (!resource) {
+      throw new InboxSnoozeInputError(`A snooze cannot wait on ${url}.`);
+    }
+    named.set(url, resource);
+  }
+  return named;
+}
+
+/**
+ * Aim each trigger at its named resource, or at the resource of the item's
+ * subject. A viewer waits on the subject without a check, as the item
+ * already names it. A `resolve` dismisses the item, so it needs a viewer
+ * who can dismiss it. Returns undefined when a trigger does not apply to
+ * the item.
+ */
+function itemTriggers(
   item: RowItem,
   triggers: readonly ViewerSnoozeTrigger[],
+  named: ReadonlyMap<string, SnoozeResource>,
 ): InboxSnoozeTriggerInput[] | undefined {
-  const resource =
+  const subject =
     item.subjectUrl &&
     snoozeSubjectResource(getEventCatalog(), item.subjectUrl);
-  if (!resource) return triggers.length > 0 ? undefined : [];
   const aimed: InboxSnoozeTriggerInput[] = [];
   for (const trigger of triggers) {
+    const resource = trigger.resourceUrl
+      ? named.get(trigger.resourceUrl)
+      : subject;
     if (
+      !resource ||
       !resource.events.includes(trigger.eventType) ||
       (trigger.outcome === "resolve" && !item.canAct)
     ) {
@@ -170,14 +217,15 @@ function subjectTriggers(
 function itemsWithTriggers(
   items: readonly RowItem[],
   triggers: readonly ViewerSnoozeTrigger[],
+  named: ReadonlyMap<string, SnoozeResource>,
 ): { item: RowItem; triggers: InboxSnoozeTriggerInput[] }[] {
   const taken = items.flatMap((item) => {
-    const aimed = subjectTriggers(item, triggers);
+    const aimed = itemTriggers(item, triggers, named);
     return aimed ? [{ item, triggers: aimed }] : [];
   });
   if (taken.length === 0) {
     throw new InboxSnoozeInputError(
-      "No item in the row has a subject with these Events that the viewer can act on.",
+      "No item in the row takes these Events from this viewer.",
     );
   }
   return taken;
@@ -185,8 +233,8 @@ function itemsWithTriggers(
 
 /**
  * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
- * or until one of `triggers` fires on an item's subject, whichever is
- * first. Each item gets its own snooze, which replaces the viewer's
+ * or until one of `triggers` fires on an item's subject or on a page that
+ * the viewer names, whichever is first. Each item gets its own snooze, which replaces the viewer's
  * earlier one; a later item in the row shows by itself. Returns the
  * snoozed items.
  */
@@ -206,14 +254,24 @@ export async function createViewerSnooze(
   if (wakeAtMs !== undefined && wakeAtMs <= nowMs) {
     throw new InboxSnoozeInputError("The wake time must be in the future.");
   }
-  const root = await rootConversationId(input.subject.conversationId);
-  const items = root
-    ? await visibleRowItems(user, root, input.subject.reviewItemId)
-    : [];
-  if (!root || items.length === 0) {
+  const { conversationId, reviewItemId } = input.subject;
+  const root =
+    conversationId === undefined
+      ? undefined
+      : await rootConversationId(conversationId);
+  const items =
+    conversationId === undefined || root
+      ? await visibleRowItems(user, root, reviewItemId)
+      : [];
+  if (items.length === 0) {
     throw new InboxRowNotFoundError("Inbox row was not found.");
   }
-  const snoozed = itemsWithTriggers(items, input.triggers ?? []);
+  const triggers = input.triggers ?? [];
+  const snoozed = itemsWithTriggers(
+    items,
+    triggers,
+    await namedResources(user, triggers),
+  );
   const timerId =
     wakeAtMs === undefined ? undefined : `inbox-snooze:${randomUUID()}`;
   // Add the timer before the snoozes replace the viewer's earlier ones, so
@@ -249,13 +307,17 @@ export async function unsnoozeViewerRow(
   user: User,
   subject: InboxSnoozeSubject,
 ): Promise<void> {
-  const root = await rootConversationId(subject.conversationId);
+  // One item wakes by its id alone. A root Conversation's row wakes as a
+  // whole.
+  const { conversationId, reviewItemId } = subject;
+  if (reviewItemId) {
+    await unsnoozeInboxRow(getDb(), { reviewItemId, userId: user.id });
+    return;
+  }
+  const root = conversationId && (await rootConversationId(conversationId));
   if (!root) return;
   await unsnoozeInboxRow(getDb(), {
     rootConversationId: root,
-    ...(subject.reviewItemId
-      ? { reviewItemId: subject.reviewItemId }
-      : undefined),
     userId: user.id,
   });
 }

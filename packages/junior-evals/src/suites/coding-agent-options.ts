@@ -5,8 +5,7 @@
  */
 import { defineJuniorPlugins, type JuniorAppOptions } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 
 export default {
-  plugins: defineJuniorPlugins([githubPlugin(), memoryPlugin()]),
+  plugins: defineJuniorPlugins([githubPlugin()]),
 } satisfies JuniorAppOptions;

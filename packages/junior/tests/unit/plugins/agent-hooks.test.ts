@@ -187,6 +187,12 @@ function fakeSandbox(
   };
 }
 
+/** Operational reports of the test plugins, without the core Memory report. */
+async function testPluginReports() {
+  const reports = await getPluginOperationalReports(123);
+  return reports.filter((report) => report.pluginName !== "memory");
+}
+
 describe("agent plugin hooks", () => {
   beforeEach(() => {
     logWarnMock.mockReset();
@@ -443,9 +449,9 @@ describe("agent plugin hooks", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes",
         },
         hooks: {
           userPrompt() {
@@ -471,7 +477,7 @@ describe("agent plugin hooks", () => {
       ).resolves.toEqual([
         {
           id: "userPrompt:0",
-          pluginName: "memory",
+          pluginName: "notes",
           text: "Use pnpm.",
           context: {
             content: {
@@ -479,7 +485,7 @@ describe("agent plugin hooks", () => {
             },
             kind: "recall",
             loadedAtMs: expect.any(Number),
-            pluginName: "memory",
+            pluginName: "notes",
             version: 1,
           },
         },
@@ -1456,7 +1462,9 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const routes = getPluginApiRoutes();
+      const routes = getPluginApiRoutes().filter(
+        (route) => route.pluginName !== "memory",
+      );
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1574,7 +1582,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
@@ -1672,7 +1680,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",

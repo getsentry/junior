@@ -1,5 +1,6 @@
 import JuniorKit
 import SwiftUI
+import UIKit
 
 /// Settings (`SettingsPage.tsx` General): the theme, done Conversations, and
 /// the Junior this app is signed in to.
@@ -7,6 +8,7 @@ struct SettingsScreen: View {
   @Environment(AppModel.self) private var app
   @State private var archiving = false
   @State private var archiveResult: String?
+  @State private var logsResult: String?
 
   var body: some View {
     @Bindable var app = app
@@ -47,8 +49,16 @@ struct SettingsScreen: View {
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("sign-out")
           }
+          card("Logs", description: "Copy this launch's logs for a bug report. Message text is left out.") {
+            Button("Copy logs", action: copyLogs)
+              .buttonStyle(.dashboard(.outline))
+            if let logsResult {
+              Text(logsResult).type(.xs).foregroundStyle(Tokens.textMuted)
+            }
+          }
         }
         .padding(16)
+        .readableWidth()
       }
     }
     .background(Tokens.bg)
@@ -68,6 +78,21 @@ struct SettingsScreen: View {
       } catch {
         archiveResult = (error as? JuniorAPIError)?.localizedDescription ?? "Could not archive."
       }
+    }
+  }
+
+  private func copyLogs() {
+    do {
+      let lines = try recentLogLines()
+      let info = Bundle.main.infoDictionary
+      let header = [
+        "Junior iOS \(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))",
+        "Server \(app.server.baseURL.absoluteString), junior \(app.serverVersion ?? "unknown")",
+      ]
+      UIPasteboard.general.string = (header + lines).joined(separator: "\n")
+      logsResult = lines.count == 1 ? "Copied 1 line." : "Copied \(lines.count) lines."
+    } catch {
+      logsResult = "Could not read the logs. \(error.localizedDescription)"
     }
   }
 
