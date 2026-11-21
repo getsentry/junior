@@ -17,6 +17,7 @@ import {
 import { automationReport } from "./automation-fixture";
 import { mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { pickOption } from "../pick-option";
 
 // The open row. Every row has its own quick Snooze, so scope to this one.
 const openRowOf = (page: Page) =>
@@ -32,11 +33,7 @@ async function pickEvent(page: Page, index: number, phrase: string) {
     .getByRole("combobox", { name: "Event" })
     .nth(index)
     .click();
-  const option = page.getByRole("option", { exact: true, name: phrase });
-  await option.click();
-  // The options close with a transition. A press on the next Event select
-  // before it ends does not open that select.
-  await expect(option).toBeHidden();
+  await pickOption(page.getByRole("option", { exact: true, name: phrase }));
 }
 
 // The next snooze that the page saves.
@@ -494,7 +491,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       lightTheme: true,
       view: "desktop",
     });
-    await found.click();
+    await pickOption(found);
     await pickEvent(page, 0, "is merged");
     await expect(
       dialog.getByRole("group", {
@@ -550,13 +547,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page
       .getByPlaceholder("Search pull requests or paste a link")
       .fill(issue);
-    await page.getByRole("option", { name: issue }).click();
+    await pickOption(page.getByRole("option", { name: issue }));
     // The second condition offers the issue's Events.
     await dialog.getByRole("combobox", { name: "Event" }).nth(1).click();
     await expect(
       page.getByRole("option", { exact: true, name: "is merged" }),
     ).toHaveCount(0);
-    await page.getByRole("option", { exact: true, name: "is closed" }).click();
+    await pickOption(
+      page.getByRole("option", { exact: true, name: "is closed" }),
+    );
     await expect(
       dialog.getByRole("group", { name: "When the issue is closed" }),
     ).toBeVisible();
@@ -603,7 +602,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The mock viewer cannot see this repository.
     const hidden = "https://github.com/acme/private/pull/1";
     await search.fill(hidden);
-    await page.getByRole("option", { name: hidden }).click();
+    await pickOption(page.getByRole("option", { name: hidden }));
     await expect(
       dialog.getByText("You cannot snooze on this link."),
     ).toBeVisible();
