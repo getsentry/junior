@@ -10,6 +10,13 @@ async function openConversation(page: Page, baseURL: string) {
   await page.goto(
     `${baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
+  // The transcript shows its messages before the rows of its Inbox items,
+  // and each row that shows moves the messages. A card trigger that moves
+  // away from a still pointer does not open. The answered question's row
+  // shows last, so hover only after it shows.
+  await expect(
+    page.getByRole("region", { name: "Asked Pick the canary region" }),
+  ).toContainText("Answered by");
 }
 
 function personCard(page: Page, name: string) {
@@ -172,7 +179,7 @@ test("a person card says when its activity fails to load", async ({
   ).toHaveCount(0);
 });
 
-test("a raw Slack id in a Review item question shows the person", async ({
+test("a raw Slack id in an Inbox item question shows the person", async ({
   dashboard,
   page,
 }) => {

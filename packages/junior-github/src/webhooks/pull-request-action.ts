@@ -27,12 +27,14 @@
  * only through the requester's linked GitHub account.
  */
 import type {
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
-  PluginReviewItems,
+  PluginInboxItems,
+  InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
+import { loadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
@@ -101,7 +103,7 @@ function actionDedupeKey(target: GitHubPullRequestTarget): string {
 }
 
 async function closeLegacyItems(
-  items: PluginReviewItems,
+  items: PluginInboxItems,
   name: string,
 ): Promise<void> {
   await Promise.all(
@@ -355,7 +357,7 @@ function closeReason(
 }
 
 async function showAction(
-  items: PluginReviewItems,
+  items: PluginInboxItems,
   args: {
     action: GitHubPullRequestAction | undefined;
     dedupeKey: string;
@@ -364,6 +366,7 @@ async function showAction(
     previous: GitHubPullRequestAction | undefined;
     reason: ReviewAgainReason | undefined;
     state: GitHubPullRequestMergeState;
+    titleParts: InboxItemSubjectTitleParts | undefined;
   },
 ): Promise<void> {
   const { action, number, state } = args;
@@ -383,6 +386,7 @@ async function showAction(
       subject: {
         id: state.url,
         title: `${state.title} (#${number})`,
+        ...(args.titleParts ? { titleParts: args.titleParts } : undefined),
         url: state.url,
       },
       title:
@@ -409,7 +413,7 @@ async function showAction(
 export async function closeEndedGitHubPullRequestItems(args: {
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: EndedState;
   target: GitHubPullRequestTarget;
 }): Promise<void> {
@@ -422,7 +426,7 @@ export async function closeEndedGitHubPullRequestItems(args: {
       })
     ).get(target.number);
     if (!opener?.conversationId) return;
-    const items = args.reviewItems.forConversation(opener.conversationId);
+    const items = args.inboxItems.forConversation(opener.conversationId);
     const reason = ENDED_REASONS[args.state];
     await Promise.all([
       items.close({ dedupeKey: actionDedupeKey(target), ...reason }),
@@ -472,7 +476,7 @@ async function syncOne(
       | ((identityId: string) => Promise<string | undefined>)
       | undefined;
     log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-    reviewItems: PluginConversationReviewItems;
+    inboxItems: PluginConversationInboxItems;
   },
   target: GitHubPullRequestActionTarget,
 ): Promise<void> {
@@ -485,7 +489,7 @@ async function syncOne(
   // Only a pull request that a person asked Junior to open has a requester
   // and a Conversation for the item.
   if (!opener?.conversationId) return;
-  const items = args.reviewItems.forConversation(opener.conversationId);
+  const items = args.inboxItems.forConversation(opener.conversationId);
   const name = itemName(target);
   const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
@@ -546,6 +550,16 @@ async function syncOne(
         previous,
         reason: next.reason,
         state,
+        titleParts: next.action
+          ? await loadGitHubTitleParts(
+              args.env,
+              {
+                repositoryFullName: target.repositoryFullName,
+                title: state.title,
+              },
+              args.log,
+            )
+          : undefined,
       });
       if (
         next.reason &&
@@ -611,7 +625,7 @@ export async function syncGitHubPullRequestActions(args: {
     | ((identityId: string) => Promise<string | undefined>)
     | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   targets: GitHubPullRequestActionTarget[];
 }): Promise<void> {
   await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(

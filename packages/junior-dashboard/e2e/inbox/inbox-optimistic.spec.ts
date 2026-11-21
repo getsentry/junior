@@ -6,7 +6,7 @@ import {
   conversationId,
   digest,
   license,
-  mockReviewItems,
+  mockInboxItems,
   pinChecks,
   pinReview,
   prReview,
@@ -57,7 +57,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
     const sent: string[] = [];
-    await page.route("**/api/review-items/*/actions", async (route) => {
+    await page.route("**/api/inbox-items/*/actions", async (route) => {
       sent.push(new URL(route.request().url()).pathname.split("/").at(-2)!);
       await held;
       await route.fallback();
@@ -69,14 +69,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     const actions = await holdActions(page);
     await page.goto(`${dashboard.baseURL}/`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
-    // A button answer.
+    // A button answer: a click picks, and Send sends.
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Roll out" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, form!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, buttons!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 3 waiting");
@@ -111,7 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [plain!.id];
-    const done = await mockReviewItems(page, {
+    const done = await mockInboxItems(page, {
       failActions,
       open: [...asks],
     });
@@ -146,7 +149,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [form!.id, buttons!.id];
-    const done = await mockReviewItems(page, { failActions, open: [...asks] });
+    const done = await mockInboxItems(page, { failActions, open: [...asks] });
     await page.goto(`${dashboard.baseURL}/`);
 
     // The viewer opens another row before the failure lands, so the row
@@ -154,7 +157,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let fail = () => {};
     const failing = new Promise<void>((resolve) => (fail = resolve));
     await page.route(
-      `**/api/review-items/${buttons!.id}/actions`,
+      `**/api/inbox-items/${buttons!.id}/actions`,
       async (route) => {
         await failing;
         await route.fallback();
@@ -162,6 +165,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Hold" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, buttons!)).toHaveCount(0);
     await open(page, plain!);
     fail();
@@ -214,7 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     await page.goto(`${dashboard.baseURL}/`);
     // Slow the leave motion, so the test sees the next row open before the
     // row that leaves is gone.
@@ -258,7 +264,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     let fails = true;
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}/pin`,
@@ -295,11 +301,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, digest] });
+    await mockInboxItems(page, { open: [license, digest] });
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${digest.id}/actions`,
+      `**/api/inbox-items/${digest.id}/actions`,
       async (route) => {
         sent.push(digest.id);
         await (fails
@@ -335,13 +341,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinChecks] });
+    await mockInboxItems(page, { open: [pinReview, pinChecks] });
     let answer = () => {};
     const answered = new Promise<void>((resolve) => (answer = resolve));
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${pinChecks.id}/actions`,
+      `**/api/inbox-items/${pinChecks.id}/actions`,
       async (route) => {
         sent.push(pinChecks.id);
         if (!fails) return route.fallback();

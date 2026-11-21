@@ -1002,6 +1002,48 @@
       "when": 1795201134126,
       "tag": "0142_memory_core_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1795218746587,
+      "tag": "0143_todos",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1795249396921,
+      "tag": "0144_inbox_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1795283811414,
+      "tag": "0145_todo_changed_by_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1795286127229,
+      "tag": "0146_inbox_item_subject_title_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795290103913,
+      "tag": "0147_inbox_snooze_wake_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1795299840612,
+      "tag": "0148_authorization_request_index",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { pasteText } from "./paste-text";
+import { pickOption } from "./pick-option";
 
 // A Thread the viewer takes part in. It has a nested Thread and two files.
 const THREAD_ID = "junior:internal:dashboard-qa:thread";
@@ -83,7 +85,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   const files = mentions.getByRole("group", { name: "Files" });
   await expect(files.getByRole("option")).toHaveText([/pinned-rows\.txt/]);
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
-  await files.getByRole("option").click();
+  await pickOption(files.getByRole("option"));
   await expect(composer.locator("[data-reference='file']")).toHaveText(
     "pinned-rows.txt",
   );
@@ -262,17 +264,7 @@ test("pasted references become chips, and other links stay text", async ({
   const composer = await openThread(page, dashboard.baseURL);
   const checkout = conversationUrl(dashboard.baseURL, CHECKOUT_ID);
   const pasted = `<#CQA456|proj-release> <${PULL_REQUEST}|getsentry/junior#3842> <${checkout}|Investigate checkout latency> <https://example.com|docs>`;
-  await page.evaluate((text) => {
-    const data = new DataTransfer();
-    data.setData("text/plain", text);
-    document.activeElement?.dispatchEvent(
-      new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: data,
-      }),
-    );
-  }, pasted);
+  await pasteText(page, pasted);
   await expect(composer.locator("[data-reference]")).toHaveText([
     "#proj-release",
     "junior#3842",

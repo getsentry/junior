@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseAllDocuments } from "yaml";
 
 /** Return the workspace lockfile document. pnpm 12 writes a package-manager document before it. */
@@ -178,20 +177,9 @@ export function checkLockfileFamilies(lockfile) {
   });
 }
 
-function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const file = process.argv[2] ?? path.join(root, "pnpm-lock.yaml");
-  const errors = checkLockfileFamilies(
-    parseLockfile(fs.readFileSync(file, "utf8")),
+/** Check that each lockstep package family resolves to one version. */
+export function run({ root }) {
+  return checkLockfileFamilies(
+    parseLockfile(fs.readFileSync(path.join(root, "pnpm-lock.yaml"), "utf8")),
   );
-  if (errors.length === 0) {
-    console.log("Lockstep package families resolve to one version each.");
-    return;
-  }
-  console.error(["Lockfile family check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
 }

@@ -10,6 +10,7 @@ import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { parseToolInput } from "@/chat/tool-support/zod-tool";
 import {
   findToolNameHint,
+  renderToolNameHint,
   ToolNameMissError,
 } from "@/chat/tool-support/tool-name-suggestions";
 
@@ -73,9 +74,16 @@ export function resolveCatalogToolCall(
   );
   const definition = catalogTools[toolName];
   if (!definition) {
+    // Say the next call, not only the rule: a model that gets only "Did you
+    // mean" can give up instead of calling again with the suggested name.
+    const hint = findToolNameHint(toolName, catalogTools);
+    const hintText = renderToolNameHint(hint);
+    const next = hintText
+      ? `${hintText} Call executeTool again with the exact name as tool_name.`
+      : "Call searchTools to find its exact name.";
     throw new ToolNameMissError(
-      `executeTool can only call catalog tools returned by searchTools: ${toolName}.`,
-      findToolNameHint(toolName, catalogTools),
+      `\`${toolName}\` is not a catalog tool. ${next}`,
+      hint,
     );
   }
   return { arguments: args, definition, toolName };

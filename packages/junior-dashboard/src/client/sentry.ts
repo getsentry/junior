@@ -136,6 +136,19 @@ export function recordTranscriptShown(): void {
   }).end();
 }
 
+/**
+ * Record that the reader was offered a catch-up, so its click-through can be
+ * measured against the server's catch-up requests.
+ */
+export function recordCatchUpOffered(conversationId: string): void {
+  startInactiveSpan({
+    attributes: { "gen_ai.conversation.id": conversationId },
+    name: "Catch-up offered",
+    op: "ui.render",
+    parentSpan: activeRouteSpan(),
+  }).end();
+}
+
 // Response schemas are strict, so a tab that still runs an older bundle can
 // reject a field that a newer server added. Name that cause, not the schema
 // issues. The version drift banner offers the refresh.

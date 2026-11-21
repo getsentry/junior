@@ -2,6 +2,9 @@
 # Model-repairable failures must use ToolInputError or PluginToolInputError.
 # Only keep true system/config/integrity failures here.
 # Format: relativePath<TAB>normalized throw statement
+# Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
+# Tool-call identity comes from the runtime, not model arguments.
+# Tool support: system, config, and integrity failures that the model cannot fix.
 packages/junior-github/src/tools/comment-on-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/comment-on-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
@@ -45,7 +48,6 @@ packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message)
 packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");
 packages/junior-github/src/tools/update-issue-comment.ts	throw new Error(message);
-# Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
 packages/junior-vercel/src/tool-support/vercel-api.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
@@ -62,8 +64,6 @@ packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile c
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);
-packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
-# Tool-call identity comes from the runtime, not model arguments.
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");
 packages/junior/src/chat/tool-support/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`, { cause: error }, );
@@ -71,7 +71,6 @@ packages/junior/src/chat/tool-support/web/network.ts	throw new Error("read timed
 packages/junior/src/chat/tools/user-customization.ts	throw new Error("User customization target user was not found.");
 packages/junior/src/chat/tool-support/create-tools.ts	throw new Error("Slack tool bound without a Slack context");
 packages/junior/src/chat/tool-support/registry.ts	throw new Error("The Turn does not have this tool");
-# Tool support: system, config, and integrity failures that the model cannot fix.
 packages/junior-github/src/tool-support/attribution.ts	throw new Error( `GitHub read before update failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`, );
 packages/junior/src/chat/slack/tool-support/canvas/api.ts	throw new Error( "Canvas has no downloadable URL; bot token may lack file access.", );
 packages/junior/src/chat/slack/tool-support/canvas/api.ts	throw new Error("Slack canvas was created without canvas_id");
@@ -82,3 +81,4 @@ packages/junior/src/chat/tool-support/pi-tool-adapter.ts	throw new Error( `${SEA
 packages/junior/src/chat/tool-support/pi-tool-adapter.ts	throw new Error("Pi tool execution requires a non-empty tool call id.");
 packages/junior/src/chat/tool-support/pi-tool-adapter.ts	throw new Error(`${CODEMODE_TOOL_NAME} is reserved for Code Mode`);
 packages/junior/src/chat/tool-support/pi-tool-adapter.ts	throw new Error(`Tool ${toolName} does not define an executor.`);
+packages/junior/src/chat/tools/codemode.ts	throw new Error("codemode requires a tool call id.");

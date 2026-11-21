@@ -8,7 +8,8 @@ import {
   expandRow,
   failedRunAlert,
   license,
-  mockReviewItems,
+  mockInboxItems,
+  rollout,
   rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
@@ -127,7 +128,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("listitem")
-        .filter({ hasText: "Review requested · #91" })
+        .filter({ hasText: "Pin the release train" })
         .locator('[data-ask-kind="Review requested"]')
         .first(),
     ).toBeVisible();
@@ -140,7 +141,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await comfortable(page);
     // Inbox rows name one item each, so a Conversations row shows the
     // summary.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [
         {
           ...license,
@@ -459,7 +460,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       }),
     );
     // The Automations page lists the Automations of the Inbox's alerts.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [
         automationAlert("scheduled-1", "Weekly project summary"),
         automationAlert("event-1", "Closed issue summary"),
@@ -574,12 +575,36 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
+  test("a question row with no main step ends its hover actions with Expand", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [rollout, license] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, rollout.title);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await head.hover();
+    const names = await row
+      .locator('[data-inbox-slot="meta"] :is(a, button)')
+      .evaluateAll((nodes) =>
+        nodes.map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+        ),
+      );
+    expect(names[0]).toBe("Dismiss");
+    expect(names.at(-1)).toBe("Expand");
+    await row.getByRole("button", { exact: true, name: "Expand" }).click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
+  });
+
   test("Dismiss closes an Automation alert on the server", async ({
     dashboard,
     page,
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
-    const actions = await mockReviewItems(page, { open: [alert, license] });
+    const actions = await mockInboxItems(page, { open: [alert, license] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, alert.title);
@@ -601,7 +626,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const alert = failedRunAlert("scheduled-1", "Weekly project summary");
-    const actions = await mockReviewItems(page, { open: [alert, license] });
+    const actions = await mockInboxItems(page, { open: [alert, license] });
     const automation = {
       ...automationReport.automations.find(({ id }) => id === "scheduled-1")!,
       lastRunStatus: "failed" as const,
@@ -664,7 +689,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [automationAlert("scheduled-1", "Weekly project summary")],
     });
     const error = "Slack rejected the result message: channel_not_found.";

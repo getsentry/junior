@@ -1,4 +1,4 @@
-import { mockReviewItems } from "./inbox-fixture";
+import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -42,7 +42,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         });
       },
     );
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     const flightRow = (title: RegExp) =>

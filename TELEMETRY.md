@@ -25,7 +25,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
-| `app.review_item.id`                | Review item                  | Inbox, delivery logs  |
+| `app.inbox_item.id`                | Inbox item                  | Inbox, delivery logs  |
 | `vcs.change.id`                     | Code change number           | code change record spans    |
 
 - `gen_ai.conversation.id` also names child agents. Count root Conversations
@@ -79,7 +79,7 @@ attributes. Nested logs and spans inherit them.
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
-| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                          | `chat/review-items/`                                            |
+| Inbox item change not delivered     | `inbox_item.*`, span `inbox_item.deliver`                                                          | `chat/inbox-items/`                                            |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
@@ -103,6 +103,7 @@ attributes. Nested logs and spans inherit them.
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+| Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
 
 ## Trace Shape
 
@@ -120,6 +121,10 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
+- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
+  `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
+  and `app.guardian.user_consent` (the user authorization level). Sentry's
+  data scrubber hides a key that contains `auth`.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.

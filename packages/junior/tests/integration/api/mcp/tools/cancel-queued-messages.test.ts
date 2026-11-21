@@ -22,7 +22,11 @@ describe("cancelQueuedMessages MCP tool", () => {
       conversationId: "slack:C123:1700000000.000300",
     });
 
-    expect(result.structuredContent).toEqual({ cancelledMessages: 0 });
+    expect(result.structuredContent).toEqual({
+      cancelledCount: 0,
+      cancelledInboundMessageIds: [],
+      conversationId: "slack:C123:1700000000.000300",
+    });
   });
 
   it("reports another person's Conversation as not found", async () => {

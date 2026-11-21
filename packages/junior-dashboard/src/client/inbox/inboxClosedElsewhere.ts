@@ -1,4 +1,4 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import type { useLeaveCard, useLeaveRow } from "./rowMotion";
@@ -11,13 +11,13 @@ import type { useLeaveCard, useLeaveRow } from "./rowMotion";
  * data holds the items until then. Other rows leave with the read.
  */
 export function useLeaveClosedElsewhere(input: {
-  closedElsewhere: readonly ReviewItemPayload[];
+  closedElsewhere: readonly InboxItemPayload[];
   expandedKey: string;
-  holdLeaving(items: readonly ReviewItemPayload[], held: boolean): void;
-  holdOpenRow(items: readonly ReviewItemPayload[]): void;
+  holdLeaving(items: readonly InboxItemPayload[], held: boolean): void;
+  holdOpenRow(items: readonly InboxItemPayload[]): void;
   leave: ReturnType<typeof useLeaveRow>;
   leaveCard: ReturnType<typeof useLeaveCard>;
-  openItems: readonly ReviewItemPayload[];
+  openItems: readonly InboxItemPayload[];
   releaseHeld(id: string): void;
 }) {
   const { closedElsewhere, expandedKey, holdOpenRow, openItems } = input;

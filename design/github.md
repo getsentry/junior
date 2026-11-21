@@ -48,7 +48,7 @@ also wake a Conversation or run an Event automation.
 - Junior can review a PR and request changes.
 - Junior asks for a review only when the required checks pass
   (`github#review-request`, `github#rereview`).
-- Only the requester gets Review items for a Junior PR. Other reviewers
+- Only the requester gets Inbox items for a Junior PR. Other reviewers
   hear only from GitHub (`github#other-reviewers`,
   `github#requester-gone`).
 - A Junior push to an approved PR follows the repo's setting for stale
@@ -60,13 +60,13 @@ also wake a Conversation or run an Event automation.
   (`github#checks-red`).
 - An ask that waits is not repeated or reassigned, and Junior does not
   close its PR for inactivity (`github#no-reminders`).
-- Junior cannot fork or administer a repo, and never pushes to or deletes
-  the default branch.
+- Junior cannot fork or administer a repo, and never deletes the default
+  branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
-- When a Junior PR is merged or closed, by anyone, Junior posts nothing,
-  but its later replies in that Conversation know it (`github#pr-ended`).
+- When a Junior PR is merged or closed, Junior posts nothing, but its later
+  replies in that Conversation know it (`github#pr-ended`).
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 

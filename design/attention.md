@@ -2,7 +2,7 @@
 
 A person's attention is the scarcest thing Junior spends. Junior asks for it
 only when the person gets an answer, a result, or a step that only they can
-take. All other work happens with no message, Review item, push, or count.
+take. All other work happens with no message, Inbox item, push, or count.
 This is a core principle of how the agent works, and every system follows
 it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
@@ -30,9 +30,8 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 ## Entry points
 
 - Every Conversation: the agent's reply and its questions.
-- Slack: a reply in the thread of the request, and a Review item card.
-- Dashboard: Inbox, the Inbox count in the tab, "Needs you", and push
-  notifications.
+- Slack: a reply in the thread of the request, and an Inbox item card.
+- Dashboard: Inbox, the Inbox count in the tab, "Needs you", and a push.
 - GitHub: a review request on a pull request that Junior opened.
 
 ## Rules
@@ -42,20 +41,23 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   no reply. An Automation posts what its instruction asks for.
 - When Junior stops upkeep that it owns, such as fixes on a pull request
   that nobody works on, it tells nobody.
-- When Junior is blocked, it says what the person must do.
-- Junior asks a person only with a Review item
+- Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
 
 ## Gaps
 
 - An agent or a plugin can add a notice that names no next step, and the
-  Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
-  do".
+  Inbox shows it in FYI. This breaks "anything that takes attention names
+  what the person gets or must do".
 - Some asks are only a Slack message: a draft pull request that waits for
-  the requester's review (`github#draft-held`), a decision on a watched
-  issue, and a blocked Automation. They add no Review item. This breaks
-  "Junior asks a person only with a Review item" and "Slack and the
-  dashboard ask for attention for the same things".
+  the requester's review (`github#draft-held`), and a decision on a
+  watched issue. They add no Inbox item. This breaks "Junior asks a person
+  only with an Inbox item" and "Slack and the dashboard ask for attention
+  for the same things".
+- An Automation alert shows only in the dashboard Inbox. Slack shows no
+  card for it. For a blocked Automation, Slack gets a DM with no card. For a
+  failed run or a trigger that is not available, Slack gets nothing. This
+  breaks "Slack and the dashboard ask for attention for the same things".
 - In a dashboard Conversation, a Turn that ends with a question card and no
   reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".

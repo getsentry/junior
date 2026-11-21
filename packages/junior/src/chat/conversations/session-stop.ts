@@ -12,7 +12,7 @@ import {
 } from "@/chat/events/notification";
 import { cancelSubscriptions } from "@/chat/events/store";
 import { getEventBatchDelayMs } from "@/chat/task-execution/mailbox-turn";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type {
@@ -224,7 +224,7 @@ async function saveStoppedConversationEvents(
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)),
+    renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

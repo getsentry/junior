@@ -114,11 +114,9 @@ const ASK_HIGHLIGHT_MS = 1_600;
 
 /**
  * Show the transcript row of a question that Junior asked. `version`
- * changes on each request, so the same question can show again. `arrived`
- * means the question came by itself, not by an action of the reader.
+ * changes on each request, so the same question can show again.
  */
 export type TranscriptAskReveal = {
-  arrived: boolean;
   itemId: string;
   version: number;
 };
@@ -126,7 +124,7 @@ export type TranscriptAskReveal = {
 /** The current ask request, and the scroll owner that shows its row. */
 export const TranscriptAskRevealContext = createContext<
   | (TranscriptAskReveal & {
-      showRow(row: Element, options: { arrived: boolean }): boolean;
+      showRow(row: Element): boolean;
     })
   | undefined
 >(undefined);
@@ -567,10 +565,10 @@ function TranscriptEntryList(
     // Wait until the record is in the DOM, so the scroll sees its place.
     const show = () => {
       const row = list.querySelector(`[data-index="${askIndex}"]`);
-      const record = row?.querySelector("[data-review-item-ask]");
+      const record = row?.querySelector("[data-inbox-item-ask]");
       if (!row || !record) return false;
       shownAskVersion.current = askReveal.version;
-      if (!askReveal.showRow(row, { arrived: askReveal.arrived })) return true;
+      if (!askReveal.showRow(row)) return true;
       const previous = askHighlight.current;
       if (previous) {
         window.clearTimeout(previous.timer);

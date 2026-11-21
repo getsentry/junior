@@ -18,30 +18,30 @@ import {
 } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
-  reviewItemRequestSchema,
-  type ReviewItemRequest,
-} from "@/chat/review-items/evidence";
-import { USER_INPUT_LIMITS } from "@/chat/review-items/user-input-request";
+  inboxItemRequestSchema,
+  type InboxItemRequest,
+} from "@/chat/inbox-items/evidence";
+import { USER_INPUT_LIMITS } from "@/chat/inbox-items/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
-import { AUTOMATION_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";
-import { automationCreatorUserId } from "@/chat/review-items/assignees";
+import { AUTOMATION_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
+import { automationCreatorUserId } from "@/chat/inbox-items/assignees";
 import {
-  dismissOpenReviewItems,
-  insertReviewItem,
-  updateReviewItemContent,
-  type ReviewItemContent,
-} from "@/chat/review-items/store";
+  dismissOpenInboxItems,
+  insertInboxItem,
+  updateInboxItemContent,
+  type InboxItemContent,
+} from "@/chat/inbox-items/store";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
-  juniorReviewItems,
+  juniorInboxItems,
 } from "@/db/schema";
 
-// An Automation alert is a Review item that the Automation owns. It asks the
+// An Automation alert is an Inbox item that the Automation owns. It asks the
 // creator to fix an Automation that needs attention: blocked, a trigger that
 // the enabled plugins cannot serve, or a last run that failed or blocked.
 // These are the rules of the `attention` scope in `collection.ts`. Core adds,
@@ -95,8 +95,8 @@ type AutomationAlertStepLabel = keyof typeof AUTOMATION_ALERT_STEPS;
 function stepsRequest(
   body: string,
   steps: readonly AutomationAlertStepLabel[],
-): ReviewItemRequest {
-  return reviewItemRequestSchema.parse({
+): InboxItemRequest {
+  return inboxItemRequestSchema.parse({
     question: body.slice(0, USER_INPUT_LIMITS.maxQuestionChars),
     fields: [
       {
@@ -159,7 +159,7 @@ function alertKey(automationId: string, identity: unknown[]): string {
     .update(JSON.stringify(identity))
     .digest("hex")
     .slice(0, 16);
-  return `${AUTOMATION_REVIEW_ITEM_KEY_PREFIX}${automationId}:${hash}`;
+  return `${AUTOMATION_INBOX_ITEM_KEY_PREFIX}${automationId}:${hash}`;
 }
 
 /**
@@ -204,20 +204,20 @@ export async function syncAutomationAlert(
     const alert = creatorId ? needed : undefined;
     const key = alert ? alertKey(automationId, alert.identity) : undefined;
     const owned = and(
-      eq(juniorReviewItems.ownerKind, "automation"),
-      eq(juniorReviewItems.ownerId, automationId),
+      eq(juniorInboxItems.ownerKind, "automation"),
+      eq(juniorInboxItems.ownerId, automationId),
     );
     const stale = await tx
-      .select({ id: juniorReviewItems.id })
-      .from(juniorReviewItems)
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems)
       .where(
         and(
           owned,
-          eq(juniorReviewItems.status, "open"),
-          key ? notInArray(juniorReviewItems.dedupeKey, [key]) : undefined,
+          eq(juniorInboxItems.status, "open"),
+          key ? notInArray(juniorInboxItems.dedupeKey, [key]) : undefined,
         ),
       );
-    await dismissOpenReviewItems(tx, {
+    await dismissOpenInboxItems(tx, {
       ids: stale.map((item) => item.id),
       nowMs,
       reason: alert
@@ -229,18 +229,18 @@ export async function syncAutomationAlert(
     // as with Run again, so it stays closed. An alert that core closed
     // hides nothing.
     const [closedByPerson] = await tx
-      .select({ id: juniorReviewItems.id })
-      .from(juniorReviewItems)
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems)
       .where(
         and(
           owned,
-          isNotNull(juniorReviewItems.closedByUserId),
+          isNotNull(juniorInboxItems.closedByUserId),
           row.alertRecoveredAtMs === null
             ? undefined
-            : gt(juniorReviewItems.closedAt, new Date(row.alertRecoveredAtMs)),
+            : gt(juniorInboxItems.closedAt, new Date(row.alertRecoveredAtMs)),
           or(
-            eq(juniorReviewItems.status, "dismissed"),
-            key ? eq(juniorReviewItems.dedupeKey, key) : undefined,
+            eq(juniorInboxItems.status, "dismissed"),
+            key ? eq(juniorInboxItems.dedupeKey, key) : undefined,
           ),
         ),
       )
@@ -261,17 +261,17 @@ export async function syncAutomationAlert(
     if (!alert || !key || !creatorId || hidden) return;
     const [open] = await tx
       .select({
-        body: juniorReviewItems.body,
-        id: juniorReviewItems.id,
-        title: juniorReviewItems.title,
-        visibility: juniorReviewItems.visibility,
+        body: juniorInboxItems.body,
+        id: juniorInboxItems.id,
+        title: juniorInboxItems.title,
+        visibility: juniorInboxItems.visibility,
       })
-      .from(juniorReviewItems)
+      .from(juniorInboxItems)
       .where(
         and(
           owned,
-          eq(juniorReviewItems.dedupeKey, key),
-          eq(juniorReviewItems.status, "open"),
+          eq(juniorInboxItems.dedupeKey, key),
+          eq(juniorInboxItems.status, "open"),
         ),
       );
     const [destination] = await tx
@@ -284,7 +284,7 @@ export async function syncAutomationAlert(
           eq(juniorDestinations.providerDestinationId, row.channelId),
         ),
       );
-    const content: ReviewItemContent = {
+    const content: InboxItemContent = {
       assignedToEveryone: false,
       assigneeUserIds: [creatorId],
       body: alert.body,
@@ -314,7 +314,7 @@ export async function syncAutomationAlert(
         open.body !== content.body ||
         open.visibility !== content.visibility
       ) {
-        await updateReviewItemContent(tx, {
+        await updateInboxItemContent(tx, {
           ...content,
           id: open.id,
           nowMs,
@@ -322,7 +322,7 @@ export async function syncAutomationAlert(
       }
       return;
     }
-    await insertReviewItem(tx, {
+    await insertInboxItem(tx, {
       ...content,
       dedupeKey: key,
       nowMs,
@@ -336,7 +336,7 @@ export async function syncAutomationAlert(
  * Sync the alerts that no write to an Automation syncs. A plugin change can
  * make an event trigger unavailable, or available again, with no write to
  * the Automation. An Automation that needed attention before alerts were
- * Review items has never synced. The heartbeat calls this. It syncs each
+ * Inbox items has never synced. The heartbeat calls this. It syncs each
  * event Automation whose trigger cannot work, each one with an open alert,
  * and each blocked or failed Automation that has never had an alert.
  */
@@ -360,28 +360,28 @@ export async function syncAutomationAlerts(
       : [],
   );
   const alerted = await db
-    .selectDistinct({ id: juniorReviewItems.ownerId })
-    .from(juniorReviewItems)
+    .selectDistinct({ id: juniorInboxItems.ownerId })
+    .from(juniorInboxItems)
     .innerJoin(
       juniorAutomations,
-      eq(juniorAutomations.id, juniorReviewItems.ownerId),
+      eq(juniorAutomations.id, juniorInboxItems.ownerId),
     )
     .where(
       and(
-        eq(juniorReviewItems.ownerKind, "automation"),
+        eq(juniorInboxItems.ownerKind, "automation"),
         eq(juniorAutomations.kind, "event"),
         // An open alert, or a dismiss that hides alerts until a recovery
         // that a fixed trigger can bring without a run. Only an active
         // Automation can recover so; any other status waits for a write.
         or(
-          eq(juniorReviewItems.status, "open"),
+          eq(juniorInboxItems.status, "open"),
           and(
             eq(juniorAutomations.status, "active"),
-            eq(juniorReviewItems.status, "dismissed"),
-            isNotNull(juniorReviewItems.closedByUserId),
+            eq(juniorInboxItems.status, "dismissed"),
+            isNotNull(juniorInboxItems.closedByUserId),
             or(
               isNull(juniorAutomations.alertRecoveredAtMs),
-              sql`${juniorReviewItems.closedAt} > to_timestamp(${juniorAutomations.alertRecoveredAtMs} / 1000.0)`,
+              sql`${juniorInboxItems.closedAt} > to_timestamp(${juniorAutomations.alertRecoveredAtMs} / 1000.0)`,
             ),
           ),
         ),
@@ -405,12 +405,12 @@ export async function syncAutomationAlerts(
         ),
         notExists(
           db
-            .select({ id: juniorReviewItems.id })
-            .from(juniorReviewItems)
+            .select({ id: juniorInboxItems.id })
+            .from(juniorInboxItems)
             .where(
               and(
-                eq(juniorReviewItems.ownerKind, "automation"),
-                eq(juniorReviewItems.ownerId, juniorAutomations.id),
+                eq(juniorInboxItems.ownerKind, "automation"),
+                eq(juniorInboxItems.ownerId, juniorAutomations.id),
               ),
             ),
         ),

@@ -110,6 +110,9 @@ function snapshotContext(
   };
 }
 
+/** Why a snapshot over a limit stored nothing. */
+export type SnapshotSkipReason = "snapshot_too_large" | "images_too_large";
+
 /**
  * Store the snapshot of a request context with its images under hash keys.
  * Stores nothing and returns a `skipReason` when the snapshot without its
@@ -121,9 +124,7 @@ export async function saveSnapshot(
   key: string,
   context: Context,
   ttlMs: number,
-): Promise<
-  SnapshotSize & { skipReason?: "snapshot_too_large" | "images_too_large" }
-> {
+): Promise<SnapshotSize & { skipReason?: SnapshotSkipReason }> {
   const images = new Map<string, string>();
   // Spreading the part keeps `data` at its key position, so the loaded
   // snapshot serializes the same way as the original context.

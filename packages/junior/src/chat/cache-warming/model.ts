@@ -109,7 +109,7 @@ export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
  * returns get rare. Two horizons, 110 minutes, cover the late returns and
  * limit the cost of a child agent that never returns.
  *
- * A Review item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
+ * An Inbox item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
  * backtest was borderline.
  */
 export const CHILD_WAIT_IDLE_HORIZON_MS = 2 * IDLE_HORIZON_MS;
@@ -296,7 +296,7 @@ export function parentGapSegment(input: GapSegmentInput): string | undefined {
 /**
  * What else an idle period waits for when it starts. `child`: a child agent
  * still runs, and its result starts a Turn. `review`: the Turn asked a
- * Review item. `watch`: an Automation run has an active Watch, such as a
+ * Inbox item. `watch`: an Automation run has an active Watch, such as a
  * timer or a pull request Watch, and no child agent.
  */
 export type WaitingOn = "child" | "review" | "watch";
@@ -310,7 +310,7 @@ const WAITING_SEGMENT_SUFFIXES: Record<WaitingOn, string> = {
 
 /**
  * Child of a segment for an idle period that waits on a child agent, a
- * Review item, or a Watch (`:automation`). Its parent is the segment, so a
+ * Inbox item, or a Watch (`:automation`). Its parent is the segment, so a
  * thin child leans on the segment, and a thin segment on its own parent.
  */
 export function waitingGapSegment(segment: string, waitingOn: WaitingOn) {
@@ -533,6 +533,11 @@ export interface IdleCompactionChoiceInput extends WarmupDecisionInput {
   compactedTokens: number;
   /** False when this slot cannot send a warmup, such as a late one. */
   canWarm: boolean;
+  /**
+   * True when the system prompt or the tools changed. The next request then
+   * writes a new prefix, so no return reads the cached P.
+   */
+  prefixChanged: boolean;
 }
 
 /** What a warmup slot does with a ready summary. */
@@ -556,6 +561,7 @@ export interface IdleCompactionChoiceResult {
  *   At the next slot, the choice runs again with the same three options.
  * - `compact`: a return writes C. No more warmups.
  * - `stop`: a return before the cache expires reads P, a later one writes P.
+ *   After a prompt change (`prefixChanged`), each return writes P.
  *
  * The cheapest option wins. On a tie, compact wins, because a return after
  * the horizon also writes less. So a likely quick return, such as a child
@@ -600,7 +606,9 @@ export function chooseIdleCompaction(
             : 0);
     return {
       compact: (left - end) * writeCompacted,
-      stop: (left - S(expiryMs)) * readFull + (S(expiryMs) - end) * writeFull,
+      stop:
+        (left - S(expiryMs)) * (input.prefixChanged ? writeFull : readFull) +
+        (S(expiryMs) - end) * writeFull,
       warm,
     };
   };
