@@ -7,11 +7,16 @@ marked "current proposal" is not decided.
 ## Model
 
 - A **channel Thread** is a Conversation of kind `thread` whose Location is a
-  Slack code channel. The kind does not change. The Location makes it a
-  channel Thread.
+  Slack code channel. The kind does not change. A provider Conversation
+  binding for the whole channel (`provider_conversation_id = "*"`) marks it,
+  not a flag. So a channel keeps working when the flag turns off.
 - The Location is the code channel with no `threadTs`. Junior sets it one
   time, when Slack creates the channel.
-- A Thread with no Location is a plain Thread. It works as it does today.
+- A Thread with no whole-channel binding is a plain Thread. It works as it
+  does today.
+- A channel Thread has no Agent invocations. The parent's task and later
+  parent messages arrive as parent messages on the Conversation loop. So no
+  result of the channel Thread reaches the parent mailbox (Parent Contract).
 - The code channel is bound to the channel Thread with a provider
   Conversation binding, as `continue-in-slack` binds a moved Conversation.
   Every message in the code channel, top-level or in a Slack thread, goes to
@@ -24,15 +29,15 @@ marked "current proposal" is not decided.
 ## Turn Behavior
 
 A channel Thread acts like a root at its own Location, with a parent. One
-behavior applies to every Turn in a channel Thread: a person's Turn, an
-Agent invocation Turn from the parent, a Task result, and a Watch Event.
+behavior applies to every Turn in a channel Thread: a person's Turn, a
+parent message Turn, a Task result, and a Watch Event.
 
 - **Delivery:** `location`. The final response goes to the code channel.
 - **Not gated.** `noReply` ends a Turn with no message in the code channel,
   as on a root.
 - **Parent:** `messageAgent` with `to: "parent"` is the only way to reach the
-  parent. There is no `reply` tool. An Agent invocation from the parent ends
-  with no result. The parent gets an answer only through `messageAgent`.
+  parent. There is no `reply` tool. A parent message Turn ends with no
+  result. The parent gets an answer only through `messageAgent`.
 - **Agents:** a channel Thread can start Tasks. Today a person's Turn in a
   Thread cannot, because child results would report to the parent as the
   wrong Actor. In a channel Thread, a child result returns to the channel
@@ -40,27 +45,46 @@ Agent invocation Turn from the parent, a Task result, and a Watch Event.
   that started the Task (`openspec/changes/actor-identity-end-state`).
 - **Threads:** a channel Thread cannot start a Thread with a code channel.
   It can start a plain Thread only if the depth limit allows it.
-- **Review desk and Watches:** available. People in the code channel are
-  the assignees.
+- **Review desk and Watches:** available. Participants are the assignees.
 - **Session tasks:** off. Memory is public, so a child never captures it.
 
 Why one behavior for all Turns: the default audience of every Turn is the
 people in the code channel. The parent is the exception. Today a Thread has
 the opposite default. Its agent Turns answer the parent.
 
-Current proposal: model this as a third pair in `kind-behavior.ts`, selected
-by `kind === "thread"` and a code channel Location.
+Built: `CHANNEL_THREAD` in `kind-behavior.ts`, selected by the kind and
+the whole-channel binding (`isChannelThread`).
+
+### Parent Contract
+
+The parent mailbox gets only two things from a channel Thread: the texts of
+its `messageAgent(to: "parent")` calls, and the one runtime wrap-up on
+archive. In particular:
+
+- No `completed` result from the final text of a Turn.
+- No `replaced` chain from the results of its Tasks.
+- No `failed` notice. A failure stays in the code channel.
+- `waiting_on` (`listUnreportedSiblingAgents`) leaves channel Threads out.
+- The `spawnAgent` result for a channel Thread says that it reports only
+  with `messageAgent` and the wrap-up. It has no `dashboard_url`, and the
+  "replies when it has something to report" line does not apply.
 
 ## Lifecycle
 
 1. A person mentions Junior in a public channel. The root Turn runs as
    today. It answers in place, or it starts a Thread for work that needs one
    (Root Steering).
-2. `spawnAgent` with `kind: "thread"` creates the Thread. When the Thread can
-   get a code channel, Slack-owned code calls `agents.conversations.create`
-   with the origin channel and the origin message, and a `session_id` set to
-   the Thread's Conversation id. Then Junior stores the Location and the
-   binding, and starts the first Agent invocation.
+2. `spawnAgent` with `kind: "thread"` creates the Thread. When the root
+   already has an open channel Thread for this origin Slack thread,
+   `spawnAgent` returns it and sends it the task as a parent message. One
+   open channel Thread per origin Slack thread is a product invariant, not
+   steering. Otherwise, when the Thread can get a code channel, Junior checks
+   the child limits, checks with a live `conversations.info` that the origin
+   channel is still public, and calls `agents.conversations.create` with the
+   origin channel, the triggering message ts as `origin_message_ts`, and a
+   `session_id` set to the Thread's Conversation id. Then Junior creates the
+   Thread, stores the Location and the binding, and sends the task as a
+   parent message.
 3. Slack creates the channel, adds the person who wrote the origin message,
    sets the channel public, and posts a card in the origin Slack thread. The card
    is the reply that people see. The root ends its Turn with `noReply`.
@@ -70,25 +94,31 @@ by `kind === "thread"` and a code channel Location.
    as context. It starts the work in the code channel.
 5. People and Junior work in the code channel. Junior posts top-level
    messages. It answers messages for Junior without a mention.
-6. When the work is done, Junior posts a summary with an archive action. A
-   person archives the code channel with the action or in Slack.
-7. On archive, Junior calls `agents.conversations.archive` with the summary
-   message when one exists, archives the Thread, and sends the wrap-up
-   message to the parent.
-8. People cannot post in an archived channel. A person who reopens the code
-   channel in Slack restores the Thread (`channel_unarchive`). When a person
-   archives the code channel in Slack, Junior cannot record a summary
-   message. The wrap-up message then uses the latest Brief.
+6. A person archives the code channel in Slack. The `channel_archive`
+   message subtype archives the Thread and its child agents, and the runtime
+   sends the wrap-up message to the parent.
+7. The wrap-up is always sent, one time per archive event. Its text is the
+   outcome of the latest Brief, and it says whether the Thread already
+   messaged the parent, so the root does not post the outcome again.
+8. v1 has no archive action, no summary message, and no
+   `channel_unarchive` restore. A person's new message already restores an
+   archived Thread.
 
 ### Fallback
 
 When code channel creation fails, Junior keeps the Thread as a plain Thread
 and starts it as today. `spawnAgent` returns the dashboard link and no code
-channel. The root shares the link as today. Expected failures include
+channel. The root shares the link as today. Expected failures are
 `feature_disabled`, `user_not_enabled`, `restricted_action`,
-`origin_channel_externally_shared`, and `origin_channel_is_file_channel`.
-Junior records the failure in telemetry. Unexpected failures follow
-`policies/error-handling.md`.
+`origin_channel_externally_shared`, `origin_channel_is_file_channel`,
+`invalid_origin_link`, `channel_not_viewable`, `missing_scope`, and
+`ratelimited` (Slack applies special rate limits to this method). Junior
+logs the failure. Unexpected failures follow `policies/error-handling.md`.
+
+On `invite_failed` or `open_failed`, the channel already exists, and its card
+is in the origin Slack thread. Junior calls create again with the same
+`session_id` to get the channel and binds it. It does not fall back and
+leave that channel without a Thread.
 
 ## Root Steering
 
@@ -99,8 +129,10 @@ Junior records the failure in telemetry. Unexpected failures follow
 - This rule has one home: the `kind` field of `spawnAgent`
   (`policies/agent-steering.md`). The `spawnAgent` description stops telling
   the model to share the dashboard link when the result has a code channel.
-- One open channel Thread per origin Slack thread is the default. New input
-  for the same goal goes to the open channel Thread.
+- One open channel Thread per origin Slack thread. `spawnAgent` enforces it
+  (Lifecycle, step 2).
+- The `kind` description changes only when the flag is on. With the flag
+  off, it is the same as today.
 
 ## Notify The Parent
 
@@ -125,9 +157,11 @@ latest Brief when there is no summary. The parent decides whether the origin
 thread needs a message. Usually it does not, because the card shows the
 result.
 
-Current proposal: the steering for this list lives in the system prompt of
-channel Thread Turns, because it is a delivery rule for one Conversation
-type. It does not go into the `messageAgent` description.
+Built: this list is in the `messageAgent` description, only in channel
+Thread Turns (the `channel_thread` variant from `TurnBehavior`). This
+changes the earlier proposal: the rule is about when to call one tool, so
+it lives on that tool (`policies/tool-design.md`), and only Turns where the
+binding applies see it.
 
 ## Origin Slack Thread Follow-Ups
 
@@ -142,14 +176,24 @@ type. It does not go into the `messageAgent` description.
 
 ## Code Channel Ingress
 
+- Bindings are keyed by `thread_ts` today. Ingress looks up the
+  whole-channel binding first on all four paths: messages, mentions, the
+  stop keyword, and `agent_session_stopped`. A stop in a Slack thread inside
+  a code channel stops the channel Thread.
 - A message event in a bound code channel goes to the channel Thread. The
-  sender is the Actor. A mention is not required.
-- A message from a person that is not for Junior ends with `noReply`. Reuse
-  the subscribed reply decision (`subscribed-reply-policy`), with a code
-  channel input that leans toward an answer. Current proposal: pass the
-  channel kind to the decision, not a second classifier.
-- A mention in a code channel goes to the channel Thread. It never goes to a
-  root and never opens a code channel.
+  sender is the Actor. A mention is not required. The binding gates this,
+  not `passive-routing`. The subscribed decision's `shouldUnsubscribe` does
+  not apply. A non-mention Turn gets the allowed-domain check.
+- A message from a person that is not for Junior ends with `noReply`. v1
+  runs no classifier: every person message runs a Turn, and the model
+  decides with `noReply`. Open: reuse the subscribed reply decision
+  (`subscribed-reply-policy`) with a code channel input.
+- A mention in a bound code channel goes to the channel Thread. It never
+  goes to a root and never opens a code channel.
+- People can open code channels from Slack's own UI once the manifest
+  feature is on. Junior detects an unbound one with `conversations.info`
+  (`properties.record_channel.record_type === "agent_channel"`). In v1, a
+  mention there runs a normal root Turn and never opens a code channel.
 - Junior's own messages and the Slack system messages of the channel do not
   start Turns. `channel_archive` and `channel_unarchive` message subtypes
   archive and restore the channel Thread.
@@ -160,10 +204,24 @@ type. It does not go into the `messageAgent` description.
   code channel id, with no `thread_ts`. This replaces
   `assistant.threads.setStatus` for a channel Thread.
 - A running Turn sets `processing`. A Turn that ends with an open review item
-  or a question for a person sets `suspended`. Other Turns set `active`.
-  Slack ends `processing` after one hour, so a long Turn sends it again.
-- `agent_session_stopped` without `thread_ts` from a code channel stops the
-  channel Thread and its child agents, as the stop keyword does.
+  sets `suspended`. Other Turns set `active`. Slack ends `processing` after
+  one hour, so a long Turn must send it again (not built yet).
+- `agent_session_stopped` from a code channel, with or without `thread_ts`,
+  stops the channel Thread and its child agents, as the stop keyword does.
+- After a stop from a code channel, Junior posts no ack and makes no
+  `agents.sessions.*` call, as Slack's lifecycle doc requires. Only a
+  person's input in the code channel ends the stop. A parent's
+  `messageAgent` does not.
+- A stop in the origin Slack thread does not cascade into channel Threads.
+- A parent message waits behind a paused person Turn. It does not supersede
+  it: a channel Thread has no Agent invocation for it to supersede.
+
+## Flag
+
+`code-channels` gates only creation, and the code channel text in the
+`spawnAgent` `kind` description. Routing, delivery, status, stop, and
+archive follow the binding. So flag-off or a rollback does not strand open
+channels.
 
 ## Privacy
 
@@ -185,7 +243,7 @@ type. It does not go into the `messageAgent` description.
 | Requester never opens the code channel           | Sidebar status `suspended`. Reminder is a follow-up.     |
 | Parent posts too much in the origin Slack thread | Notify list. Wrap-up goes to the parent, not the thread. |
 | Parent never hears the outcome                   | Runtime wrap-up message on archive.                      |
-| Sidebar fills with code channels                 | One per Thread. Archive action. Slack hides idle ones.   |
+| Sidebar fills with code channels                 | One per origin Slack thread. Slack hides idle ones.      |
 | Slack does not allow code channel creation       | Fallback to a plain Thread.                              |
 
 ## Experiment Signals

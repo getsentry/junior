@@ -13,11 +13,28 @@
 - Follow `policies/testing.md`. Runtime behavior gets integration tests
   through real Junior wiring with a fake Slack. Agent judgment gets evals.
 
+## Status
+
+The draft PR that supersedes getsentry/junior#1915 builds steps 1 to 6 in
+one branch, with these parts left:
+
+- Step 0 is open. The card shape and its ingress event are not verified.
+- Step 5: `processing` is not sent again during Turns longer than one hour.
+- Step 6: the behavioral evals are not written. Integration tests in
+  `packages/junior/tests` do not run the agent, so the delivery of final
+  text and the "no result from final text" rule need an integration eval
+  too.
+- Experiment signals (step 7) are not added.
+
 ## Release Rules
 
 - Each step ships alone and leaves `main` correct.
 - Every step before step 7 ships with `code-channels` off. With the flag off,
-  no behavior changes.
+  no behavior changes. The flag gates only creation. Routing, delivery,
+  status, stop, and archive follow the binding.
+- The Slack app config gets `features.code_channels` only after the step 2
+  ingress is deployed. With the feature on, people can open code channels
+  from Slack's own UI.
 - Readers ship before writers. Ingress for code channels (step 2) ships
   before any code creates one in production.
 - Each step is safe under a rolling deploy. Code channels exist only after
@@ -41,71 +58,86 @@
   scope to `slack-manifest.yml`. Update the Slack app setup docs. Draft
   #1915 already adds the feature flag to the manifest. Finish it or close it
   in this step.
-- Add Slack-owned calls for `agents.conversations.create`,
-  `agents.conversations.archive`, and `agents.sessions.setStatus` without
-  `thread_ts`.
+- Add Slack-owned calls for `agents.conversations.create` and
+  `agents.sessions.setStatus` without `thread_ts`. v1 does not call
+  `agents.conversations.archive` (no archive action).
 - Add the terms **Code channel** and **Channel Thread** to `TERMINOLOGY.md`.
   Change Delivery: a root or a channel Thread delivers to its Location.
 
-Decide in this step: the error mapping from Slack errors to the fallback.
+Decided: `design.md`, Fallback.
 
 ## 2. Code Channel Ingress
 
 - Bind a code channel to its Conversation with a provider Conversation
-  binding.
+  binding for the whole channel.
+- Look up the whole-channel binding first on messages, mentions, the stop
+  keyword, and `agent_session_stopped`.
 - Send every message event in a bound code channel to its channel Thread,
-  top-level or in a Slack thread.
+  top-level or in a Slack thread, also with `passive-routing` off. Ignore
+  `shouldUnsubscribe`. Run the allowed-domain check on non-mention Turns.
 - Skip Junior's own messages and Slack system messages. Map the
-  `channel_archive` and `channel_unarchive` subtypes to archive and restore.
-- Send a mention in a code channel to the channel Thread.
-- Tests: a fake code channel message reaches the bound Thread; a message in an
-  unbound channel works as today.
+  `channel_archive` subtype to archive.
+- Send a mention in a bound code channel to the channel Thread. Detect an
+  unbound code channel with `conversations.info`; a mention there runs a
+  root Turn that opens no code channel.
+- Tests: a fake code channel message reaches the bound Thread; a mention in
+  an unbound code channel runs a plain root Turn; the card post (any bot
+  post) in the origin Slack thread starts no Turn.
 
-Decide in this step: how the reply decision gets the code channel input.
+Decided for v1: no reply classifier in code channels. The model ends a Turn
+with `noReply`. Open: reuse the subscribed reply decision.
 
 ## 3. Channel Thread Turn Behavior And Delivery
 
 - Add the channel Thread behavior to `kind-behavior.ts` (`design.md`, Turn
   Behavior).
+- Hold the Parent Contract (`design.md`): the parent mailbox gets only
+  `messageAgent` texts and the wrap-up. Leave channel Threads out of
+  `waiting_on`.
 - Deliver final responses to the code channel as top-level messages.
 - Allow Tasks from every channel Thread Turn. Run a Task result Turn as the
   Actor that started the Task.
 - Remove `reply` from channel Thread Turns. Keep `messageAgent` to the
   parent.
-- Tests: person Turn, Agent invocation Turn, Task result Turn, and Watch
-  Event Turn each post to the code channel or stay quiet with `noReply`.
+- Tests: person Turn and parent message Turn post to the code channel; the
+  parent gets only the `messageAgent` text, also after a failed Turn. Task
+  result and Watch Event Turns need an integration eval.
 
 ## 4. Create The Code Channel From spawnAgent
 
-- When a Thread is eligible (`specs/`), create the code channel before the
-  first Agent invocation. Use the Thread's Conversation id as `session_id`,
-  so a retry returns the same channel.
+- When a Thread is eligible (`specs/`), check the child limits and the live
+  origin visibility, then create the code channel before the Thread. Use the
+  Thread's Conversation id as `session_id`, so a retry returns the same
+  channel. Give the Thread its task as a parent message, with no Agent
+  invocation.
+- Keep one open channel Thread per origin Slack thread: return the open one
+  and send it the task.
 - Store the Location and the binding. Return the code channel from
   `spawnAgent`.
 - On failure, start a plain Thread (`design.md`, Fallback).
-- Do not post in the origin Slack thread. Make sure the card post starts no Turn.
-- Tests: eligible Thread, Task, DM root, private root, nested Thread,
-  `feature_disabled` fallback, retry with the same `session_id`.
+- Do not post in the origin Slack thread.
+- Tests: eligible Thread, Task, origin that turned private, nested Thread,
+  `feature_disabled` fallback, one open channel Thread per origin.
 
 ## 5. Status, Stop, And Archive
 
 - Set the session status from Turn state (`design.md`, Status And Stop).
   Send `processing` again during Turns longer than one hour.
-- Stop the channel Thread on `agent_session_stopped` with no `thread_ts`.
-- Add the archive action to Junior's summary message. On archive, call
-  `agents.conversations.archive`, archive the Thread, and send the wrap-up
-  message to the parent.
-- Restore the Thread on `channel_unarchive`.
-- Tests: status changes, stop, archive from the action, archive in Slack,
-  restore.
-
-Decide in this step: how Junior marks a message as the summary message.
+- Stop the channel Thread on `agent_session_stopped` from its code channel,
+  with or without `thread_ts`. Post no ack and make no `agents.sessions.*`
+  call. A stop in the origin Slack thread does not cascade.
+- On `channel_archive`, archive the Thread and send the wrap-up message to
+  the parent. Cut for v1: the archive action, summary-message marking, and
+  `channel_unarchive` restore.
+- Tests: status changes, stop, origin stop, archive in Slack, one wrap-up
+  for a redelivered archive event.
 
 ## 6. Steering And Evals
 
-- Root Steering in the `spawnAgent` `kind` description. Remove the "share
-  the dashboard link" line for channel Threads.
-- Notify The Parent steering in the channel Thread system prompt.
+- Root Steering in the `spawnAgent` `kind` description, only with the flag
+  on. Remove the "share the dashboard link" line for channel Threads.
+- Notify The Parent steering in the `messageAgent` description, only in
+  channel Thread Turns.
 - Add `behavioral` evals:
   - **Routing:** a lookup is answered in place; "fix this bug and open a
     PR" starts a Thread; a request that is not clear is answered in place.
