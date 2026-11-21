@@ -618,7 +618,6 @@ function InboxRowBody(
                     <CodeChangeTitle
                       expanded={props.expanded}
                       head={props.itemHead}
-                      kind={inboxItemKind(bundle.newest)}
                     />
                     <CodeChangeSubtitle
                       expanded={props.expanded}

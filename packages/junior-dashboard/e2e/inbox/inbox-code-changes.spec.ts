@@ -20,6 +20,36 @@ const breakingReview = {
   },
 };
 
+// A merge conflict ask has Resume choices, so its kind is a Question. Its
+// state pill still names the conflict.
+const conflict = {
+  ...prMerge,
+  id: "item-pr-conflict",
+  request: {
+    question: "Resolve the conflict in #57?",
+    fields: [
+      {
+        id: "resume",
+        kind: "choice" as const,
+        label: "Resume",
+        options: [{ label: "Resolve it" }, { label: "Leave it" }],
+      },
+    ],
+  },
+  subject: {
+    ...prMerge.subject,
+    id: "https://github.com/getsentry/payments/pull/57",
+    title: "fix(slack): Keep thread replies in order",
+    titleParts: {
+      scope: "slack",
+      text: "Keep thread replies in order",
+      type: "Fix",
+    },
+    url: "https://github.com/getsentry/payments/pull/57",
+  },
+  title: "Merge conflict · #57",
+};
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const row = (page: Page, text: string) =>
@@ -29,7 +59,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [breakingReview, prMerge] });
+    await mockReviewItems(page, { open: [breakingReview, prMerge, conflict] });
     await page.goto(`${dashboard.baseURL}/`);
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
@@ -51,6 +81,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       "MergeRetry checkout writes after lock timeouts",
     );
     await expect(merge.locator("[data-code-change-type]")).toHaveCount(0);
+
+    // A conflict row's state pill names the conflict, not the ask's kind.
+    const conflictRow = row(page, "Keep thread replies in order");
+    await expect(conflictRow.getByTitle("Merge conflict")).toHaveText(
+      "Conflict",
+    );
+    await expect(conflictRow.getByTitle("Question")).toHaveCount(0);
     await screenshot(page, "inbox-code-change-rows", { lightTheme: true });
   });
 

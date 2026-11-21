@@ -29,8 +29,6 @@ const INLINE_PILL_CLASS =
 export function CodeChangeTitle(props: {
   expanded: boolean;
   head: CodeChangeHead;
-  /** The item's kind of ask, such as "Review requested", for the icon. */
-  kind: string;
 }) {
   const { title } = props.head;
   return (
@@ -47,9 +45,9 @@ export function CodeChangeTitle(props: {
           "mr-1.5 border-dashboard-accent/40 bg-dashboard-accent/10 text-dashboard-accent",
         )}
         data-code-change-state=""
-        title={props.kind}
+        title={props.head.kind}
       >
-        <AskKindIcon className="size-3 text-current" kind={props.kind} />
+        <AskKindIcon className="size-3 text-current" kind={props.head.kind} />
         {props.head.state}
       </span>
       {displayPlainText(title.text)}

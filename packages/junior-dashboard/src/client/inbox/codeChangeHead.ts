@@ -9,6 +9,8 @@ import type { Conversation } from "../types";
  * and the change's reference become short words around it.
  */
 export type CodeChangeHead = {
+  /** The plugin's name of the state, such as "Review requested". */
+  kind: string;
   /** The state in one word, such as "Review". */
   state: string;
   /** The change's reference, such as "payments#91". */
@@ -76,6 +78,7 @@ export function codeChangeHead(
   if (!host) return undefined;
   const repo = shortRepo(subject.url, conversation);
   return {
+    kind,
     openLabel: `${kind === "Review requested" ? "Review" : "Open"} on ${host}`,
     reference: repo ? `${repo}${number}` : number,
     state: STATE_WORDS[kind] ?? kind,
