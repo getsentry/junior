@@ -1,13 +1,14 @@
-// The scheduler puts each input that arrives into a Turn. It writes the input
-// once, already with its Turn, under the Conversation lock, and publishes a
-// Turn only after that transaction commits. A message published before the
-// commit can reach a worker that does not see the Turn yet: the claim finds
-// nothing, the message is acknowledged, and the Turn never runs.
+// Schedules each input that arrives into a Turn. It writes the input once,
+// already with its Turn, under the Conversation lock, and publishes a Turn
+// only after that transaction commits. A message published before the commit
+// can reach a worker that does not see the Turn yet: the claim finds nothing,
+// the message is acknowledged, and the Turn never runs. The caller decides
+// which Turn takes the input.
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { addInput, findInputTurn, type Input } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
-import { createTurn, findOpenTurn } from "@/core/turn/state";
+import { createTurn, findOpenTurn, type Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 
 /** An input with the kind of the Source it came from. */
@@ -16,11 +17,24 @@ type ArrivingInput = Input & { source: Source["kind"] };
 /** The Turn that an input went to, and whether the input started it. */
 type ScheduledInput = { turnId: string; created: boolean };
 
+type ScheduleOptions = {
+  /**
+   * Chooses the Turn of an input that is not a duplicate: join the open
+   * Turn of the Conversation, or create a Turn with a priority. It runs
+   * under the Conversation lock, so `open` cannot change before the write.
+   */
+  decide: (
+    open: Turn | undefined,
+    input: ArrivingInput,
+  ) => { join: string } | { create: { priority: number } };
+};
+
 type Placement = ScheduledInput & { publish: boolean };
 
 async function placeInput(
   executor: JuniorSqlDatabase,
   input: ArrivingInput,
+  { decide }: ScheduleOptions,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
   const existing = await findInputTurn(executor, input);
@@ -35,7 +49,13 @@ async function placeInput(
     };
   }
   const open = await findOpenTurn(executor, input.conversationId);
-  if (open) {
+  const choice = decide(open, input);
+  if ("join" in choice) {
+    if (choice.join !== open?.turnId) {
+      throw new Error(
+        `decide joined Turn ${choice.join}, but the open Turn is ${open?.turnId ?? "none"}`,
+      );
+    }
     await addInput(executor, { ...inboxInput, turnId: open.turnId });
     return { turnId: open.turnId, created: false, publish: false };
   }
@@ -43,26 +63,27 @@ async function placeInput(
     conversationId: input.conversationId,
     actorIdentityId: input.actorIdentityId,
     source,
-    priority: 0,
+    priority: choice.create.priority,
   });
   await addInput(executor, { ...inboxInput, turnId: turn.turnId });
   return { turnId: turn.turnId, created: true, publish: true };
 }
 
 /**
- * Puts an input into the open Turn of its Conversation, or into a new Turn
- * that it then publishes. An input with a known idempotency key writes
+ * Puts an input into the Turn that `decide` chooses, and publishes a Turn
+ * that the input created. An input with a known idempotency key writes
  * nothing. Call it outside a transaction: it publishes after its own commit,
  * and a publish error reaches the caller with the input already stored.
  */
 export async function scheduleInput(
   executor: JuniorSqlDatabase,
   input: ArrivingInput,
+  options: ScheduleOptions,
 ): Promise<ScheduledInput> {
   const placement = await withConversationEventLock(
     executor,
     input.conversationId,
-    () => placeInput(executor, input),
+    () => placeInput(executor, input, options),
   );
   if (placement.publish) {
     await publishTurnStep(placement.turnId);
