@@ -251,11 +251,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     // They use the action bar's words.
     await expect(quick("Snooze")).toHaveText("Snooze");
     await expect(quick("Dismiss")).toHaveText("Dismiss");
-    // The row has no main step, so the last quick action expands it. The
-    // open card's Open goes to the child that asked, at its ask.
+    // A code change row ends with its GitHub link, not Open. The open
+    // card's Open goes to the child that asked, at its ask.
     const open = row.getByRole("link", { name: "Open conversation" });
     await expect(open).toHaveCount(0);
-    await quick("Expand").click();
+    await expect(quick("Expand")).toHaveCount(0);
+    await row.locator('[aria-controls^="inbox-row-"]').first().click();
     await expect(open).toHaveAttribute(
       "href",
       `/conversations/${encodeURIComponent(childReview.owner.id)}?ask=${childReview.id}`,
