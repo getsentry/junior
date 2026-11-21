@@ -347,9 +347,6 @@ importers:
       '@sentry/junior-linear':
         specifier: workspace:*
         version: link:../../packages/junior-linear
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory
       '@sentry/junior-notion':
         specifier: workspace:*
         version: link:../../packages/junior-notion
@@ -443,10 +440,7 @@ importers:
         version: 2.16.0(typescript@7.0.2)(zod@4.6.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search':
-        specifier: workspace:*
-        version: link:../junior-search
+        version: link:../junior-plugin-api
       '@sentry/nitro':
         specifier: 'catalog:'
         version: 11.14.0(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))
@@ -556,15 +550,12 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       '@sentry/junior-notion':
         specifier: workspace:*
-        version: file:packages/junior-notion(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-notion
       '@sentry/junior-sentry':
         specifier: workspace:*
-        version: file:packages/junior-sentry(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)(typescript@7.0.2)
+        version: link:../junior-sentry
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)
@@ -787,9 +778,6 @@ importers:
       '@sentry/junior-google':
         specifier: workspace:*
         version: link:../junior-google
-      '@sentry/junior-memory':
-        specifier: workspace:*
-        version: file:packages/junior-memory
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -845,7 +833,7 @@ importers:
         version: 1.3.4(graphql@16.14.0)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-plugin-api
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -915,7 +903,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
+        version: link:../junior-plugin-api
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -986,52 +974,6 @@ importers:
 
   packages/junior-maintenance: {}
 
-  packages/junior-memory:
-    dependencies:
-      '@sentry/junior-plugin-api':
-        specifier: workspace:*
-        version: file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search':
-        specifier: workspace:*
-        version: link:../junior-search
-      '@sinclair/typebox':
-        specifier: ^0.34.49
-        version: 0.34.49
-      commander:
-        specifier: ^14.0.3
-        version: 14.0.3
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
-    devDependencies:
-      '@sentry/junior-testing':
-        specifier: workspace:*
-        version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.19.2
-      '@types/pg':
-        specifier: ^8.15.6
-        version: 8.15.6
-      drizzle-kit:
-        specifier: 'catalog:'
-        version: 0.31.10
-      pg:
-        specifier: ^8.16.3
-        version: 8.21.0
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.12(@types/node@24.19.2)(tsx@4.22.3)(yaml@2.9.1)
-
   packages/junior-notion:
     dependencies:
       '@sentry/junior-plugin-api':
@@ -1060,9 +1002,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.4
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1075,15 +1014,6 @@ importers:
         version: 7.0.2
 
   packages/junior-restream: {}
-
-  packages/junior-search:
-    devDependencies:
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
 
   packages/junior-sentry:
     dependencies:
@@ -5316,20 +5246,8 @@ packages:
   '@sentry/junior-github@file:packages/junior-github':
     resolution: {directory: packages/junior-github, type: directory}
 
-  '@sentry/junior-memory@file:packages/junior-memory':
-    resolution: {directory: packages/junior-memory, type: directory}
-
-  '@sentry/junior-notion@file:packages/junior-notion':
-    resolution: {directory: packages/junior-notion, type: directory}
-
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     resolution: {directory: packages/junior-plugin-api, type: directory}
-
-  '@sentry/junior-search@file:packages/junior-search':
-    resolution: {directory: packages/junior-search, type: directory}
-
-  '@sentry/junior-sentry@file:packages/junior-sentry':
-    resolution: {directory: packages/junior-sentry, type: directory}
 
   '@sentry/junior-testing@file:packages/junior-testing':
     resolution: {directory: packages/junior-testing, type: directory}
@@ -15004,41 +14922,11 @@ snapshots:
       shiki: 4.1.0
       zod: 4.6.7
     transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
       - '@date-fns/tz'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
       - '@types/react'
       - '@types/react-dom'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
       - date-fns
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
       - redux
-      - sql.js
-      - sqlite3
       - supports-color
       - typescript
       - yjs
@@ -15094,7 +14982,7 @@ snapshots:
   '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)':
     dependencies:
       '@0no-co/graphql.web': 1.3.4(graphql@16.14.0)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       ignore: 7.0.5
@@ -15139,314 +15027,10 @@ snapshots:
       - sqlite3
       - supports-color
 
-  '@sentry/junior-memory@file:packages/junior-memory':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sentry/junior-search': file:packages/junior-search
-      '@sinclair/typebox': 0.34.52
-      commander: 14.0.3
-      drizzle-orm: 0.45.4
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-memory@file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
-      '@sinclair/typebox': 0.34.52
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-notion@file:packages/junior-notion(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     dependencies:
       commander: 14.0.3
-      drizzle-orm: 0.45.4
       zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-plugin-api@file:packages/junior-plugin-api(@types/pg@8.15.6)(pg@8.21.0)':
-    dependencies:
-      commander: 14.0.3
-      drizzle-orm: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
-  '@sentry/junior-search@file:packages/junior-search': {}
-
-  '@sentry/junior-sentry@file:packages/junior-sentry(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)(typescript@7.0.2)':
-    dependencies:
-      '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
-      mdast-util-from-markdown: 2.1.0
-      mdast-util-gfm: 3.1.0
-      micromark-extension-gfm: 3.0.0
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@netlify/db'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-      - supports-color
-      - typescript
-      - valibot
 
   '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)':
     dependencies:
@@ -15577,8 +15161,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
@@ -15690,8 +15273,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)
@@ -15803,8 +15385,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 2.16.0(typescript@7.0.2)(zod@4.6.7)
-      '@sentry/junior-plugin-api': file:packages/junior-plugin-api(@neondatabase/serverless@1.1.0)(pg@8.21.0)
-      '@sentry/junior-search': file:packages/junior-search
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.14.0
       '@sentry/node': 11.14.0
       '@sentry/server-utils': 11.14.0(patch_hash=0d4f5c03ecf1fbed957f7099a9259dbf1b2faff290cebc063bf8e89787212a01)

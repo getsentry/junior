@@ -250,16 +250,16 @@ export function seeds(nowMs: number): MockItemSeed[] {
       title: "Ready to merge · #2201",
     },
     {
-      // The GitHub plugin stopped fixing this pull request's conflicts.
-      // Resume starts a fix and the fix count again.
-      body: "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+      // The GitHub plugin's last conflict fix of this pull request did not
+      // land. Resume starts a fix and the fix count again.
+      body: "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(40),
       id: "qa-conflict-2188",
       plugin: "github",
       request: {
         question:
-          "#2188 conflicts with `main`. Fixes stopped after 3 in a row with no reply from a person. Resume fixes it now and on later conflicts.",
+          "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
         fields: [
           {
             id: "choice",

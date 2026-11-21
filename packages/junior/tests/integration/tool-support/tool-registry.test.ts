@@ -4,7 +4,6 @@ import {
   createWebSource,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { promptPlatform } from "@/chat/agent/prompt";
@@ -104,7 +103,7 @@ function modelFacing(tools: ToolRegistry): Record<string, unknown> {
   );
 }
 
-const plugins = () => defineJuniorPlugins([githubPlugin(), memoryPlugin()]);
+const plugins = () => defineJuniorPlugins([githubPlugin()]);
 
 // A Turn's run as the agent gets it: a person's Turn runs on the
 // Conversation loop with a Delivery, and any other Turn has none. All have

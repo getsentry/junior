@@ -4,7 +4,7 @@ import {
   bm25InverseDocumentFrequency,
   bm25NormalizedFrequency,
   bm25Saturation,
-} from "@sentry/junior-search";
+} from "@/search/bm25";
 import type { ConversationModelCost } from "@/chat/core-model";
 import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
