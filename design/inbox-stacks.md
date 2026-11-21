@@ -34,7 +34,8 @@ can act on it.
   menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A touch screen has no hover, so there a row shows its
+  names as tooltips. A code change row first opens the change on its
+  provider, such as "Review on GitHub". A touch screen has no hover, so there a row shows its
   actions only once it is open. Rows do not repeat them.
 - On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
   count once, right-most. The buttons do not repeat the count. Their names
@@ -65,6 +66,15 @@ Grouping:
 - An open row says each fact once. The row's head names the kind, the
   number, the title, and the sub-thread. The open card and the subject's
   preview do not say them again.
+- A code change row leads with the change's title. Its state comes first
+  as one short word, such as "Review". The type, the scope, and a breaking
+  mark from the title's Conventional Commits prefix come after the title,
+  in the same line of text, so a wrapped title starts at the left edge.
+  The plugin that owns the change parses the title. A title with no known
+  type shows as it is, with no type. The number and the size go to the
+  second line.
+- A click on a code change row opens it, as on other rows. The open row's
+  first action opens the change on its provider.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 

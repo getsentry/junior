@@ -43,6 +43,8 @@ export function InboxRowCard(props: {
   /** Notices about the item's subject (`foldNotices`). */
   notices: readonly InboxItemPayload[];
   onAction?(item: InboxItemPayload, body: InboxItemActionBody): Promise<void>;
+  /** The card's main action, first on its action line. */
+  primaryAction?: ReactNode;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
   /** The row's head shows the subject's size. */
@@ -61,6 +63,7 @@ export function InboxRowCard(props: {
   const cardActions =
     actions || props.rowActions ? (
       <>
+        {props.primaryAction}
         {props.rowActions}
         {actions?.onSnooze ? (
           <RowSnoozeButton
