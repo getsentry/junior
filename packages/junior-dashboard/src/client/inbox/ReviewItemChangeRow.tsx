@@ -1,5 +1,4 @@
 import {
-  ArrowDown,
   CircleCheck,
   CircleSlash,
   Clock3,
@@ -8,14 +7,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { use, type ReactElement, type ReactNode } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link } from "react-router";
 import type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
-import { FOCUS_REPLY_STATE } from "../conversations/conversationRoutes";
 import { cn, dashboardMessageCardClass } from "../styles";
 import {
   TranscriptShowQuestion,
@@ -24,13 +22,15 @@ import {
 } from "../conversations/TranscriptAnswerLinks";
 import { DisplayText } from "../display-text/DisplayText";
 import { useConversationReviewItemData } from "./queries";
-import { AnswerSummary } from "./ReviewItemActions";
+import { AnswerSummary, ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
   ReviewItemAssignees,
   ReviewItemCloser,
   ReviewItemTitle,
 } from "./ReviewItemPeople";
+import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
+import { useQuestionInViewRef } from "./WaitingQuestions";
 import {
   answerLine,
   answerRows,
@@ -290,38 +290,12 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
   };
 }
 
-// The question docks above the message box, so the reader answers there. A
-// reply focus request shows this question in the dock and moves focus to it.
-// That request skips a touch screen, where the docked question is already
-// in sight, so the button is not shown there.
-function AnswerButton(props: { itemId: string }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  return (
-    <button
-      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-violet-500/15 pointer-coarse:hidden px-2.5 py-1 text-xs font-medium text-dashboard-accent-text transition-colors hover:bg-violet-500/25 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      onClick={() =>
-        navigate(
-          { pathname: location.pathname, search: location.search },
-          {
-            replace: true,
-            state: { ...FOCUS_REPLY_STATE, questionId: props.itemId },
-          },
-        )
-      }
-      type="button"
-    >
-      Answer
-      <ArrowDown aria-hidden="true" className="size-3.5" />
-    </button>
-  );
-}
-
 /**
- * Show the Review item that a tool call added as a compact card in the
- * transcript: the title, where it stands, and the answer. An item that waits
- * on the reader stands out and offers to answer its docked question. Shows
- * `fallback` when the viewer cannot read the item.
+ * Show the Review item that a tool call added as a card in the transcript:
+ * the title, where it stands, and the answer. A question that waits on the
+ * reader stands out and shows its question and form, as its Inbox card
+ * does, so the reader answers in place. Shows `fallback` when the viewer
+ * cannot read the item.
  */
 export function ReviewItemAskRow(props: {
   conversationId: string;
@@ -334,82 +308,96 @@ export function ReviewItemAskRow(props: {
   );
   // The record repeats the answer only while its answer row is out of view.
   const answerShown = useAnswerInView(props.itemId);
+  // Only a question from this Conversation shows its form here. Another
+  // Conversation's question is answered there, or in the Inbox.
+  const waiting = Boolean(
+    item &&
+    reviewItemWaitsForAnswer(item) &&
+    itemConversationId(item) === props.conversationId,
+  );
+  // The questions pill shows while a card is not in full view.
+  const inViewRef = useQuestionInViewRef(props.itemId, waiting);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
   const status = askStatus(item, answerShown);
   const Icon = status.icon;
-  // Only a question from this Conversation docks above its message box. A
-  // plugin ask without a question waits on the viewer but does not dock.
-  const docked =
-    reviewItemWaitsForAnswer(item) &&
-    itemConversationId(item) === props.conversationId;
   return (
-    // The transcript marks the row for a moment when its question docks.
+    // The transcript marks the card for a moment when the reader goes to it.
     <section
       aria-label={`${verb} ${reviewItemTitleText(item)}`}
       className={cn(
-        "flex w-full min-w-0 max-w-[37.5rem] items-center gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
+        "grid w-full min-w-0 max-w-[37.5rem] gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
         status.waitingOnYou
           ? "border-violet-400/40 bg-violet-500/[0.07]"
           : "border-dashboard-border-subtle bg-dashboard-surface-panel",
       )}
       data-review-item-ask={item.id}
+      ref={inViewRef}
     >
-      <span
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md",
-          status.waitingOnYou ? "bg-violet-500/15" : "bg-dashboard-fill-faint",
-        )}
-      >
-        <Icon
-          aria-hidden="true"
-          className={cn("size-4", status.iconClassName)}
-        />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <ReviewItemPreview
-          item={item}
-          trigger={
-            <Link
-              className={cn(
-                "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
-                item.status === "dismissed"
-                  ? "text-dashboard-text-muted"
-                  : "text-dashboard-text",
-              )}
-              to={reviewItemPath(item.id)}
-            />
-          }
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md",
+            status.waitingOnYou
+              ? "bg-violet-500/15"
+              : "bg-dashboard-fill-faint",
+          )}
         >
-          <ReviewItemTitle item={item} />
-        </ReviewItemPreview>
-        <p className="m-0 flex min-w-0 gap-1 text-xs">
-          <span
-            className={
-              status.waitingOnYou
-                ? "shrink-0 font-medium text-dashboard-accent-text"
-                : "shrink-0 text-dashboard-text-muted"
+          <Icon
+            aria-hidden="true"
+            className={cn("size-4", status.iconClassName)}
+          />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <ReviewItemPreview
+            item={item}
+            trigger={
+              <Link
+                className={cn(
+                  "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
+                  item.status === "dismissed"
+                    ? "text-dashboard-text-muted"
+                    : "text-dashboard-text",
+                )}
+                to={reviewItemPath(item.id)}
+              />
             }
           >
-            {status.label}
-          </span>
-          {status.answer ? (
-            <>
-              <span aria-hidden="true" className="text-dashboard-text-faint">
-                ·
-              </span>
-              <span
-                className="min-w-0 truncate text-dashboard-text-subtle"
-                title={status.answer}
-              >
-                {status.answer}
-              </span>
-            </>
-          ) : null}
-        </p>
+            <ReviewItemTitle item={item} />
+          </ReviewItemPreview>
+          <p className="m-0 flex min-w-0 gap-1 text-xs">
+            <span
+              className={
+                status.waitingOnYou
+                  ? "shrink-0 font-medium text-dashboard-accent-text"
+                  : "shrink-0 text-dashboard-text-muted"
+              }
+            >
+              {status.label}
+            </span>
+            {status.answer ? (
+              <>
+                <span aria-hidden="true" className="text-dashboard-text-faint">
+                  ·
+                </span>
+                <span
+                  className="min-w-0 truncate text-dashboard-text-subtle"
+                  title={status.answer}
+                >
+                  {status.answer}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
       </div>
-      {docked ? <AnswerButton itemId={item.id} /> : null}
+      {waiting ? (
+        <ReviewItemActions
+          context={<ReviewItemTurnMessage item={item} />}
+          item={item}
+        />
+      ) : null}
     </section>
   );
 }

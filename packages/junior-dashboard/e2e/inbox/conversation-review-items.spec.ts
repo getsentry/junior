@@ -124,14 +124,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("Send sends docked picks and asks before a message drops others", async ({
+  test("a message asks before it drops picks on a question card, and Send sends them", async ({
     dashboard,
     page,
   }) => {
-    // A notice fills the first page, so the question docks from the second.
-    // The details panel answers the same item after the docked answer.
+    // A notice fills the first page, so the question loads from the second.
     const actions = await mockReviewItems(page, {
-      keepOpen: true,
       open: [{ ...prReady, conversationIds: [conversationId] }, migration],
       pageSize: 1,
     });
@@ -187,27 +185,32 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
-    const question = page.getByRole("region", {
-      name: `Question: ${migration.title}`,
-    });
+    // The question came from the second page, and its card in the
+    // transcript holds the form.
+    const card = page.getByRole("region", { name: `Asked ${migration.title}` });
+    const approve = card.getByRole("radio", { name: "Approve" });
+    await approve.click();
+    await expect(card.getByText("1 of 2 answered")).toBeVisible();
     const composer = page.getByLabel("Continue this conversation");
 
-    // Picks in the details panel do not go with a message.
-    await page
-      .getByRole("button", { name: "Conversation details", exact: true })
-      .click();
-    const details = page.getByRole("region", { name: "To do" });
-    await details.getByRole("button", { name: migration.title }).click();
-    await details.getByRole("radio", { name: "Reject" }).click();
-
-    // The message box sends the docked picks. With an empty draft no message
-    // goes, so nothing asks about the details-panel picks.
-    await expect(
-      question.getByRole("textbox", { name: /Anything else/ }),
-    ).toHaveCount(0);
-    await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
-    await question.getByRole("radio", { name: "Approve" }).click();
+    // A message drops the picks, so it asks first.
+    await composer.fill("Friday works.");
     await composer.press("Enter");
+    const confirm = page.getByRole("alertdialog", {
+      name: "Send without your answers?",
+    });
+    await expect(confirm).toContainText(migration.title);
+    await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
+    // Go back keeps the draft and the picks.
+    await confirm.getByRole("button", { name: "Go back" }).click();
+    await expect(confirm).toBeHidden();
+    await expect(composer).toHaveText("Friday works.", { useInnerText: true });
+    await expect(approve).toBeChecked();
+    expect(messages).toEqual([]);
+    expect(actions).toEqual([]);
+
+    // The card's Send sends the picks, and then the message asks nothing.
+    await card.getByRole("button", { name: "Send", exact: true }).click();
     await expect
       .poll(() => actions)
       .toEqual([
@@ -219,31 +222,10 @@ test.describe("new UI", { tag: "@new" }, () => {
           id: migration.id,
         },
       ]);
-    const confirm = page.getByRole("alertdialog", {
-      name: "Send without your answers?",
-    });
-    await expect(confirm).toHaveCount(0);
-    expect(messages).toEqual([]);
-
-    // A message drops the details-panel picks, so it asks first.
-    await composer.fill("Friday works.");
     await composer.press("Enter");
-    await expect(confirm).toContainText(migration.title);
-    // A mobile view would close the details panel and its picks.
-    await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
-    // Go back keeps the draft and the picks.
-    await confirm.getByRole("button", { name: "Go back" }).click();
-    await expect(confirm).toBeHidden();
-    await expect(composer).toHaveText("Friday works.", { useInnerText: true });
-    await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
-    expect(messages).toEqual([]);
-
-    // The reader can send the message anyway.
-    await composer.press("ControlOrMeta+Enter");
-    await confirm.getByRole("button", { name: "Send message" }).click();
     await expect
       .poll(() => messages)
       .toEqual([{ answersBefore: 1, message: "Friday works." }]);
-    expect(actions).toHaveLength(1);
+    await expect(confirm).toHaveCount(0);
   });
 });

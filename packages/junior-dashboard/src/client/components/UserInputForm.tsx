@@ -1,13 +1,11 @@
-import { ArrowRight } from "lucide-react";
+import { Check } from "lucide-react";
 import {
   useEffect,
   useId,
-  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
   type ReactNode,
-  type Ref,
 } from "react";
 import {
   buttonUserInputField,
@@ -33,24 +31,14 @@ import {
   FieldSet,
   FieldTitle,
 } from "./ui/field";
-import { Kbd } from "./ui/kbd";
+import { Input } from "./ui/input";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 
 // A described choice is one button row, so its description stays beside its
-// label and one click is still the answer. The picked row keeps the accent
-// while the answer sends.
+// label. The picked row keeps the accent while the answer sends.
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
-
-/** Sends the picks of a docked form from outside it. */
-export type UserInputFormHandle = {
-  /**
-   * Send the picks and text. Undefined when there is nothing to send;
-   * otherwise resolves false when the send fails.
-   */
-  sendPicks(): Promise<boolean> | undefined;
-};
 
 // Marks the choice that Junior recommends, next to its label.
 function SuggestedLabel(props: { className?: string }) {
@@ -63,17 +51,6 @@ function SuggestedLabel(props: { className?: string }) {
     >
       Suggested
     </span>
-  );
-}
-
-// Names the number key of a docked choice. The button already says it to
-// screen readers in `aria-keyshortcuts`.
-function ShortcutHint(props: { value?: string | undefined }) {
-  if (!props.value) return null;
-  return (
-    <Kbd aria-hidden="true" className="max-md:hidden">
-      {props.value}
-    </Kbd>
   );
 }
 
@@ -188,7 +165,6 @@ function TextField(props: {
   disabled: boolean;
   label: string;
   onChange(value: string): void;
-  ref?: Ref<HTMLTextAreaElement>;
   value: string;
 }) {
   const id = useId();
@@ -206,7 +182,6 @@ function TextField(props: {
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
-        ref={props.ref}
         value={props.value}
       />
     </Field>
@@ -214,12 +189,13 @@ function TextField(props: {
 }
 
 /**
- * Render the answer controls of an action item request. A request with
- * one short choice field shows one button per choice, and a click is the
- * answer. Choices with descriptions stack as rows, so each description stays
- * with its choice. Other… turns the buttons into the form, so the reader can
- * add a note or answer in their own words. Other requests show a form that
- * the reader submits once.
+ * Render the answer controls of an action item request. A question with one
+ * short choice field shows one button per choice: a click picks it, and Send
+ * answers with the pick and the note line. A note alone answers in the
+ * reader's own words. Choices with descriptions stack as rows, so each
+ * description stays with its choice. A plugin action that reads no words,
+ * or one choice, such as Resume, has no note: a click is the answer. Other
+ * requests show a form with every field and the note.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent. `draft` fills the
@@ -228,63 +204,39 @@ function TextField(props: {
  * shows them again after it unmounts or the page reloads. Restored answers
  * are still unsent. They clear when the item closes, which a sent answer
  * does.
- *
- * `docked` is for the question above the message box. The message box takes
- * the reader's own words and sends the picks, so Other…, the note, and the
- * form's Send do not show. `ref.sendPicks` sends the picks. Each choice
- * button names its number key in `aria-keyshortcuts`.
  */
 export function UserInputForm(props: {
-  docked?: boolean;
   /** An answer to start from, such as one that failed to send. */
   draft?: Pick<UserInputAnswer, "other" | "values">;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
-  ref?: Ref<UserInputFormHandle>;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
-  /** False when the answer takes no words, so the form has no Other…. */
+  /** False when the answer takes no words, so the form has no note. */
   words?: boolean;
 }) {
   const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
-  // A failed button answer comes back with its choice picked.
-  const [picked, setPicked] = useState(() => {
-    const field = buttonUserInputField(props.request);
-    return field && props.draft?.values[field.id]?.[0];
-  });
+  const choiceField = buttonUserInputField(props.request);
+  // A plugin action sends on click. It reads no words, so it has no note.
+  const actionField =
+    choiceField && (props.words === false || choiceField.options.length === 1)
+      ? choiceField
+      : undefined;
+  // A failed action comes back with its choice marked.
+  const [clicked, setClicked] = useState(
+    () => actionField && props.draft?.values[actionField.id]?.[0],
+  );
   const [failed, setFailed] = useState(false);
   const choicesId = useId();
-  // A docked form has no note, so it neither shows nor sends a saved one,
-  // and keeps it saved for the full form.
   const [draft] = useState(() =>
     props.draft
       ? { other: props.draft.other ?? "", values: props.draft.values }
       : readAnswerDraft(props.requestId),
   );
   const [values, setValues] = useState(draft.values);
-  const [other, setOther] = useState(props.docked ? "" : draft.other);
-  // Only Other… puts saved answers of a button request in a form, so a saved
-  // draft opens it again. A failed draft with no note was a button pick.
-  const [writeOther, setWriteOther] = useState(
-    () =>
-      !props.docked &&
-      (Boolean(draft.other) ||
-        (!props.draft && Object.keys(draft.values).length > 0)),
-  );
-  const buttonField = writeOther
-    ? undefined
-    : buttonUserInputField(props.request);
-  // Other… unmounts the button that had focus, so move focus to the note.
-  // A restored note does not take focus.
-  const noteRef = useRef<HTMLTextAreaElement>(null);
-  const focusNoteRef = useRef(false);
-  useEffect(() => {
-    if (!writeOther || !focusNoteRef.current) return;
-    focusNoteRef.current = false;
-    noteRef.current?.focus();
-  }, [writeOther]);
+  const [other, setOther] = useState(draft.other);
 
   function changeValues(fieldId: string, fieldValues: string[]) {
     setValues((current) => ({ ...current, [fieldId]: fieldValues }));
@@ -299,26 +251,24 @@ export function UserInputForm(props: {
   // The lock stays after a sent answer; only a failed send can retry.
   const sendLock = useRef(false);
 
-  async function send(answer: UserInputAnswer): Promise<boolean> {
-    if (sendLock.current) return false;
+  async function send(answer: UserInputAnswer) {
+    if (sendLock.current) return;
     sendLock.current = true;
     setSending(true);
     setFailed(false);
     try {
       await props.onSubmit(answer);
-      return true;
     } catch {
       sendLock.current = false;
       setSending(false);
-      setPicked(undefined);
+      setClicked(undefined);
       setFailed(true);
-      return false;
     }
   }
 
-  /** Send one button choice as the whole answer. */
-  function pick(fieldId: string, label: string) {
-    setPicked(label);
+  /** Send one action as the whole answer. */
+  function act(fieldId: string, label: string) {
+    setClicked(label);
     void send({ requestId: props.requestId, values: { [fieldId]: [label] } });
   }
 
@@ -328,81 +278,86 @@ export function UserInputForm(props: {
     values,
   };
   const normalized = normalizeUserInputAnswer(props.request, answer);
+  const empty = isEmptyUserInputAnswer(normalized);
   const answeredCount = Object.keys(normalized.values).length;
   const fieldCount = props.request.fields.length;
-  // A button answer sends on click, so only the form can hold unsent input.
-  const unsent =
-    !buttonField && !sending && !isEmptyUserInputAnswer(normalized);
+  // An action sends on click, so only the form can hold unsent input.
+  const unsent = !actionField && !sending && !empty;
   const onUnsentChange = props.onUnsentChange;
   useEffect(() => {
     onUnsentChange?.(unsent);
   }, [onUnsentChange, unsent]);
-  useImperativeHandle(props.ref, () => ({
-    sendPicks: () => (unsent ? send(answer) : undefined),
-  }));
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!isEmptyUserInputAnswer(normalized)) {
-      void send(answer);
-    }
+    if (!empty) void send(normalized);
   }
 
-  const sendButton = (
-    <Button disabled={sending} type="submit" variant="default">
-      Send
-    </Button>
-  );
   const secondary = props.secondaryActions ? (
     <div className="flex flex-wrap gap-1 sm:ml-auto">
       {props.secondaryActions}
     </div>
   ) : null;
-  // Slack cards show the same button, so both surfaces take a free-text
-  // answer when no choice fits. One choice is a plugin's action, such as
-  // Resume. The plugin reads no words, so it has no Other….
-  const otherButton =
-    props.docked ||
-    props.words === false ||
-    buttonField?.options.length === 1 ? null : (
-      <Button
-        variant="outline"
-        disabled={sending}
-        onClick={() => {
-          focusNoteRef.current = true;
-          setWriteOther(true);
-        }}
-      >
-        Other…
-      </Button>
-    );
-  // Number keys pick the first nine choices.
-  const shortcut = (index: number) =>
-    props.docked && index < 9 ? String(index + 1) : undefined;
+  const failure = failed ? (
+    <p className="mb-0 mt-2 text-xs text-rose-300" role="alert">
+      Could not send your answer. Try again.
+    </p>
+  ) : null;
 
+  if (actionField) {
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-2">
+          {actionField.options.map((option) => (
+            <Button
+              data-picked={clicked === option.label ? "" : undefined}
+              disabled={sending}
+              key={option.label}
+              onClick={() => act(actionField.id, option.label)}
+              variant="outline"
+            >
+              {option.label}
+              {/* The button gap already spaces the label. */}
+              {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
+            </Button>
+          ))}
+          {secondary}
+        </div>
+        {failure}
+      </>
+    );
+  }
+
+  const picked = choiceField ? values[choiceField.id]?.[0] : undefined;
+  // A second click on the picked choice takes the pick back.
+  const toggle = (fieldId: string, label: string) =>
+    changeValues(fieldId, picked === label ? [] : [label]);
+  const described = choiceField?.options.some((option) => option.description);
   return (
-    <>
-      {buttonField?.options.some((option) => option.description) ? (
-        <>
-          <div
-            aria-label={buttonField.label}
-            className="mt-3 grid gap-2"
-            role="group"
-          >
-            {buttonField.options.map((option, index) => (
+    <form
+      className={cn("grid", choiceField ? "gap-3" : "gap-5")}
+      onSubmit={submit}
+    >
+      {choiceField ? (
+        <div
+          aria-label={choiceField.label}
+          className={described ? "grid gap-2" : "flex flex-wrap gap-2"}
+          role="group"
+        >
+          {choiceField.options.map((option, index) =>
+            described ? (
               <button
                 aria-describedby={
                   option.description ? `${choicesId}-${index}` : undefined
                 }
-                aria-keyshortcuts={shortcut(index)}
                 aria-labelledby={`${choicesId}-${index}-label`}
+                aria-pressed={picked === option.label}
                 className={choiceButtonClass}
                 data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
                 key={option.label}
-                onClick={() => pick(buttonField.id, option.label)}
+                onClick={() => toggle(choiceField.id, option.label)}
                 type="button"
               >
-                <ShortcutHint value={shortcut(index)} />
                 <span className="grid min-w-0 flex-1 gap-0.5 break-words">
                   <span
                     className="font-medium text-dashboard-text"
@@ -420,102 +375,103 @@ export function UserInputForm(props: {
                     </span>
                   ) : null}
                 </span>
-                <ArrowRight
+                <Check
                   aria-hidden="true"
-                  className="shrink-0 text-dashboard-text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[picked]:opacity-100"
+                  className="shrink-0 text-dashboard-accent-text opacity-0 group-data-[picked]:opacity-100"
                   size={16}
                 />
               </button>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {otherButton}
-            {secondary}
-          </div>
-        </>
-      ) : buttonField ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {buttonField.options.map((option, index) => (
-            <Button
-              variant="outline"
-              aria-keyshortcuts={shortcut(index)}
-              disabled={sending}
-              key={option.label}
-              onClick={() => pick(buttonField.id, option.label)}
-            >
-              <ShortcutHint value={shortcut(index)} />
-              {option.label}
-              {/* The button gap already spaces the label. */}
-              {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
-            </Button>
-          ))}
-          {otherButton}
-          {secondary}
-        </div>
-      ) : (
-        <form className="mt-4 grid gap-5" onSubmit={submit}>
-          {props.request.fields.map((field) =>
-            field.kind === "text" ? (
-              <TextField
-                description={field.description}
-                disabled={sending}
-                key={field.id}
-                label={field.label}
-                onChange={(value) => changeValues(field.id, [value])}
-                value={values[field.id]?.[0] ?? ""}
-              />
             ) : (
-              <ChoiceField
+              <Button
+                aria-pressed={picked === option.label}
+                className="data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10"
+                data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
-                field={field}
-                key={field.id}
-                onChange={(picked) => changeValues(field.id, picked)}
-                values={values[field.id] ?? []}
-              />
+                key={option.label}
+                onClick={() => toggle(choiceField.id, option.label)}
+                variant="outline"
+              >
+                {option.label}
+                {option.recommended ? (
+                  <SuggestedLabel className="ml-0" />
+                ) : null}
+              </Button>
             ),
           )}
-          {props.docked ? null : (
+        </div>
+      ) : (
+        props.request.fields.map((field) =>
+          field.kind === "text" ? (
             <TextField
-              className="min-h-16"
-              description={USER_INPUT_NOTE.description}
+              description={field.description}
               disabled={sending}
-              label={USER_INPUT_NOTE.label}
-              onChange={changeOther}
-              ref={noteRef}
-              value={other}
+              key={field.id}
+              label={field.label}
+              onChange={(value) => changeValues(field.id, [value])}
+              value={values[field.id]?.[0] ?? ""}
             />
-          )}
-          {/* A docked form sends from the message box, so this row can be
-              empty there. */}
-          {props.docked && fieldCount < 2 && !secondary ? null : (
-            // Send is the main action. The new UI ends the row with it, on
-            // the right; the current UI starts the row with it.
-            <div
-              className={cn(
-                "flex flex-wrap items-center gap-2",
-                inbox && "justify-end",
-              )}
-            >
-              {props.docked || inbox ? null : sendButton}
-              {fieldCount > 1 ? (
-                <span
-                  aria-live="polite"
-                  className="text-xs text-dashboard-text-muted"
-                >
-                  {answeredCount} of {fieldCount} answered
-                </span>
-              ) : null}
-              {secondary}
-              {props.docked || !inbox ? null : sendButton}
-            </div>
-          )}
-        </form>
+          ) : (
+            <ChoiceField
+              disabled={sending}
+              field={field}
+              key={field.id}
+              onChange={(next) => changeValues(field.id, next)}
+              values={values[field.id] ?? []}
+            />
+          ),
+        )
       )}
-      {failed ? (
-        <p className="mb-0 mt-2 text-xs text-rose-300" role="alert">
-          Could not send your answer. Try again.
-        </p>
-      ) : null}
-    </>
+      {choiceField ? null : (
+        <TextField
+          className="min-h-16"
+          description={USER_INPUT_NOTE.description}
+          disabled={sending}
+          label={USER_INPUT_NOTE.label}
+          onChange={changeOther}
+          value={other}
+        />
+      )}
+      {/* Send is the main action. The new UI ends the row with it, on the
+          right; the current UI puts it first, after the note line. */}
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-2",
+          inbox && "justify-end",
+        )}
+      >
+        {choiceField ? (
+          // One line, so the choices stay the answer and the note stays
+          // short.
+          <Input
+            aria-label={USER_INPUT_NOTE.label}
+            className="min-w-48 flex-1"
+            disabled={sending}
+            onChange={(event) => changeOther(event.target.value)}
+            placeholder="Add a note"
+            value={other}
+          />
+        ) : null}
+        {inbox ? null : <SendButton disabled={sending || empty} />}
+        {fieldCount > 1 ? (
+          <span
+            aria-live="polite"
+            className="text-xs text-dashboard-text-muted"
+          >
+            {answeredCount} of {fieldCount} answered
+          </span>
+        ) : null}
+        {secondary}
+        {inbox ? <SendButton disabled={sending || empty} /> : null}
+      </div>
+      {failure}
+    </form>
+  );
+}
+
+function SendButton(props: { disabled: boolean }) {
+  return (
+    <Button disabled={props.disabled} type="submit" variant="default">
+      Send
+    </Button>
   );
 }

@@ -41,10 +41,10 @@ for (const view of [desktop, mobile]) {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(QUESTION_CONVERSATION_ID)}`,
     );
     const question = page.getByRole("region", {
-      name: "Question: Approve the payments-v42 rollout",
+      name: "Asked Approve the payments-v42 rollout",
     });
     await expectEvidence(question);
-    await screenshot(page, "review-item-evidence-dock", {
+    await screenshot(page, "review-item-evidence-card", {
       lightTheme: true,
       view: view.name,
     });
