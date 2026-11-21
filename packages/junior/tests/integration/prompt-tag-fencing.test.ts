@@ -9,7 +9,7 @@ import {
 } from "@/chat/current-instruction";
 import { isRuntimeInputText, renderUntrustedTag } from "@/chat/input-tags";
 import { instructionTextForProjection } from "@/chat/pi/transcript";
-import { renderPlanSnapshot } from "@/chat/plan/prompt";
+import { renderTodosSnapshot } from "@/chat/todos/prompt";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
 import type { ThreadConversationState } from "@/chat/state/conversation";
@@ -113,12 +113,12 @@ describe("prompt tag fencing", () => {
         }),
       ],
       [
-        "plan",
-        renderPlanSnapshot([
+        "todos",
+        renderTodosSnapshot([
           {
             id: 1,
-            status: "pending",
-            title: payload("plan"),
+            status: "open",
+            title: payload("todos"),
             version: 1,
             assignee: { kind: "self" },
             createdAtMs: 0,

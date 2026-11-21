@@ -33,7 +33,7 @@ export function signedRequest(input: {
 }
 
 /** Plugin state in memory, with expiry. */
-function memoryState(): PluginState {
+export function memoryState(): PluginState {
   const stored = new Map<string, { expiresAtMs: number; value: unknown }>();
   const live = (key: string) => {
     const entry = stored.get(key);
@@ -150,7 +150,11 @@ export function createPluginHarness(fixture: GitHubFixture) {
   };
 
   async function deliver(request: Request): Promise<void> {
+    const unused = () => {
+      throw new Error("GitHub webhooks do not dispatch agents");
+    };
     const [route] = githubPlugin().hooks!.routes!({
+      agent: { dispatchForIdentity: unused },
       annotations: {
         forConversation() {
           return {
@@ -180,6 +184,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         },
       },
     });
+    if (!route) throw new Error("The GitHub plugin has no webhook route");
     const response = await route.handler(request);
     expect(response.status).toBe(202);
   }
@@ -189,7 +194,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       throw new Error("The GitHub heartbeat does not use this");
     };
     await githubPlugin().hooks!.heartbeat!({
-      agent: { dispatch: unused, get: unused },
+      agent: { dispatch: unused, dispatchForIdentity: unused, get: unused },
       annotations: {
         forConversation(conversationId) {
           return {

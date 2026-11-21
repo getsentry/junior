@@ -43,7 +43,7 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
    No tag table and no context data.
 4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
    with side effects.
-5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
+5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<todo-policy>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
    `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` states

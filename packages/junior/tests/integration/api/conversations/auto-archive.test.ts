@@ -20,7 +20,7 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
-import { changePlan } from "@/chat/plan/store";
+import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import {
@@ -567,19 +567,19 @@ describe("conversation auto-archive API", () => {
     // does not.
     const childItemId = "local:test:archive-needs-child-item";
     const childItemClosedId = "local:test:archive-needs-child-item-closed";
-    const planId = "local:test:archive-needs-plan";
-    const planDoneId = "local:test:archive-needs-plan-done";
-    const childPlanId = "local:test:archive-needs-child-plan";
-    const childAgentPlanId = "local:test:archive-needs-child-agent-plan";
+    const todoId = "local:test:archive-needs-todo";
+    const todoDoneId = "local:test:archive-needs-todo-done";
+    const childTodoId = "local:test:archive-needs-child-todo";
+    const childAgentTodoId = "local:test:archive-needs-child-agent-todo";
     const unreadId = "local:test:archive-needs-unread";
     const readId = "local:test:archive-needs-read";
     const ids = [
       childItemId,
       childItemClosedId,
-      planId,
-      planDoneId,
-      childPlanId,
-      childAgentPlanId,
+      todoId,
+      todoDoneId,
+      childTodoId,
+      childAgentTodoId,
       unreadId,
       readId,
     ];
@@ -596,8 +596,8 @@ describe("conversation auto-archive API", () => {
     for (const parentConversationId of [
       childItemId,
       childItemClosedId,
-      childPlanId,
-      childAgentPlanId,
+      childTodoId,
+      childAgentTodoId,
     ]) {
       await getConversationStore().createChild({
         childConversationId: `${parentConversationId}:child`,
@@ -637,12 +637,12 @@ describe("conversation auto-archive API", () => {
         });
       }
     }
-    const addPlanItem = async (
+    const addTodo = async (
       conversationId: string,
       assignee: { conversationId: string } | { userId: string },
-      status: "blocked" | "done",
+      status: "open" | "in_progress" | "done",
     ) =>
-      await changePlan(getSqlExecutor(), {
+      await changeTodos(getSqlExecutor(), {
         change: {
           add: [{ assignee, status, title: "Approve the rollout" }],
           remove: [],
@@ -651,13 +651,13 @@ describe("conversation auto-archive API", () => {
         conversationId,
         nowMs: quietMs,
       });
-    await addPlanItem(planId, { userId: viewer.id }, "blocked");
-    await addPlanItem(planDoneId, { userId: viewer.id }, "done");
-    await addPlanItem(`${childPlanId}:child`, { userId: viewer.id }, "blocked");
-    await addPlanItem(
-      `${childAgentPlanId}:child`,
-      { conversationId: `${childAgentPlanId}:child` },
-      "blocked",
+    await addTodo(todoId, { userId: viewer.id }, "open");
+    await addTodo(todoDoneId, { userId: viewer.id }, "done");
+    await addTodo(`${childTodoId}:child`, { userId: viewer.id }, "in_progress");
+    await addTodo(
+      `${childAgentTodoId}:child`,
+      { conversationId: `${childAgentTodoId}:child` },
+      "open",
     );
     for (const conversationId of [unreadId, readId]) {
       await recordAnswer(conversationId, 1, quietMs);
@@ -691,7 +691,7 @@ describe("conversation auto-archive API", () => {
       .from(juniorConversations)
       .where(isNotNull(juniorConversations.archivedAt));
     expect(archived.map((row) => row.conversationId).sort()).toEqual(
-      [childItemClosedId, planDoneId, childAgentPlanId, readId].sort(),
+      [childItemClosedId, todoDoneId, childAgentTodoId, readId].sort(),
     );
   });
 });

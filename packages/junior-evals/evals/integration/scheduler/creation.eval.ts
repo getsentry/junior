@@ -162,7 +162,7 @@ describe("Schedule Creation", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
+        "schedule this every Monday at 9am Pacific: check open GitHub issues in getsentry/junior about the scheduler and post a short digest here.",
       ),
     );
     await expect(conversation).toSatisfyJudge(
