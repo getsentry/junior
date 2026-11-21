@@ -95,7 +95,9 @@ export async function createTurn(
 
 /**
  * Finds the Turn of a Conversation that has not ended: the running Turn, else
- * the next queued Turn by priority and age.
+ * the next queued Turn by priority and age. It locks that row until the
+ * caller's transaction ends, so failTurn and cancelTurn, which do not take
+ * the Conversation lock, cannot end the Turn before the caller writes to it.
  */
 export async function findOpenTurn(
   executor: JuniorSqlDatabase,
@@ -116,7 +118,8 @@ export async function findOpenTurn(
       asc(juniorTurns.priority),
       asc(juniorTurns.createdAt),
     )
-    .limit(1);
+    .limit(1)
+    .for("update");
   return turn;
 }
 

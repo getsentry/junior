@@ -24,7 +24,8 @@ type ScheduleOptions = {
   /**
    * Chooses the Turn of an input that is not a duplicate: join the open
    * Turn of the Conversation, or create a Turn with a priority. It runs
-   * under the Conversation lock, so `openTurn` cannot change before the write.
+   * under the Conversation lock and a lock on the `openTurn` row, so
+   * `openTurn` cannot change before the write.
    * `openTurn` is the Conversation's queued or running Turn, if any.
    * It only picks the Turn; core writes the input.
    */
