@@ -86,7 +86,33 @@ export const inboxSnoozeSchema = z
   .object({ inboxItemIds: z.array(z.string().min(1)).min(1) })
   .strict();
 
+/**
+ * Why the viewer's snooze of an item woke: its time came, or an Event on
+ * `resource`, such as `getsentry/junior#12`. `phrase` says how the Event
+ * reads after the resource's name, where its source says.
+ */
+export const inboxSnoozeWakeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("time") }).strict(),
+  z
+    .object({
+      eventType: z.string().min(1),
+      kind: z.literal("event"),
+      phrase: z.string().min(1).optional(),
+      resource: z.string().min(1),
+    })
+    .strict(),
+]);
+
+/**
+ * `DELETE /api/inbox/snoozes/wakes` body: the viewer opened these items, so
+ * they no longer show why their snoozes woke.
+ */
+export const inboxSnoozeWakesClearSchema = z
+  .object({ inboxItemIds: z.array(z.string().min(1)).min(1).max(100) })
+  .strict();
+
 export type InboxSnoozeCreateBody = z.input<typeof inboxSnoozeCreateSchema>;
 export type InboxSnoozeSubjectBody = z.input<typeof inboxSnoozeSubjectSchema>;
 export type InboxSnoozeTrigger = z.output<typeof inboxSnoozeTriggerSchema>;
 export type InboxSnoozeResource = z.output<typeof inboxSnoozeResourceSchema>;
+export type InboxSnoozeWake = z.output<typeof inboxSnoozeWakeSchema>;

@@ -208,7 +208,7 @@ describe("inbox item evidence", () => {
     // Conversations. More items do not add statements.
     const list = await (
       await expectSqlBudget(() => api(fixture, ana)("?sort=waiting"), {
-        statements: 9,
+        statements: 10,
         serialRounds: 5,
       })
     ).json();

@@ -47,6 +47,9 @@ function compilePattern(source: string): TitlePattern | undefined {
     // Craft skips an invalid pattern.
     return undefined;
   }
+  // A pattern that matches an empty title, such as "" or "a*", matches
+  // every title, so its category would claim every pull request.
+  if (regex.matcher("").find()) return undefined;
   const groups = regex.namedGroups();
   return (title) => {
     const match = regex.matcher(title);

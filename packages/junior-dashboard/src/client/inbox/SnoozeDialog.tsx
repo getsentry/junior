@@ -49,6 +49,7 @@ import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
+import { eventSentence, sentenceCase } from "./snoozeSentences";
 import type {
   CustomSnoozeEnd,
   EventSnooze,
@@ -535,24 +536,4 @@ function watchedName(watched: Watched, resourceType: string): string {
   const type = resourceType.replaceAll("_", " ");
   if (watched.kind === "subject") return `this ${type}`;
   return watched.reference ? referenceName(watched.reference) : `the ${type}`;
-}
-
-/**
- * An Event as a sentence about the page, such as "When getsentry/junior#12
- * is merged", from the phrase of the Event's source. An Event without one
- * reads as its label on the page.
- */
-function eventSentence(
-  eventType: string,
-  events: SnoozeEvents,
-  name: string,
-): string {
-  const phrase = events.phrases[eventType];
-  return phrase
-    ? `When ${name} ${phrase}`
-    : `${sentenceCase(eventLabel(eventType, events.resourceType))} on ${name}`;
-}
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -14,9 +14,19 @@ import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
 
 /**
+ * Why a trigger woke a snooze: its time came, or an Event on a resource,
+ * such as `getsentry/junior#12` merged.
+ */
+export type InboxSnoozeWakeReason =
+  | { kind: "time" }
+  | { eventType: string; identifier: string; kind: "event"; namespace: string };
+
+/**
  * One person's snooze of one Inbox item. A `snoozed` row hides the item
  * from that person's Inbox until one of its triggers fires. `woken` and
  * `cancelled` are final. The item's own status says whether it resolved.
+ * A trigger that wakes it records why in `wake_reason`, which only that
+ * person sees, until they open or act on the item.
  */
 export const juniorInboxSnoozes = pgTable(
   "junior_inbox_snoozes",
@@ -29,6 +39,7 @@ export const juniorInboxSnoozes = pgTable(
       .notNull()
       .references(() => juniorInboxItems.id, { onDelete: "cascade" }),
     state: text("state").$type<"snoozed" | "woken" | "cancelled">().notNull(),
+    wakeReason: jsonb("wake_reason").$type<InboxSnoozeWakeReason>(),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [

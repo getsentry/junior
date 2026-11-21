@@ -1,0 +1,1 @@
+ALTER TABLE "junior_inbox_snoozes" ADD COLUMN "wake_reason" jsonb;

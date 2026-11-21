@@ -372,6 +372,21 @@ interface MockSandbox {
   update: ReturnType<typeof vi.fn>;
 }
 
+/**
+ * The provider waits for the guest's boot CA refresh before it returns a
+ * session. The fake guest has no refresh, so that wait finishes at once and
+ * is not recorded as a command.
+ */
+function guestRunCommand(
+  runCommand: (input: { args?: string[] }) => Promise<unknown>,
+): MockSandbox["runCommand"] {
+  return vi.fn(async (input: { args?: string[] }) =>
+    input.args?.some((arg) => arg.includes("ca-trust"))
+      ? { exitCode: 0, stdout: async () => "", stderr: async () => "" }
+      : runCommand(input),
+  );
+}
+
 function makeSandbox(
   name: string,
   options: {
@@ -406,7 +421,7 @@ function makeSandbox(
     mkDir,
     writeFiles,
     readFileToBuffer,
-    runCommand,
+    runCommand: guestRunCommand(runCommand),
     stop,
     extendTimeout,
     snapshot,
@@ -620,7 +635,10 @@ describe("createTestSandbox", () => {
 
     await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
 
-    expect(sandbox.session.runCommand).toHaveBeenCalledTimes(1);
+    expect(sandbox.session.runCommand).toHaveBeenCalledWith({
+      cmd: "gh",
+      args: ["pr", "create"],
+    });
     expect(resumingRunCommand).not.toHaveBeenCalled();
   });
 

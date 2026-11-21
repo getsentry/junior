@@ -2,9 +2,10 @@ import {
   AlarmClockOff,
   Archive,
   ArchiveRestore,
-  ArrowUpRight,
+  MessagesSquare,
   Pin,
   PinOff,
+  Zap,
 } from "lucide-react";
 import {
   useMemo,
@@ -18,6 +19,7 @@ import type {
   OwnedObjectAnnotation,
   InboxItemActionBody,
   InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
@@ -64,7 +66,7 @@ import {
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { openOnClick, useOpenPath } from "./rowClick";
+import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
 import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
@@ -96,6 +98,7 @@ import {
   type ButtonLook,
 } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
+import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -137,16 +140,27 @@ function rowSummary(conversation: Conversation | undefined) {
  * What the row's Open action opens: an item row's owner, such as its
  * Automation, or the row's Conversation.
  */
-function rowOpenTarget(props: InboxRowProps): { label: string; path: string } {
+type RowOpenTarget = {
+  automation: boolean;
+  label: string;
+  onClick?(): void;
+  path: string;
+};
+
+function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
   const newest = props.bundle?.newest;
   const id = props.conversationId;
   if (newest && (props.itemTitle !== undefined || id === undefined))
     return {
+      automation: newest.owner.kind === "automation",
       label: itemOwnerLinkLabel(newest),
+      onClick: props.onOpen,
       path: itemOwnerPath(newest, { askItemId: newest.id }),
     };
   return {
+    automation: false,
     label: "Open conversation",
+    onClick: props.onOpen,
     path: conversationPath(id!, {
       askItemId:
         newest && itemConversationId(newest) === id ? newest.id : undefined,
@@ -195,6 +209,8 @@ type InboxRowProps = {
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
   onWake?(): void;
+  /** Runs when the row opens what it names, such as its Conversation. */
+  onOpen?(): void;
   rowKey: string;
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
@@ -206,6 +222,8 @@ type InboxRowProps = {
   take?: string;
   time: string;
   title: string;
+  /** Why the viewer's snooze of an item in the row woke. */
+  wake?: InboxSnoozeWake | undefined;
 };
 
 /**
@@ -227,12 +245,12 @@ export function InboxRow(props: InboxRowProps) {
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
-        lead={
+        main={
           props.itemHead ? (
             <CodeChangeOpenLink head={props.itemHead} />
           ) : undefined
         }
-        open={rowOpenTarget(props)}
+        onExpand={props.onToggle}
       />
     ) : undefined;
   return props.conversation ? (
@@ -289,7 +307,23 @@ function ConversationInboxRow(
   // meta's cell, so they never cover the title or summary.
   const hoverActions = props.quickActions ?? (
     <>
-      <RowOpenLink {...rowOpenTarget(props)} />
+      {/* Archive, Pin, then Open last, in the order of an item row's
+          actions. */}
+      {participant ? (
+        <RowActionButton
+          disabled={actions.pending.archive}
+          icon={
+            actions.archived ? (
+              <ArchiveRestore aria-hidden="true" size={14} />
+            ) : (
+              <Archive aria-hidden="true" size={14} />
+            )
+          }
+          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
+          onClick={actions.toggleArchive}
+          tooltip={actions.archived ? "Restore" : "Archive"}
+        />
+      ) : null}
       {participant && !actions.archived ? (
         <RowActionButton
           disabled={actions.pending.pin}
@@ -306,21 +340,7 @@ function ConversationInboxRow(
           tooltip={actions.pinned ? "Unpin" : "Pin"}
         />
       ) : null}
-      {participant ? (
-        <RowActionButton
-          disabled={actions.pending.archive}
-          icon={
-            actions.archived ? (
-              <ArchiveRestore aria-hidden="true" size={14} />
-            ) : (
-              <Archive aria-hidden="true" size={14} />
-            )
-          }
-          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
-          onClick={actions.toggleArchive}
-          tooltip={actions.archived ? "Restore" : "Archive"}
-        />
-      ) : null}
+      <RowOpenLink {...rowOpenTarget(props)} />
     </>
   );
   return (
@@ -452,7 +472,11 @@ function InboxRowBody(
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
   const { path } = rowOpenTarget(props);
-  const openConversation = useOpenPath(path);
+  const openPath = useOpenPath(path);
+  const openConversation = (event: MouseEvent) => {
+    props.onOpen?.();
+    openPath(event);
+  };
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
@@ -503,6 +527,8 @@ function InboxRowBody(
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
   const regionId = rowRegionId(props.rowKey);
+  // An open Conversation row's cards each say why their item woke.
+  const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
@@ -600,6 +626,10 @@ function InboxRowBody(
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
+                // A middle click opens the link in a new tab.
+                onAuxClick={(event) => {
+                  if (event.button === 1) props.onOpen?.();
+                }}
                 // On a row for one item, a plain click or Enter expands it in
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
@@ -611,8 +641,10 @@ function InboxRowBody(
                     event.ctrlKey ||
                     event.shiftKey ||
                     event.altKey
-                  )
+                  ) {
+                    props.onOpen?.();
                     return;
+                  }
                   event.preventDefault();
                   props.onToggle();
                 }}
@@ -660,6 +692,15 @@ function InboxRowBody(
                 ) : null}
               </Link>
             </span>
+            {wake ? (
+              <span
+                className={cn(lineClass, "text-xs text-dashboard-text-muted")}
+                data-inbox-slot="wake"
+                ref={fadeWhenOverflowing}
+              >
+                {wakeReasonText(wake)}
+              </span>
+            ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
             {cast || hasChips ? (
@@ -814,6 +855,7 @@ function InboxRowBody(
               rowActions={inlineActions ? rowActions(props, true) : undefined}
               sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
+              wake={item.wake}
             />
           ))}
           {props.actionsBelow || inlineActions ? null : rowActions(props)}
@@ -829,8 +871,8 @@ function rowActions(props: InboxRowProps, inline = false) {
     <ExpandedActions
       conversation={props.conversation}
       inline={inline}
-      // A code change card leads with its own main action.
-      look={inline && props.itemHead ? "narrow" : undefined}
+      // Next to a code change card's main action: as tall as it.
+      look={inline && props.itemHead ? "tall" : undefined}
       // A stack of one card snoozes on the card.
       {...((props.bundle?.items.length ?? 0) > 1
         ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
@@ -848,33 +890,19 @@ function ExpandedActions(props: {
   inline: boolean;
   eventSnooze?: EventSnooze | undefined;
   look?: ButtonLook | undefined;
-  open: { label: string; path: string };
+  open: RowOpenTarget;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
 }) {
+  // The owner's link goes last, next to a card's main action. It names
+  // where it goes, and its icon is the one the Conversations or
+  // Automations page uses, so it does not read as a link that leaves the
+  // dashboard, like the main action.
+  const OwnerIcon = props.open.automation ? Zap : MessagesSquare;
   const actions = (
     <>
-      <Link
-        className={cn(
-          buttonVariants({ variant: "ghost" }),
-          props.look && LOOK_CLASSES[props.look],
-        )}
-        to={props.open.path}
-      >
-        <ArrowUpRight aria-hidden="true" size={15} />
-        <ButtonLabel look={props.look}>{props.open.label}</ButtonLabel>
-      </Link>
-      {props.conversation?.isParticipant ? (
-        <ExpandedPin conversation={props.conversation} look={props.look} />
-      ) : null}
-      {props.onWake ? (
-        <Button onClick={props.onWake} variant="ghost">
-          <AlarmClockOff aria-hidden="true" size={15} />
-          Wake
-        </Button>
-      ) : null}
       {props.onSnooze ? (
         <RowSnoozeButton
           eventSnooze={props.eventSnooze}
@@ -884,6 +912,31 @@ function ExpandedActions(props: {
           open={props.snoozeMenuOpen}
         />
       ) : null}
+      {props.onWake ? (
+        <Button
+          className={props.look && LOOK_CLASSES[props.look]}
+          onClick={props.onWake}
+          variant="ghost"
+        >
+          <AlarmClockOff aria-hidden="true" size={15} />
+          <ButtonLabel look={props.look}>Wake</ButtonLabel>
+        </Button>
+      ) : null}
+      {props.conversation?.isParticipant ? (
+        <ExpandedPin conversation={props.conversation} look={props.look} />
+      ) : null}
+      <Link
+        aria-label={props.open.label}
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          props.look && LOOK_CLASSES[props.look],
+        )}
+        {...onLinkOpen(props.open.onClick)}
+        to={props.open.path}
+      >
+        <OwnerIcon aria-hidden="true" size={15} />
+        {props.open.automation ? "Automation" : "Conversation"}
+      </Link>
     </>
   );
   if (props.inline) return actions;

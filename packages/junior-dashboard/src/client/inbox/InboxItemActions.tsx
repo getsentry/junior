@@ -128,7 +128,9 @@ export function InboxItemActions(props: {
           Only an assignee can act on this item.
         </p>
         {props.extra ? (
-          <div className="flex flex-wrap gap-1 sm:ml-auto">{props.extra}</div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+            {props.extra}
+          </div>
         ) : null}
       </div>
     );

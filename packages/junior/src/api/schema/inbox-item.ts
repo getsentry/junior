@@ -2,7 +2,10 @@ import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { inboxItemRequestSchema } from "@/chat/inbox-items/evidence";
 import { actorIdentitySchema } from "./conversation";
-import { inboxSnoozeResourceSchema } from "./inbox-snooze";
+import {
+  inboxSnoozeResourceSchema,
+  inboxSnoozeWakeSchema,
+} from "./inbox-snooze";
 
 const answerSchema = z
   .object({
@@ -132,6 +135,11 @@ export const inboxItemSchema = z
     title: z.string().min(1),
     updatedAt: z.string().datetime(),
     visibility: z.enum(["public", "private"]),
+    /**
+     * Why the viewer's snooze of the open item woke. Only that viewer sees
+     * it, until they open or act on the item.
+     */
+    wake: inboxSnoozeWakeSchema.optional(),
   })
   .strict();
 
