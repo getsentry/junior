@@ -78,14 +78,15 @@ import {
  *   their own auto-archive run skips it.
  * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
  *   input membership (`recordTurnInputParticipants`), auto-archive
- *   (`archivableRow`), and the entry points: this module's HTTP routes,
- *   `chat/tools/conversation-subscription.ts`, and
- *   `api/mcp/tools/set-conversation-subscription.ts`.
+ *   (`archivableRow`), and the entry points: the subscription and Invite
+ *   routes in `routes.ts`, `setConversationSubscriptionOperation` in
+ *   `operations.ts`, which also serves the MCP tool, and
+ *   `chat/tools/conversation-subscription.ts`.
  */
 
 /**
  * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
- * API. The contract is in the comment above.
+ * route and the MCP tool. The contract is in the comment above.
  */
 export async function setConversationSubscription(
   viewer: User,
