@@ -99,6 +99,7 @@ import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useLead } from "../lead/Lead";
+import { useInboxItemsData } from "../inbox/queries";
 import { LeadFirstRun } from "../lead/LeadFirstRun";
 import { LeadHeader } from "../lead/LeadHeader";
 import { LeadPageScope } from "../lead/LeadPageProvider";
@@ -231,6 +232,9 @@ export function ConversationPage(props: {
   // the page shows neither chrome until the detail says which page this is,
   // so the wrong one does not flash.
   const leadId = useLead(false).data?.conversationId;
+  // Question cards wait for this list. Read it now, not with the details,
+  // so they do not grow the transcript after it paints.
+  useInboxItemsData({ conversationId: props.conversationId });
   const lead =
     props.detail.data?.kind === "lead" || leadId === props.conversationId;
   const kindKnown = props.detail.data !== undefined || leadId !== undefined;
