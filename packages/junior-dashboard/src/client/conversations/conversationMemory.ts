@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import * as z from "zod";
 
-import { fetchDashboardJson } from "../http";
+import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { markTranscriptRow } from "./useMessageLinkJump";
 
@@ -38,12 +38,10 @@ type MemorySource = ConversationMemoryList["events"][number]["source"];
 /** Load what one Conversation recalled and captured. */
 export function useConversationMemories(conversationId: string) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationMemoryListSchema,
-        `/api/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      conversationMemoryListSchema,
+      `/api/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "memories"),
     retry: false,
   });

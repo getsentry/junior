@@ -9,7 +9,7 @@ import {
   SlackActionError,
   streamPrivateSlackFile,
 } from "@/chat/slack/client";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQLWrapper } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
@@ -106,7 +106,7 @@ export async function matchSlackAttachments(args: {
  */
 export function slackAttachmentsVersionQuery(
   db: JuniorDatabase,
-  conversationId: string,
+  conversationId: string | SQLWrapper,
 ) {
   return db
     .select({

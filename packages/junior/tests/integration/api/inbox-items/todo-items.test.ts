@@ -2,9 +2,10 @@ import type { User } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { waitingConversationIdsQuery } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { juniorConversationParticipants } from "@/db/schema";
 import {
@@ -198,6 +199,18 @@ describe("To-dos for a person in the Inbox", () => {
     expect(await asBob.items()).toEqual([
       expect.objectContaining({ id: first!.id, title: "Pick a launch week" }),
     ]);
+    // Done that Ana sent before the move does not close Bob's To-do.
+    expect(
+      await setTodoStatusByUser(getSqlExecutor(), {
+        assignedOnly: true,
+        conversationId: ROOT,
+        id: Number(todo!.id.replace("TODO-", "")),
+        nowMs: NOW_MS,
+        status: "done",
+        userId: ana.id,
+      }),
+    ).toBeUndefined();
+    expect(await asBob.items()).toHaveLength(1);
 
     // Work that moves to the agent, or that it drops, leaves the Inbox.
     await updateTodos({ update: [{ id: todo!.id, assignee: "self" }] });

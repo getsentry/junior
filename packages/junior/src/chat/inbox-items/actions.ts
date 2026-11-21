@@ -261,6 +261,7 @@ async function markTodoItemDone(
       );
     }
     await setTodoStatusByUser(getSqlExecutor(), {
+      assignedOnly: true,
       conversationId: todo.conversationId,
       id: todo.id,
       nowMs,
