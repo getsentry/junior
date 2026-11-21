@@ -1,6 +1,7 @@
 /**
  * Own the MCP server behind `/api/mcp`. A tool that the REST API also serves
- * is an API operation; each other tool lives in its own file under `tools/`.
+ * is an API operation, registered by `tools/api-operation.ts`; each other tool
+ * lives in its own file under `tools/`.
  *
  * Each request gets a new server and a stateless transport that answers with
  * JSON. No MCP session or SSE stream outlives the request, so the route works
@@ -13,11 +14,8 @@ import { JUNIOR_VERSION } from "@/version";
 import { conversationOperations } from "../conversations/operations";
 import type { ApiOperation } from "../operation";
 import type { McpScope } from "./oauth/scopes";
-import {
-  apiToolError,
-  mcpToolResult,
-  type McpToolContext,
-} from "./tool-context";
+import type { McpToolContext } from "./tool-context";
+import { registerApiOperationTool } from "./tools/api-operation";
 import { registerCreateConversationTool } from "./tools/create-conversation";
 import { registerGetAutomationTool } from "./tools/get-automation";
 import { registerGetConversationTool } from "./tools/get-conversation";
@@ -59,30 +57,6 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
   ],
 };
 
-function registerOperationTool(
-  server: McpServer,
-  operation: ApiOperation,
-  { queue, user }: McpToolContext,
-): void {
-  server.registerTool(
-    operation.name,
-    {
-      title: operation.title,
-      description: operation.description,
-      inputSchema: operation.input,
-      outputSchema: operation.output,
-      annotations: { ...operation.annotations, openWorldHint: false },
-    },
-    async (input) => {
-      try {
-        return mcpToolResult(await operation.run(user, input, { queue }));
-      } catch (error) {
-        return apiToolError(error);
-      }
-    },
-  );
-}
-
 function readInstructions(agentName: string): string {
   return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your review items and automations. They cannot send a message or start agent work. To ask ${agentName} for work or to answer a review item, use the Slack or dashboard link in a result.`;
 }
@@ -109,7 +83,7 @@ function createMcpServer(
   }
   for (const operation of OPERATIONS) {
     if (scopes.includes(operation.scope)) {
-      registerOperationTool(server, operation, context);
+      registerApiOperationTool(server, operation, context);
     }
   }
   return server;
