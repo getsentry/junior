@@ -16,7 +16,8 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { closeOpenTodosOfChild } from "@/chat/todos/store";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   getEventBatchDelayMs,
@@ -278,6 +279,22 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
+  // The result closes the child's open To-dos of the parent before the
+  // parent reads it. A blocked or failed child did not finish that work.
+  const closedStatus =
+    invocation.status === "completed"
+      ? "done"
+      : invocation.status === "stopped"
+        ? "dropped"
+        : undefined;
+  if (closedStatus) {
+    await closeOpenTodosOfChild(getSqlExecutor(), {
+      childConversationId: invocation.childConversationId,
+      nowMs,
+      parentConversationId: invocation.parentConversationId,
+      status: closedStatus,
+    });
+  }
   const parentMessages = await readParentChildMessages(
     invocation.parentConversationId,
     options.state,
