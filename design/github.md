@@ -86,6 +86,10 @@ also wake a Conversation or run an Event automation.
 - A check or feedback fix that does not land asks nobody, or gets only a
   Slack message (`github#fix-unlanded`). This breaks Attention's "when
   Junior is stuck, what they must do to unblock it".
+- A draft held for code owners or `AGENTS.md` gets a Slack message that
+  says why it is a draft, and no review ask (`github#draft-held`). This
+  breaks "takes a person's attention only for a step that only a person
+  can take".
 - `Ready to merge` waits for every check, not only the required ones, and
   does not know stacks (`github#ready-to-merge`, `github#stack`). This
   breaks "a Junior PR that a person can merge gets one `Ready to merge`".
