@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
-// Mock Conversations with open Review items that wait on the viewer.
+// Mock Conversations with open Inbox items that wait on the viewer.
 const ONE_QUESTION_ID = "internal:question-qa";
 const THREE_QUESTIONS_ID = "internal:questions-qa";
 
@@ -10,7 +10,7 @@ async function openConversation(page: Page, baseURL: string, id: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(id)}`);
 }
 
-/** Record the body of each Review item action that the page sends. */
+/** Record the body of each Inbox item action that the page sends. */
 function recordActions(page: Page) {
   const actions: unknown[] = [];
   page.on("request", (request) => {
@@ -168,7 +168,7 @@ test("the questions pill skips an Everyone question the viewer has not taken", a
 }) => {
   await page.setViewportSize(desktop);
   // The list marks one of the three questions as asked of everyone.
-  await page.route("**/api/review-items?*", async (route) => {
+  await page.route("**/api/inbox-items?*", async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("conversationId") !== THREE_QUESTIONS_ID) {
       await route.fallback();

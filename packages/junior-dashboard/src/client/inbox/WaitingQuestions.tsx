@@ -7,15 +7,12 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { scrollRootFor } from "../conversations/transcriptBottomPinning";
-import { useReviewItemsData, useWaitingConversations } from "./queries";
-import {
-  itemConversationId,
-  reviewItemWaitsForAnswer,
-} from "./reviewItemFormat";
+import { useInboxItemsData, useWaitingConversations } from "./queries";
+import { itemConversationId, inboxItemWaitsForAnswer } from "./inboxItemFormat";
 
 /**
  * Return the open questions that a Conversation's own Turns asked and that
@@ -26,7 +23,7 @@ export function useWaitingQuestions(conversationId: string | undefined) {
   // Every page reads which Conversations wait on the viewer, so a
   // Conversation that waits on no one sends no list read of its own.
   const waiting = useWaitingConversations();
-  const { items, query } = useReviewItemsData({
+  const { items, query } = useInboxItemsData({
     conversationId,
     enabled: Boolean(conversationId && waiting.has(conversationId)),
   });
@@ -52,7 +49,7 @@ export function useWaitingQuestions(conversationId: string | undefined) {
         ? []
         : items.filter(
             (item) =>
-              reviewItemWaitsForAnswer(item) &&
+              inboxItemWaitsForAnswer(item) &&
               !item.assignedToEveryone &&
               item.addedByTurnId !== undefined &&
               itemConversationId(item) === conversationId,
@@ -137,8 +134,8 @@ export function useQuestionInViewRef(itemId: string, waiting: boolean) {
  * click goes on to the next one.
  */
 export function WaitingQuestionsPill(props: {
-  onShow(item: ReviewItemPayload): void;
-  questions: readonly ReviewItemPayload[];
+  onShow(item: InboxItemPayload): void;
+  questions: readonly InboxItemPayload[];
   store: ReturnType<typeof createQuestionsInViewStore>;
 }) {
   const { store } = props;

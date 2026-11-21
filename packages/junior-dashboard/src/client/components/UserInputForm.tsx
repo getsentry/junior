@@ -200,7 +200,7 @@ function TextField(props: {
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent. `draft` fills the
  * form once, when it mounts. Without it, the form starts from the answers
- * saved by `requestId` (the Review item id) as the reader made them, so it
+ * saved by `requestId` (the Inbox item id) as the reader made them, so it
  * shows them again after it unmounts or the page reloads. Restored answers
  * are still unsent. They clear when the item closes, which a sent answer
  * does.

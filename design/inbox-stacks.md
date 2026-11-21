@@ -1,6 +1,6 @@
 # Inbox stacks
 
-The Inbox shows the open Review items for the viewer, one item row each.
+The Inbox shows the open Inbox items for the viewer, one item row each.
 The rows of one root Conversation sit together in a stack: a lightly
 tinted tray under the root's title. The viewer answers, dismisses, or
 snoozes each row on its own. `./inbox.md` owns who sees an item and who
@@ -12,7 +12,7 @@ can act on it.
   item, such as an Automation. People start and follow root Conversations. They usually do not know which Threads and Tasks run under
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
-- Each Review item is its own row, with its own actions. An item row is
+- Each Inbox item is its own row, with its own actions. An item row is
   always one actionable item, such as a question or a pull request. A row
   action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
@@ -103,7 +103,7 @@ Order and counts:
   the reader works.
 - A stack waits on the viewer when any of its rows does, including a row
   from a child.
-- Counts count Review items, not stacks. The To do count and the tab count
+- Counts count Inbox items, not stacks. The To do count and the tab count
   stay the same when items roll up.
 
 Snooze:

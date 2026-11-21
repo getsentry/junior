@@ -2,16 +2,16 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 /**
  * Build the dashboard route for a conversation id. An `askItemId` shows the
- * transcript record of that Review item. A `turnId` opens the start of that
+ * transcript record of that Inbox item. A `turnId` opens the start of that
  * Turn in the event log. A `messageId` shows that Message in the transcript.
- * `reviewItems` opens the Review items panel.
+ * `inboxItems` opens the Inbox items panel.
  */
 export function conversationPath(
   conversationId: string,
   options?: {
     askItemId?: string | undefined;
     messageId?: string | undefined;
-    reviewItems?: boolean;
+    inboxItems?: boolean;
     turnId?: string | undefined;
   },
 ): string {
@@ -24,7 +24,7 @@ export function conversationPath(
   if (options?.messageId) {
     params.set(CONVERSATION_MESSAGE_PARAM, options.messageId);
   }
-  if (options?.reviewItems) {
+  if (options?.inboxItems) {
     params.set(CONVERSATION_REVIEW_PARAM, CONVERSATION_REVIEW_OPEN);
   }
   const search = params.toString();
@@ -103,7 +103,7 @@ export function parseConversationEventSeq(
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
 }
 
-/** Query param that opens the Review items panel of a Conversation. */
+/** Query param that opens the Inbox items panel of a Conversation. */
 export const CONVERSATION_REVIEW_PARAM = "review";
 export const CONVERSATION_REVIEW_OPEN = "open";
 
@@ -113,7 +113,7 @@ export const CONVERSATION_TURN_PARAM = "turn";
 /** Query param that shows one Message in the transcript by its id. */
 export const CONVERSATION_MESSAGE_PARAM = "message";
 
-/** Query param that shows the transcript record of one Review item. */
+/** Query param that shows the transcript record of one Inbox item. */
 export const CONVERSATION_ASK_PARAM = "ask";
 
 /** Find the sequence number of the event that stored a Message. */

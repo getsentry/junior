@@ -22,7 +22,7 @@ import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox"
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { getActiveTraceContext } from "@/chat/logging";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -65,8 +65,8 @@ export interface AppendWebMessageInput {
   /** Checked uploads of this Message. */
   uploads?: VerifiedAttachmentUpload[] | undefined;
   idempotencyKey: string;
-  /** Review item change that this Message reports. */
-  reviewItemChange?: ReviewItemChangeRecord | undefined;
+  /** Inbox item change that this Message reports. */
+  reviewItemChange?: InboxItemChangeRecord | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
@@ -175,7 +175,7 @@ export function buildWebInboundMessage(args: {
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: InboxItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {

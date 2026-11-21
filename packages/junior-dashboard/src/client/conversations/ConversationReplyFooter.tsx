@@ -79,7 +79,7 @@ function ReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
-  // A message closes the review items that it answers. Ask before it drops
+  // A message closes the Inbox items that it answers. Ask before it drops
   // answers on a question card that the reader did not send.
   const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);

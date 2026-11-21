@@ -178,6 +178,12 @@ describe("prompt tag fencing", () => {
     expectFenced(context!, "thread-context");
     expectFenced(result!, "agent-result");
     expect(isRuntimeInputText(result!)).toBe(true);
+    // Saved Turns from before the rename have the old answer tag.
+    expect(
+      isRuntimeInputText(
+        '<review-item-answer id="item-1">\nYes\n</review-item-answer>',
+      ),
+    ).toBe(true);
     expect(unwrapCurrentInstruction(person!)).toBe("Ship it.");
     expect(instructionTextForProjection(`${context}\n\n${person}`)).toBe(
       "Ship it.",

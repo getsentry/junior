@@ -38,11 +38,11 @@ import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
 import {
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-} from "./schema/review-items";
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+} from "./schema/inbox-items";
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
@@ -78,10 +78,10 @@ export {
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorPushSubscriptions,
@@ -124,10 +124,10 @@ export const juniorSqlSchema = {
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
   juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,

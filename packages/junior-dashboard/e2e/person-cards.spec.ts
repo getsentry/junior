@@ -172,7 +172,7 @@ test("a person card says when its activity fails to load", async ({
   ).toHaveCount(0);
 });
 
-test("a raw Slack id in a Review item question shows the person", async ({
+test("a raw Slack id in an Inbox item question shows the person", async ({
   dashboard,
   page,
 }) => {

@@ -833,15 +833,15 @@ test.describe("new UI", { tag: "@new" }, () => {
         dismissed
           ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
           : item;
-      await page.route(`**/api/review-items/${item.id}`, (route) =>
+      await page.route(`**/api/inbox-items/${item.id}`, (route) =>
         route.fulfill({ json: current() }),
       );
-      await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      await page.route(`**/api/inbox-items/${item.id}/actions`, (route) => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
       // The Conversation also lists the open item above the message box.
-      await page.route(`**/api/review-items?*`, (route) =>
+      await page.route(`**/api/inbox-items?*`, (route) =>
         route.fulfill({ json: { items: dismissed ? [] : [item] } }),
       );
       report.events = [
@@ -863,7 +863,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             calls: [
               {
                 input: { kind: "action", title: item.title },
-                name: "addReviewItem",
+                name: "addInboxItem",
                 output: JSON.stringify({ item: { id: item.id } }),
                 status: "completed",
                 toolCallId: "review-1",

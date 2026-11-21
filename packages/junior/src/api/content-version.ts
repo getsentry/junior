@@ -60,5 +60,5 @@ export const REVALIDATED_READ_PATHS = [
   "/api/conversations/:conversationId/todos",
   "/api/conversations/:conversationId/watches",
   // An item, `count`, and `waiting-conversations`.
-  "/api/review-items/:id",
+  "/api/inbox-items/:id",
 ] as const;

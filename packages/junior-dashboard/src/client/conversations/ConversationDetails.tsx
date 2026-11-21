@@ -6,7 +6,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { ConversationReviewItems } from "../inbox/ConversationReviewItems";
+import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
 import { Button } from "../components/ui/button";
 import { ConversationBrief } from "./ConversationBrief";
 import {
@@ -154,7 +154,7 @@ export function ConversationDetails(props: {
             />
           </DetailsCard>
         ) : null}
-        <ConversationReviewItems
+        <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />

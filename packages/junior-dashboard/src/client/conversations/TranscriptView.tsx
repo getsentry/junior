@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -29,7 +29,7 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
-import { TranscriptEvents } from "../inbox/ReviewItemTurnMessage";
+import { TranscriptEvents } from "../inbox/InboxItemTurnMessage";
 import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
 import {
   QuestionsInView,
@@ -68,7 +68,7 @@ export function Transcript(props: {
    * Show the card of a question, such as one that an answer row quotes or
    * one that the questions pill names.
    */
-  onShowQuestion?(item: ReviewItemPayload): void;
+  onShowQuestion?(item: InboxItemPayload): void;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
