@@ -123,7 +123,7 @@ interface SandboxToolCallContext {
   readonly signal?: AbortSignal | undefined;
   fileSystem(): Promise<SandboxFileSystem>;
   /** Record the session that this call runs on. */
-  useSession(tools: SandboxToolExecutors): void;
+  useSession(tools: SandboxToolExecutors): Promise<void>;
   /** True when this call runs on a new sandbox without the earlier state. */
   readonly sandboxReplaced: boolean;
 }
@@ -278,20 +278,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     };
   };
   let activeWorkspace = options.workspace;
-  // Session of the last sandbox tool call in this Run. Only tool calls set
-  // it, so a replacement that a between-step read finds first still reaches
-  // the next tool result.
-  let toolSession:
-    | Pick<SandboxToolExecutors, "sandboxId" | "sessionId">
-    | undefined;
-  const replacesToolSession = (tools: SandboxToolExecutors): boolean => {
-    const previous = toolSession;
-    toolSession = { sandboxId: tools.sandboxId, sessionId: tools.sessionId };
-    if (!previous || previous.sessionId === tools.sessionId) return false;
-    return (
-      previous.sandboxId !== tools.sandboxId || !tools.keepsFilesAcrossSessions
-    );
-  };
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
     workspace: options.workspace,
@@ -327,14 +313,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       signal,
       fileSystem() {
         signal?.throwIfAborted();
-        return (fileSystemPromise ??= runtime.tools(signal).then((tools) => {
-          signal?.throwIfAborted();
-          context.useSession(tools);
-          return bindSandboxFileSystem(tools.fs, signal);
-        }));
+        return (fileSystemPromise ??= runtime
+          .tools(signal)
+          .then(async (tools) => {
+            signal?.throwIfAborted();
+            await context.useSession(tools);
+            return bindSandboxFileSystem(tools.fs, signal);
+          }));
       },
-      useSession(tools) {
-        sandboxReplaced = replacesToolSession(tools);
+      async useSession(tools) {
+        sandboxReplaced = await runtime.recordToolSession(tools);
       },
       get sandboxReplaced() {
         return sandboxReplaced;
@@ -402,7 +390,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (bashTurn.waited) {
         tools = await runtime.tools(context.signal);
       }
-      context.useSession(tools);
+      await context.useSession(tools);
       const { bash: executeBash, sessionId: activeSessionId } = tools;
       await clearEgressSignals(activeSessionId);
       const result = await withSandboxToolSpan(
@@ -819,8 +807,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     async switchWorkspace(recipe, signal) {
       await runtime.switchWorkspace(recipe, signal);
       activeWorkspace = recipe;
-      // The switch result already says that files do not carry over.
-      toolSession = undefined;
     },
     tools: {
       supports(toolName: string) {

@@ -14,6 +14,7 @@ describe("Workspace snapshot setup command", () => {
       sandboxId: "sandbox-one",
       sessionId: "session-one",
       keepsFilesAcrossSessions: false,
+      startedAtMs: Date.now(),
       fs: {
         readFile: vi.fn(),
         readdir: vi.fn(),

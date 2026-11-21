@@ -46,6 +46,10 @@ const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
+// Vercel stops a session 24 hours after it starts, and the session's egress
+// proxy certificate expires then too. Replace an older session before work
+// starts, so the cap does not stop a command in the middle of a Turn.
+const SESSION_ROTATE_AFTER_MS = 20 * 60 * 60 * 1000;
 
 interface AcquiredSandbox {
   session: SandboxSession;
@@ -62,6 +66,11 @@ interface SandboxAcquisition {
 
 interface SandboxRuntime {
   sandboxRef(): SandboxRef | undefined;
+  /**
+   * Record the session of a sandbox tool call. True when it replaced the
+   * session of the last tool call and that session's files are gone.
+   */
+  recordToolSession(tools: SandboxToolExecutors): Promise<boolean>;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   acquire(signal?: AbortSignal): Promise<SandboxSession>;
   tools(signal?: AbortSignal): Promise<SandboxToolExecutors>;
@@ -122,6 +131,7 @@ export function createSandboxRuntime(
   let activeSandbox: ActiveSandbox | null = null;
   let sandboxRef = options.sandboxRef;
   let reportedSandboxRef = options.sandboxRef;
+  let toolSession = options.sandboxRef?.toolSession;
   const availableSkills = [...options.skills];
   const availableReferenceFiles = [...options.referenceFiles];
   let acquiringSandbox: SandboxAcquisition | undefined;
@@ -173,18 +183,33 @@ export function createSandboxRuntime(
   ): SandboxNetworkPolicy | undefined =>
     options.createNetworkPolicy?.(sandboxName);
 
-  const persistSandboxRef = async (nextRef: SandboxRef): Promise<void> => {
+  const persistSandboxRef = async (
+    ref: SandboxRef,
+    // Null clears it.
+    nextToolSession: SandboxRef["toolSession"] | null = toolSession,
+  ): Promise<void> => {
+    const { id, profileHash: hash, workspaceId } = ref;
+    const nextRef: SandboxRef = {
+      id,
+      ...(hash ? { profileHash: hash } : undefined),
+      ...(workspaceId ? { workspaceId } : undefined),
+      ...(nextToolSession ? { toolSession: nextToolSession } : undefined),
+    };
     if (
       reportedSandboxRef?.id === nextRef.id &&
       reportedSandboxRef.profileHash === nextRef.profileHash &&
-      reportedSandboxRef.workspaceId === nextRef.workspaceId
+      reportedSandboxRef.workspaceId === nextRef.workspaceId &&
+      reportedSandboxRef.toolSession?.sessionId ===
+        nextRef.toolSession?.sessionId
     ) {
       sandboxRef = nextRef;
+      toolSession = nextToolSession ?? undefined;
       return;
     }
     await options.onSandboxRefChanged?.(nextRef);
     sandboxRef = nextRef;
     reportedSandboxRef = nextRef;
+    toolSession = nextToolSession ?? undefined;
   };
 
   const sandboxReference = (
@@ -546,9 +571,8 @@ export function createSandboxRuntime(
       return null;
     }
 
-    let hintedSandbox: SandboxSession | null = null;
-    try {
-      hintedSandbox = await withSandboxSpan(
+    const getHintedSandbox = () =>
+      withSandboxSpan(
         "sandbox.get",
         "sandbox.get",
         {
@@ -562,6 +586,13 @@ export function createSandboxRuntime(
             scopeSignal: signal,
           }),
       );
+    let hintedSandbox: SandboxSession | null = null;
+    try {
+      hintedSandbox = await getHintedSandbox();
+      if (Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS) {
+        await stopSession(hintedSandbox);
+        hintedSandbox = await getHintedSandbox();
+      }
     } catch (error) {
       if (getSandboxProvider().errors.isMissing(error)) {
         sandboxRef = undefined;
@@ -766,6 +797,24 @@ export function createSandboxRuntime(
     sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
+    async recordToolSession(tools) {
+      const previous = toolSession;
+      if (!sandboxRef || previous?.sessionId === tools.sessionId) return false;
+      // Set it before the write, so a parallel call on the same session
+      // does not report the replacement again.
+      toolSession = { sandboxId: tools.sandboxId, sessionId: tools.sessionId };
+      try {
+        await persistSandboxRef(sandboxRef);
+      } catch (error) {
+        toolSession = previous;
+        throw error;
+      }
+      if (!previous) return false;
+      return (
+        previous.sandboxId !== tools.sandboxId ||
+        !tools.keepsFilesAcrossSessions
+      );
+    },
     async switchWorkspace(workspace, signal) {
       signal?.throwIfAborted();
       const nextProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
@@ -800,7 +849,8 @@ export function createSandboxRuntime(
         signal?.throwIfAborted();
         await extendKeepAlive(candidate.session);
         signal?.throwIfAborted();
-        await persistSandboxRef(candidate.ref);
+        // The switch result already says that files do not carry over.
+        await persistSandboxRef(candidate.ref, null);
       } catch (error) {
         await stopSession(candidate?.session);
         throw error;

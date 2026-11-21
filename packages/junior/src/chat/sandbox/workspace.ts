@@ -113,6 +113,8 @@ export interface SandboxSession extends SandboxWorkspace {
   readonly sessionId: string;
   /** True when a later session of this Sandbox, with a new `sessionId`, starts with this session's files. */
   readonly keepsFilesAcrossSessions: boolean;
+  /** When this session started, in epoch milliseconds. */
+  readonly startedAtMs: number;
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;

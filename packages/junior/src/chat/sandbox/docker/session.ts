@@ -226,6 +226,7 @@ export function adaptSession(
     sessionId: id,
     // A restarted container keeps its id, so a new id is a new container.
     keepsFilesAcrossSessions: false,
+    startedAtMs: container.startedAtMs,
     fs: wrapped,
     extendTimeout: (duration) => run(() => extendDeadline(id, duration)),
     mkDir: (dirPath) =>
