@@ -57,7 +57,7 @@ A separate `watching` flag is true when a conversation in the tree watches for a
 - Keep one task per thread. Start a new thread when the goal changes.
 - Use public channels for shareable work and DMs for private work.
 
-Messages are processed in order. A new mention or dashboard message can steer active work at the next safe point. Other messages wait for the current turn to finish.
+Messages are processed in order. A new message from a person is a new instruction, and it steers active work at the next safe point. Other input, such as Events, waits for the current turn to finish.
 
 ## Visibility
 
