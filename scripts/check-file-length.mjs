@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { fileLengthExceptions } from "./file-length-exceptions.mjs";
+import { readRepoFiles } from "./lib/repo-files.mjs";
 
 export const MAX_CODE_FILE_LINES = 1_000;
 const MAX_DOC_FILE_LINES = 120;
@@ -26,15 +25,6 @@ const NESTED_AGENTS_GUIDANCE =
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const DOC_FILENAMES = new Set(["AGENTS.md", "README.md"]);
 const REFERENCE_DOC_PATHS = new Set(["TELEMETRY.md", "TERMINOLOGY.md"]);
-const IGNORED_DIRECTORIES = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
-
 /** Count physical lines without treating a final newline as another line. */
 export function countFileLines(contents) {
   if (contents.length === 0) {
@@ -103,67 +93,34 @@ export function isReferenceDoc(filePath) {
   return REFERENCE_DOC_PATHS.has(filePath);
 }
 
-function collectFiles(root, include, directory = root, files = []) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) {
-      continue;
-    }
-    const absolutePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      collectFiles(root, include, absolutePath, files);
-      continue;
-    }
-    const filePath = path
-      .relative(root, absolutePath)
-      .split(path.sep)
-      .join("/");
-    if (!entry.isFile() || !include(filePath)) {
-      continue;
-    }
-    files.push({
-      path: filePath,
-      lines: countFileLines(fs.readFileSync(absolutePath, "utf8")),
-    });
-  }
-  return files;
-}
-
-function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
-  const errors = [
+/** Check code, core doc, and reference doc lengths, and nested AGENTS.md files. */
+export async function run({ root, files }) {
+  const measure = async (include) =>
+    (await readRepoFiles(root, files.filter(include))).map((file) => ({
+      path: file.path,
+      lines: countFileLines(file.contents),
+    }));
+  return [
     ...checkFileLengths(
-      collectFiles(root, (filePath) =>
+      await measure((filePath) =>
         CODE_EXTENSIONS.has(path.posix.extname(filePath)),
       ),
       fileLengthExceptions,
     ),
     ...checkFileLengths(
-      collectFiles(root, isCoreDoc),
+      await measure(isCoreDoc),
       {},
       MAX_DOC_FILE_LINES,
       DOC_GUIDANCE,
     ),
     ...checkFileLengths(
-      collectFiles(root, isReferenceDoc),
+      await measure(isReferenceDoc),
       {},
       MAX_CODE_FILE_LINES,
       DOC_GUIDANCE,
     ),
-    ...collectFiles(root, isNestedAgentsDoc).map(
-      (file) => `${file.path}: ${NESTED_AGENTS_GUIDANCE}`,
-    ),
+    ...files
+      .filter(isNestedAgentsDoc)
+      .map((filePath) => `${filePath}: ${NESTED_AGENTS_GUIDANCE}`),
   ];
-  if (errors.length === 0) {
-    console.log(
-      `All code files are at most ${MAX_CODE_FILE_LINES} lines and core docs at most ${MAX_DOC_FILE_LINES} lines.`,
-    );
-    return;
-  }
-  console.error(["File length check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
 }
