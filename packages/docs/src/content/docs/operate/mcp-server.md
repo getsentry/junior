@@ -2,7 +2,7 @@
 title: MCP Server
 description: Connect Claude Code and other MCP clients to Junior at /api/mcp.
 type: tutorial
-summary: Connect an MCP client to the remote Junior MCP server, sign in with Google, and read and work with your Conversations, Review items, and Automations.
+summary: Connect an MCP client to the remote Junior MCP server, sign in with Google, and read and work with your Conversations, Inbox items, and Automations.
 prerequisites:
   - /operate/dashboard/
 related:
@@ -11,9 +11,9 @@ related:
   - /operate/security-hardening/
 ---
 
-Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code, can use it to read your Junior Conversations, Review items, and Automations. The client signs in through your Junior dashboard with Google. It can see only the Conversations that you started or take part in.
+Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code, can use it to read your Junior Conversations, Inbox items, and Automations. The client signs in through your Junior dashboard with Google. It can see only the Conversations that you started or take part in.
 
-Only the `conversations:write` scope starts agent work. With it, a client can start a Conversation and send messages as you. No tool answers a Review item or runs an Automation.
+Only the `conversations:write` scope starts agent work. With it, a client can start a Conversation and send messages as you. No tool answers an Inbox item or runs an Automation.
 
 ## Before you start
 
@@ -75,8 +75,10 @@ A client gets only the tools of the scopes that you allow. A client that does no
 | `conversations:read`   | `searchConversations`, `getConversation`, `listConversationMessages`                                                                                                                                  | Read the Conversations that you started or take part in.                                                                                      |
 | `conversations:manage` | `archiveConversation`, `archiveDoneConversations`, `pinConversation`, `setConversationAutoArchive`, `setConversationSubscription`, `markConversationRead`, `stopConversation`, `cancelQueuedMessages` | Archive a Conversation, pin, subscribe to, or mark it read for you, set its auto-archive, stop its running Turn, or drop its queued messages. |
 | `conversations:write`  | `createConversation`, `sendMessage`                                                                                                                                                                   | Start a Conversation or send a message as you. Junior starts a Turn for it.                                                                   |
-| `review_items:read`    | `searchReviewItems`, `getReviewItem`                                                                                                                                                                  | Read the Review items that you can see on the Review desk.                                                                                    |
+| `inbox_items:read` | `searchInboxItems`, `getInboxItem` | Read the Inbox items that you can see. |
 | `automations:read`     | `searchAutomations`, `getAutomation`                                                                                                                                                                  | Read the Automations that you can see, and their runs.                                                                                        |
+
+Junior also accepts `review_items:read`, the old name of `inbox_items:read`, so clients and grants from before the rename keep working.
 
 `getConversation` returns metadata, the Brief, the last assistant reply, and the messages that no Turn has read yet. When a Turn waits for you to connect an account, it also returns the authorization link. Pass a `cursor` as `after` to get the messages after that point instead of the last reply. Each result has a new `cursor`. `listConversationMessages` returns the user and assistant messages, newest last, 10 at a time by default. Pass its `nextCursor` as `before` to read older messages. Tool calls are not included.
 
@@ -84,7 +86,7 @@ Archive applies to everyone in the Conversation. Pin, subscription, the auto-arc
 
 `createConversation` starts a private Conversation by default. Pass `title` to name it. When you omit `title`, Junior generates one from the message. `createConversation` and `sendMessage` return when Junior accepts the message, not when Junior answers. Both return the messages that no Turn has read yet. A message sent while a Turn runs waits for that Turn. To add it to the running Turn at its next safe step, pass `delivery: interrupt` to `sendMessage`. Your message has the same `messageId` in these results and in the transcript. To read the reply, call `getConversation` with `after` set to the returned `cursor`. Call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. `turnActive` is true while a Turn runs or waits to start. `status` is `needs_input`, `working`, or `done`, and `needs_input` can show while a Turn runs; see [Conversations](/concepts/conversations/#status). `treeState` is your [viewer state](/concepts/conversations/#viewer-state): `needs_you`, `working`, or `done` over the Conversation and its child agents. A list should show `treeState`, not `status`. To retry a send without sending the message twice, pass the same `idempotencyKey`.
 
-`stopConversation` stops the running Turn and drops the messages that wait for it. `cancelQueuedMessages` drops the waiting messages and lets the running Turn continue. Neither tool starts a new Turn. Review item and Automation results include a dashboard link. Answer a Review item or change an Automation there.
+`stopConversation` stops the running Turn and drops the messages that wait for it. `cancelQueuedMessages` drops the waiting messages and lets the running Turn continue. Neither tool starts a new Turn. Inbox item and Automation results include a dashboard link. Answer an Inbox item or change an Automation there.
 
 ## Access and tokens
 

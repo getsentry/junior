@@ -232,6 +232,7 @@ describe("local agent runner", () => {
             arguments: {
               provider: EVAL_MCP_AUTH_PROVIDER,
               query: "budget echo",
+              intent: "look up the budget",
             },
           },
           { type: "text", text: "Eval Auth is connected." },

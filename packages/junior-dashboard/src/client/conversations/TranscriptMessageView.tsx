@@ -8,7 +8,7 @@ import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { memo, type ReactNode } from "react";
 import { useHref } from "react-router";
 import { Link } from "lucide-react";
@@ -93,7 +93,7 @@ export const TranscriptMessageView = memo(
         />
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
-              <ReviewItemChangeRow
+              <InboxItemChangeRow
                 conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}

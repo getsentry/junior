@@ -14,7 +14,6 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
-const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 // Leave room for harness cleanup and rubric judging after a reply reaches its
 // separate 60-second behavior budget.
 const EVAL_TEST_TIMEOUT_MS = 120_000;
@@ -61,12 +60,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
 const resolve = {
   alias: {
     "@": path.resolve(juniorPackageRoot, "src"),
-    "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-    // Before the package root, which would also match this subpath.
-    "@sentry/junior-plugin-api/embeddings": path.resolve(
-      pluginApiPackageRoot,
-      "src/embeddings.ts",
-    ),
     "@sentry/junior-plugin-api": path.resolve(
       pluginApiPackageRoot,
       "src/index.ts",

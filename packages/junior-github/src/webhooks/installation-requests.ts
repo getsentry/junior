@@ -4,33 +4,39 @@
  * A webhook delivery has no Turn and no egress context, so these requests
  * call GitHub directly. Other plugin code must use host egress.
  */
-import type { PluginCache } from "@sentry/junior-plugin-api";
+import {
+  graphqlReactionContent,
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+} from "../pull-request-feedback.js";
+import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
   PULL_REQUEST_CONFLICT_HISTORY,
+  PULL_REQUEST_NEXT_ACTION,
+  PULL_REQUEST_REVIEWS_BEFORE,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
-import { loadLatestReviews } from "../pull-request-reviews.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
-import {
-  graphqlReactionContent,
-  pullRequestCommentReactionsPath,
-  pullRequestFeedbackReactionContent,
-  pullRequestReviewPath,
-} from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
 export interface GitHubInstallationEnv {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }
 
 function splitRepository(fullName: string, label: string) {
@@ -59,7 +65,7 @@ export async function loadPullRequestCommitPages(
     await githubRequest(
       "https://api.github.com",
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
-      { token: token.token },
+      { responses: env.responses, token: token.token },
     );
 }
 
@@ -80,7 +86,7 @@ export async function loadPullRequest(
   return await githubRequest(
     "https://api.github.com",
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
-    { token: token.token },
+    { responses: env.responses, token: token.token },
   );
 }
 
@@ -335,7 +341,7 @@ export async function loadRepositoryRole(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
-          { token: token.token },
+          { responses: env.responses, token: token.token },
         ),
       );
       // role_name includes maintain, triage, and custom roles; permission does not.
@@ -347,23 +353,106 @@ export async function loadRepositoryRole(
   );
 }
 
-const pullRequestSchema = z.object({
-  auto_merge: z.object({}).nullable().optional(),
-  draft: z.boolean().optional(),
-  head: z.object({ sha: z.string().min(1) }),
-  html_url: z.string().url(),
-  mergeable_state: z.string().nullable().optional(),
-  merged: z.boolean(),
-  // The people whose review is still requested. Teams are listed apart.
-  requested_reviewers: z
-    .array(z.object({ login: z.string().min(1) }))
-    .optional(),
-  state: z.enum(["open", "closed"]),
-  title: z.string(),
+const timestampSchema = z.iso.datetime({ offset: true });
+
+// GitHub can return a null node for a deleted or hidden item, so the
+// connection lists drop them.
+function nodesSchema<T extends z.ZodType>(node: T) {
+  return z
+    .array(node.nullable())
+    .transform((items) =>
+      items.filter((item): item is NonNullable<typeof item> => item !== null),
+    );
+}
+
+const actorSchema = z
+  .object({ __typename: z.string(), login: z.string().min(1) })
+  .nullable();
+const reviewsSchema = z.object({
+  pageInfo: z.object({
+    hasPreviousPage: z.boolean(),
+    startCursor: z.string().nullable(),
+  }),
+  nodes: nodesSchema(
+    z.object({
+      author: actorSchema,
+      commit: z.object({ oid: z.string().min(1) }).nullable(),
+      state: z.string(),
+      submittedAt: timestampSchema.nullable(),
+    }),
+  ),
 });
+const userLoginSchema = z
+  .object({ __typename: z.string(), login: z.string().min(1).optional() })
+  .nullable();
+
+const nextActionSchema = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequest: z.object({
+        autoMergeRequest: z.object({}).nullable(),
+        commits: z.object({
+          nodes: nodesSchema(
+            z.object({ commit: z.object({ committedDate: timestampSchema }) }),
+          ),
+        }),
+        headRefOid: z.string().min(1),
+        isDraft: z.boolean(),
+        mergeStateStatus: z.string(),
+        reviewRequests: z.object({
+          nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
+        }),
+        reviews: reviewsSchema,
+        state: z.enum(["CLOSED", "MERGED", "OPEN"]),
+        timelineItems: z.object({
+          nodes: nodesSchema(
+            z.discriminatedUnion("__typename", [
+              z.object({
+                __typename: z.literal("IssueComment"),
+                author: actorSchema,
+                createdAt: timestampSchema,
+              }),
+              z.object({
+                __typename: z.literal("ReviewRequestedEvent"),
+                createdAt: timestampSchema,
+                requestedReviewer: userLoginSchema,
+              }),
+            ]),
+          ),
+        }),
+        title: z.string(),
+        url: z.string().url(),
+      }),
+    }),
+  }),
+});
+
+const reviewsPageSchema = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequest: z.object({ reviews: reviewsSchema }),
+    }),
+  }),
+});
+
+/**
+ * One thing that a person or an App did on a pull request: `author` wrote a
+ * comment or review, `push` is the head commit, and `reviewRequest` asked
+ * `login` for a review. `login` is the REST login, so a bot ends in `[bot]`.
+ */
+export interface GitHubPullRequestActivity {
+  at: Date;
+  kind: "author" | "push" | "reviewRequest";
+  login: string;
+}
 
 /** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
+  /**
+   * The latest comments, reviews, review requests, and head commit, in no
+   * order. GitHub returns the latest 100 comments and review requests.
+   */
+  activity: GitHubPullRequestActivity[];
   /**
    * At least one approval, and no reviewer still requests changes. Read
    * only when GitHub says the pull request can merge cleanly.
@@ -373,17 +462,18 @@ export interface GitHubPullRequestMergeState {
   autoMerge: boolean;
   /**
    * The commit of the requester's latest change request, when that is their
-   * latest review. Read only when the pull request is open, not a draft, and
-   * GitHub does not ask the requester for a review, or it can merge cleanly.
+   * latest review. Read only when the pull request is open and not a draft.
    */
   changesRequestedCommit?: string;
+  /** When the requester submitted that change request. */
+  changesRequestedAt?: Date;
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha: string;
   /**
-   * GitHub's `mergeable_state`, such as `clean` or `blocked`. `clean` means
-   * that the required reviews and every check and status passed, and there
-   * are no conflicts. Undefined when GitHub has not computed it yet.
+   * GitHub's merge state, such as `clean` or `blocked`. `clean` means that
+   * the required reviews and every check and status passed, and there are
+   * no conflicts. Undefined when GitHub has not computed it yet.
    */
   mergeableState?: string;
   /** Logins of the people whose review GitHub still requests. */
@@ -393,14 +483,21 @@ export interface GitHubPullRequestMergeState {
   url: string;
 }
 
+// GraphQL gives a bot's login without the `[bot]` that REST and webhooks add.
+function restLogin(actor: { __typename: string; login: string }): string {
+  return actor.__typename === "Bot" ? `${actor.login}[bot]` : actor.login;
+}
+
+type Review = z.output<typeof reviewsSchema>["nodes"][number];
+
 /**
- * Read whether a pull request is ready to merge, and whether the requester
- * changed their review, with a read-only token. GitHub computes
- * `mergeable_state` after a change, so an unknown state is read once more.
- * Reviews load for an open pull request that is not a draft, when it can
- * merge cleanly or GitHub does not ask the requester for a review. Each
- * reviewer counts by their latest approval, change request, or dismissal.
- * Comments do not change the result.
+ * Read whether a pull request is ready to merge, whether the requester
+ * changed their review, and who acted on it last, with a read-only token
+ * and one GraphQL query. GitHub computes the merge state after a change,
+ * so an unknown state is read once more. A pull request with more than 100
+ * reviews reads the older pages too. Each reviewer counts by their latest
+ * approval, change request, or dismissal. Comments do not change the
+ * result.
  */
 export async function loadPullRequestMergeState(
   env: GitHubInstallationEnv,
@@ -416,64 +513,128 @@ export async function loadPullRequestMergeState(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  const read = async (path: string) =>
-    await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}${path}`,
-      { token: token.token },
-    );
-  const readPull = async () => {
-    const pull = pullRequestSchema.parse(await read(""));
-    const mergeableState =
-      pull.mergeable_state && pull.mergeable_state !== "unknown"
-        ? pull.mergeable_state
-        : undefined;
-    return {
-      approved: false,
-      autoMerge: Boolean(pull.auto_merge),
-      draft: pull.draft === true,
-      headSha: pull.head.sha,
-      ...(mergeableState ? { mergeableState } : undefined),
-      requestedReviewers: (pull.requested_reviewers ?? []).map(
-        (reviewer) => reviewer.login,
-      ),
-      state: pull.merged ? ("merged" as const) : pull.state,
-      title: pull.title,
-      url: pull.html_url,
-    };
-  };
-  let state: GitHubPullRequestMergeState = await readPull();
-  if (state.state !== "open" || state.draft) return state;
-  const canMerge = !state.autoMerge;
-  if (canMerge && !state.mergeableState) state = await readPull();
-  const login = requesterLogin?.toLowerCase();
-  // GitHub stops asking a reviewer once they review. After a change request,
-  // the requester's review is still wanted when new commits come in.
-  const readsChanges =
-    login !== undefined &&
-    !state.requestedReviewers.some(
-      (reviewer) => reviewer.toLowerCase() === login,
-    );
-  const readsApproval = canMerge && state.mergeableState === "clean";
-  if (!readsApproval && !readsChanges) return state;
+  const variables = { name, number: pullRequest.number, owner };
+  const query = async (
+    document: typeof PULL_REQUEST_NEXT_ACTION,
+    extra?: { before: string },
+  ) =>
+    await githubRequest("https://api.github.com", "/graphql", {
+      body: { ...document, variables: { ...variables, ...extra } },
+      method: "POST",
+      token: token.token,
+    });
+  const readPull = async () =>
+    nextActionSchema.parse(await query(PULL_REQUEST_NEXT_ACTION)).data
+      .repository.pullRequest;
+  let pull = await readPull();
+  const open = pull.state === "OPEN" && !pull.isDraft;
+  const unknown = (status: string) => status === "UNKNOWN";
+  if (open && !pull.autoMergeRequest && unknown(pull.mergeStateStatus)) {
+    pull = await readPull();
+  }
+  const reviews: Review[] = [...pull.reviews.nodes];
+  let page = pull.reviews.pageInfo;
+  // Older pages can hold a reviewer's latest change request.
+  while (open && page.hasPreviousPage && page.startCursor) {
+    const older = reviewsPageSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Each page starts at the cursor of the page after it.
+      await query(PULL_REQUEST_REVIEWS_BEFORE, { before: page.startCursor }),
+    ).data.repository.pullRequest.reviews;
+    reviews.unshift(...older.nodes);
+    page = older.pageInfo;
+  }
 
-  const latestReviews = await loadLatestReviews(
-    async (query) => await read(`/reviews?${query}`),
-  );
-  const reviewStates = [...latestReviews.values()].map(
-    (review) => review.state,
-  );
-  if (readsApproval) {
+  const activity: GitHubPullRequestActivity[] = [];
+  const head = pull.commits.nodes.at(-1);
+  if (head) {
+    activity.push({
+      at: new Date(head.commit.committedDate),
+      kind: "push",
+      login: "",
+    });
+  }
+  for (const item of pull.timelineItems.nodes) {
+    if (item.__typename === "IssueComment" && item.author) {
+      activity.push({
+        at: new Date(item.createdAt),
+        kind: "author",
+        login: restLogin(item.author),
+      });
+    } else if (
+      item.__typename === "ReviewRequestedEvent" &&
+      item.requestedReviewer?.login
+    ) {
+      activity.push({
+        at: new Date(item.createdAt),
+        kind: "reviewRequest",
+        login: item.requestedReviewer.login,
+      });
+    }
+  }
+  for (const review of reviews) {
+    if (review.author && review.submittedAt) {
+      activity.push({
+        at: new Date(review.submittedAt),
+        kind: "author",
+        login: restLogin(review.author),
+      });
+    }
+  }
+
+  const mergeableState = unknown(pull.mergeStateStatus)
+    ? undefined
+    : pull.mergeStateStatus.toLowerCase();
+  const state: GitHubPullRequestMergeState = {
+    activity,
+    approved: false,
+    autoMerge: Boolean(pull.autoMergeRequest),
+    draft: pull.isDraft,
+    headSha: pull.headRefOid,
+    ...(mergeableState ? { mergeableState } : undefined),
+    requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
+      request.requestedReviewer?.__typename === "User" &&
+      request.requestedReviewer.login
+        ? [request.requestedReviewer.login]
+        : [],
+    ),
+    state:
+      pull.state === "MERGED"
+        ? "merged"
+        : pull.state === "OPEN"
+          ? "open"
+          : "closed",
+    title: pull.title,
+    url: pull.url,
+  };
+  if (!open) return state;
+
+  // GitHub lists reviews oldest first, so a later one replaces an earlier.
+  const latest = new Map<string, Review>();
+  for (const review of reviews) {
+    if (
+      review.author &&
+      review.state !== "COMMENTED" &&
+      review.state !== "PENDING"
+    ) {
+      latest.set(review.author.login.toLowerCase(), review);
+    }
+  }
+  const reviewStates = [...latest.values()].map((review) => review.state);
+  if (!state.autoMerge && state.mergeableState === "clean") {
     state.approved =
       reviewStates.includes("APPROVED") &&
       !reviewStates.includes("CHANGES_REQUESTED");
   }
-  const requesterReview = login ? latestReviews.get(login) : undefined;
+  const login = requesterLogin?.toLowerCase();
+  const requesterReview = login ? latest.get(login) : undefined;
   if (
     requesterReview?.state === "CHANGES_REQUESTED" &&
-    requesterReview.commit_id
+    requesterReview.commit
   ) {
-    state.changesRequestedCommit = requesterReview.commit_id;
+    state.changesRequestedCommit = requesterReview.commit.oid;
+    if (requesterReview.submittedAt) {
+      state.changesRequestedAt = new Date(requesterReview.submittedAt);
+    }
   }
   return state;
 }

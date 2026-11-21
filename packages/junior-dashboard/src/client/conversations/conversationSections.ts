@@ -1,4 +1,4 @@
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import type { Conversation } from "../types";
 import {
   calendarDay,
@@ -85,7 +85,7 @@ export function buildConversationSections(
 }
 
 /**
- * True when the conversation waits on the viewer: an open Review item waits
+ * True when the conversation waits on the viewer: an open Inbox item waits
  * on them, or a Turn waits on a person to finish an authorization.
  */
 function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {

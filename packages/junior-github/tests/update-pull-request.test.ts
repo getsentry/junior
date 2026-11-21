@@ -304,6 +304,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
           body: "Updated body",
           draft: false,
           merged: true,
+          mergeable: false,
           html_url: "https://github.com/getsentry/junior/pull/691",
           number: 691,
           state: "closed",
@@ -321,6 +322,8 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     ).resolves.toMatchObject({
       objectAnnotations: [
         {
+          // A closed pull request has no merge state to show.
+          facts: expect.not.objectContaining({ mergeable: false }),
           key: "getsentry/junior#691",
           status: "merged",
           title: "Updated title",

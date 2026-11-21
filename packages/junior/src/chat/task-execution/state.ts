@@ -12,11 +12,11 @@ import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -99,8 +99,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** Review item change that this input reports, on any Source. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this input reports, on any Source. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -437,77 +437,92 @@ function normalizeActor(value: unknown): StoredSlackActor | undefined {
   return parseStoredSlackActor(value);
 }
 
+const storedNonEmptyStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0);
+// Optional stored fields drop an invalid value instead of failing the record.
+const storedOptionalStringSchema = storedNonEmptyStringSchema
+  .optional()
+  .catch(undefined);
+const storedOptionalNumberSchema = z.number().optional().catch(undefined);
+const storedIdListSchema = z.array(z.unknown()).catch([]);
+
+const storedLeaseSchema = z.object({
+  token: storedNonEmptyStringSchema,
+  acquiredAtMs: z.number(),
+  lastCheckInAtMs: z.number(),
+  expiresAtMs: z.number(),
+});
+
 function normalizeLease(value: unknown): Lease | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const token = toOptionalString(value["token"]);
-  const acquiredAtMs = toOptionalNumber(value["acquiredAtMs"]);
-  const lastCheckInAtMs = toOptionalNumber(value["lastCheckInAtMs"]);
-  const expiresAtMs = toOptionalNumber(value["expiresAtMs"]);
-  if (
-    !token ||
-    typeof acquiredAtMs !== "number" ||
-    typeof lastCheckInAtMs !== "number" ||
-    typeof expiresAtMs !== "number"
-  ) {
+  const parsed = storedLeaseSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+const storedStopSchema = z.object({
+  inboundMessageIds: storedIdListSchema,
+  runId: storedNonEmptyStringSchema,
+});
+
+function normalizeStop(value: unknown): ConversationStop | undefined {
+  const parsed = storedStopSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
   return {
-    token,
-    acquiredAtMs,
-    lastCheckInAtMs,
-    expiresAtMs,
+    inboundMessageIds: uniqueStrings(
+      parsed.data.inboundMessageIds.filter(
+        (id): id is string => typeof id === "string",
+      ),
+    ),
+    runId: parsed.data.runId,
   };
 }
 
-function normalizeStop(value: unknown): ConversationStop | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
-    ? uniqueStrings(
-        value["inboundMessageIds"].filter(
-          (id): id is string => typeof id === "string",
-        ),
-      )
-    : [];
-  const runId = toOptionalString(value["runId"]);
-  return runId ? { inboundMessageIds, runId } : undefined;
-}
+const storedExecutionSchema = z.object({
+  status: z.unknown().optional(),
+  pendingMessages: z.array(z.unknown()).catch([]),
+  inboundMessageIds: storedIdListSchema,
+  messageSenders: z.unknown().optional(),
+  lease: z.unknown().optional(),
+  lastCheckpointAtMs: storedOptionalNumberSchema,
+  lastEnqueuedAtMs: storedOptionalNumberSchema,
+  lastProgressAtMs: storedOptionalNumberSchema,
+  retryCount: storedOptionalNumberSchema,
+  runId: storedOptionalStringSchema,
+  updatedAtMs: storedOptionalNumberSchema,
+});
 
 /** Decode stored execution state. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
 ): ConversationExecution | undefined {
-  if (!isRecord(value)) {
+  const parsed = storedExecutionSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const status = normalizeExecutionStatus(value["status"]);
+  const stored = parsed.data;
+  const status = normalizeExecutionStatus(stored.status);
   if (!status) {
     return undefined;
   }
   const pendingMessages: InboundMessage[] = [];
-  if (Array.isArray(value["pendingMessages"])) {
-    for (const rawMessage of value["pendingMessages"]) {
-      const message = normalizeMessage(rawMessage);
-      if (!message || message.conversationId !== conversationId) {
-        return undefined;
-      }
-      pendingMessages.push(message);
+  for (const rawMessage of stored.pendingMessages) {
+    const message = normalizeMessage(rawMessage);
+    if (!message || message.conversationId !== conversationId) {
+      return undefined;
     }
-    pendingMessages.sort(compareMessages);
+    pendingMessages.push(message);
   }
-  const inboundMessageIds = Array.isArray(value["inboundMessageIds"])
-    ? uniqueStrings(
-        value["inboundMessageIds"]
-          .map((id) => (typeof id === "string" ? id : undefined))
-          .filter((id): id is string => Boolean(id)),
-      )
-    : [];
+  pendingMessages.sort(compareMessages);
+  const inboundMessageIds = uniqueStrings(
+    stored.inboundMessageIds.filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    ),
+  );
   const messageSenders = withMessageSenders(
-    normalizeMessageSenders(value["messageSenders"]),
+    normalizeMessageSenders(stored.messageSenders),
     pendingMessages,
   );
 
@@ -520,43 +535,49 @@ function normalizeExecution(
     ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    lease: normalizeLease(value["lease"]),
-    lastCheckpointAtMs: toOptionalNumber(value["lastCheckpointAtMs"]),
-    lastEnqueuedAtMs: toOptionalNumber(value["lastEnqueuedAtMs"]),
-    lastProgressAtMs: toOptionalNumber(value["lastProgressAtMs"]),
-    retryCount: toOptionalNumber(value["retryCount"]),
-    runId: toOptionalString(value["runId"]),
-    updatedAtMs: toOptionalNumber(value["updatedAtMs"]),
+    lease: normalizeLease(stored.lease),
+    lastCheckpointAtMs: stored.lastCheckpointAtMs,
+    lastEnqueuedAtMs: stored.lastEnqueuedAtMs,
+    lastProgressAtMs: stored.lastProgressAtMs,
+    retryCount: stored.retryCount,
+    runId: stored.runId,
+    updatedAtMs: stored.updatedAtMs,
   };
 }
+
+const storedConversationSchema = z.object({
+  schemaVersion: z.literal(CONVERSATION_SCHEMA_VERSION),
+  conversationId: storedNonEmptyStringSchema,
+  createdAtMs: z.number(),
+  lastActivityAtMs: z.number(),
+  updatedAtMs: z.number(),
+  execution: z.unknown().optional(),
+  destination: z.unknown().optional(),
+  title: storedOptionalStringSchema,
+  channelName: storedOptionalStringSchema,
+  actor: z.unknown().optional(),
+  source: z.unknown().optional(),
+});
 
 /** Decode current conversation records. */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): ConversationExecutionState | undefined {
-  if (
-    !isRecord(value) ||
-    value["schemaVersion"] !== CONVERSATION_SCHEMA_VERSION
-  ) {
+  const parsed = storedConversationSchema.safeParse(value);
+  if (!parsed.success) {
     return undefined;
   }
-  const storedConversationId = toOptionalString(value["conversationId"]);
-  const createdAtMs = toOptionalNumber(value["createdAtMs"]);
-  const lastActivityAtMs = toOptionalNumber(value["lastActivityAtMs"]);
-  const updatedAtMs = toOptionalNumber(value["updatedAtMs"]);
-  const execution = normalizeExecution(conversationId, value["execution"]);
+  const stored = parsed.data;
+  const execution = normalizeExecution(conversationId, stored.execution);
   const destination =
-    value["destination"] === undefined
+    stored.destination === undefined
       ? undefined
-      : parseDestination(value["destination"]);
+      : parseDestination(stored.destination);
   if (
-    storedConversationId !== conversationId ||
-    typeof createdAtMs !== "number" ||
-    typeof lastActivityAtMs !== "number" ||
-    typeof updatedAtMs !== "number" ||
+    stored.conversationId !== conversationId ||
     !execution ||
-    (value["destination"] !== undefined && !destination)
+    (stored.destination !== undefined && !destination)
   ) {
     return undefined;
   }
@@ -576,22 +597,18 @@ function normalizeConversation(
   return {
     schemaVersion: CONVERSATION_SCHEMA_VERSION,
     conversationId,
-    createdAtMs,
-    lastActivityAtMs,
-    updatedAtMs,
+    createdAtMs: stored.createdAtMs,
+    lastActivityAtMs: stored.lastActivityAtMs,
+    updatedAtMs: stored.updatedAtMs,
     execution,
     ...(destination ? { destination } : undefined),
-    ...(toOptionalString(value["title"])
-      ? { title: toOptionalString(value["title"]) }
+    ...(stored.title ? { title: stored.title } : undefined),
+    ...(stored.channelName ? { channelName: stored.channelName } : undefined),
+    ...(normalizeActor(stored.actor)
+      ? { actor: normalizeActor(stored.actor) }
       : undefined),
-    ...(toOptionalString(value["channelName"])
-      ? { channelName: toOptionalString(value["channelName"]) }
-      : undefined),
-    ...(normalizeActor(value["actor"])
-      ? { actor: normalizeActor(value["actor"]) }
-      : undefined),
-    ...(normalizeSource(value["source"])
-      ? { source: normalizeSource(value["source"]) }
+    ...(normalizeSource(stored.source)
+      ? { source: normalizeSource(stored.source) }
       : undefined),
   };
 }
@@ -745,18 +762,16 @@ async function withIndexLock<T>(
   }
 }
 
+const storedIndexEntrySchema = z.object({
+  conversationId: storedNonEmptyStringSchema,
+  score: z.number(),
+});
+
 function normalizeIndexEntry(
   value: unknown,
 ): ConversationIndexEntry | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const conversationId = toOptionalString(value["conversationId"]);
-  const score = toOptionalNumber(value["score"]);
-  if (!conversationId || typeof score !== "number") {
-    return undefined;
-  }
-  return { conversationId, score };
+  const parsed = storedIndexEntrySchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function uniqueIndexEntries(value: unknown): ConversationIndexEntry[] {
@@ -1692,6 +1707,29 @@ export async function moveIdleConversationDestination(args: {
       });
     }
     return "moved";
+  });
+}
+
+/**
+ * Run `work` while no Run holds the Conversation and no work waits for one.
+ * A Run takes its lease under the same mutation lock, so none can start until
+ * `work` ends. Returns `busy` without calling `work` when a Run holds the
+ * Conversation or work waits, such as a pending mailbox message: that Run
+ * reads the history next, so `work` must not change it first. `work` calls
+ * `fence` right before its durable write; it throws when the lock expired.
+ */
+export async function withIdleConversation<T>(
+  args: { conversationId: string; state?: StateAdapter },
+  work: (fence: () => Promise<void>) => Promise<T>,
+): Promise<T | "busy"> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && (isHeldByRun(existing) || hasRunnableWork(existing))) {
+      return "busy";
+    }
+    return await work(() =>
+      fenceConversationMutation(state, lock, args.conversationId),
+    );
   });
 }
 

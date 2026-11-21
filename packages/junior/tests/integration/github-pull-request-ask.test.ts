@@ -14,7 +14,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { juniorReviewItems } from "@/db/schema";
+import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -80,9 +80,9 @@ async function readerView() {
     await listConversationAnnotations(getDb(), slackParentConversationId)
   ).find((annotation) => annotation.key === "getsentry/junior#1592");
   const [ask] = await getDb()
-    .select({ status: juniorReviewItems.status })
-    .from(juniorReviewItems)
-    .where(eq(juniorReviewItems.subjectId, PULL_URL));
+    .select({ status: juniorInboxItems.status })
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.subjectId, PULL_URL));
   return { ask: ask?.status, chip: chip?.status };
 }
 
@@ -189,11 +189,38 @@ describe("the ask of a Junior pull request", () => {
             user: { id: 264270552 },
           });
         }),
-        http.get(`${API}/reviews`, async () => {
+        // The next-action check reads the pull request and its reviews.
+        http.post("https://api.github.com/graphql", async () => {
           await observe();
-          return HttpResponse.json([
-            { commit_id: "head-1", state: "APPROVED", user: { login: "sam" } },
-          ]);
+          return HttpResponse.json({
+            data: {
+              repository: {
+                pullRequest: {
+                  autoMergeRequest: null,
+                  commits: { nodes: [] },
+                  headRefOid: "head-1",
+                  isDraft: false,
+                  mergeStateStatus: "CLEAN",
+                  reviewRequests: { nodes: [] },
+                  reviews: {
+                    nodes: [
+                      {
+                        author: { __typename: "User", login: "sam" },
+                        commit: { oid: "head-1" },
+                        state: "APPROVED",
+                        submittedAt: "2026-07-02T12:00:00Z",
+                      },
+                    ],
+                    pageInfo: { hasPreviousPage: false, startCursor: null },
+                  },
+                  state: github.merged ? "MERGED" : "OPEN",
+                  timelineItems: { nodes: [] },
+                  title: "fix: Check",
+                  url: PULL_URL,
+                },
+              },
+            },
+          });
         }),
         http.get(`${API}/commits`, async () => {
           await observe();

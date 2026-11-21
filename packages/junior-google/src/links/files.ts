@@ -23,9 +23,9 @@ import {
   resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
-} from "../tools/files";
-import { personCanOpenFile } from "../tools/file-access";
-import { googleApiError, googleApiRequest } from "../tools/shared";
+} from "../drive/files";
+import { personCanOpenFile } from "../drive/file-access";
+import { googleApiError, googleApiRequest } from "../google-api";
 import { docSummary } from "./summary";
 
 const DISPLAY_TYPES = {

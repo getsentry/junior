@@ -800,6 +800,37 @@ describe("github plugin", () => {
     });
   });
 
+  it("names the resource of a github.com page, the inverse of its URL", () => {
+    const events = githubPlugin().events!;
+    const resources = [
+      { identifier: "getsentry/junior", resourceType: "repository" },
+      { identifier: "getsentry/junior#691", resourceType: "pull_request" },
+      { identifier: "getsentry/junior#208", resourceType: "issue" },
+    ];
+    for (const resource of resources) {
+      expect(events.resourceForUrl!(events.resourceUrl!(resource)!)).toEqual(
+        resource,
+      );
+    }
+    expect(
+      events.resourceForUrl!(
+        "https://github.com/GetSentry/Junior/pull/691/files",
+      ),
+    ).toEqual({
+      identifier: "getsentry/junior#691",
+      resourceType: "pull_request",
+    });
+    for (const url of [
+      "https://github.com/getsentry/junior/commit/abc123",
+      "https://github.com/getsentry/junior/pull/new",
+      "https://gist.github.com/getsentry/junior",
+      "https://github.com/getsentry",
+      "not a url",
+    ]) {
+      expect(events.resourceForUrl!(url)).toBeUndefined();
+    }
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({
@@ -1034,7 +1065,7 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
-      // A person started the Turn, so the result names the Review item that
+      // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
         '"github-issue-implement:getsentry/junior#660"',
@@ -1244,7 +1275,7 @@ describe("github plugin", () => {
     );
 
     // No person started the run, so the issue gets no Watch, and no one
-    // could answer a Review item about implementing it.
+    // could answer an Inbox item about implementing it.
     expect(subscribe).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("subscription");
     expect(result).not.toHaveProperty("note");

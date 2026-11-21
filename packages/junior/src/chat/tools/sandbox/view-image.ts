@@ -1,9 +1,9 @@
 import * as z from "zod";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ViewImageToolDeps } from "@/chat/tools/types";
-import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ViewImageToolDeps } from "@/chat/tool-support/types";
+import { readSandboxImage } from "@/chat/sandbox/image-files";
 
 const MAX_VIEW_IMAGE_BYTES = 5 * 1024 * 1024;
 

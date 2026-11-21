@@ -25,10 +25,10 @@ each rule, so new code cannot drift from it.
 - Use `for…of`, not `forEach`. A `forEach` callback hides `await`, `return`,
   and `break` from the loop. Check: oxlint `unicorn/no-array-for-each`.
 - In the dashboard, refresh only the queries that a change touched. Build query
-  keys with a key factory, such as `reviewItemListQueryKey`. Write a mutation
+  keys with a key factory, such as `inboxItemListQueryKey`. Write a mutation
   response into the cache with `setQueryData`, and do not refetch it. When a
   change touches a family of queries, call the helper that owns that family,
-  such as `invalidateConversationFeeds` or `invalidateReviewItemCollections`.
+  such as `invalidateConversationFeeds` or `invalidateInboxItemCollections`.
   Do not invalidate, refetch, reset, or remove a key with two or fewer parts,
   unless you pass `exact: true`. Check: dashboard oxlint `query-invalidation/no-broad-query-invalidation`.
 - In the dashboard, do not poll a query with `refetchInterval`. `/api/versions`
@@ -43,6 +43,12 @@ each rule, so new code cannot drift from it.
   channels that Sentry's Postgres spans use. Tests inject them into `pg` with
   `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
   extra wrapper.
+- Do not read a big table in full on a hot API route. Integration tests check
+  the plan of each statement with `expectNoFullScan` from the same file. It
+  fails when a plan reads a table in its `BIG_TABLES` list with no index
+  condition. A known full scan with a fix on the way gets a named `allowed`
+  entry with a reason. An entry that matches nothing fails, so the fix
+  removes it.
 - Keep the JSON body of hot API routes inside a size budget. A budget holds
   the size of the largest item of a list. A nested list with no cap on its
   count gets its own budget. Integration tests measure it with

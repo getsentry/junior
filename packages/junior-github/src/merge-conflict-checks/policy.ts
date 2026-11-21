@@ -4,33 +4,44 @@
  *
  * - A draft gets nothing.
  * - In the first 2 days after the latest activity by a person, Junior fixes
- *   the conflict, at most once a day and 3 times in total.
- * - After that, or after the third fix, Junior adds a review desk notice to
- *   the Conversation that asked for the pull request.
- * - After 3 days without activity by a person, nothing.
+ *   the conflict, at most once a day, and at most 3 times in a row with no
+ *   activity by a person between them.
+ * - After that, a conflict does nothing, and nobody is told. The next
+ *   activity by a person starts the fixes again.
  * - An approved pull request would be ready to merge but for the conflict,
  *   so it gets a fix after the 2 days too, and without the daily wait. The
  *   ready to merge notice needs a clean merge state, so it waits for the
- *   fix. The total limit still holds.
+ *   fix. The limit of fixes in a row still holds.
+ * - When a day after its fix the head commit is the same, the fix did not
+ *   land, and Junior is stuck. Then it asks the person who asked for the
+ *   pull request to resume, with an Inbox item, once after each Resume. So
+ *   Dismiss ends the asks on the pull request. Resume counts as activity by
+ *   a person, and starts a fix at once (`resume.ts`).
  *
- * Junior keeps no state for this. Each conflict reads the pull request's
- * history from GitHub. Opening the pull request counts as activity, because
- * a person asked for it. Merges and force pushes by a bot count as fixes.
- * The event key names the head commit, so a check of the same commit, or a
- * webhook and the heartbeat at once, publish one fix. A conflict on a pull
- * request that Junior did not open goes to its Watch as before, except for
- * a draft.
+ * Each conflict reads the pull request's history from GitHub for the latest
+ * activity by a person. Opening the pull request counts as activity,
+ * because a person asked for it. Only the fixes that this policy or Resume
+ * started count as fixes, so a merge or force push for work that a person
+ * asked for does not. The plugin stores them with the time of the latest
+ * Resume and of the latest ask. The event key names the head commit, so a
+ * check of the same commit, or a webhook and the heartbeat at once, publish
+ * one fix. A conflict on a pull request that Junior did not open goes to its
+ * Watch as before, except for a draft.
  */
 import type {
   EventInput,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
-import { juniorGitHubPullRequests } from "../db/schema.js";
+import {
+  type GitHubConflictFix,
+  juniorGitHubPullRequests,
+} from "../db/schema.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
@@ -39,22 +50,22 @@ import type {
   GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
 
-// Notices that one change closes at once.
-const NOTICE_CLOSE_CONCURRENCY = 8;
+// Items that one change closes at once.
+const ITEM_CLOSE_CONCURRENCY = 8;
 
 const DAY_MS = 24 * 60 * 60_000;
 
 /** Time after activity by a person in which Junior fixes conflicts. */
 const ACTIVE_MS = 2 * DAY_MS;
 
-/** Time after activity by a person after which conflicts do nothing. */
-const IDLE_MS = 3 * DAY_MS;
-
 /** Shortest time between two fixes of one pull request. */
 const FIX_INTERVAL_MS = DAY_MS;
 
-/** Fixes of one pull request before Junior only adds the notice. */
+/** Fixes in a row, with no activity by a person, before Junior waits. */
 const MAX_FIXES = 3;
+
+/** The choice of the merge conflict item that resumes the fixes. */
+export const GITHUB_CONFLICT_RESUME = "Resume";
 
 const actorSchema = z.object({ __typename: z.string() }).nullable();
 
@@ -66,7 +77,6 @@ const timelineItemSchema = z.union([
         .object({ user: z.object({ login: z.string() }).nullable() })
         .nullable(),
       committedDate: z.string(),
-      parents: z.object({ totalCount: z.number() }),
     }),
   }),
   z.object({
@@ -103,35 +113,23 @@ const historyResponseSchema = z.object({
   }),
 });
 
-/** What GitHub says about the people and the fixes on one pull request. */
+/** What GitHub says about the people on one pull request. */
 interface GitHubConflictHistory {
   /** The latest push, review, or comment by a person, or the opening. */
   activeAtMs: number;
   approved: boolean;
-  /** The latest fix. */
-  fixedAtMs?: number;
-  fixes: number;
 }
 
 /**
  * Read the history from GitHub's answer. A deleted account has no author,
- * and counts as a person.
+ * and counts as a person. Activity by a bot is not activity.
  */
 function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   const pullRequest =
     historyResponseSchema.parse(response).data.repository.pullRequest;
   let activeAtMs = Date.parse(pullRequest.createdAt);
-  let fixedAtMs: number | undefined;
-  let fixes = 0;
-  const record = (bot: boolean, fix: boolean, at: string | null) => {
-    if (!at) return;
-    const atMs = Date.parse(at);
-    if (!bot) {
-      activeAtMs = Math.max(activeAtMs, atMs);
-    } else if (fix) {
-      fixes += 1;
-      fixedAtMs = Math.max(fixedAtMs ?? 0, atMs);
-    }
+  const record = (bot: boolean, at: string | null) => {
+    if (!bot && at) activeAtMs = Math.max(activeAtMs, Date.parse(at));
   };
   for (const item of [
     ...pullRequest.pushes.nodes,
@@ -139,69 +137,126 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   ]) {
     if (!item) continue;
     switch (item.__typename) {
-      case "PullRequestCommit": {
-        const login = item.commit.author?.user?.login;
+      case "PullRequestCommit":
         record(
-          login?.endsWith("[bot]") === true,
-          item.commit.parents.totalCount > 1,
+          item.commit.author?.user?.login?.endsWith("[bot]") === true,
           item.commit.committedDate,
         );
         break;
-      }
       case "HeadRefForcePushedEvent":
-        record(item.actor?.__typename === "Bot", true, item.createdAt);
+        record(item.actor?.__typename === "Bot", item.createdAt);
         break;
       case "PullRequestReview":
-        record(item.author?.__typename === "Bot", false, item.submittedAt);
+        record(item.author?.__typename === "Bot", item.submittedAt);
         break;
       case "IssueComment":
-        record(item.author?.__typename === "Bot", false, item.createdAt);
+        record(item.author?.__typename === "Bot", item.createdAt);
         break;
     }
   }
   return {
     activeAtMs,
     approved: pullRequest.reviewDecision === "APPROVED",
-    fixes,
-    ...(fixedAtMs === undefined ? undefined : { fixedAtMs }),
   };
 }
 
-type GitHubConflictAction = "fix" | "notice" | "skip";
+/**
+ * Add a fix that Junior started to the stored fixes. A second fix of one
+ * head commit replaces the first. Only the latest `MAX_FIXES` matter.
+ */
+export function withGitHubConflictFix(
+  fixes: GitHubConflictFix[],
+  fix: GitHubConflictFix,
+): GitHubConflictFix[] {
+  return [...fixes.filter(({ headSha }) => headSha !== fix.headSha), fix].slice(
+    -MAX_FIXES,
+  );
+}
+
+/**
+ * `retry` publishes a fix that started already again. `ask` adds the Review
+ * item for a fix that did not land.
+ */
+type GitHubConflictAction = "ask" | "fix" | "retry" | "skip";
 
 /** Decide what a conflict on one open Junior pull request does. */
-function gitHubConflictAction(
-  history: GitHubConflictHistory,
-  nowMs: number,
-): GitHubConflictAction {
-  const { approved, fixedAtMs } = history;
-  const idleMs = nowMs - history.activeAtMs;
-  if (idleMs > IDLE_MS && !approved) return "skip";
-  if ((idleMs <= ACTIVE_MS || approved) && history.fixes < MAX_FIXES) {
-    return !approved &&
-      fixedAtMs !== undefined &&
-      nowMs - fixedAtMs < FIX_INTERVAL_MS
-      ? "skip"
-      : "fix";
+function gitHubConflictAction(input: {
+  askedAtMs: number | undefined;
+  fixes: GitHubConflictFix[];
+  headSha: string;
+  history: GitHubConflictHistory;
+  nowMs: number;
+  resumedAtMs: number | undefined;
+}): GitHubConflictAction {
+  const { askedAtMs, fixes, nowMs, resumedAtMs } = input;
+  const { approved } = input.history;
+  // A Resume counts as activity by a person.
+  const activeAtMs = Math.max(input.history.activeAtMs, resumedAtMs ?? 0);
+  // Upkeep follows people: an idle pull request gets no fix and no ask.
+  if (nowMs - activeAtMs > ACTIVE_MS && !approved) return "skip";
+  // A Resume that has not saved its fix yet is starting one.
+  const resuming =
+    resumedAtMs === activeAtMs && fixes.every(({ atMs }) => atMs < resumedAtMs);
+  const started = resuming
+    ? resumedAtMs
+    : fixes.find(({ headSha }) => headSha === input.headSha)?.atMs;
+  if (started !== undefined) {
+    // A fix changes the head commit. So with the same head a day later, the
+    // fix did not land. Ask once after each Resume, so Dismiss ends the
+    // asks.
+    if (nowMs - started >= FIX_INTERVAL_MS) {
+      return askedAtMs !== undefined && askedAtMs > (resumedAtMs ?? 0)
+        ? "skip"
+        : "ask";
+    }
+    // The policy's event key names the head commit, and core delivers each
+    // key once, so its event publishes again: a publish that failed gets
+    // another try. A Resume's event has its own key.
+    return resuming || started === resumedAtMs ? "skip" : "retry";
   }
-  return "notice";
+  // The fix that Resume started counts as the first in a row. The next
+  // activity by a person starts the count again.
+  if (fixes.filter(({ atMs }) => atMs >= activeAtMs).length >= MAX_FIXES) {
+    return "skip";
+  }
+  // Only a pull request that is not approved waits a day between fixes.
+  const fixedAtMs = Math.max(
+    resumedAtMs ?? 0,
+    ...fixes.map(({ atMs }) => atMs),
+  );
+  return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
-/** The dedupe key of the merge conflict notice of one pull request. */
-export function gitHubConflictNoticeKey(ref: GitHubPullRequestRef): string {
-  return `merge-conflict:${ref.repositoryFullName.toLowerCase()}#${ref.number}`;
+const ITEM_KEY_PREFIX = "merge-conflict:";
+
+/** The dedupe key of the merge conflict item of one pull request. */
+export function gitHubConflictItemKey(ref: GitHubPullRequestRef): string {
+  return `${ITEM_KEY_PREFIX}${ref.repositoryFullName.toLowerCase()}#${ref.number}`;
 }
 
-async function addNotice(
-  args: {
-    conflict: GitHubMergeConflict;
-    db: GitHubDb;
-    ref: GitHubPullRequestRef;
-    reviewItems: PluginConversationReviewItems;
-    title?: string;
-  },
-  fixes: number,
-): Promise<void> {
+/** Read the pull request of a merge conflict item's dedupe key. */
+export function parseGitHubConflictItemKey(
+  dedupeKey: string,
+): GitHubPullRequestRef | undefined {
+  const match = /^([^/#\s]+\/[^/#\s]+)#(\d+)$/.exec(
+    dedupeKey.startsWith(ITEM_KEY_PREFIX)
+      ? dedupeKey.slice(ITEM_KEY_PREFIX.length)
+      : "",
+  );
+  return match
+    ? { number: Number(match[2]), repositoryFullName: match[1]! }
+    : undefined;
+}
+
+/** Ask the requester to resume a fix that did not land. */
+async function addUnlandedItem(args: {
+  conflict: GitHubMergeConflict;
+  db: GitHubDb;
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
+  ref: GitHubPullRequestRef;
+  inboxItems: PluginConversationInboxItems;
+  title?: string;
+}): Promise<void> {
   const { conflict, ref, title } = args;
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
@@ -214,20 +269,21 @@ async function addNotice(
   const url =
     conflict.url ??
     `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const name = title ? `**${title}**` : "This pull request";
-  const reason =
-    fixes >= MAX_FIXES
-      ? `conflicts were already fixed ${fixes} times`
-      : "nobody worked on it in the last 2 days";
-  // An open notice with the key only gets new content, so a check of a
-  // conflict that has a notice adds no second one.
-  await args.reviewItems.forConversation(opener.conversationId).upsert({
+  const titleParts = title
+    ? await args.loadTitleParts?.({
+        repositoryFullName: ref.repositoryFullName,
+        title,
+      })
+    : undefined;
+  await args.inboxItems.forConversation(opener.conversationId).upsert({
     assigneeIdentityIds: [opener.identityId],
-    body: `${name} has merge conflicts with \`${conflict.baseBranch}\`. Automatic fixes stopped, because ${reason}. If they are still there, ask in this thread to fix them: ${url}`,
-    dedupeKey: gitHubConflictNoticeKey(ref),
+    body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
+    choices: [{ label: GITHUB_CONFLICT_RESUME }],
+    dedupeKey: gitHubConflictItemKey(ref),
     subject: {
       id: url,
       title: title ? `${title} (#${ref.number})` : url,
+      ...(titleParts ? { titleParts } : undefined),
       url,
     },
     title: `Merge conflict · #${ref.number}`,
@@ -237,8 +293,8 @@ async function addNotice(
 /**
  * Return the merge conflict events to publish for one conflicted pull
  * request that a Watch or event automation wants. A fix returns `events`.
- * A notice goes to the review desk and returns no events. The notice is
- * optional, so a failure is logged, and the next check tries again.
+ * An ask adds the Inbox item and returns no events. The item is optional,
+ * so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
   conflict: GitHubMergeConflict;
@@ -247,57 +303,78 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  /** Read the title parts of the item subject. */
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const t = juniorGitHubPullRequests;
   const [row] = await args.db
-    .select({ pullRequestId: t.pullRequestId })
+    .select({
+      askedAt: t.conflictFixAskedAt,
+      fixes: t.conflictFixes,
+      resumedAt: t.conflictFixesResumedAt,
+    })
     .from(t)
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .limit(1);
   if (!row) return args.events;
-  const history = parseGitHubConflictHistory(await args.loadHistory(args.ref));
-  const action = gitHubConflictAction(history, args.now.getTime());
-  // A fix keeps an open notice. Core delivers one fix per head commit, so
-  // a fix of a head that Junior failed to fix starts no turn, and the
-  // notice is the only ask left. It closes when the conflict is gone.
-  if (action === "fix") return args.events;
-  if (action === "notice") {
-    try {
-      await addNotice(args, history.fixes);
-    } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub merge conflict notice failed",
-        error,
-        {
-          number: args.ref.number,
-          repository: args.ref.repositoryFullName,
-        },
-      );
-    }
+  const nowMs = args.now.getTime();
+  const action = gitHubConflictAction({
+    askedAtMs: row.askedAt?.getTime(),
+    fixes: row.fixes,
+    headSha: args.conflict.headSha,
+    history: parseGitHubConflictHistory(await args.loadHistory(args.ref)),
+    nowMs,
+    resumedAtMs: row.resumedAt?.getTime(),
+  });
+  if (action === "skip") return [];
+  if (action === "retry") return args.events;
+  if (action === "fix") {
+    await args.db
+      .update(t)
+      .set({
+        conflictFixes: withGitHubConflictFix(row.fixes, {
+          atMs: nowMs,
+          headSha: args.conflict.headSha,
+        }),
+      })
+      .where(pullRequestRow(args.ref));
+    return args.events;
+  }
+  try {
+    await addUnlandedItem(args);
+    // Save the ask after the item, so a failed item is asked again.
+    await args.db
+      .update(t)
+      .set({ conflictFixAskedAt: args.now })
+      .where(pullRequestRow(args.ref));
+  } catch (error) {
+    logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
+      number: args.ref.number,
+      repository: args.ref.repositoryFullName,
+    });
   }
   return [];
 }
 
-/** Why a merge conflict notice closes when GitHub reports no conflict. */
+/** Why a merge conflict item closes when GitHub reports no conflict. */
 export const GITHUB_CONFLICT_GONE_REASON =
   "The pull request no longer has merge conflicts.";
 
 /**
- * Close the merge conflict notice of one Junior pull request. Throws when
- * the review desk fails, so a caller with no later check can try again.
+ * Close the merge conflict item of one Junior pull request. Throws
+ * when the Inbox fails, so a caller with no later check can try again.
  */
-export async function closeGitHubConflictNotice(args: {
+export async function closeGitHubConflictItem(args: {
   db: GitHubDb;
   reason: string;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   status: "done" | "dismissed";
 }): Promise<void> {
   const { ref } = args;
@@ -308,25 +385,27 @@ export async function closeGitHubConflictNotice(args: {
     })
   ).get(ref.number);
   if (!opener?.conversationId) return;
-  await args.reviewItems.forConversation(opener.conversationId).close({
-    dedupeKey: gitHubConflictNoticeKey(ref),
+  await args.inboxItems.forConversation(opener.conversationId).close({
+    dedupeKey: gitHubConflictItemKey(ref),
     reason: args.reason,
     status: args.status,
   });
 }
 
 /**
- * Close the merge conflict notices of some Junior pull requests, such as
- * ones that GitHub reports as mergeable. A notice is optional, so a failed
- * close is logged, and the next check closes it again.
+ * Close the merge conflict items of some Junior pull requests, such
+ * as ones that GitHub reports as mergeable. An item is optional, so a failed
+ * close is logged, and the next check closes it again. When an open item
+ * closes, the ask was not dismissed, so a later fix that does not land asks
+ * again.
  */
-export async function closeGitHubConflictNotices(args: {
+export async function closeGitHubConflictItems(args: {
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn">;
   numbers: number[];
   reason: string;
   repositoryFullName: string;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   status: "done" | "dismissed";
 }): Promise<void> {
   if (args.numbers.length === 0) return;
@@ -335,18 +414,26 @@ export async function closeGitHubConflictNotices(args: {
     numbers: args.numbers,
     repositoryFullName,
   });
-  const limit = pLimit(NOTICE_CLOSE_CONCURRENCY);
+  const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
   const close = async (number: number, conversationId: string) => {
     try {
-      await args.reviewItems.forConversation(conversationId).close({
-        dedupeKey: gitHubConflictNoticeKey({ number, repositoryFullName }),
-        reason: args.reason,
-        status: args.status,
-      });
+      const closed = await args.inboxItems
+        .forConversation(conversationId)
+        .close({
+          dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),
+          reason: args.reason,
+          status: args.status,
+        });
+      if (closed) {
+        await args.db
+          .update(juniorGitHubPullRequests)
+          .set({ conflictFixAskedAt: null })
+          .where(pullRequestRow({ number, repositoryFullName }));
+      }
     } catch (error) {
       logFailOpenFailure(
         args.log,
-        "GitHub merge conflict notice close failed",
+        "GitHub merge conflict item close failed",
         error,
         { number, repository: repositoryFullName },
       );

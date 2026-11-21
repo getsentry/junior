@@ -939,6 +939,104 @@
       "when": 1795124236838,
       "tag": "0133_brief_created_at_index",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1795127096428,
+      "tag": "0134_slack_person_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1795128922192,
+      "tag": "0135_code_change_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1795130573919,
+      "tag": "0136_merge_conflict_notice_dismiss",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1795132609157,
+      "tag": "0137_inbox_snoozes",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1795167078477,
+      "tag": "0138_code_change_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1795167292816,
+      "tag": "0139_review_item_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1795201014126,
+      "tag": "0140_review_item_owner_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1795201074126,
+      "tag": "0141_memory_core_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795201134126,
+      "tag": "0142_memory_core_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1795218746587,
+      "tag": "0143_todos",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1795249396921,
+      "tag": "0144_inbox_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1795283811414,
+      "tag": "0145_todo_changed_by_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1795286127229,
+      "tag": "0146_inbox_item_subject_title_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795290103913,
+      "tag": "0147_inbox_snooze_wake_reason",
+      "breakpoints": true
     }
   ]
 }

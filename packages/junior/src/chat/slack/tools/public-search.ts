@@ -7,7 +7,7 @@ import {
 } from "@/chat/slack/client";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTENT_TYPES = ["messages"] as const;

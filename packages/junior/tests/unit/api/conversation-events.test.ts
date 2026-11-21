@@ -64,16 +64,16 @@ describe("conversation report event projection", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory test plugin",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes test plugin",
         },
         conversationEvents: [captured],
       }),
     ]);
     const pluginEvent = event(1, {
       type: "structured_event",
-      namespace: "memory",
+      namespace: "notes",
       name: "memories_captured",
       version: 1,
       turnId: "turn-1",
@@ -91,7 +91,7 @@ describe("conversation report event projection", () => {
           createdAt: new Date(1_000).toISOString(),
           data: {
             type: "structured_event",
-            namespace: "memory",
+            namespace: "notes",
             name: "memories_captured",
             version: 1,
             turnId: "turn-1",
@@ -195,13 +195,13 @@ describe("conversation report event projection", () => {
       text: "audit the repo",
       meta: { agentInvocationId: "invocation-1" },
     });
-    // Each Review item change keeps its own record, so the dashboard shows
+    // Each Inbox item change keeps its own record, so the dashboard shows
     // what the message did, not the item's current state.
     const answer = event(3, {
       type: "message",
       messageId: "answer-1",
       role: "user",
-      text: "Alice answered review item item-1.",
+      text: "Alice answered inbox item item-1.",
       meta: {
         reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
       },
@@ -247,7 +247,7 @@ describe("conversation report event projection", () => {
           messageId: "answer-1",
           role: "user",
           reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
-          text: "Alice answered review item item-1.",
+          text: "Alice answered inbox item item-1.",
         },
       },
     ]);

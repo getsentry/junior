@@ -7,7 +7,7 @@ import {
   conversationId,
   grab,
   license,
-  mockReviewItems,
+  mockInboxItems,
   prReview,
   rollout,
 } from "./inbox-fixture";
@@ -15,7 +15,7 @@ import {
 // Child agents of the rollout Conversation each add an ask. They roll up
 // under the root's stack, after the root's own ask.
 const childOf = (thread: string, label: string) => ({
-  addedByConversationId: `slack:CQA123:1770003600.${thread}`,
+  owner: { id: `slack:CQA123:1770003600.${thread}`, kind: "conversation" },
   addedByLabel: label,
   rootConversationId: conversationId,
 });
@@ -67,14 +67,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await mockInboxItems(page, { open: [rollout, childReview, other] });
     await page.goto(`${dashboard.baseURL}/`);
     const stack = stackOf(page);
     await expect(stack.locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(
-      page.locator(
-        `li[data-inbox-row="todo:${childReview.addedByConversationId}"]`,
-      ),
+      page.locator(`li[data-inbox-row="todo:${childReview.owner.id}"]`),
     ).toHaveCount(0);
     await expect(rowOf(page, childReview)).toContainText(
       "Check the pipeline runs",
@@ -109,7 +107,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await mockInboxItems(page, { open: [rollout, childReview, other] });
     await page.goto(`${dashboard.baseURL}/`);
     const stack = stackOf(page);
     // The header's buttons keep their own actions.
@@ -133,7 +131,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout, childReview, other] });
+    await mockInboxItems(page, { open: [rollout, childReview, other] });
     await page.goto(`${dashboard.baseURL}/`);
     const stack = stackOf(page);
     const menu = page.getByRole("menu");
@@ -159,7 +157,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [childLicense, other] });
+    await mockInboxItems(page, { open: [childLicense, other] });
     await page.goto(`${dashboard.baseURL}/`);
     const row = rowOf(page, childLicense);
     const child = row.getByRole("link", { name: /Read the agent logs/ });
@@ -181,7 +179,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
     }) => {
       await page.emulateMedia({ reducedMotion: motion });
-      const actions = await mockReviewItems(page, {
+      const actions = await mockInboxItems(page, {
         open: [rollout, childReview, childLicense, other],
       });
       await page.goto(`${dashboard.baseURL}/`);
@@ -222,7 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, childReview, childLicense, other],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -239,7 +237,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [rollout, childReview, childLicense],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -253,12 +251,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     // They use the action bar's words.
     await expect(quick("Snooze")).toHaveText("Snooze");
     await expect(quick("Dismiss")).toHaveText("Dismiss");
-    // Open goes to the child that asked, at its ask.
+    // A code change row ends with its GitHub link, not Open. The open
+    // card's Open goes to the child that asked, at its ask.
     const open = row.getByRole("link", { name: "Open conversation" });
-    await expect(open).toBeVisible();
+    await expect(open).toHaveCount(0);
+    await expect(quick("Expand")).toHaveCount(0);
+    await row.locator('[aria-controls^="inbox-row-"]').first().click();
     await expect(open).toHaveAttribute(
       "href",
-      `/conversations/${encodeURIComponent(childReview.addedByConversationId)}?ask=${childReview.id}`,
+      `/conversations/${encodeURIComponent(childReview.owner.id)}?ask=${childReview.id}`,
     );
     await quick("Dismiss").click();
     await expect(row).toHaveCount(0);
@@ -283,7 +284,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout] });
+    await mockInboxItems(page, { open: [rollout] });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page.locator(
       `li[data-inbox-row="conversation:${conversationId}"]`,
@@ -302,7 +303,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await mockReviewItems(page, { open: [rollout, childReview] });
+      await mockInboxItems(page, { open: [rollout, childReview] });
       await page.goto(`${dashboard.baseURL}/`);
       const row = rowOf(page, childReview);
       const open = row.getByRole("link", { name: "Open conversation" });
@@ -321,7 +322,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, childReview, childLicense, ...childAsks],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -360,7 +361,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [rollout, childReview, childLicense, other],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -368,6 +369,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       stackOf(page).getByText("3 items", { exact: true }),
     ).toHaveCount(1);
+    // Its buttons come in the order of a row's actions: Dismiss, then
+    // Snooze.
+    expect(
+      await stackOf(page)
+        .locator("[data-inbox-stack-head] button")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("aria-label")),
+        ),
+    ).toEqual([
+      "Dismiss 3 items in this stack",
+      "Snooze 3 items in this stack",
+    ]);
     await rowOf(page, childReview).locator("[data-inbox-head]").click();
     await expect(rowOf(page, childReview)).toHaveAttribute(
       "data-expanded",
@@ -390,7 +403,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [rollout, childReview, childLicense],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -423,7 +436,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const newest = childAsks[0]!;
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, childReview, childLicense, newest],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -452,7 +465,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const open = [rollout, childReview, childLicense, other];
-    await mockReviewItems(page, { open });
+    await mockInboxItems(page, { open });
     await page.goto(`${dashboard.baseURL}/`);
     await rowOf(page, childReview).locator("[data-inbox-head]").click();
     await stackOf(page)
@@ -476,7 +489,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const read = page.waitForResponse(
       (response) =>
         response.request().method() === "GET" &&
-        new URL(response.url()).pathname === "/api/review-items",
+        new URL(response.url()).pathname === "/api/inbox-items",
     );
     await page.evaluate(() =>
       window.dispatchEvent(new Event("visibilitychange")),
@@ -499,7 +512,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const open = [rollout, childReview, childLicense];
-    const actions = await mockReviewItems(page, { open });
+    const actions = await mockInboxItems(page, { open });
     await page.goto(`${dashboard.baseURL}/`);
     await rowOf(page, rollout).locator("[data-inbox-head]").click();
 
@@ -510,7 +523,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const read = page.waitForResponse(
       (response) =>
         response.request().method() === "GET" &&
-        new URL(response.url()).pathname === "/api/review-items",
+        new URL(response.url()).pathname === "/api/inbox-items",
     );
     await page.evaluate(() =>
       window.dispatchEvent(new Event("visibilitychange")),
@@ -530,7 +543,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       grab,
       { ...grab, id: "item-grab-2", title: "Cover the release" },
     ];
-    await mockReviewItems(page, { automations: () => 0, open: grabs });
+    await mockInboxItems(page, { automations: () => 0, open: grabs });
     await page.goto(`${dashboard.baseURL}/`);
     const section = page.getByRole("region", { name: "Up for grabs" });
     await expect(section.locator("li[data-inbox-row]")).toHaveCount(2);
@@ -538,80 +551,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     const heading = section.getByRole("button", { name: /^Up for grabs/ });
     await heading.click();
     await expect(heading).toHaveText("Up for grabs2");
-  });
-
-  test("a row snooze from before item snoozes keeps its items asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    // The old record snoozed the whole row, under its Conversation, until a
-    // newer item than its newest arrived.
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    await mockReviewItems(page, { open: [rollout, childReview, childLicense] });
-    await page.goto(`${dashboard.baseURL}/`);
-    // The newer ask shows by itself. The two it put away stay asleep.
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-  });
-
-  test("a row snooze from before item snoozes keeps its later page asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    // The row's older ask comes on the second page, after the first converts.
-    await mockReviewItems(page, {
-      open: [childReview, childLicense, rollout],
-      pageSize: 2,
-    });
-    let releaseLaterPages = () => {};
-    const laterPages = new Promise<void>((resolve) => {
-      releaseLaterPages = resolve;
-    });
-    await page.route(/\/api\/review-items\?.*cursor=/, async (route) => {
-      await laterPages;
-      await route.fallback();
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    releaseLaterPages();
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-
-    // Its newest ask wakes by itself, and leaves the Snoozed count.
-    const snoozed = nav.getByRole("link", { name: /^Snoozed/ });
-    await snoozed.click();
-    const row = page.locator(`li[data-inbox-row="${childReview.id}"]`);
-    await row.locator("[data-inbox-head]").click();
-    await row.getByRole("button", { exact: true, name: "Wake" }).click();
-    await expect(row).toHaveCount(0);
-    await expect(snoozed).toContainText("1");
   });
 });

@@ -14,7 +14,7 @@ import type {
   ActorWindowMetrics,
   PeopleActivityDayReport,
 } from "../schema/person";
-import { conversationRootId, verifiedActorWhere } from "./shared";
+import { conversationRootId, verifiedActorWhere } from "./person-report";
 import {
   DAY_MS,
   HOUR_MS,

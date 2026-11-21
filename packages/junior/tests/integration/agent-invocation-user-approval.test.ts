@@ -277,7 +277,7 @@ describe("user approval for child agents", () => {
     }
   });
 
-  it("reads a review desk answer as the user only when its web Identity links to the user's User", async () => {
+  it("reads an Inbox answer as the user only when its web Identity links to the user's User", async () => {
     const { fixture } = await prepareSlackParentConversation();
     try {
       // Webhook ingress saves the Slack Identity without an email. The Slack
@@ -287,7 +287,7 @@ describe("user approval for child agents", () => {
         ...user,
         email: "maya@example.com",
       });
-      // A desk answer is a web Message. Web ingress stores the Identity of
+      // An Inbox answer is a web Message. Web ingress stores the Identity of
       // the signed-in person as the author.
       const deskAnswer = async (email: string, text: string) => {
         const viewer = await resolveViewerUser(email);
@@ -308,7 +308,7 @@ describe("user approval for child agents", () => {
         "maya@example.com",
         "Approve: delete evt_nightly_digest",
       );
-      // Another person can answer on the desk too. That is not approval.
+      // Another person can answer in the Inbox too. That is not approval.
       await deskAnswer("sam@example.com", "Approve: delete every automation");
 
       await expect(

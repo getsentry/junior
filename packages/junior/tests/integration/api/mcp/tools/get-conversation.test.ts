@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { insertReviewItem } from "@/chat/review-items/store";
+import { insertInboxItem } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../../../fixtures/conversation-brief";
 import {
@@ -83,8 +83,8 @@ describe("getConversation MCP tool", () => {
       .set({ executionStatus: "running" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     // An open action item reads `needs_input` while the Turn runs.
-    await insertReviewItem(getDb(), {
-      addedByConversationId: CONVERSATION_ID,
+    await insertInboxItem(getDb(), {
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Pick one.",
@@ -127,7 +127,7 @@ describe("getConversation MCP tool", () => {
     });
     const other = await resolveViewerUser(MCP_TEST_OTHER_VIEWER);
     const ask = {
-      addedByConversationId: CONVERSATION_ID,
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       body: "Pick one.",
       conversationIds: [CONVERSATION_ID],
       kind: "action" as const,
@@ -146,7 +146,7 @@ describe("getConversation MCP tool", () => {
       title: "Ship the release?",
       visibility: "public" as const,
     };
-    await insertReviewItem(getDb(), {
+    await insertInboxItem(getDb(), {
       ...ask,
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
@@ -158,7 +158,7 @@ describe("getConversation MCP tool", () => {
     const forOther = await call("getConversation", {
       conversationId: CONVERSATION_ID,
     });
-    await insertReviewItem(getDb(), {
+    await insertInboxItem(getDb(), {
       ...ask,
       assignedToEveryone: true,
       assigneeUserIds: [],

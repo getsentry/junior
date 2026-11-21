@@ -16,6 +16,7 @@ import {
   readMockPeopleDirectory,
   readMockPeopleProfile,
 } from "./fixtures";
+import { mockCodeChangeCard } from "./code-change-search";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
 // configured dashboard origin.
@@ -23,6 +24,62 @@ function pageSegment(url: URL, page: string): string | undefined {
   const match = new RegExp(`^/${page}/([^/]+)/?$`).exec(url.pathname);
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
+
+// The live cards of mock pull requests. Those that conflict with main make
+// their asks in the Inbox say "Merge conflict".
+const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/3052": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#3052",
+    label: "getsentry/junior#3052",
+    title: "feat(dashboard): Tabs in the dashboard sidebar",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "feat/sidebar-tabs",
+      targetBranch: "main",
+      mergeable: true,
+    },
+    plugin: "github",
+  },
+  "https://github.com/getsentry/junior/pull/2188": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#2188",
+    label: "getsentry/junior#2188",
+    title: "Retry Slack uploads on rate limits",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "fix/slack-upload-retry",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+  "https://github.com/getsentry/payments/pull/91": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#91",
+    label: "getsentry/payments#91",
+    title: "Pin the release train to payments 4.2",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "release/pin-payments-4.2",
+      targetBranch: "main",
+      mergeable: false,
+    },
+    plugin: "github",
+  },
+};
 
 // The mock release thread links to one Google Doc, one Calendar event, and
 // one Drive file and folder.
@@ -467,11 +524,15 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   const url = new URL(href);
   if (url.href === SENTAUR_PULL_REQUEST.url)
     return [{ object: SENTAUR_PULL_REQUEST, url: href }];
+  const codeChange = mockCodeChangeCard(url.href);
+  if (codeChange) return [{ object: codeChange, url: href }];
   const webPage = WEB_PAGES[url.href];
   if (webPage) {
     const object = webPageObjectCard(webPage);
     return [{ object: { ...object, plugin: "junior" }, url: href }];
   }
+  const pull = GITHUB_PULLS[url.href];
+  if (pull) return [{ object: { ...pull, url: href }, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;

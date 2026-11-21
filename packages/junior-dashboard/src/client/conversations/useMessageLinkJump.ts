@@ -15,10 +15,7 @@ export function useMessageLinkJump(input: {
   events: readonly ConversationReportEvent[] | undefined;
   messageId: string | undefined;
   /** Center the row and hold that place while rows above it resize. */
-  showRow: (
-    row: Element,
-    options: { arrived: boolean; instant?: boolean },
-  ) => boolean;
+  showRow: (row: Element, options?: { instant?: boolean }) => boolean;
 }): number | undefined {
   const { content, events, messageId, showRow } = input;
   const shownRef = useRef<string>(undefined);
@@ -40,7 +37,7 @@ export function useMessageLinkJump(input: {
     if (!row) return;
     shownRef.current = messageId;
     // A smooth scroll stops when rows that mount on the way resize.
-    showRow(row, { arrived: false, instant: true });
+    showRow(row, { instant: true });
     markTranscriptRow(row);
   }, [content, events, messageId, seq, showRow]);
   return seq;

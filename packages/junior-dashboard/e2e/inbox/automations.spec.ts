@@ -1,5 +1,6 @@
 import { mockAutomationEditor } from "../automation-editor-fixture";
 import { LIST_NOW, automationReport } from "./automation-fixture";
+import { automationAlert, mockInboxItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "../harness";
@@ -897,10 +898,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       editor.value = { ...editor.value, status, revision: "b".repeat(64) };
       return route.fulfill({ json: editor.value });
     });
+    // A failed last run gives the viewer's Automation an alert, so To do
+    // lists it.
+    await mockInboxItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
+    });
     await page.goto(`${dashboard.baseURL}/automations`);
     const todo = page.getByRole("region", { exact: true, name: "To do" });
-    // A failed last run puts the viewer's Automation in To do, as the Inbox
-    // lists it.
     await expect(todo).toContainText("Weekly project summary");
     await screenshot(page, "automation-attention");
     await todo.getByRole("button", { name: /Weekly project summary/ }).click();

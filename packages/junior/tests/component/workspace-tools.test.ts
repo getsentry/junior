@@ -21,8 +21,12 @@ import { listWatches } from "@/chat/events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { createWorkspaceTools } from "@/chat/workspaces/tools";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { workspaceProviderNames } from "@/chat/workspaces/tool-support";
+import { createWorkspaceTool } from "@/chat/workspaces/tools/create";
+import { createDeleteWorkspaceTool } from "@/chat/workspaces/tools/delete";
+import { createSwitchWorkspaceTool } from "@/chat/workspaces/tools/switch";
+import { createUpdateWorkspaceTool } from "@/chat/workspaces/tools/update";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 
@@ -107,25 +111,10 @@ describe("Workspace tools", () => {
         cwd: "/tmp/local-agent-workspace-tools",
       });
       expect(conversationId).toBeDefined();
-      const destination = {
-        platform: "local",
-        conversationId: conversationId!,
-      } as const;
-      const workspaceTools = createWorkspaceTools({
-        turnTools: rootTurnTools,
-        conversationId: conversationId!,
-        destination,
-        egress: { fetch: async () => new Response("ok") },
-        source: createLocalSource(destination.conversationId),
-        workspace: {} as ToolRuntimeContext["workspace"],
-        workspaces: {
-          activeWorkspaceId: () => undefined,
-          switch: async () => undefined,
-        },
-      });
-      const createTool = workspaceTools["createWorkspace"]!;
-      const updateTool = workspaceTools["updateWorkspace"]!;
-      const deleteTool = workspaceTools["deleteWorkspace"]!;
+      const providers = workspaceProviderNames()!;
+      const createTool = createWorkspaceTool(providers);
+      const updateTool = createUpdateWorkspaceTool(providers);
+      const deleteTool = createDeleteWorkspaceTool();
       expect(createTool.description).toContain("`github`");
       expect(updateTool.description).toContain("`github`");
       const createInput = createTool.prepareArguments!({
@@ -381,9 +370,9 @@ describe("Workspace tools", () => {
         turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
-      const tools = createWorkspaceTools(context);
+      const switchTool = createSwitchWorkspaceTool(context);
       await expect(
-        tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
+        switchTool.execute!({ name: workspace.name }, {}),
       ).resolves.toMatchObject({
         workspace: { id: workspace.id },
         status: "ready",
@@ -454,9 +443,9 @@ describe("Workspace tools", () => {
         turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
-      const tools = createWorkspaceTools(context);
+      const switchTool = createSwitchWorkspaceTool(context);
       await expect(
-        tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
+        switchTool.execute!({ name: workspace.name }, {}),
       ).rejects.toBe(enqueueError);
       expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
         workspace: expect.objectContaining({ id: workspace.id }),
@@ -519,9 +508,9 @@ describe("Workspace tools", () => {
       turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
-    const tools = createWorkspaceTools(context);
+    const switchTool = createSwitchWorkspaceTool(context);
     await expect(
-      tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
+      switchTool.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({ status: "building" });
     expect(sendNextWorkspaceSnapshotJob).toHaveBeenCalledWith({
       workspaceId: workspace.id,
@@ -586,9 +575,9 @@ describe("Workspace tools", () => {
         (await listWatches({ conversationId })).length === 1;
     });
 
-    const tools = createWorkspaceTools(context);
+    const switchTool = createSwitchWorkspaceTool(context);
     await expect(
-      tools["switchWorkspace"]!.execute!({ name: workspace.name }, {}),
+      switchTool.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id, name: workspace.name },
       status: "building",

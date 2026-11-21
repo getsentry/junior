@@ -44,7 +44,7 @@ import {
   pluginUserPageApiPath,
   pluginUserPageRecordPath,
 } from "../pages/user/pluginUserPageRoutes";
-import type { DashboardHeaderNavItem } from "../inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "../shell/components/layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
 import { matchedItem, type PaletteItem } from "./paletteItem";
 import { NAV_PAGES } from "../navPages";

@@ -47,6 +47,10 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import {
+  setMemoryConfig,
+  type MemoryOptions,
+} from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -139,7 +143,7 @@ import {
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -191,6 +195,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
+export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Name Junior uses for itself, such as its Slack bot username. Defaults to
@@ -227,6 +232,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   experimental?: ExperimentalFeaturesConfig;
   /** Turn and conversation limits. Unset limits keep their defaults. */
   limits?: RuntimeLimits;
+  /** Long-term Memory settings. Memory is always on. */
+  memory?: MemoryOptions;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -548,6 +555,7 @@ export async function createApp(
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
   );
+  const previousMemoryConfig = setMemoryConfig(options?.memory);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let previousTrustConfig: TrustConfig | undefined;
@@ -561,6 +569,7 @@ export async function createApp(
     setExperimentalFeatures(previousExperimentalFeatures);
     setBriefsConfig(previousBriefsConfig);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
+    setMemoryConfig(previousMemoryConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -626,7 +635,7 @@ export async function createApp(
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
-      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -920,7 +929,7 @@ export async function createApp(
       conversationWorkQueue,
       dispatchForIdentity,
       events,
-      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
     });
   });
 

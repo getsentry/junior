@@ -7,7 +7,7 @@
  * pause, or another safe pause boundary.
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
-import { savedInputInstruction } from "@/chat/review-items/prompt-input";
+import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,

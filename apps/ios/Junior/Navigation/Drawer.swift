@@ -2,9 +2,11 @@ import JuniorKit
 import SwiftUI
 
 /// Full-screen navigation drawer (`DashboardHeader.tsx` mobile menu): primary
-/// places, account pages, theme, and the Junior the app is signed in to.
+/// places, account pages, theme, Log out, and the Junior the app is signed in to.
+/// `split` makes it a side panel over the list and the open item.
 struct Drawer: View {
   @Environment(AppModel.self) private var app
+  var split = false
 
   var body: some View {
     @Bindable var app = app
@@ -36,7 +38,11 @@ struct Drawer: View {
             app.go(.conversations)
             app.focusSearch = true
           }
-          NavRow(label: "Conversations", active: app.place == .conversations && app.path.isEmpty) {
+          // Beside the list, an open Conversation keeps Conversations current.
+          NavRow(
+            label: "Conversations",
+            active: app.place == .conversations && (split ? app.path.first != .settings : app.path.isEmpty)
+          ) {
             app.go(.conversations)
           }
           NavRow(label: "Inbox", count: app.inboxCount, active: app.place == .inbox) {
@@ -56,13 +62,19 @@ struct Drawer: View {
           NavRow(label: "System", active: false) { app.openOnWeb("/system") }
           ThemeRow(theme: $app.theme)
             .padding(.top, 4)
+          NavRow(label: "Log out", active: false, action: app.signOut)
         }
         .padding(12)
       }
 
-      ServerFooter(host: app.server.baseURL.host() ?? app.server.baseURL.absoluteString, version: app.serverVersion)
+      ServerFooter(
+        host: app.server.isDemo ? "Demo" : app.server.baseURL.host() ?? app.server.baseURL.absoluteString,
+        version: app.serverVersion)
     }
     .background(Tokens.bgElevated)
+    .overlay(alignment: .trailing) {
+      if split { Rectangle().fill(Tokens.border).frame(width: 1).ignoresSafeArea() }
+    }
   }
 }
 

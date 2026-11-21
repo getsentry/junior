@@ -63,8 +63,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendPlanSnapshot } from "@/chat/plan/snapshot";
-import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
+import { appendTodosSnapshot } from "@/chat/todos/snapshot";
+import { TODO_DELTA_TAG } from "@/chat/todos/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -239,12 +239,12 @@ function isTurnContextText(text: string | undefined): text is string {
 
 /**
  * Remove the sections that only the Turn that received them can use, and
- * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ * To-do deltas, which the `<todos>` snapshot of the summary replaces.
  */
 function withoutRequestContext(text: string): string {
   return stripTags(text, [
     ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
-    PLAN_DELTA_TAG,
+    TODO_DELTA_TAG,
   ]);
 }
 
@@ -897,7 +897,7 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      await appendPlanSnapshot(
+      await appendTodosSnapshot(
         renderCompactionSummary(summary),
         args.conversationId,
       ),

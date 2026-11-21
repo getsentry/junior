@@ -1,6 +1,7 @@
 /**
- * Own the MCP server behind `/api/mcp`. Each tool lives in its own file under
- * `tools/`.
+ * Own the MCP server behind `/api/mcp`. A tool that the REST API also serves
+ * is an API operation, registered by `tools/api-operation.ts`; each other tool
+ * lives in its own file under `tools/`.
  *
  * Each request gets a new server and a stateless transport that answers with
  * JSON. No MCP session or SSE stream outlives the request, so the route works
@@ -10,53 +11,43 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { botConfig } from "@/chat/config";
 import { JUNIOR_VERSION } from "@/version";
+import { conversationOperations } from "../conversations/operations";
+import type { ApiOperation } from "../operation";
 import type { McpScope } from "./oauth/scopes";
 import type { McpToolContext } from "./tool-context";
-import { registerArchiveConversationTool } from "./tools/archive-conversation";
-import { registerArchiveDoneConversationsTool } from "./tools/archive-done-conversations";
-import { registerCancelQueuedMessagesTool } from "./tools/cancel-queued-messages";
+import { registerApiOperationTool } from "./tools/api-operation";
 import { registerCreateConversationTool } from "./tools/create-conversation";
 import { registerGetAutomationTool } from "./tools/get-automation";
 import { registerGetConversationTool } from "./tools/get-conversation";
-import { registerGetReviewItemTool } from "./tools/get-review-item";
+import { registerGetInboxItemTool } from "./tools/get-inbox-item";
 import { registerSearchAutomationsTool } from "./tools/search-automations";
 import { registerListConversationMessagesTool } from "./tools/list-conversation-messages";
 import { registerMarkConversationReadTool } from "./tools/mark-conversation-read";
-import { registerPinConversationTool } from "./tools/pin-conversation";
 import { registerSearchConversationsTool } from "./tools/search-conversations";
-import { registerSearchReviewItemsTool } from "./tools/search-review-items";
+import { registerSearchInboxItemsTool } from "./tools/search-inbox-items";
 import { registerSendMessageTool } from "./tools/send-message";
-import { registerSetConversationAutoArchiveTool } from "./tools/set-conversation-auto-archive";
-import { registerSetConversationSubscriptionTool } from "./tools/set-conversation-subscription";
-import { registerStopConversationTool } from "./tools/stop-conversation";
 
 type RegisterTool = (server: McpServer, context: McpToolContext) => void;
 
-/** The tools that each scope unlocks. A client sees only its granted tools. */
+/** Operations that the REST API also serves. Each names its own scope. */
+const OPERATIONS: readonly ApiOperation[] = [...conversationOperations];
+
+/**
+ * The hand-written tools that each scope unlocks. A client sees only its
+ * granted tools.
+ */
 const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
   "conversations:read": [
     registerSearchConversationsTool,
     registerGetConversationTool,
     registerListConversationMessagesTool,
   ],
-  "conversations:manage": [
-    registerArchiveConversationTool,
-    registerArchiveDoneConversationsTool,
-    registerPinConversationTool,
-    registerSetConversationAutoArchiveTool,
-    registerSetConversationSubscriptionTool,
-    registerMarkConversationReadTool,
-    registerStopConversationTool,
-    registerCancelQueuedMessagesTool,
-  ],
+  "conversations:manage": [registerMarkConversationReadTool],
   "conversations:write": [
     registerCreateConversationTool,
     registerSendMessageTool,
   ],
-  "review_items:read": [
-    registerSearchReviewItemsTool,
-    registerGetReviewItemTool,
-  ],
+  "inbox_items:read": [registerSearchInboxItemsTool, registerGetInboxItemTool],
   "automations:read": [
     registerSearchAutomationsTool,
     registerGetAutomationTool,
@@ -64,11 +55,11 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
 };
 
 function readInstructions(agentName: string): string {
-  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your review items and automations. They cannot send a message or start agent work. To ask ${agentName} for work or to answer a review item, use the Slack or dashboard link in a result.`;
+  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your inbox items and automations. They cannot send a message or start agent work. To ask ${agentName} for work or to answer an inbox item, use the Slack or dashboard link in a result.`;
 }
 
 function writeInstructions(agentName: string): string {
-  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your review items and automations. createConversation and sendMessage send a message as you, and ${agentName} works on it in the background. They return a \`cursor\`. Call getConversation with \`after\` set to the newest \`cursor\` to read the new messages. Repeat until \`status\` is not \`active\` and \`hasMore\` is not set. \`authorization\` means a turn waits for you to connect an account. To answer a review item, use the dashboard link in a result.`;
+  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your inbox items and automations. createConversation and sendMessage send a message as you, and ${agentName} works on it in the background. They return a \`cursor\`. Call getConversation with \`after\` set to the newest \`cursor\` to read the new messages. Repeat until \`status\` is not \`active\` and \`hasMore\` is not set. \`authorization\` means a turn waits for you to connect an account. To answer an inbox item, use the dashboard link in a result.`;
 }
 
 /** Build the MCP server for one authenticated user and granted scopes. */
@@ -86,6 +77,11 @@ function createMcpServer(
   );
   for (const scope of scopes) {
     for (const register of TOOLS_BY_SCOPE[scope]) register(server, context);
+  }
+  for (const operation of OPERATIONS) {
+    if (scopes.includes(operation.scope)) {
+      registerApiOperationTool(server, operation, context);
+    }
   }
   return server;
 }

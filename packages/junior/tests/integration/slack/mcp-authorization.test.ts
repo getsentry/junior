@@ -64,7 +64,11 @@ async function askForBudget(
         {
           type: "toolCall",
           name: "searchMcpTools",
-          arguments: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget" },
+          arguments: {
+            provider: EVAL_MCP_AUTH_PROVIDER,
+            query: "budget",
+            intent: "look up the budget",
+          },
         },
         { type: "text", text: ANSWER },
       ]);

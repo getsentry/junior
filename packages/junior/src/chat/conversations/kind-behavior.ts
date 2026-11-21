@@ -1,3 +1,4 @@
+import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
@@ -69,12 +70,12 @@ export type TurnBehavior = {
   sessionTasks: boolean;
   tools: {
     agents: AgentTools;
-    reviewDesk: boolean;
+    inbox: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
     /**
      * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
-     * agent's inbox. `automation`: the run's Destination, then its Slack
+     * agent's mailbox. `automation`: the run's Destination, then its Slack
      * thread.
      */
     reply: "none" | "parent" | "automation";
@@ -97,7 +98,7 @@ const ROOT: TurnBehavior = {
   sessionTasks: true,
   tools: {
     agents: "children",
-    reviewDesk: true,
+    inbox: true,
     subscriptions: true,
     userCustomization: true,
     reply: "none",
@@ -130,7 +131,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   sessionTasks: false,
   tools: {
     agents: "children_and_parent",
-    reviewDesk: false,
+    inbox: false,
     subscriptions: false,
     userCustomization: false,
     reply: "parent",
@@ -150,7 +151,7 @@ const AGENT_IN_THREAD: TurnBehavior = {
 // one tool list. The Turn's own tools say which of them it can use.
 const THREAD_TOOLS: TurnBehavior["tools"] = {
   ...AGENT_IN_THREAD.tools,
-  reviewDesk: PERSON_IN_THREAD.tools.reviewDesk,
+  inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
 };
@@ -227,6 +228,52 @@ export function isTopLevelKind(kind: ConversationKind): boolean {
 /** Return whether a person sent input from this Source. */
 export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";
+}
+
+/** Narrow a Source to one that a person sent input from. */
+export function isPersonSource(
+  source: Source,
+): source is Extract<Source, { kind: "slack" | "web" }> {
+  return isPersonInput(source.kind);
+}
+
+/**
+ * Return the chat platform of a Source that a person writes from, or
+ * undefined for a runtime Source, such as an event or an Automation.
+ */
+export function personSourcePlatform(
+  source: Source,
+): "slack" | "local" | "web" | undefined {
+  switch (source.kind) {
+    case "slack":
+    case "local":
+    case "web":
+      return source.kind;
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return undefined;
+  }
+}
+
+/** Return a short label that names a Source, such as `slack:T1:C1`. */
+export function sourceLabel(source: Source): string {
+  switch (source.kind) {
+    case "slack":
+      return `slack:${source.teamId}:${source.channelId}`;
+    case "web":
+    case "local":
+      return `${source.kind}:${source.conversationId}`;
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return source.kind;
+  }
 }
 
 /**

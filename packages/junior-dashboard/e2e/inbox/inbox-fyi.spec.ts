@@ -1,6 +1,6 @@
 import {
-  mockReviewItems,
-  pinConflict,
+  mockInboxItems,
+  pinChecks,
   pinReview,
   prReview,
   releaseNotes,
@@ -22,7 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...pinReview,
       body: "#91 has new commits since you requested changes.\n\nhttps://github.com/getsentry/payments/pull/91",
     };
-    await mockReviewItems(page, { open: [rereview] });
+    await mockInboxItems(page, { open: [rereview] });
     await page.goto(`${dashboard.baseURL}/?item=${rereview.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks.getByRole("region", { name: card })).toHaveCount(1);
@@ -35,7 +35,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [prReview] });
+    await mockInboxItems(page, { open: [prReview] });
     // Only a live read knows this change, so its size shows on the card.
     await page.route("**/api/objects?**", (route) =>
       route.fulfill({
@@ -72,17 +72,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "Pull request: Pin the release train" });
     await expect(pull.getByTitle(size)).toBeVisible();
     await expect(pull.getByText(size)).toHaveCount(1);
-    await expect(rowHead(page, prReview.title)).not.toHaveAccessibleName(
-      /lines added/,
-    );
+    await expect(
+      rowHead(page, "Pin the release train"),
+    ).not.toHaveAccessibleName(/lines added/);
   });
 
   test("a pull request ask shows one card, and a notice about it folds in", async ({
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
-      open: [pinReview, pinConflict],
+    const actions = await mockInboxItems(page, {
+      open: [pinReview, pinChecks],
     });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
@@ -103,11 +103,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pull.getByText("open", { exact: true })).toBeVisible();
     await expect(pull).toContainText("release/pin-payments-4.2");
     // The head gives the change's size, so the card does not say it again.
-    await expect(rowHead(page, pinReview.title)).toHaveAccessibleName(
+    await expect(rowHead(page, "Pin the release train")).toHaveAccessibleName(
       /48 lines added, 9 removed, 3 files changed/,
     );
     await expect(pull.getByText(/lines added/)).toHaveCount(0);
-    // The head says "Review requested · #91", so the plugin's text that
+    // The head says the state and #91, so the plugin's text that
     // says the same shows in Slack only.
     await expect(asks.getByText("GitHub asks you to review #91.")).toHaveCount(
       0,
@@ -129,10 +129,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAttribute("aria-expanded", "true");
     await expect(description).toContainText("Merge after the 4.2 deploy");
 
-    // The merge conflict is a quiet line on the review, not a row or a card.
-    await expect(rowHead(page, pinConflict.title)).toHaveCount(0);
-    const conflict = asks.locator("[data-folded-notice]");
-    await expect(conflict).toHaveText("Merge conflict");
+    // The pull request's live card says that it conflicts: a quiet line on
+    // the review, not an item.
+    await expect(asks.locator("[data-merge-conflict]")).toHaveText(
+      "Merge conflict",
+    );
+    // The notice is a quiet line on the review, not a row or a card.
+    await expect(
+      page.locator("[data-code-change-state]", { hasText: "Checks failed" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "FYI" })).toHaveCount(0);
+    const checks = asks.locator("[data-folded-notice]");
+    await expect(checks).toHaveText("Checks failed");
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
     // The row's Dismiss closes the review only.
     await asks.getByRole("button", { name: "Dismiss", exact: true }).click();
@@ -141,7 +149,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .toEqual([pinReview.id]);
     // The notice stays open, alone in the FYI list, with the same card.
     const fyi = page.getByRole("region", { name: "FYI" });
-    await rowHead(fyi, pinConflict.title).click();
+    await rowHead(fyi, "Pin the release train").click();
     const notice = fyi.getByRole("region", { name: /: asks$/ });
     await expect(notice.getByRole("region", { name: card })).toHaveAttribute(
       "data-subject-card",
@@ -156,19 +164,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
-      open: [pinReview, pinConflict],
+    const notice = {
+      ...pinChecks,
+      body: `${pinChecks.body}\n\n<@U0MOCKADA> owns the flaky suite.`,
+      mentions: [{ fullName: "Ada Lovelace", slackUserId: "U0MOCKADA" }],
+    };
+    const actions = await mockInboxItems(page, {
+      open: [pinReview, notice],
     });
     // A link to the notice opens the review's row, which holds it.
-    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
-    const conflict = asks.getByRole("region", { name: pinConflict.title });
-    await conflict.getByRole("button", { name: "Merge conflict" }).click();
-    await expect(conflict).toContainText("has merge conflicts with main");
-    await conflict.getByRole("button", { name: "Dismiss" }).click();
+    const checks = asks.getByRole("region", { name: pinChecks.title });
+    await checks.getByRole("button", { name: "Checks failed" }).click();
+    await expect(checks).toContainText("The required checks failed");
+    await expect(checks).toContainText("Ada Lovelace owns the flaky suite.");
+    await expect(checks).not.toContainText("U0MOCKADA");
+    await checks.getByRole("button", { name: "Dismiss" }).click();
     await expect
       .poll(() => actions.map((action) => action.id))
-      .toEqual([pinConflict.id]);
+      .toEqual([pinChecks.id]);
     await expect(asks.getByRole("region", { name: card })).toBeVisible();
   });
 
@@ -176,7 +191,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinConflict] });
+    await mockInboxItems(page, { open: [pinReview, pinChecks] });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     const asks = todo.getByRole("region", { name: /: asks$/ });
@@ -200,7 +215,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, releaseNotes] });
+    await mockInboxItems(page, { open: [pinReview, releaseNotes] });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
     // Its Conversation's row in To do holds the ask only.
     const todo = page.getByRole("region", { name: "To do" });

@@ -1,4 +1,4 @@
-import { mockReviewItems, rowHead } from "./inbox-fixture";
+import { mockInboxItems, rowHead } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -10,7 +10,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(
@@ -102,7 +102,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     // Pins always show. Running Conversations fill the rows left, up to five.
@@ -189,7 +189,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
@@ -255,7 +255,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
@@ -303,7 +303,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     const saves: unknown[] = [];
     page.on("request", (request) => {
       if (

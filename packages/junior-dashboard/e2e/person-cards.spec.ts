@@ -56,6 +56,10 @@ test("a message header name opens the person card", async ({
   );
   // Each one names its repository and number, and when it merged.
   await expect(shipped).toContainText(/\S+\/\S+#\d+ · merged /);
+  // And its size.
+  await expect(
+    shipped.getByRole("listitem").filter({ hasText: "Pin Node 22 in CI" }),
+  ).toContainText("2 lines added, 2 removed, 1 file changed");
   const activity = card.getByRole("region", { name: "Recent activity" });
   await expect(activity).toContainText("Last active");
   await expect(activity.getByRole("link").first()).toHaveAttribute(
@@ -168,7 +172,7 @@ test("a person card says when its activity fails to load", async ({
   ).toHaveCount(0);
 });
 
-test("a raw Slack id in a Review item question shows the person", async ({
+test("a raw Slack id in an Inbox item question shows the person", async ({
   dashboard,
   page,
 }) => {

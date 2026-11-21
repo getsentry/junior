@@ -74,7 +74,7 @@ export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 /**
- * The viewer's newest answer to a Review item that the Conversation added:
+ * The viewer's newest answer to an Inbox item that the Conversation added:
  * when it closed and the options they picked. A text answer has no choices.
  */
 export const conversationFeedViewerAnswerSchema = z
@@ -131,12 +131,3 @@ export const conversationFeedSchema = z
   .strict();
 
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
-
-/**
- * Carries the content token of one feed page in both directions, like
- * `CONVERSATION_DETAIL_VERSION_HEADER` and for the same reason. A request
- * that sends the token of the page it holds gets 304 while the page is
- * unchanged.
- */
-export const CONVERSATION_FEED_PAGE_VERSION_HEADER =
-  "x-junior-feed-page-version";
