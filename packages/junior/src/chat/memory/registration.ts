@@ -26,7 +26,7 @@ import {
   memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
-import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
+import { archiveExpiredMemoriesInAllScopes, memoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
@@ -65,7 +65,7 @@ function memoryToolContext(
       ? { conversationId: ctx.conversationId }
       : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
-    db: ctx.db as MemoryDb,
+    db: memoryDb(ctx.db),
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
     source: ctx.source,
@@ -111,7 +111,7 @@ export function createMemoryRegistration(
     hooks: {
       async heartbeat(ctx) {
         const deadlineMs = Date.now() + HEARTBEAT_REEMBED_BUDGET_MS;
-        const db = ctx.db as MemoryDb;
+        const db = memoryDb(ctx.db);
         // Archive before the re-embed. It is one bounded DB batch, so it
         // cannot starve the re-embed, and an embedder failure cannot stop it.
         // The re-embed deadline includes the time of this batch.
@@ -130,7 +130,7 @@ export function createMemoryRegistration(
       },
       async operationalReport(ctx) {
         return await buildMemoryOperationalReport({
-          db: ctx.db as MemoryDb,
+          db: memoryDb(ctx.db),
           extractionDays: memoryCostsByDay(
             ctx.eventStats,
             extractionCostFlow,
@@ -142,7 +142,7 @@ export function createMemoryRegistration(
       apiRoutes(ctx) {
         return createMemoryApi({
           conversationEvents: ctx.conversationEvents,
-          db: ctx.db as MemoryDb,
+          db: memoryDb(ctx.db),
           eventStats: ctx.eventStats,
           users: ctx.users,
         });
@@ -182,7 +182,7 @@ export function createMemoryRegistration(
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
-                db: ctx.db as MemoryDb,
+                db: memoryDb(ctx.db),
                 embedder: ctx.embedder,
                 events: ctx.events,
                 ...(ctx.locationId

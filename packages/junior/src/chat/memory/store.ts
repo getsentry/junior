@@ -13,6 +13,7 @@ import {
   eq,
   gt,
   inArray,
+  is,
   isNull,
   isNotNull,
   like,
@@ -21,12 +22,13 @@ import {
   or,
   sql,
   type SQL,
+  type TablesRelationalConfig,
 } from "drizzle-orm";
-import type { PgDatabase } from "drizzle-orm/pg-core";
+import { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as z from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
-import * as memorySqlSchema from "@/db/schema/memory";
+import { personSourcePlatform } from "@/chat/conversations/kind-behavior";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
@@ -104,7 +106,22 @@ const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 /** Keep signal rows long enough to weigh recent activity. */
 const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
-export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
+export type MemoryDb = PgDatabase<
+  PgQueryResultHKT,
+  Record<string, unknown>,
+  TablesRelationalConfig
+>;
+
+/**
+ * Narrow the database of a plugin context to the Memory database. Core
+ * passes its Postgres database, which holds the Memory tables.
+ */
+export function memoryDb(db: unknown): MemoryDb {
+  if (!is(db, PgDatabase)) {
+    throw new TypeError("Memory needs a Postgres database.");
+  }
+  return db;
+}
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryContentSchema = z
@@ -214,18 +231,11 @@ const memoryRowSchema = z
 function storedMemorySource(
   source: MemoryRuntimeContext["source"],
 ): MemorySourcePlatform {
-  switch (source.kind) {
-    case "slack":
-    case "local":
-    case "web":
-      return source.kind;
-    case "event":
-    case "scheduled_automation":
-    case "event_automation":
-    case "plugin_dispatch":
-    case "agent_invocation":
-      throw new Error(`${source.kind} Source cannot own a Memory.`);
+  const platform = personSourcePlatform(source);
+  if (!platform) {
+    throw new Error(`${source.kind} Source cannot own a Memory.`);
   }
+  return platform;
 }
 
 const memoryRecordSchema = z

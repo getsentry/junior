@@ -5,16 +5,18 @@ import type {
   PluginCliHost,
 } from "@sentry/junior-plugin-api";
 import { juniorMemoryMemories } from "@/db/schema/memory";
-import type { MemoryDb } from "../store";
-import { MEMORY_SCOPES, type MemoryScope } from "../types";
+import * as z from "zod";
+import { memoryDb } from "../store";
+import { MEMORY_SCOPES } from "../types";
 import { formatMemory } from "./format";
 
-interface SearchOptions {
-  limit: number;
-  scope: MemoryScope;
-  scopeKey: string;
-  showContent?: boolean;
-}
+const searchOptionsSchema = z.object({
+  limit: z.number(),
+  scope: z.enum(MEMORY_SCOPES),
+  scopeKey: z.string(),
+  showContent: z.boolean().optional(),
+});
+type SearchOptions = z.output<typeof searchOptionsSchema>;
 
 function parseLimit(value: string): number {
   const parsed = Number(value);
@@ -41,7 +43,7 @@ async function runSearch(
     ),
   ];
 
-  const db = ctx.db as MemoryDb;
+  const db = memoryDb(ctx.db);
   const activeExpirationPredicate = or(
     isNull(juniorMemoryMemories.expiresAtMs),
     gt(juniorMemoryMemories.expiresAtMs, nowMs),
@@ -111,8 +113,8 @@ export function configureMemorySearchCommand(
       junior.action(async (ctx, queryParts, options) => {
         return await runSearch(
           ctx,
-          queryParts as string[] | undefined,
-          options as SearchOptions,
+          z.array(z.string()).optional().parse(queryParts),
+          searchOptionsSchema.parse(options),
         );
       }),
     );

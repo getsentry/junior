@@ -89,7 +89,12 @@ function route(
   // The next-action item has its own tests.
   const reviewItems: PluginConversationReviewItems = {
     forConversation() {
-      return { async upsert() {}, async close() {} };
+      return {
+        async upsert() {},
+        async close() {
+          return false;
+        },
+      };
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
@@ -257,6 +262,31 @@ describe("review request when a draft is ready", () => {
       ),
       http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
         HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
+      ),
+      // The next-action check reads an open pull request with no reviews.
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({
+          data: {
+            repository: {
+              pullRequest: {
+                autoMergeRequest: null,
+                commits: { nodes: [] },
+                headRefOid: "head-1",
+                isDraft: false,
+                mergeStateStatus: "BLOCKED",
+                reviewRequests: { nodes: [] },
+                reviews: {
+                  nodes: [],
+                  pageInfo: { hasPreviousPage: false, startCursor: null },
+                },
+                state: "OPEN",
+                timelineItems: { nodes: [] },
+                title: "Add the Inbox notice",
+                url: PULL_URL,
+              },
+            },
+          },
+        }),
       ),
       http.post(
         "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",

@@ -32,10 +32,11 @@ async function pickEvent(page: Page, index: number, phrase: string) {
     .getByRole("combobox", { name: "Event" })
     .nth(index)
     .click();
-  await page.getByRole("option", { exact: true, name: phrase }).click();
-  // A closing list keeps its options until its exit animation ends, so the
-  // next pick would match two options.
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  const option = page.getByRole("option", { exact: true, name: phrase });
+  await option.click();
+  // The options close with a transition. A press on the next Event select
+  // before it ends does not open that select.
+  await expect(option).toBeHidden();
 }
 
 // The next snooze that the page saves.

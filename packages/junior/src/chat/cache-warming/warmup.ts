@@ -31,10 +31,14 @@ import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import { mapBounded } from "@/chat/fan-out";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
+import { usdToMicroUsd } from "@/db/micro-usd";
 import {
+  chooseIdleCompaction,
   decideWarmup,
   gapSegment,
   IDLE_HORIZON_MS,
+  idleHorizonMs,
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
@@ -52,6 +56,7 @@ import {
   publishDefinitions,
   type IdleDefinitions,
 } from "./definitions";
+import { sendCacheWarmingHorizon } from "./horizon";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 import {
   breakerOpen,
@@ -73,6 +78,7 @@ import {
   recordIdlePeriodSavings,
   recordWarmupCost,
 } from "./savings";
+import { compactOnIdle, mayCompactOnIdle } from "./idle-compaction";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
 import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
@@ -128,6 +134,12 @@ interface WarmState {
   reasoning?: ThinkingLevel;
   /** Unset in idle periods from before it was stored. */
   snapshot?: SnapshotSize;
+  /**
+   * Estimated system prompt and tool tokens of the request, for the size
+   * check of a compaction on idle. Set only for a prefix at or above the
+   * background compaction mark.
+   */
+  requestOverheadTokens?: number;
 }
 
 interface IdlePeriod {
@@ -221,6 +233,11 @@ async function scheduleWarmup(
 
 // The reply and the horizon can run at the same time. Only the first one to
 // claim the idle period records its gap.
+//
+// Each list records a gap past its own idle horizon as no reply. Only the
+// waiting child segment of a child agent wait has a longer horizon, so the
+// segment's own list stays comparable with its other idle periods and with
+// the backfill.
 async function recordGap(
   state: ConnectedState,
   conversationId: string,
@@ -236,15 +253,19 @@ async function recordGap(
   if (!claimed) {
     return;
   }
+  const gapWithin = (horizonMs: number) =>
+    gapMs >= horizonMs ? NO_REPLY_GAP_MS : gapMs;
+  const decisionGapMs = gapWithin(idleHorizonMs(warm.waitingOn));
   await mapBounded(recordedSegments(warm), (segment) =>
-    state.appendToList(segmentGapsKey(segment), gapMs, {
-      maxLength: GLOBAL_GAPS_MAX,
-      ttlMs: GLOBAL_GAPS_TTL_MS,
-    }),
+    state.appendToList(
+      segmentGapsKey(segment),
+      segment === warm.segment ? gapWithin(IDLE_HORIZON_MS) : decisionGapMs,
+      { maxLength: GLOBAL_GAPS_MAX, ttlMs: GLOBAL_GAPS_TTL_MS },
+    ),
   );
   await state.appendToList(
     conversationGapsKey(conversationId, decisionSegment(warm)),
-    gapMs,
+    decisionGapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
       ttlMs: CONVERSATION_STATE_TTL_MS,
@@ -299,7 +320,7 @@ async function startIdlePeriod(
     request.context,
     // The timer floor can warm after the horizon, until the timer's Turn.
     Math.max(
-      IDLE_HORIZON_MS,
+      idleHorizonMs(waitingOn),
       (timerDueIdleMs ?? 0) + TIMER_START_DELAY_MS + idle.sinceMs - Date.now(),
     ),
   );
@@ -348,6 +369,17 @@ async function startIdlePeriod(
       cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
       snapshot,
+      // The request folds leading system messages into its system prompt,
+      // so this counts them twice. That only makes the swap stricter.
+      ...(mayCompactOnIdle({ modelId: request.model.id, prefixTokens })
+        ? {
+            requestOverheadTokens: estimateRequestOverheadTokens(
+              request.context.systemPrompt ?? "",
+              request.context.tools ?? [],
+              request.model.id,
+            ),
+          }
+        : undefined),
     },
   };
 }
@@ -449,10 +481,13 @@ async function recordModelCall(
     const { generation } = next.idle;
     // Send the horizon first: a failed warmup send must not leave the idle
     // period without its no-reply gap.
-    await sendCacheWarmup(
-      { kind: "horizon", conversationId, generation },
-      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
-    );
+    await sendCacheWarmingHorizon({
+      conversationId,
+      generation,
+      sinceMs: request.startedAtMs,
+      horizonMs: idleHorizonMs(next.idle.warm.waitingOn),
+      step: 1,
+    });
     await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
       request.startedAtMs,
@@ -645,7 +680,10 @@ export function createCacheWarmingRecorder(
  * - `missed`: the warmup call did not read the cached prefix. It logs
  *   `cache_warming.warmup.failed` and reports to Sentry.
  * - `failed`: the warmup call threw.
- * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
+ * - `skipped`: `skip_reason` is `compacted_on_idle` (a ready background
+ *   summary replaced the history, so the idle period stops; see
+ *   `idle-compaction.ts`), `idle_compaction_stopped` (with a ready summary,
+ *   neither a warmup nor the swap pays), `cache_expired`, `breaker_open`,
  *   `prompt_changed` (a newer deployment published another definitions
  *   fingerprint, so the idle period stops), `stopped` (warming stopped or
  *   the tools returned first; no log),
@@ -672,10 +710,14 @@ export function createCacheWarmingRecorder(
  * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
  * is the idle time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
- * five. Decision attributes are absent when the warmup skipped before the
- * decision. Of them, `timer_floor` is true for a warmup that only the timer
- * floor sends (`decideWarmup` reason `timer`). Cost and usage are absent
- * when no call completed.
+ * five. `idle_compaction` is the `IdleCompactionOutcome` of a warmup at or
+ * above the background compaction mark. With a ready summary,
+ * `compact_cost_micro_usd`, `stop_cost_micro_usd`, and
+ * `warm_cost_micro_usd` are the expected costs that `chooseIdleCompaction`
+ * compared. Decision attributes are absent
+ * when the warmup skipped before the decision. Of them, `timer_floor` is
+ * true for a warmup that only the timer floor sends (`decideWarmup` reason
+ * `timer`). Cost and usage are absent when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
@@ -694,6 +736,17 @@ export async function runCacheWarmup(
   const stop = () => state.delete(snapshotKey(conversationId, generation));
 
   if (message.kind === "horizon") {
+    const step = message.step ?? 1;
+    if (step * IDLE_HORIZON_MS < idleHorizonMs(warm.waitingOn)) {
+      await sendCacheWarmingHorizon({
+        conversationId,
+        generation,
+        sinceMs: idle.sinceMs,
+        horizonMs: idleHorizonMs(warm.waitingOn),
+        step: step + 1,
+      });
+      return;
+    }
     // The timer floor keeps warming until the timer's Turn.
     if (!timerPending(warm, Date.now() - idle.sinceMs)) {
       await stop();
@@ -742,14 +795,8 @@ export async function runCacheWarmup(
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
-      if (warmupTooLate(message.cacheExpiresAtMs)) {
-        await skip("cache_expired");
-        return;
-      }
-      if (await breakerOpen(state, warm.modelId)) {
-        await skip("breaker_open");
-        return;
-      }
+      const late = warmupTooLate(message.cacheExpiresAtMs);
+      const breaker = !late && (await breakerOpen(state, warm.modelId));
       // A deploy can change the system prompt or the tool definitions. The
       // next Turn then writes a new prefix, so warming the old one buys
       // nothing. The queue pins this warmup to the deployment that sent it,
@@ -757,13 +804,11 @@ export async function runCacheWarmup(
       // newer deployment published can show the change (`definitions.ts`).
       // Tool wait warming needs no check: it runs in the process of the run,
       // which sends the next request with these definitions.
-      if (
-        warm.definitions &&
-        (await definitionsChanged(state, warm.definitions))
-      ) {
-        await skip("prompt_changed");
-        return;
-      }
+      const promptChanged =
+        !late &&
+        !breaker &&
+        warm.definitions !== undefined &&
+        (await definitionsChanged(state, warm.definitions));
 
       const model = resolveGatewayModel(warm.modelId);
       // Most specific first: the waiting child, its segment, and the parent.
@@ -783,7 +828,7 @@ export async function runCacheWarmup(
         // oxlint-disable-next-line no-await-in-loop -- Read a parent list only when the list before it is thin.
         priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
       }
-      const decision = decideWarmup({
+      const returns = {
         conversationGapsMs: await state.getList<number>(
           conversationGapsKey(conversationId, decisionSegment(warm)),
         ),
@@ -793,12 +838,71 @@ export async function runCacheWarmup(
           ? { timerDueIdleMs: warm.timerDueIdleMs }
           : undefined),
         idleMs: Date.now() - idle.sinceMs,
+        idleHorizonMs: idleHorizonMs(warm.waitingOn),
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,
         cacheWritePrice: model.cost.cacheWrite,
+      };
+
+      // Before the skips, so a late warmup still leaves a small prefix for
+      // the return. When no summary is ready, warm as before; the next
+      // warmup checks again.
+      const idleCompaction = await compactOnIdle({
+        conversationId,
+        modelId: warm.modelId,
+        prefixTokens: warm.prefixTokens,
+        ...(warm.requestOverheadTokens !== undefined
+          ? { requestOverheadTokens: warm.requestOverheadTokens }
+          : undefined),
+        choose: (compactedTokens) =>
+          chooseIdleCompaction({
+            ...returns,
+            compactedTokens,
+            canWarm: !late && !breaker && !promptChanged,
+          }),
       });
+      if (idleCompaction) {
+        attributes["app.cache_warming.idle_compaction"] =
+          idleCompaction.outcome;
+        const { costs } = idleCompaction;
+        // Prices are per million tokens.
+        if (costs) {
+          attributes["app.cache_warming.compact_cost_micro_usd"] =
+            usdToMicroUsd(costs.compact / 1_000_000);
+          attributes["app.cache_warming.stop_cost_micro_usd"] = usdToMicroUsd(
+            costs.stop / 1_000_000,
+          );
+          if (Number.isFinite(costs.warm)) {
+            attributes["app.cache_warming.warm_cost_micro_usd"] = usdToMicroUsd(
+              costs.warm / 1_000_000,
+            );
+          }
+        }
+      }
+      if (idleCompaction?.outcome === "applied") {
+        await skip("compacted_on_idle");
+        return;
+      }
+      if (idleCompaction?.outcome === "stopped") {
+        await skip("idle_compaction_stopped");
+        return;
+      }
+      if (late) {
+        await skip("cache_expired");
+        return;
+      }
+      if (breaker) {
+        await skip("breaker_open");
+        return;
+      }
+      if (promptChanged) {
+        await skip("prompt_changed");
+        return;
+      }
+
+      const decision = decideWarmup(returns);
       attributes["app.cache_warming.return_probability"] =
         decision.returnProbability;
       attributes["app.cache_warming.returns_per_warmup"] =
@@ -806,7 +910,8 @@ export async function runCacheWarmup(
       attributes["app.cache_warming.threshold"] = decision.threshold;
       attributes["app.cache_warming.parent_prior"] = decision.parentPrior;
       attributes["app.cache_warming.timer_floor"] = decision.reason === "timer";
-      if (!decision.warm) {
+      // A deferred compaction warms now, so that a later slot can compact.
+      if (!decision.warm && idleCompaction?.outcome !== "deferred") {
         await skip(decision.reason);
         return;
       }
@@ -852,7 +957,7 @@ export async function runCacheWarmup(
       await state.set(
         warmupsKey(conversationId, generation),
         message.cycle,
-        IDLE_HORIZON_MS,
+        idleHorizonMs(warm.waitingOn),
       );
       // A reply during the warmup ended the idle period and deleted its
       // snapshot. Then the next warmup would do nothing.

@@ -47,8 +47,8 @@ how the dashboard groups and acts on its rows.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a stopped merge conflict fix. It starts no
-  Turn.
+  the work, such as Resume on a merge conflict fix that did not land. It
+  starts no Turn.
 - An item from a public Conversation is visible to the whole workspace.
 - An Automation alert follows its Automation's Destination: a public
   channel makes it visible to the workspace. Only core changes or closes

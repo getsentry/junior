@@ -220,21 +220,25 @@ describe("plugin review items", () => {
       ),
     ).rejects.toThrow("Only the plugin or a person can change it");
 
-    await items.close({
-      dedupeKey: NOTICE.dedupeKey,
-      reason: "The pull request merged.",
-      status: "done",
-    });
+    await expect(
+      items.close({
+        dedupeKey: NOTICE.dedupeKey,
+        reason: "The pull request merged.",
+        status: "done",
+      }),
+    ).resolves.toBe(true);
     expect(await getReviewItem(getDb(), added!.id)).toMatchObject({
       closeReason: "The pull request merged.",
       status: "done",
     });
     // A close with no open item does nothing.
-    await items.close({
-      dedupeKey: NOTICE.dedupeKey,
-      reason: "Again.",
-      status: "dismissed",
-    });
+    await expect(
+      items.close({
+        dedupeKey: NOTICE.dedupeKey,
+        reason: "Again.",
+        status: "dismissed",
+      }),
+    ).resolves.toBe(false);
     expect(await getReviewItem(getDb(), added!.id)).toMatchObject({
       closeReason: "The pull request merged.",
     });

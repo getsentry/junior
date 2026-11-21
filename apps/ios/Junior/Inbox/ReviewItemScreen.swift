@@ -8,6 +8,7 @@ struct ReviewItemScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(InboxModel.self) private var inbox
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.splitColumn) private var column
   let itemId: String
   @State private var item: ReviewItem?
   @State private var titles: [String: String] = [:]
@@ -44,6 +45,7 @@ struct ReviewItemScreen: View {
           .padding(.horizontal, 16)
           .padding(.top, 16)
           .padding(.bottom, 24)
+          .readableWidth()
         }
         .refreshable { await load() }
       } else if let error {
@@ -88,18 +90,21 @@ struct ReviewItemScreen: View {
 
   private func itemHeader(_ item: ReviewItem) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Button {
-        dismiss()
-      } label: {
-        HStack(spacing: 4) {
-          Icon("chevron-left", size: 14)
-          Text("Inbox")
+      // Beside the list, there is nothing to go back to.
+      if column != .detailRoot {
+        Button {
+          dismiss()
+        } label: {
+          HStack(spacing: 4) {
+            Icon("chevron-left", size: 14)
+            Text("Inbox")
+          }
+          .type(.xs)
+          .foregroundStyle(Tokens.textMuted)
         }
-        .type(.xs)
-        .foregroundStyle(Tokens.textMuted)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to Inbox")
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Back to Inbox")
       Text(item.title)
         .type(.xl, .medium, family: .display)
         .tracking(-0.5)
