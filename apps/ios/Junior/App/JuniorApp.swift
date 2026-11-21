@@ -5,14 +5,13 @@ import SwiftUI
 @main
 struct JuniorApp: App {
   @State private var app = AppModel()
-  @State private var inbox = InboxModel()
+  /// Across all windows: active while any window is in front.
   @Environment(\.scenePhase) private var scenePhase
 
   var body: some Scene {
     WindowGroup {
-      RootView()
+      RootView(app: app)
         .environment(app)
-        .environment(inbox)
         .preferredColorScheme(app.theme.colorScheme)
         .task { await app.refreshShell() }
         .onChange(of: scenePhase, initial: true) { _, phase in
@@ -23,15 +22,21 @@ struct JuniorApp: App {
   }
 }
 
-/// The current place under one navigation stack, with the drawer over it.
-/// With regular width and room for both columns (an iPad), the place's list
-/// and the open item show side by side.
+/// One window: the current place under one navigation stack, with the
+/// drawer over it. With regular width and room for both columns (an iPad),
+/// the place's list and the open item show side by side.
 struct RootView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @State private var window: WindowModel
+  @State private var inbox = InboxModel()
+
+  init(app: AppModel) {
+    _window = State(initialValue: WindowModel(app: app))
+  }
 
   var body: some View {
-    @Bindable var app = app
+    @Bindable var window = window
     Group {
       if !app.signedIn {
         ConnectScreen()
@@ -43,24 +48,29 @@ struct RootView: View {
     }
     .background(Tokens.bg.ignoresSafeArea())
     .simultaneousGesture(TapGesture().onEnded { app.noteInput() })
-    .sheet(item: $app.webPage) { url in
+    .sheet(item: $window.webPage) { url in
       SafariView(url: url).ignoresSafeArea()
     }
-    .alert("The demo has no web dashboard", isPresented: $app.demoWebNotice) {
+    .alert("The demo has no web dashboard", isPresented: $window.demoWebNotice) {
       Button("OK", role: .cancel) {}
     } message: {
       Text("In your workspace, this opens in the \(app.agentName) dashboard.")
     }
+    .onChange(of: app.signedIn) { _, signedIn in
+      if !signedIn { window.reset() }
+    }
+    .environment(window)
+    .environment(inbox)
   }
 
   private func shell(split: Bool) -> some View {
-    @Bindable var app = app
+    @Bindable var window = window
     return ZStack {
       Group {
         if split {
           SplitShell { placeRoot }
         } else {
-          NavigationStack(path: $app.path) {
+          NavigationStack(path: $window.path) {
             placeRoot
               .background(SwipeBackEnabler().frame(width: 0, height: 0))
               .navigationDestination(for: Route.self) { RouteScreen(route: $0) }
@@ -69,10 +79,10 @@ struct RootView: View {
       }
       .tint(Tokens.accent)
 
-      if app.drawerOpen {
+      if window.drawerOpen {
         if split {
           Tokens.overlay.ignoresSafeArea()
-            .onTapGesture { withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = false } }
+            .onTapGesture { withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = false } }
             .transition(.opacity)
             .zIndex(1)
         }
@@ -87,7 +97,7 @@ struct RootView: View {
   }
 
   @ViewBuilder private var placeRoot: some View {
-    switch app.place {
+    switch window.place {
     case .conversations: HomeScreen()
     case .inbox: InboxScreen()
     case .automations: AutomationsScreen()
