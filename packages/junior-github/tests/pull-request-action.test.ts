@@ -37,6 +37,7 @@ describe("next action item", () => {
       merged: false,
       reviews: [],
       state: "open",
+      title: "feat(inbox): Add the Inbox notice",
     };
     mockGitHub(github, requests);
     try {
@@ -67,7 +68,13 @@ describe("next action item", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the Inbox notice (#946)",
+            title: "feat(inbox): Add the Inbox notice (#946)",
+            // The Inbox shows the parsed conventional commit title.
+            titleParts: {
+              scope: "inbox",
+              text: "Add the Inbox notice",
+              type: "Feature",
+            },
             url: PULL_URL,
           },
           title: "Ready to merge · #946",

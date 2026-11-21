@@ -36,6 +36,7 @@ import type {
 import { and, eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
@@ -251,6 +252,7 @@ export function parseGitHubConflictItemKey(
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   ref: GitHubPullRequestRef;
   reviewItems: PluginConversationReviewItems;
   title?: string;
@@ -267,6 +269,12 @@ async function addUnlandedItem(args: {
   const url =
     conflict.url ??
     `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
+  const titleParts = title
+    ? await args.loadTitleParts?.({
+        repositoryFullName: ref.repositoryFullName,
+        title,
+      })
+    : undefined;
   await args.reviewItems.forConversation(opener.conversationId).upsert({
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
@@ -275,6 +283,7 @@ async function addUnlandedItem(args: {
     subject: {
       id: url,
       title: title ? `${title} (#${ref.number})` : url,
+      ...(titleParts ? { titleParts } : undefined),
       url,
     },
     title: `Merge conflict · #${ref.number}`,
@@ -294,6 +303,8 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  /** Read the title parts of the item subject. */
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
