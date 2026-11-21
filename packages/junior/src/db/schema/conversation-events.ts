@@ -76,6 +76,11 @@ export const juniorConversationEvents = pgTable(
     index("junior_conversation_events_guardian_review_time_idx")
       .on(table.createdAt)
       .where(sql`${table.type} = 'guardian_action_reviewed'`),
+    // Recent authorization requests of one Conversation. Few events are
+    // requests, so a Conversation with none reads one small index page.
+    index("junior_conversation_events_authorization_request_idx")
+      .on(table.conversationId, table.createdAt)
+      .where(sql`${table.type} = 'authorization_requested'`),
     // Reads of one plugin event in one Conversation. Postgres ignores the
     // statistics of partial expression indexes, so without this index it
     // reads the plugin_report_idx rows of every Conversation.

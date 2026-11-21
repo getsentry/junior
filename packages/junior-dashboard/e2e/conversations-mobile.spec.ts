@@ -835,7 +835,11 @@ test("opens and closes a conversation on mobile", async ({
   await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
   await signOutRequest;
   await expect(openNavigationSheet).toBeHidden();
+  // Sign-out reloads the page. Wait for the reload, so the test does not end
+  // while the document request is in flight.
+  const reloaded = page.waitForEvent("load");
   finishSignOut?.();
+  await reloaded;
 });
 
 test("keeps the message in view while earlier history and late content load", async ({

@@ -29,6 +29,23 @@ export function useLead(enabled = true) {
 }
 
 /**
+ * Tell whether a Conversation page shows the Lead, and whether the page
+ * knows that yet. Home and the narrow list know the Lead's id before its
+ * detail loads. Without either, the page waits for the detail, so the wrong
+ * chrome does not flash.
+ */
+export function useLeadPageKind(
+  conversationId: string,
+  detail: { kind: string } | undefined,
+) {
+  const leadId = useLead(false).data?.conversationId;
+  return {
+    known: detail !== undefined || leadId !== undefined,
+    lead: detail?.kind === "lead" || leadId === conversationId,
+  };
+}
+
+/**
  * Read the Lead's Watches again when its transcript changes, since only its
  * own Turns add or stop them.
  */

@@ -1,4 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
+import { type RefObject, useEffect } from "react";
 
 import { LeadMark } from "./LeadMark";
 
@@ -22,6 +23,19 @@ const PROMPTS = [
   "What's waiting on me?",
   "Tell the billing migration conversation to skip the dry run",
 ];
+
+/** Focus the Lead's reply box while the first-run intro shows. */
+export function useFocusOnLeadFirstRun(
+  shown: boolean,
+  replyRef: RefObject<{ focus(): void } | null>,
+) {
+  useEffect(() => {
+    // On a touch screen, focus would open the keyboard over the intro.
+    if (shown && window.matchMedia("(pointer: fine)").matches) {
+      replyRef.current?.focus();
+    }
+  }, [replyRef, shown]);
+}
 
 /**
  * Introduce an empty Lead: what it does, and prompts that fill the reply

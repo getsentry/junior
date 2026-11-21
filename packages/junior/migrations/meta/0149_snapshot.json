@@ -1,6 +1,6 @@
 {
-  "id": "5a1e63c6-65ba-4b46-bafc-7d4f3585369b",
-  "prevId": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "prevId": "8c016ebf-a0bb-49d0-bf98-29964629b681",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2654,6 +2654,28 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_events_authorization_request_idx": {
+          "name": "junior_conversation_events_authorization_request_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversation_events_plugin_conversation_idx": {
           "name": "junior_conversation_events_plugin_conversation_idx",
           "columns": [
@@ -3672,22 +3694,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversations_lead_actor_idx": {
-          "name": "junior_conversations_lead_actor_idx",
-          "columns": [
-            {
-              "expression": "actor_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_conversations\".\"kind\" = 'lead'",
           "concurrently": false,
           "method": "btree",
           "with": {}

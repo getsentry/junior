@@ -594,11 +594,15 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
+  // Sign-out reloads the page. Wait for the reload, so the test does not end
+  // while the document request is in flight.
+  const reloaded = page.waitForEvent("load");
   await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
   );
+  await reloaded;
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {

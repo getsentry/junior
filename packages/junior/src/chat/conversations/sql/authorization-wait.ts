@@ -69,9 +69,16 @@ function authorizationWait(
   requester: SQL,
 ): SQL<boolean> {
   const events = juniorConversationEvents;
-  return sql<boolean>`coalesce((
+  const start = authorizationWaitStart();
+  // Most Conversations have no request that can still wait. The first
+  // check finds that in `junior_conversation_events_authorization_request_idx`
+  // without a read of the Conversation's newest events. It is a scalar
+  // subquery, not `exists`, so Postgres looks up each Conversation and does
+  // not hash every recent request for each Conversation that it checks.
+  const recentRequest = sql`(select true from ${events} where ${events.conversationId} = ${conversationId} and ${events.type} = 'authorization_requested' and ${events.createdAt} > ${start}::timestamptz limit 1)`;
+  return sql<boolean>`(coalesce(${recentRequest}, false) and coalesce((
     select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > ${authorizationWaitStart()}::timestamptz
+      and ${events.createdAt} > ${start}::timestamptz
       and ${requester}
     from ${events}
     where ${events.conversationId} = ${conversationId}
@@ -81,7 +88,7 @@ function authorizationWait(
       )})
     order by ${events.seq} desc
     limit 1
-  ), false)`;
+  ), false))`;
 }
 
 /**

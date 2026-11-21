@@ -6,9 +6,7 @@ import {
   readConversationLastEventSeq,
   readConversationMessageEventSeq,
 } from "@/api/conversations/event-page";
-import { steerConversationPendingMessagesForViewer } from "@/api/conversations/steer-pending-messages";
 import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
-import { logException } from "@/chat/logging";
 import { getSqlExecutor } from "@/chat/db";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import {
@@ -74,26 +72,10 @@ export function registerSendMessageTool(
           conversationId,
           { idempotencyKey: idempotencyKey ?? randomUUID(), message },
           { attachmentStorage, queue },
+          delivery,
         );
       } catch (error) {
         return apiToolError(error);
-      }
-      if (delivery === "interrupt") {
-        // The message already landed. If steering fails, it waits for the
-        // running Turn, and `pendingMessages` shows `defer`.
-        try {
-          await steerConversationPendingMessagesForViewer(
-            user,
-            conversationId,
-            {
-              inboundMessageIds: [accepted.messageId],
-            },
-          );
-        } catch (error) {
-          logException(error, "mcp.send_message.steer.failed", {
-            "gen_ai.conversation.id": conversationId,
-          });
-        }
       }
       // A retry can come after a Turn read the message and replied. Start
       // before the message then, so the cursor does not skip the reply.
