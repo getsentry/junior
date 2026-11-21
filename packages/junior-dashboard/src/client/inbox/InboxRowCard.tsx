@@ -59,6 +59,9 @@ export function InboxRowCard(props: {
     (item.kind === "notice" || !item.request) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
+  // Next to a main action, the others show only their icons on a phone, so
+  // the line fits.
+  const look = props.primaryAction ? "narrow" : undefined;
   // The card's own Snooze and Dismiss: they act on this item only.
   const cardActions =
     actions || props.rowActions ? (
@@ -68,13 +71,14 @@ export function InboxRowCard(props: {
         {actions?.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={actions.eventSnooze}
+            look={look}
             onOpenChange={actions.onSnoozeMenu}
             onSnooze={actions.onSnooze}
             open={actions.snoozeMenuOpen}
           />
         ) : null}
         {actions?.onDismiss ? (
-          <RowDismissButton onClick={actions.onDismiss} />
+          <RowDismissButton look={look} onClick={actions.onDismiss} />
         ) : null}
       </>
     ) : undefined;

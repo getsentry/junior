@@ -21,6 +21,10 @@ export type CodeChangeHead = {
   url: string;
   /** Name of the action that opens `url`, such as "Review on GitHub". */
   openLabel: string;
+  /** The open action's short label, such as "Review". */
+  openText: string;
+  /** Whether `url` is on github.com, so the open action shows its mark. */
+  onGitHub: boolean;
 };
 
 // The plugin titles each pull request item "<state> · #<number>"
@@ -77,9 +81,12 @@ export function codeChangeHead(
   const host = hostName(subject.url);
   if (!host) return undefined;
   const repo = shortRepo(subject.url, conversation);
+  const openText = kind === "Review requested" ? "Review" : "Open";
   return {
     kind,
-    openLabel: `${kind === "Review requested" ? "Review" : "Open"} on ${host}`,
+    onGitHub: host === "GitHub",
+    openLabel: `${openText} on ${host}`,
+    openText,
     reference: repo ? `${repo}${number}` : number,
     state: STATE_WORDS[kind] ?? kind,
     title: subject.titleParts ?? {

@@ -64,12 +64,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
     // The state is one word before the title. The title has no type prefix,
-    // The breaking mark and one muted "type/scope" tag come after it.
+    // One muted "type/scope" tag comes after it, with the breaking mark.
     await expect(head.locator("[data-code-change-title]")).toHaveText(
-      "ReviewPin the release train!Breaking changefeature/release",
+      "ReviewPin the release trainfeature/release breaking",
     );
     await expect(head.locator("[data-code-change-type]")).toHaveText(
-      "feature/release",
+      "feature/release breaking",
     );
     await expect(review.getByTitle("Review requested")).toHaveText("Review");
     await expect(review.getByTitle("Breaking change")).toBeVisible();
@@ -120,7 +120,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await review
       .locator("[data-inbox-card] :is(a, button)")
       .allInnerTexts();
-    expect(actions.indexOf("Review on GitHub")).toBeLessThan(
+    expect(actions.indexOf("Review")).toBeLessThan(
       actions.indexOf("Open conversation"),
     );
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });

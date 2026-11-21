@@ -89,7 +89,12 @@ import {
   RowQuickActions,
   type InboxCardActions,
 } from "./RowHoverActions";
-import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import {
+  ButtonLabel,
+  LOOK_CLASSES,
+  RowSnoozeButton,
+  type ButtonLook,
+} from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
@@ -824,6 +829,8 @@ function rowActions(props: InboxRowProps, inline = false) {
     <ExpandedActions
       conversation={props.conversation}
       inline={inline}
+      // A code change card leads with its own main action.
+      look={inline && props.itemHead ? "narrow" : undefined}
       // A stack of one card snoozes on the card.
       {...((props.bundle?.items.length ?? 0) > 1
         ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
@@ -840,6 +847,7 @@ function ExpandedActions(props: {
   conversation?: Conversation;
   inline: boolean;
   eventSnooze?: EventSnooze | undefined;
+  look?: ButtonLook | undefined;
   open: { label: string; path: string };
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -849,14 +857,17 @@ function ExpandedActions(props: {
   const actions = (
     <>
       <Link
-        className={buttonVariants({ variant: "ghost" })}
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          props.look && LOOK_CLASSES[props.look],
+        )}
         to={props.open.path}
       >
         <ArrowUpRight aria-hidden="true" size={15} />
-        {props.open.label}
+        <ButtonLabel look={props.look}>{props.open.label}</ButtonLabel>
       </Link>
       {props.conversation?.isParticipant ? (
-        <ExpandedPin conversation={props.conversation} />
+        <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
       {props.onWake ? (
         <Button onClick={props.onWake} variant="ghost">
@@ -884,7 +895,10 @@ function ExpandedActions(props: {
 }
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
-function ExpandedPin(props: { conversation: Conversation }) {
+function ExpandedPin(props: {
+  conversation: Conversation;
+  look?: ButtonLook | undefined;
+}) {
   const { clearActionError, showActionError } = useConversationActionToasts();
   const pin = usePinConversation(props.conversation.id, {
     onError: (pinning) =>
@@ -899,6 +913,7 @@ function ExpandedPin(props: { conversation: Conversation }) {
   return (
     <Button
       aria-pressed={pinned}
+      className={props.look && LOOK_CLASSES[props.look]}
       disabled={pin.isPending}
       onClick={() => pin.mutate(!pinned)}
       variant="ghost"
@@ -908,7 +923,7 @@ function ExpandedPin(props: { conversation: Conversation }) {
       ) : (
         <Pin aria-hidden="true" size={15} />
       )}
-      {pinned ? "Unpin" : "Pin"}
+      <ButtonLabel look={props.look}>{pinned ? "Unpin" : "Pin"}</ButtonLabel>
     </Button>
   );
 }
