@@ -1,5 +1,6 @@
 import {
   PluginToolInputError,
+  type PluginDownloadUrls,
   type PluginEgress,
   type PluginSandbox,
   type User,
@@ -14,6 +15,8 @@ export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
   allowedDomains: string[];
+  /** Absent when the host storage cannot sign reads. */
+  downloadUrls?: PluginDownloadUrls;
   egress: PluginEgress;
   /** Holds full meeting records and slide thumbnails. */
   sandbox: Pick<PluginSandbox, "readFile" | "root" | "run" | "writeFile">;

@@ -11,6 +11,7 @@ import { readRequesterFile } from "../drive/file-access";
 import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
 import type { GoogleToolContext } from "../google-api";
 import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
+import { sandboxImagePaths, withSandboxImages } from "../slides/sandbox-images";
 import {
   presentationReferenceSchema,
   presentationUrl,
@@ -40,7 +41,7 @@ const inputSchema = z
       .min(1)
       .max(200)
       .describe(
-        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. createSlide without slideLayoutReference is BLANK. Sizes accept unit PT. See https://developers.google.com/workspace/slides/api/reference/rest/v1/presentations/request.',
+        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. createSlide without slideLayoutReference is BLANK. Sizes accept unit PT. A createImage or replaceImage url can be the absolute sandbox path of a PNG, JPEG, or GIF.',
       ),
   })
   .strict();
@@ -253,7 +254,8 @@ export const updateGoogleSlidesTool = definePluginTool({
     readOnlyHint: false,
   },
   describeProposal(input) {
-    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.`;
+    const images = sandboxImagePaths(input.requests).length;
+    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` Google fetches ${images} sandbox image(s) from download URLs that expire within 5 minutes.` : ""}`;
   },
   description:
     "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
@@ -267,27 +269,29 @@ export const updateGoogleSlidesTool = definePluginTool({
     );
     requireMeaningfulRequests(input.requests);
     await requireReadableSources(ctx, input.requests);
-    const response = await googleFileRequest(ctx, file.ref, {
-      body: {
-        requests: input.requests,
-        writeControl: { requiredRevisionId: input.revision_id },
-      },
-      editable: file,
-      operation: "google.slides.presentation.batchUpdate",
-      path: `/v1/presentations/${file.ref.fileId}:batchUpdate`,
-    }).catch((error: unknown) => {
-      // Custom themes often lack predefined layouts, and Google's error does
-      // not say which layouts the deck has.
-      if (
-        error instanceof PluginToolInputError &&
-        namesPredefinedLayout(input.requests)
-      ) {
-        throw new PluginToolInputError(
-          `${error.message}. A predefined layout works only when the deck's master has it: use a layoutId from the layouts that readGoogleSlidesLayout returns.`,
-        );
-      }
-      throw error;
-    });
+    const response = await withSandboxImages(ctx, input.requests, (requests) =>
+      googleFileRequest(ctx, file.ref, {
+        body: {
+          requests,
+          writeControl: { requiredRevisionId: input.revision_id },
+        },
+        editable: file,
+        operation: "google.slides.presentation.batchUpdate",
+        path: `/v1/presentations/${file.ref.fileId}:batchUpdate`,
+      }).catch((error: unknown) => {
+        // Custom themes often lack predefined layouts, and Google's error
+        // does not say which layouts the deck has.
+        if (
+          error instanceof PluginToolInputError &&
+          namesPredefinedLayout(input.requests)
+        ) {
+          throw new PluginToolInputError(
+            `${error.message}. A predefined layout works only when the deck's master has it: use a layoutId from the layouts that readGoogleSlidesLayout returns.`,
+          );
+        }
+        throw error;
+      }),
+    );
     const after = revisionAfterUpdate(response.body);
     const { replies } = replySchema.parse(response.body);
     // The edit has applied, so a failed read must not look like a failed
