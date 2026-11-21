@@ -654,6 +654,40 @@ describe("github plugin", () => {
     });
   });
 
+  // Event data names the number `pull_request` or `issue`, and the model
+  // copies that name into tool arguments.
+  it("names pull request and issue numbers the way event data does", () => {
+    const inputKeys = Object.fromEntries(
+      Object.entries(githubPlugin().hooks?.tools?.() ?? {}).map(
+        ([name, tool]) => [
+          name,
+          Object.keys(
+            (tool.inputSchema as { properties?: object }).properties ?? {},
+          ),
+        ],
+      ),
+    );
+    const pullRequest = expect.arrayContaining(["pull_request"]);
+    const issue = expect.arrayContaining(["issue"]);
+
+    expect(inputKeys).toMatchObject({
+      commentOnIssue: issue,
+      commentOnPullRequest: pullRequest,
+      getIssue: issue,
+      getPullRequest: pullRequest,
+      reactToIssue: issue,
+      submitPullRequestReview: pullRequest,
+      updateIssue: issue,
+      updatePullRequest: pullRequest,
+      updatePullRequestFeedback: pullRequest,
+    });
+    expect(
+      Object.keys(inputKeys).filter((name) =>
+        inputKeys[name]?.includes("number"),
+      ),
+    ).toEqual([]);
+  });
+
   it("registers app guidance for pull request events", () => {
     const events = githubPlugin({
       pullRequestEvents: {
@@ -764,6 +798,37 @@ describe("github plugin", () => {
       release_source: ["release_source"],
       repository: ["repository"],
     });
+  });
+
+  it("names the resource of a github.com page, the inverse of its URL", () => {
+    const events = githubPlugin().events!;
+    const resources = [
+      { identifier: "getsentry/junior", resourceType: "repository" },
+      { identifier: "getsentry/junior#691", resourceType: "pull_request" },
+      { identifier: "getsentry/junior#208", resourceType: "issue" },
+    ];
+    for (const resource of resources) {
+      expect(events.resourceForUrl!(events.resourceUrl!(resource)!)).toEqual(
+        resource,
+      );
+    }
+    expect(
+      events.resourceForUrl!(
+        "https://github.com/GetSentry/Junior/pull/691/files",
+      ),
+    ).toEqual({
+      identifier: "getsentry/junior#691",
+      resourceType: "pull_request",
+    });
+    for (const url of [
+      "https://github.com/getsentry/junior/commit/abc123",
+      "https://github.com/getsentry/junior/pull/new",
+      "https://gist.github.com/getsentry/junior",
+      "https://github.com/getsentry",
+      "not a url",
+    ]) {
+      expect(events.resourceForUrl!(url)).toBeUndefined();
+    }
   });
 
   it("rejects unknown explicit GitHub App permission levels", () => {
@@ -1000,7 +1065,7 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
-      // A person started the Turn, so the result names the Review item that
+      // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
         '"github-issue-implement:getsentry/junior#660"',
@@ -1210,7 +1275,7 @@ describe("github plugin", () => {
     );
 
     // No person started the run, so the issue gets no Watch, and no one
-    // could answer a Review item about implementing it.
+    // could answer an Inbox item about implementing it.
     expect(subscribe).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("subscription");
     expect(result).not.toHaveProperty("note");

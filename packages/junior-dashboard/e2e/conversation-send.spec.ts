@@ -13,6 +13,7 @@ import { expect, test } from "./test";
 import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
+import { pickOption } from "./pick-option";
 
 test("starts and continues conversations from the dashboard", async ({
   page,
@@ -111,7 +112,7 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "Conversation visibility" }).click();
-  await page.getByRole("option", { name: "Private" }).click();
+  await pickOption(page.getByRole("option", { name: "Private" }));
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
   // Any file type goes. A file over the per-file cap does not. Build large
@@ -209,7 +210,9 @@ test("starts and continues conversations from the dashboard", async ({
   ).toBeVisible();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(startComposer).toBeHidden();
-  await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toHaveText("Check the deploy", {
+    useInnerText: true,
+  });
   await startComposer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
   });
@@ -221,7 +224,9 @@ test("starts and continues conversations from the dashboard", async ({
   // New roots have no mailbox outbox, so a failed create keeps the draft and
   // the same idempotency key for a safe retry. Focus returns, so Enter
   // retries.
-  await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toHaveText("Check the deploy", {
+    useInnerText: true,
+  });
   await expect(startComposer).toBeFocused();
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   const failedCreateKey = createRequests[0]?.idempotencyKey;
@@ -269,7 +274,8 @@ test("starts and continues conversations from the dashboard", async ({
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
+          turnActive: true,
         }),
       });
     },
@@ -280,7 +286,9 @@ test("starts and continues conversations from the dashboard", async ({
   await expect.poll(() => createdDetailReads).toBe(1);
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
-  await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toHaveText("Check the deploy", {
+    useInnerText: true,
+  });
   releaseCreatedDetail?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
@@ -344,7 +352,9 @@ test("starts and continues conversations from the dashboard", async ({
     name: "Conversation details",
   });
   await expect(details).toBeVisible();
-  await expect(composer).toHaveValue("Continue in Junior");
+  await expect(composer).toHaveText("Continue in Junior", {
+    useInnerText: true,
+  });
   await composer.evaluate((element, data) => {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(
@@ -366,7 +376,7 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   // The author avatar carries the name and email for hover and screen readers.
   await expect(pending.getByLabel(/dev@example\.com/)).toBeVisible();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expect.poll(() => continueRequests.length).toBe(1);
   await expect(details).toBeVisible();
   // Distinct messages can queue while an earlier accept is still open.
@@ -386,7 +396,7 @@ test("starts and continues conversations from the dashboard", async ({
   releaseFirstContinue?.();
   await expect(pending.getByText("Could not send.")).toBeVisible();
   await expect(expandQueue).toHaveAttribute("aria-expanded", "false");
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
   expect(failedIdempotencyKey).toBeTruthy();
@@ -403,7 +413,7 @@ test("starts and continues conversations from the dashboard", async ({
   ]);
   // The accepted message stays out of the composer before background transcript
   // refreshes finish. Keep the local row until a server snapshot sees it.
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expandQueue.click();
   await expect(pending.getByText("Second queued message")).toBeVisible();
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
@@ -411,7 +421,9 @@ test("starts and continues conversations from the dashboard", async ({
   await screenshot(page, "conversation-outbox-author");
 
   await page.reload();
-  await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
+  await expect(page.getByLabel("Continue this conversation")).toHaveText("", {
+    useInnerText: true,
+  });
 });
 
 test("hands web and external messages from queue to history without gaps", async ({
@@ -506,7 +518,8 @@ test("hands web and external messages from queue to history without gaps", async
         mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
-        status: active ? "active" : "completed",
+        status: active ? "working" : "done",
+        turnActive: active,
         events: [
           ...detail.events,
           ...committed.map((message, index) => ({
@@ -834,7 +847,8 @@ test("keeps details closed on a home send after the reader closed them", async (
           events: [],
           isParticipant: true,
           previousCursor: undefined,
-          status: "active",
+          status: "working",
+          turnActive: true,
         }),
       });
     },

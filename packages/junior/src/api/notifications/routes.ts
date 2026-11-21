@@ -23,12 +23,13 @@ import {
   pushSubscriptionBodySchema,
   pushSubscriptionDeleteBodySchema,
   testNotificationResponseSchema,
+  type NotificationSettings,
 } from "../schema/notification";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { botConfig } from "@/chat/config";
 
-async function readSettings(userId: string) {
+async function readSettings(userId: string): Promise<NotificationSettings> {
   const db = getDb();
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
@@ -39,14 +40,14 @@ async function readSettings(userId: string) {
       isPausedBySlack(db, userId, nowMs),
     ]);
   const config = readWebPushConfig();
-  return notificationSettingsSchema.parse({
+  return {
     ...(config ? { publicKey: config.publicKey } : undefined),
     deviceCount: subscriptions.length,
     schedule,
     slackPausedNow,
     timezone,
     timezoneSource: source,
-  });
+  };
 }
 
 async function settingsResponse(userId: string): Promise<Response> {

@@ -3,7 +3,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   conversationAncestors,
   type ConversationTreeNode,
-  readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationFeedItem } from "../schema/conversation-feed";
@@ -33,50 +32,57 @@ function findThreadPlacement(
   return undefined;
 }
 
+/** The stored Threads of the listed roots, before access applies. */
+type FeedThreadRecords = Awaited<ReturnType<typeof readFeedThreadRecords>>;
+
 /**
- * Read the shown Threads of the listed roots for the feed, nested under
- * their nearest shown ancestor. A Thread shows when it and every ancestor
- * have no `archived_at`. The caller passes only unarchived roots, so a root
- * archive hides its tree with no writes to the children. A Thread uses the
- * access of its root.
+ * Read the stored Threads of the listed roots for the feed, with their
+ * read-time titles. It needs no access, so it can start with the other
+ * feed reads. The caller passes only unarchived roots, so a root archive
+ * hides its tree with no writes to the children.
  */
-export async function readFeedThreads(
+export async function readFeedThreadRecords(
   db: JuniorDatabase,
-  roots: ReadonlyArray<{
-    access?: ConversationAccess | undefined;
-    conversationId: string;
-  }>,
-): Promise<Map<string, ConversationFeedItem[]>> {
-  if (roots.length === 0) return new Map();
-  const rootIdList = roots.map((root) => root.conversationId);
-  const rootIds = new Set(rootIdList);
-  const [rows, tree] = await Promise.all([
-    selectConversationRecords(db)
-      .where(
-        and(
-          inArray(juniorConversations.rootConversationId, rootIdList),
-          eq(juniorConversations.kind, "thread"),
-          isNull(juniorConversations.archivedAt),
-        ),
-      )
-      .orderBy(
-        desc(juniorConversations.lastActivityAt),
-        asc(juniorConversations.conversationId),
+  rootIds: string[],
+) {
+  if (rootIds.length === 0) return undefined;
+  const rows = await selectConversationRecords(db)
+    .where(
+      and(
+        inArray(juniorConversations.rootConversationId, rootIds),
+        eq(juniorConversations.kind, "thread"),
+        isNull(juniorConversations.archivedAt),
       ),
-    readConversationTrees(db, rootIdList),
-  ]);
-  if (rows.length === 0) return new Map();
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      asc(juniorConversations.conversationId),
+    );
+  if (rows.length === 0) return undefined;
   const threads = rows.map((row) => ({
     conversation: conversationFromRecordRow(row),
     row,
   }));
-  const accessByRoot = new Map(
-    roots.map((root) => [root.conversationId, root.access]),
-  );
   const firstHumanMessageTexts = await readFirstHumanMessageTexts(
     db,
     threads.map(({ conversation }) => conversation),
   );
+  return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads };
+}
+
+/**
+ * Nest the shown Threads of `readFeedThreadRecords` under their nearest shown
+ * ancestor. A Thread shows when it and every ancestor have no
+ * `archived_at`. A Thread uses the access of its root. `tree` holds the
+ * trees of at least the listed roots.
+ */
+export function nestFeedThreads(
+  records: FeedThreadRecords,
+  tree: ReadonlyMap<string, ConversationTreeNode>,
+  accessByRoot: ReadonlyMap<string, ConversationAccess | undefined>,
+): Map<string, ConversationFeedItem[]> {
+  if (!records) return new Map();
+  const { firstHumanMessageTexts, rootIds, threads } = records;
   const childrenByParent = new Map<string, ConversationFeedItem[]>();
   for (const { conversation, row } of threads) {
     const parentId = findThreadPlacement(
@@ -94,6 +100,7 @@ export async function readFeedThreads(
       firstHumanMessageText: firstHumanMessageTexts.get(
         conversation.conversationId,
       ),
+      status: row.status,
       ...(row.conversation.usage
         ? { usage: row.conversation.usage }
         : undefined),
@@ -109,9 +116,9 @@ export async function readFeedThreads(
       return children ? { ...item, threads: nest(children) } : item;
     });
   return new Map(
-    roots.flatMap((root) => {
-      const children = childrenByParent.get(root.conversationId);
-      return children ? [[root.conversationId, nest(children)]] : [];
+    [...rootIds].flatMap((rootId) => {
+      const children = childrenByParent.get(rootId);
+      return children ? [[rootId, nest(children)]] : [];
     }),
   );
 }

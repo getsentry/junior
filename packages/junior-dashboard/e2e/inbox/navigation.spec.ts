@@ -1,7 +1,7 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { mockReviewItems, openRow } from "./inbox-fixture";
+import { automationAlert, mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -180,7 +180,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
       automations: () =>
         mockAutomationCollection(
           report,
@@ -253,7 +254,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const [path, name] of [
       ["/", "New conversation"],
-      ["/review", "New conversation"],
+      ["/inbox", "New conversation"],
       ["/automations", "New automation"],
     ] as const) {
       await page.goto(`${dashboard.baseURL}${path}`);
@@ -264,8 +265,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     // New on Automations starts the ask in a new conversation.
     await page.getByRole("button", { name: "New automation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
-    await expect(page.getByLabel("Start a conversation")).toHaveValue(
+    await expect(page.getByLabel("Start a conversation")).toHaveText(
       /^Set up an automation that /,
+      { useInnerText: true },
     );
   });
 
@@ -335,7 +337,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     const conversationUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`;
     const primary = page.getByRole("navigation", { name: "Primary" });
@@ -389,17 +391,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(title).toBeVisible();
     await expect(conversations).toHaveAttribute("aria-current", "page");
 
-    // Opened from the Inbox, it stays in the Inbox after a reload.
+    // Opened from the Inbox, it stays in the Inbox after a reload. The
+    // Inbox lists no Conversations, so it opens from In flight.
     await page.goto(dashboard.baseURL);
-    await openRow(
-      page
-        .getByRole("region", { name: "Today" })
-        .getByRole("link", { name: /^Checkout latency triage/ }),
-    );
-    await expect(page).toHaveURL(/\/conversations\//);
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link", { name: /Investigate checkout latency/ })
+      .click();
+    const running = page.getByRole("heading", {
+      name: "Investigate checkout latency",
+    });
+    await expect(running).toBeVisible();
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await page.reload();
-    await expect(title).toBeVisible();
+    await expect(running).toBeVisible();
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await expect(conversations).not.toHaveAttribute("aria-current");
     await expect(backToInbox).toHaveAttribute("href", "/");

@@ -13,10 +13,9 @@ const MAX_LABEL_CHARS = 256;
 const MAX_FACT_CHARS = 160;
 
 const conversationStates = {
-  active: "running",
-  completed: "idle",
-  failed: "failed",
-  stopped: "stopped",
+  done: "done",
+  needs_input: "needs input",
+  working: "working",
 } satisfies Record<ConversationSummaryReport["status"], string>;
 
 function personName(person: ActorIdentity): string | undefined {

@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   sandboxSkillDir,
   sandboxSkillFile,
@@ -13,7 +13,7 @@ import {
   type SkillMetadata,
 } from "@/chat/skills";
 
-export type LoadSkillResult = {
+type LoadSkillResult = {
   skill_name?: string;
   description?: string;
   skill_dir?: string;
@@ -21,6 +21,7 @@ export type LoadSkillResult = {
   location?: string;
   path_resolution?: string;
   instructions?: string;
+  loadable_skills?: string[];
 } & Record<string, unknown>;
 
 function toLoadedSkill(
@@ -120,7 +121,22 @@ export function createLoadSkillTool(
       if (loadedSkill) {
         await options?.onSkillLoaded?.(loadedSkill);
       }
-      return result;
+      // `availableSkills` holds the manual-only skills that this skill
+      // references, but `<available-skills>` leaves them out, so name them
+      // here.
+      const references =
+        availableSkills.find((skill) => skill.name === result.skill_name)
+          ?.references ?? [];
+      const loadable = references.filter(
+        (name) =>
+          name !== result.skill_name &&
+          availableSkills.some(
+            (skill) => skill.name === name && skill.disableModelInvocation,
+          ),
+      );
+      return loadable.length > 0
+        ? { ...result, loadable_skills: loadable }
+        : result;
     },
   });
 }

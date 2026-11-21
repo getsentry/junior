@@ -2,13 +2,10 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import {
-  memoryPlugin,
-  createMemoryStore,
-  type MemoryDb,
-} from "@sentry/junior-memory";
+import { githubPlugin } from "@sentry/junior-github";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { defineJuniorPlugins } from "@/plugins";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { readConversationAuxiliaryCostsFromSql } from "@/api/conversations/auxiliary-costs";
@@ -91,7 +88,6 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 afterEach(async () => {
-  setPlugins([]);
   await closeDb();
   NEON.sql = undefined;
 });
@@ -104,23 +100,24 @@ afterAll(() => {
   }
 });
 
-function memoryMigrationsDir(): string {
-  return path.resolve(process.cwd(), "../junior-memory/migrations");
+// A packaged plugin with SQL migrations. Its migrations need the core schema.
+function githubMigrationsDir(): string {
+  return path.resolve(process.cwd(), "../junior-github/migrations");
 }
 
-function memoryMigrationFiles(): string[] {
-  return readdirSync(memoryMigrationsDir())
+function githubMigrationFiles(): string[] {
+  return readdirSync(githubMigrationsDir())
     .filter((filename) => filename.endsWith(".sql"))
     .sort();
 }
 
-async function migrateMemorySchema(
+async function migrateGithubSchema(
   fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
 ) {
   await migratePluginSchemas(fixture.sql, [
     {
-      dir: memoryMigrationsDir(),
-      pluginName: "memory",
+      dir: githubMigrationsDir(),
+      pluginName: "github",
     },
   ]);
 }
@@ -201,22 +198,23 @@ function memoryToolsFor(args: {
   });
 }
 
-describe("memory plugin host wiring", () => {
+describe("packaged plugin migrations", () => {
   it("adopts exact legacy migration hashes without replaying them", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
     const migrations = readMigrationFiles({
-      migrationsFolder: memoryMigrationsDir(),
+      migrationsFolder: githubMigrationsDir(),
     });
-    const migrationFiles = memoryMigrationFiles();
+    const migrationFiles = githubMigrationFiles();
     expect(migrationFiles).toHaveLength(migrations.length);
 
     try {
-      await migrateMemorySchema(fixture);
+      await migrateSchema(fixture.sql);
+      await migrateGithubSchema(fixture);
       const [migrationTable] = await fixture.sql.query<{ tablename: string }>(`
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'drizzle'
-  AND tablename LIKE '__drizzle_memory_%'
+  AND tablename LIKE '__drizzle_github_%'
 `);
       expect(migrationTable).toBeDefined();
       await fixture.sql.execute(
@@ -232,15 +230,15 @@ CREATE TABLE junior_schema_migrations (
       for (const [index, migration] of migrations.entries()) {
         await fixture.sql.execute(
           `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
-          [`plugin:memory/${migrationFiles[index]}`, migration.hash],
+          [`plugin:github/${migrationFiles[index]}`, migration.hash],
         );
       }
 
       await expect(
         migratePluginSchemas(fixture.sql, [
           {
-            dir: memoryMigrationsDir(),
-            pluginName: "memory",
+            dir: githubMigrationsDir(),
+            pluginName: "github",
           },
         ]),
       ).resolves.toEqual({
@@ -253,15 +251,16 @@ CREATE TABLE junior_schema_migrations (
     }
   });
 
-  it("does not adopt an unknown memory legacy checksum", async () => {
+  it("does not adopt an unknown legacy checksum", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
     const migrationCount = readMigrationFiles({
-      migrationsFolder: memoryMigrationsDir(),
+      migrationsFolder: githubMigrationsDir(),
     }).length;
-    const [baselineFile] = memoryMigrationFiles();
+    const [baselineFile] = githubMigrationFiles();
     expect(baselineFile).toBeDefined();
 
     try {
+      await migrateSchema(fixture.sql);
       await fixture.sql.execute(`
 CREATE TABLE junior_schema_migrations (
   id TEXT PRIMARY KEY,
@@ -271,14 +270,14 @@ CREATE TABLE junior_schema_migrations (
 `);
       await fixture.sql.execute(
         `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
-        [`plugin:memory/${baselineFile}`, "unknown-memory-checksum"],
+        [`plugin:github/${baselineFile}`, "unknown-github-checksum"],
       );
 
       await expect(
         migratePluginSchemas(fixture.sql, [
           {
-            dir: memoryMigrationsDir(),
-            pluginName: "memory",
+            dir: githubMigrationsDir(),
+            pluginName: "github",
           },
         ]),
       ).resolves.toEqual({
@@ -296,12 +295,13 @@ CREATE TABLE junior_schema_migrations (
     NEON.sql = fixture.sql;
 
     try {
+      await migrateSchema(fixture.sql);
       const migrationCount = readMigrationFiles({
-        migrationsFolder: memoryMigrationsDir(),
+        migrationsFolder: githubMigrationsDir(),
       }).length;
       await expect(
         migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([memoryPlugin()]),
+          pluginSet: defineJuniorPlugins([githubPlugin()]),
           sqlExecutor: fixture.sql,
         }),
       ).resolves.toEqual({
@@ -315,36 +315,10 @@ CREATE TABLE junior_schema_migrations (
           `
 SELECT table_name
 FROM information_schema.tables
-WHERE table_name = 'junior_memory_memories'
+WHERE table_name = 'junior_github_pull_requests'
 `,
         ),
-      ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
-
-      await expect(
-        fixture.sql.query<{ extname: string }>(
-          "SELECT extname FROM pg_extension WHERE extname = 'btree_gin'",
-        ),
-      ).resolves.toEqual([{ extname: "btree_gin" }]);
-
-      await expect(
-        fixture.sql.query<{ is_generated: string }>(
-          `
-SELECT is_generated
-FROM information_schema.columns
-WHERE table_name = 'junior_memory_memories'
-  AND column_name = 'search_vector'
-`,
-        ),
-      ).resolves.toEqual([{ is_generated: "ALWAYS" }]);
-
-      const [searchIndex] = await fixture.sql.query<{ indexdef: string }>(`
-SELECT indexdef
-FROM pg_indexes
-WHERE indexname = 'junior_memory_memories_search_idx'
-`);
-      expect(searchIndex?.indexdef).toContain(
-        "USING gin (scope, scope_key, search_vector)",
-      );
+      ).resolves.toEqual([{ table_name: "junior_github_pull_requests" }]);
     } finally {
       await fixture.close();
     }
@@ -358,13 +332,13 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       const coreMigrationCount = readMigrationFiles({
         migrationsFolder: path.resolve(process.cwd(), "migrations"),
       }).length;
-      const memoryMigrationCount = readMigrationFiles({
-        migrationsFolder: memoryMigrationsDir(),
+      const githubMigrationCount = readMigrationFiles({
+        migrationsFolder: githubMigrationsDir(),
       }).length;
-      const totalMigrationCount = coreMigrationCount + memoryMigrationCount;
+      const totalMigrationCount = coreMigrationCount + githubMigrationCount;
       const lines: string[] = [];
       const pluginSet = defineJuniorPlugins([
-        memoryPlugin(),
+        githubPlugin(),
         defineJuniorPlugin({
           manifest: {
             description: "Plugin without SQL migrations",
@@ -378,7 +352,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       expect(lines).toEqual([
         "Checking database migrations...",
         `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
-        `  junior-memory: applied ${memoryMigrationCount} migrations (${memoryMigrationCount} total)`,
+        `  junior-github: applied ${githubMigrationCount} migrations (${githubMigrationCount} total)`,
         `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
       ]);
 
@@ -387,24 +361,22 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       expect(lines).toEqual([
         "Checking database migrations...",
         `  junior: up to date (${coreMigrationCount} migrations)`,
-        `  junior-memory: up to date (${memoryMigrationCount} migrations)`,
+        `  junior-github: up to date (${githubMigrationCount} migrations)`,
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
     } finally {
       await fixture.close();
     }
   }, 15_000);
+});
 
+describe("memory host wiring", () => {
   it("reads only public memory in every Conversation", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
-    const plugin = memoryPlugin();
-    setPlugins([plugin]);
     NEON.sql = fixture.sql;
 
     try {
       await migrateSchema(fixture.sql);
-      await migrateMemorySchema(fixture);
-      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
       const db = fixture.sql.db() as MemoryDb;
       const viewerConversationId = "slack:D123:1718800001.000000";
       const viewer = await recordPrivateConversation(fixture, {
@@ -517,12 +489,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
-    setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
     try {
       await migrateSchema(fixture.sql);
-      await migrateMemorySchema(fixture);
       const conversationId = "slack:C123:1718800000.000000";
       const actor = {
         platform: "slack" as const,
@@ -544,17 +514,13 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
         userId: actor.userId,
       });
-      const store = createMemoryStore(
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        fixture.sql.db() as MemoryDb,
-        {
-          conversationId,
-          locationId: userContext.locationId,
-          actor,
-          source,
-          userId: userContext.user.id,
-        },
-      );
+      const store = createMemoryStore(fixture.sql.db() as MemoryDb, {
+        conversationId,
+        locationId: userContext.locationId,
+        actor,
+        source,
+        userId: userContext.user.id,
+      });
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",

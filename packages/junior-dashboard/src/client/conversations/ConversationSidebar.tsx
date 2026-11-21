@@ -14,12 +14,9 @@ import {
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
-import {
-  conversationDisplayTitle,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle } from "../format";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
+import type { Conversation, ConversationStatus } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
 import type { ConversationSection } from "./conversationSections";
@@ -52,8 +49,9 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import { formatCompactAge } from "../time";
+import { conversationTurnIsActive } from "./turnActivity";
 
 type ConversationSidebarEntry =
   | {
@@ -182,9 +180,6 @@ export function ConversationSidebar(props: {
                       onArchived={showArchived}
                       onRowAction={releaseHold}
                       selected={entry.conversation.id === props.selectedId}
-                      waiting={props.waitingConversations.has(
-                        entry.conversation.id,
-                      )}
                     />
                   ) : (
                     <ConversationSidebarEntryRow
@@ -376,7 +371,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const { archive, pin } = useConversationRowActions(props.conversation, props);
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
-  const status = visualStatusForConversation(props.conversation);
+  const status = props.conversation.status;
   const title = conversationDisplayTitle(props.conversation);
   const drag = props.drag;
   const archived = Boolean(props.conversation.archivedAt);
@@ -502,24 +497,24 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
 });
 
 /**
- * Show the row's secondary text: a lock when private, then the status when
- * the conversation runs, failed, or stopped, or else the age of its last
- * Message.
+ * Show the row's secondary text: a lock when private, then the status, then
+ * a spinner while a Turn runs, or else the age of its last Message unless the
+ * Conversation needs input.
  */
 function ConversationRowState(props: {
   conversation: Conversation;
-  status: ReturnType<typeof visualStatusForConversation>;
+  status: ConversationStatus;
 }) {
   const isPrivate = props.conversation.visibility === "private";
   return (
     <span className="flex items-center gap-1">
       <ConversationStatusText isPrivate={isPrivate} status={props.status} />
-      {props.status === "active" ? (
+      {conversationTurnIsActive(props.conversation) ? (
         <Spinner
           aria-label="Running"
           className="size-3.5 text-dashboard-text-muted"
         />
-      ) : props.status === "failed" || props.status === "stopped" ? null : (
+      ) : props.status === "needs_input" ? null : (
         <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
           {formatCompactAge(
             props.conversation.lastMessageAt ?? props.conversation.lastSeenAt,

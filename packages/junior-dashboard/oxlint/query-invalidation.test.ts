@@ -16,10 +16,10 @@ new RuleTester({
   languageOptions: { parserOptions: { lang: "tsx" } },
 }).run("no-broad-query-invalidation", noBroadQueryInvalidationRule, {
   valid: [
-    "queryClient.invalidateQueries({ queryKey: reviewItemListQueryKey(filters) });",
+    "queryClient.invalidateQueries({ queryKey: inboxItemListQueryKey(filters) });",
     "queryClient.invalidateQueries({ exact: true, queryKey: KEY });",
     `queryClient.invalidateQueries({ queryKey: ["dashboard", "plugin-user-page", name] });`,
-    `const PREFIX = ["dashboard", "review-items"] as const;
+    `const PREFIX = ["dashboard", "inbox-items"] as const;
     queryClient.invalidateQueries({ queryKey: [...PREFIX, "count"] });`,
     `queryClient.invalidateQueries({ queryKey: [...IMPORTED_PREFIX, "count"] });`,
     `const key = conversationDetailQueryKey(id);
@@ -46,12 +46,12 @@ new RuleTester({
       errors: broadKey,
     },
     {
-      code: `const PREFIX = ["dashboard", "review-items"] as const;
+      code: `const PREFIX = ["dashboard", "inbox-items"] as const;
       queryClient.removeQueries({ queryKey: PREFIX });`,
       errors: broadKey,
     },
     {
-      code: "queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });",
+      code: "queryClient.invalidateQueries({ queryKey: INBOX_ITEMS_QUERY_KEY });",
       errors: broadKey,
     },
     {

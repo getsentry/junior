@@ -6,7 +6,6 @@ import {
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
-  useSystemData,
 } from "../api";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { LoadingView } from "../components/LoadingView";
@@ -41,6 +40,7 @@ import {
   SystemRouteLoading,
 } from "../pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
+import { SystemRoute } from "../pages/system/SystemRoute";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -52,14 +52,10 @@ import {
 } from "../pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "../primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
-import {
-  ReviewDeskLoading,
-  ReviewDeskPage,
-} from "../review-desk/ReviewDeskPage";
-import { useReviewItemCountData } from "../review-desk/queries";
-import { useInboxTabCount } from "../review-desk/inboxTabIcon";
+import { InboxLoading, InboxPage } from "../inbox/InboxPage";
+import { useInboxItemCountData } from "../inbox/queries";
+import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { useVersionsPoll } from "../versions";
-import type { DashboardCoreData } from "../types";
 import { getDashboardAgentName } from "../agentName";
 
 // Pages outside the conversation workspace load on first visit, so the
@@ -97,11 +93,6 @@ const PersonProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("../pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
-  })),
-);
-const SystemPage = lazy(() =>
-  import("../pages/system/SystemPage").then((module) => ({
-    default: module.SystemPage,
   })),
 );
 const WorkspaceFormPage = lazy(() =>
@@ -194,7 +185,6 @@ export function ClassicShell() {
   // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
-    versionsPoll: true,
   });
   useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
@@ -209,7 +199,7 @@ export function ClassicShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const reviewCount = useReviewItemCountData(loggedIn).data?.needsViewer;
+  const reviewCount = useInboxItemCountData(loggedIn).data?.needsViewer;
   useInboxTabCount(reviewCount);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
@@ -276,7 +266,7 @@ export function ClassicShell() {
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
-            location.pathname === "/review" ||
+            location.pathname === "/inbox" ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
@@ -490,12 +480,22 @@ export function ClassicShell() {
             <Route
               element={
                 loading ? (
-                  <ReviewDeskLoading />
+                  <InboxLoading />
                 ) : loggedIn ? (
-                  <ReviewDeskPage />
+                  <InboxPage />
                 ) : (
                   <Navigate replace to="/" />
                 )
+              }
+              path="/inbox"
+            />
+            {/* Links from before the rename, such as in Slack threads. */}
+            <Route
+              element={
+                <Navigate
+                  replace
+                  to={{ pathname: "/inbox", search: location.search }}
+                />
               }
               path="/review"
             />
@@ -772,26 +772,5 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
       replace
       to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
     />
-  );
-}
-
-function SystemRoute(props: { coreData: DashboardCoreData }) {
-  const query = useSystemData(props.coreData);
-  if (!query.data && !query.error) {
-    return (
-      <SystemRouteLoading
-        description="Runtime health, model usage, and loaded capabilities."
-        label="Loading system"
-        title="System"
-        variant="overview"
-      />
-    );
-  }
-  return query.data ? (
-    <SystemPage data={query.data} />
-  ) : (
-    <SystemPageLayout>
-      <LoadingView label={query.error?.message ?? "System unavailable"} />
-    </SystemPageLayout>
   );
 }

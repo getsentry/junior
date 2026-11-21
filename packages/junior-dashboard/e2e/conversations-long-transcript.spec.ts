@@ -15,7 +15,7 @@ const MEMORY_CAPTURE_SEQ = 1_000;
  * Mock one completed Conversation with 2,000 message events. With `paged`,
  * the detail holds only the latest page, like the server, and earlier pages
  * wait for `holdEarlier` before they load. Pages around an event take
- * `aroundDelayMs` to load, like a server read. Every other event is a person
+ * `aroundDelayMs` to load, like a server read, and wait for `holdAround`. Every other event is a person
  * message, or every `personEvery`th.
  */
 async function mockLongConversation(
@@ -34,7 +34,8 @@ async function mockLongConversation(
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
   const state = {
@@ -42,6 +43,8 @@ async function mockLongConversation(
     conversationId,
     /** Holds `before` pages until it resolves. */
     holdEarlier: Promise.resolve(),
+    /** Holds pages around an event until it resolves. */
+    holdAround: Promise.resolve(),
     pageRequests: [] as string[],
   };
   const lastSeq = EVENT_COUNT - 1;
@@ -121,6 +124,7 @@ async function mockLongConversation(
       const around = searchParams.get("around") ?? searchParams.get("event");
       const before = searchParams.get("before");
       if (before) await state.holdEarlier;
+      if (around) await state.holdAround;
       if (around && state.aroundDelayMs) {
         await new Promise((resolve) =>
           setTimeout(resolve, state.aroundDelayMs),
@@ -156,46 +160,43 @@ async function mockLongConversation(
       });
     },
   );
-  await page.route(
-    "**/api/plugins/memory/conversations/*/memories",
-    async (route) => {
-      await route.fulfill({
-        json: {
-          events: [
-            {
-              memoryIds: ["recalled-memory"],
-              seq: 2,
-              source: "recalled",
-              turnId: "first-turn",
-            },
-            {
-              memoryIds: ["captured-memory-1", "captured-memory-2"],
-              seq: MEMORY_CAPTURE_SEQ,
-              source: "captured",
-              turnId: "qa-turn",
-            },
-          ],
-          memories: [
-            {
-              content: "Checkout investigations start with deployments.",
-              id: "recalled-memory",
-              visibility: "public",
-            },
-            {
-              content: "Use pnpm for repository commands.",
-              id: "captured-memory-1",
-              visibility: "private",
-            },
-            {
-              content: "Dashboard transcript events should remain expandable.",
-              id: "captured-memory-2",
-              visibility: "public",
-            },
-          ],
-        },
-      });
-    },
-  );
+  await page.route("**/api/memory/conversations/*/memories", async (route) => {
+    await route.fulfill({
+      json: {
+        events: [
+          {
+            memoryIds: ["recalled-memory"],
+            seq: 2,
+            source: "recalled",
+            turnId: "first-turn",
+          },
+          {
+            memoryIds: ["captured-memory-1", "captured-memory-2"],
+            seq: MEMORY_CAPTURE_SEQ,
+            source: "captured",
+            turnId: "qa-turn",
+          },
+        ],
+        memories: [
+          {
+            content: "Checkout investigations start with deployments.",
+            id: "recalled-memory",
+            visibility: "public",
+          },
+          {
+            content: "Use pnpm for repository commands.",
+            id: "captured-memory-1",
+            visibility: "private",
+          },
+          {
+            content: "Dashboard transcript events should remain expandable.",
+            id: "captured-memory-2",
+            visibility: "public",
+          },
+        ],
+      },
+    });
+  });
   await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
     const firstSeq = input.paged ? EVENT_COUNT - PAGE_SIZE : 0;
     const behind = input.lastReadSeq + 1 < firstSeq;
@@ -254,13 +255,8 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  // The capture shows under the reply that ends its Turn.
-  const captured = transcript.getByRole("button", {
-    name: "Captured 2 memories",
-  });
-  await expect(captured).toHaveCount(0);
 
-  // A memory jump mounts its far row before it scrolls there.
+  // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
@@ -274,14 +270,12 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     .getByRole("button", { name: "Go to message" })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
-  await expect(captured).toBeInViewport();
+    transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
+  ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
-  await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
   await page.keyboard.press("ControlOrMeta+f");
@@ -495,6 +489,61 @@ test("scrolls with the outline instead of the scrollbar", async ({
   await expect.poll(() => scrollbarHidden(transcript)).toBe(false);
 });
 
+test("shows a far message at once while its page loads", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/settings#scroll-conversations-with`);
+  await page.getByRole("radio", { name: "Outline" }).click();
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline).toHaveAttribute("data-replaces-scrollbar", "");
+  // No page read lands until the end.
+  let landReads!: () => void;
+  mock.holdAround = new Promise((resolve) => {
+    landReads = resolve;
+  });
+
+  const item = outline.getByRole("button", {
+    name: "Transcript message 400 with",
+  });
+  await item.click();
+  // The message and the start of its reply show from the outline alone.
+  const standIn = page.locator('[data-outline-stand-in="400"]');
+  await expect(standIn).toBeVisible();
+  await expect(standIn).toContainText("Transcript message 400 ");
+  await expect(standIn).toContainText("Transcript message 401 ");
+  await expect(item).toHaveAttribute("aria-current", "location");
+  await expect(row(transcript, 400)).toHaveCount(0);
+  await expect.poll(() => mock.pageRequests).toContain("?event=400");
+
+  // When the page lands, its rows take the place of the stand-in.
+  landReads();
+  await expect(row(transcript, 400)).toBeInViewport({ ratio: 1 });
+  await expect(row(transcript, 399)).not.toBeInViewport({ ratio: 0.5 });
+  await expect(standIn).toHaveCount(0);
+  await expect(item).toHaveAttribute("aria-current", "location");
+
+  // The stand-in takes the pointer from the rows below it, and the wheel
+  // dismisses it.
+  mock.holdAround = new Promise(() => {});
+  await outline
+    .getByRole("button", { name: "Transcript message 800 with" })
+    .click();
+  const nextStandIn = page.locator('[data-outline-stand-in="800"]');
+  await nextStandIn.hover();
+  await page.mouse.wheel(0, -400);
+  await expect(nextStandIn).toHaveCount(0);
+});
+
 test("drags the outline through messages whose pages load slowly", async ({
   page,
   dashboard,
@@ -529,29 +578,36 @@ test("drags the outline through messages whose pages load slowly", async ({
   await expect(outline).toHaveAttribute("data-replaces-scrollbar", "");
   const startSeq = await activeSeq();
   const requests = mock.pageRequests.length;
+  // No page read lands during the drag.
+  let landReads!: () => void;
+  mock.holdAround = new Promise((resolve) => {
+    landReads = resolve;
+  });
 
   // A person presses an item and moves the pointer past item after item.
-  const passItems = async (from: number, to: number) => {
-    for (let seq = from; seq >= to; seq -= 25) {
-      if (seq === MEMORY_CAPTURE_SEQ) continue;
-      await outlineItem(seq).hover();
-      await expect(previewTitle).toHaveText(
-        new RegExp(`^Transcript message ${seq} `),
-      );
-    }
-  };
+  // The transcript follows at once, with the rows or the stand-in of each.
   await active.hover();
   await page.mouse.down();
-  await passItems(startSeq - 25, startSeq - 500);
-  // The transcript follows while the press lasts.
-  await expect.poll(activeSeq).toBeLessThan(startSeq - 25);
-  await passItems(startSeq - 525, startSeq - 1_000);
+  for (let seq = startSeq - 25; seq >= startSeq - 1_000; seq -= 25) {
+    if (seq === MEMORY_CAPTURE_SEQ) continue;
+    await outlineItem(seq).hover();
+    await expect(previewTitle).toHaveText(
+      new RegExp(`^Transcript message ${seq} `),
+    );
+    await expect(
+      page
+        .locator(`[data-outline-stand-in="${seq}"]`)
+        .or(row(page.getByLabel("Conversation transcript"), seq)),
+    ).toBeVisible();
+    await expect.poll(activeSeq).toBe(seq);
+  }
   // It reads one page at a time, not one page for each of the 39 items that
-  // the pointer passed, so each read lands before the next starts.
+  // the pointer passed.
   const eventReads = mock.pageRequests
     .slice(requests)
     .filter((search) => search.startsWith("?event="));
-  expect(eventReads.length).toBeLessThan(20);
+  expect(eventReads.length).toBeLessThanOrEqual(1);
+  landReads();
   await page.mouse.up();
   await expect(outlineItem(startSeq - 1_000)).toHaveAttribute(
     "aria-current",

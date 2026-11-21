@@ -1,8 +1,10 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { GitFork } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -458,11 +460,17 @@ export function QuickQuestionPanel(props: {
   // answer, and the person can then ask again.
   const thinking =
     unsaved.length > 0 ||
-    (fork?.status === "active" && messages.at(-1)?.role === "user");
+    (conversationTurnIsActive(fork) && messages.at(-1)?.role === "user");
   const busy = props.pending || thinking;
+  const quickQuestionConversation = useMemo(
+    () => ({ conversationId: props.conversationId, invite: false }),
+    [props.conversationId],
+  );
 
   useEffect(() => {
-    footerRef.current?.querySelector("textarea")?.focus();
+    footerRef.current
+      ?.querySelector<HTMLElement>("[contenteditable='true'], textarea")
+      ?.focus();
   }, [thread.id]);
 
   // Keep the newest message in view.
@@ -562,6 +570,9 @@ export function QuickQuestionPanel(props: {
         <div className="grid gap-1.5 px-3 pt-2 pb-2" ref={footerRef}>
           <ConversationComposer
             compact
+            // Mentions find people of this Conversation's workspace. A quick
+            // question is a private side thread, so it offers no Invite.
+            conversation={quickQuestionConversation}
             disabled={busy}
             draftId={`quick-question:${props.conversationId}`}
             error={

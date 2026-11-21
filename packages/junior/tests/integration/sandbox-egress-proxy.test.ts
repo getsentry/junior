@@ -931,7 +931,7 @@ describe("sandbox egress proxy integration", () => {
       import("@/chat/egress/plugin"),
       import("@/chat/sandbox/skill-sandbox"),
       import("@/chat/tool-support/pi-tool-adapter"),
-      import("@/chat/tools"),
+      import("@/chat/tool-support/create-tools"),
     ]);
     const conversationId = "local:test:plugin-egress-tool";
     const tools = toolsModule.createTools(

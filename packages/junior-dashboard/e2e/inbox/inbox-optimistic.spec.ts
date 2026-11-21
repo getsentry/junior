@@ -6,8 +6,8 @@ import {
   conversationId,
   digest,
   license,
-  mockReviewItems,
-  pinConflict,
+  mockInboxItems,
+  pinChecks,
   pinReview,
   prReview,
   rollout,
@@ -21,12 +21,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     { ...rollout, createdAt: "2026-08-07T08:00:00.000Z" },
     {
       ...license,
-      addedByConversationId: "slack:CLICENSE:1770003600.000400",
+      owner: { id: "slack:CLICENSE:1770003600.000400", kind: "conversation" },
+      rootConversationId: "slack:CLICENSE:1770003600.000400",
       createdAt: "2026-08-07T08:10:00.000Z",
     },
     {
       ...audit,
-      addedByConversationId: "slack:CAUDIT:1770003600.000500",
+      owner: { id: "slack:CAUDIT:1770003600.000500", kind: "conversation" },
+      rootConversationId: "slack:CAUDIT:1770003600.000500",
       createdAt: "2026-08-07T08:20:00.000Z",
     },
     { ...prReview, createdAt: "2026-08-07T08:30:00.000Z" },
@@ -34,10 +36,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   const [buttons, form, other, plain] = asks;
 
   const row = (page: Page, ask: (typeof asks)[number]) =>
-    page.locator(`li[data-inbox-row="todo:${ask.addedByConversationId}"]`);
+    page.locator(`li[data-inbox-row="todo:${ask.id}"]`);
   const open = async (page: Page, ask: (typeof asks)[number]) => {
     await row(page, ask)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await expect(row(page, ask)).toHaveAttribute("data-expanded", "true");
@@ -46,7 +48,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
-  // A row's Done: the Dismiss in its action bar, which closes every item.
+  // A row's Dismiss: its card's own, which closes the row's one ask.
   const rowDone = (page: Page, ask: (typeof asks)[number]) =>
     row(page, ask).getByRole("button", { exact: true, name: "Dismiss" }).last();
 
@@ -55,7 +57,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
     const sent: string[] = [];
-    await page.route("**/api/review-items/*/actions", async (route) => {
+    await page.route("**/api/inbox-items/*/actions", async (route) => {
       sent.push(new URL(route.request().url()).pathname.split("/").at(-2)!);
       await held;
       await route.fallback();
@@ -67,14 +69,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     const actions = await holdActions(page);
     await page.goto(`${dashboard.baseURL}/`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
-    // A button answer.
+    // A button answer: a click picks, and Send sends.
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Roll out" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, form!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, buttons!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 3 waiting");
@@ -87,7 +92,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row(page, other!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, form!)).toHaveCount(0);
 
-    // Dismiss on the row bar.
+    // The card's own Dismiss.
     await rowDone(page, other!).click();
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, other!)).toHaveCount(0);
@@ -109,7 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [plain!.id];
-    const done = await mockReviewItems(page, {
+    const done = await mockInboxItems(page, {
       failActions,
       open: [...asks],
     });
@@ -128,7 +133,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row is last again, and it opens again: the viewer did not move on.
     await expect(rows.last()).toHaveAttribute(
       "data-inbox-row",
-      `todo:${plain!.addedByConversationId}`,
+      `todo:${plain!.id}`,
     );
     await expect(row(page, plain!)).toHaveAttribute("data-expanded", "true");
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
@@ -144,7 +149,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const failActions = [form!.id, buttons!.id];
-    const done = await mockReviewItems(page, { failActions, open: [...asks] });
+    const done = await mockInboxItems(page, { failActions, open: [...asks] });
     await page.goto(`${dashboard.baseURL}/`);
 
     // The viewer opens another row before the failure lands, so the row
@@ -152,7 +157,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let fail = () => {};
     const failing = new Promise<void>((resolve) => (fail = resolve));
     await page.route(
-      `**/api/review-items/${buttons!.id}/actions`,
+      `**/api/inbox-items/${buttons!.id}/actions`,
       async (route) => {
         await failing;
         await route.fallback();
@@ -160,6 +165,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Hold" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, buttons!)).toHaveCount(0);
     await open(page, plain!);
     fail();
@@ -212,7 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     await page.goto(`${dashboard.baseURL}/`);
     // Slow the leave motion, so the test sees the next row open before the
     // row that leaves is gone.
@@ -238,9 +246,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link", { name: /^Snoozed/ })
       .click();
     const snoozed = (ask: (typeof asks)[number]) =>
-      page.locator(`li[data-inbox-row="${ask.addedByConversationId}"]`);
+      page.locator(`li[data-inbox-row="${ask.id}"]`);
     await snoozed(buttons!)
-      .locator('button[aria-controls^="inbox-row-"]')
+      .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
     await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
@@ -256,7 +264,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [...asks] });
+    await mockInboxItems(page, { open: [...asks] });
     let fails = true;
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}/pin`,
@@ -265,35 +273,39 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ json: { error: "Failed" }, status: 500 })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
-    await open(page, buttons!);
-    const pin = row(page, buttons!).getByRole("button", {
-      exact: true,
-      name: "Pin",
-    });
-    await pin.click();
+    // Item rows have no Pin: the Conversations view pins a Conversation.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const conversationRow = page.locator(
+      `li[data-inbox-row="conversation:${conversationId}"]`,
+    );
+    await conversationRow.hover();
+    await conversationRow.getByRole("button", { name: /^Pin / }).click();
     const toast = page
       .locator('[data-slot="toast"]')
       .filter({ hasText: "Could not pin" });
     await expect(toast).toBeVisible();
-    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    await conversationRow.hover();
+    await expect(
+      conversationRow.getByRole("button", { name: /^Pin / }),
+    ).toBeVisible();
 
     fails = false;
     await toast.getByRole("button", { name: "Retry" }).click();
+    await conversationRow.hover();
     await expect(
-      row(page, buttons!).getByRole("button", { exact: true, name: "Unpin" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      conversationRow.getByRole("button", { name: /^Unpin / }),
+    ).toBeVisible();
   });
 
-  test("Clear marks notices done at once, and Retry clears the ones that failed", async ({
+  test("Dismissing FYIs closes them at once, and Retry dismisses the ones that failed", async ({
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, digest] });
+    await mockInboxItems(page, { open: [license, digest] });
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${digest.id}/actions`,
+      `**/api/inbox-items/${digest.id}/actions`,
       async (route) => {
         sent.push(digest.id);
         await (fails
@@ -307,12 +319,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: digest.title });
     await expect(digestFyi).toBeVisible();
-    await page.getByRole("button", { name: /^Clear \d+ in FYI$/ }).click();
+    await page.getByRole("button", { name: /^Dismiss \d+ in FYI$/ }).click();
     await expect(digestFyi).toHaveCount(0);
     const toast = page
       .locator('[data-slot="toast"]')
-      .filter({ hasText: "Could not clear 1 item" });
-    // The Clear goes out when its Undo toast closes.
+      .filter({ hasText: "Could not dismiss 1 FYI" });
+    // The sweep goes out when its Undo toast closes.
     await expect(toast).toBeVisible({ timeout: 10_000 });
     await expect(digestFyi).toBeVisible();
     expect(sent).toHaveLength(1);
@@ -329,27 +341,27 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinConflict] });
+    await mockInboxItems(page, { open: [pinReview, pinChecks] });
     let answer = () => {};
     const answered = new Promise<void>((resolve) => (answer = resolve));
     let fails = true;
     const sent: string[] = [];
     await page.route(
-      `**/api/review-items/${pinConflict.id}/actions`,
+      `**/api/inbox-items/${pinChecks.id}/actions`,
       async (route) => {
-        sent.push(pinConflict.id);
+        sent.push(pinChecks.id);
         if (!fails) return route.fallback();
         await answered;
         await route.fulfill({ json: { error: "Failed" }, status: 500 });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?item=${pinConflict.id}`);
+    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
-    const conflict = asks.getByRole("region", { name: pinConflict.title });
-    await conflict.getByRole("button", { name: "Merge conflict" }).click();
-    await conflict.getByRole("button", { name: "Dismiss" }).click();
-    await expect.poll(() => sent).toEqual([pinConflict.id]);
-    await expect(conflict).toHaveCount(0);
+    const checks = asks.getByRole("region", { name: pinChecks.title });
+    await checks.getByRole("button", { name: "Checks failed" }).click();
+    await checks.getByRole("button", { name: "Dismiss" }).click();
+    await expect.poll(() => sent).toEqual([pinChecks.id]);
+    await expect(checks).toHaveCount(0);
 
     answer();
     const toast = page
@@ -357,7 +369,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .filter({ hasText: "Could not dismiss" });
     await expect(toast).toBeVisible();
     await expect(asks.locator("[data-folded-notice]")).toHaveText(
-      "Merge conflict",
+      "Checks failed",
     );
 
     fails = false;

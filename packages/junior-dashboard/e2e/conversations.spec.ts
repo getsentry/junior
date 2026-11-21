@@ -328,7 +328,9 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(
     page.getByText("You’re offline. Drafts stay on this device."),
   ).toBeHidden();
-  await expect(composer).toHaveValue("Keep this draft through reconnect");
+  await expect(composer).toHaveText("Keep this draft through reconnect", {
+    useInnerText: true,
+  });
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
@@ -411,7 +413,8 @@ test("scrolls long conversation and transcript panes independently", async ({
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     isParticipant: true,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   }));
 

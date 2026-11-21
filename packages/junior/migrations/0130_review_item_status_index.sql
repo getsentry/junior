@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_review_items_open_action_added_by_idx" ON "junior_review_items" USING btree ("added_by_conversation_id") WHERE "junior_review_items"."status" = 'open' and "junior_review_items"."kind" = 'action';

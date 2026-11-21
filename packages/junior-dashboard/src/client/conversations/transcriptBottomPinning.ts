@@ -27,6 +27,8 @@ const FAR_FROM_BOTTOM_VIEWPORTS = 2;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
+// Leave a little earlier context above a row taller than the viewport.
+const TALL_ROW_TOP_GAP_PX = 48;
 
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
@@ -46,15 +48,12 @@ type BottomPinResult = {
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
   /**
-   * Show a mounted row. A row that the reader asks for moves to the middle
-   * of the viewport. A row that `arrived` by itself moves only into view,
-   * and only while the reader follows the latest. An `instant` move skips
-   * smooth scrolling. Returns false when the row does not show.
+   * Show a mounted row that the reader asks for. It moves to the middle of
+   * the viewport, or its start to the top when it does not fit. An
+   * `instant` move skips smooth scrolling. Returns false when the row does
+   * not show.
    */
-  showRow: (
-    row: Element,
-    options: { arrived: boolean; instant?: boolean },
-  ) => boolean;
+  showRow: (row: Element, options?: { instant?: boolean }) => boolean;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -546,25 +545,23 @@ export function usePinnedTranscriptBottom(input: {
   );
 
   const showRow = useCallback(
-    (
-      row: Element,
-      options: { arrived: boolean; instant?: boolean },
-    ): boolean => {
+    (row: Element, options?: { instant?: boolean }): boolean => {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return false;
-      // A reader who scrolled away reads something else. Do not move it.
-      if (options.arrived && !followingRef.current) return false;
       const bounds = viewportBounds(root);
       const rect = row.getBoundingClientRect();
-      const offset = options.arrived
-        ? Math.max(0, rect.bottom - bounds.bottom)
-        : rect.top -
-          bounds.top -
-          (bounds.bottom - bounds.top - rect.height) / 2;
+      const viewportHeight = bounds.bottom - bounds.top;
+      // A row taller than the viewport shows from its start, not its middle.
+      const offset =
+        rect.top -
+        bounds.top -
+        (rect.height > viewportHeight
+          ? TALL_ROW_TOP_GAP_PX
+          : (viewportHeight - rect.height) / 2);
       if (Math.abs(offset) < 1) return true;
       // The reader goes to the row, so the latest must not pull them back.
       if (offset < 0) leaveBottom();
-      const behavior = options.instant
+      const behavior = options?.instant
         ? "auto"
         : preferredExplicitScrollBehavior();
       setScrollTop(

@@ -9,6 +9,8 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/memories",
   "/settings",
   "/plugins/",
+  "/inbox",
+  // The old Inbox path renders once before it redirects to /inbox.
   "/review",
 ] as const;
 
@@ -36,7 +38,7 @@ export function buildPrimaryNavItems(input: {
   loggedIn: boolean;
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
-  /** Open Review items assigned to the viewer. */
+  /** Open Inbox items assigned to the viewer. */
   reviewCount?: number | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the Inbox
@@ -53,9 +55,9 @@ export function buildPrimaryNavItems(input: {
       ? [
           {
             count: input.reviewCount,
-            key: "review",
+            key: "inbox",
             label: "Inbox",
-            to: "/review",
+            to: "/inbox",
           },
           { key: "automations", label: "Automations", to: "/automations" },
         ]

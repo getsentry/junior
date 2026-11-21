@@ -6,13 +6,12 @@ import {
 import {
   memo,
   useEffect,
-  useId,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -29,10 +28,67 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
-import { useComposerSkillMenu } from "./ComposerSkillMenu";
+import {
+  mentionablePersonSchema,
+  type MentionablePerson,
+} from "@sentry/junior/api/schema";
+import {
+  ComposerConversationContext,
+  type ComposerConversation,
+} from "./ComposerMention";
+import {
+  composerReferenceSchema,
+  referenceText,
+  splitComposerText,
+  type ComposerReference,
+} from "./composerReferences";
+import { useAttachLinkedWork } from "./composerLinkedWork";
+import type ComposerEditor from "./composer-editor/ComposerEditor";
+import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
+import editorChunkUrl from "./composer-editor/editorChunkUrl";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 import { getDashboardAgentName } from "../agentName";
 
+const DRAFT_MAX_LENGTH = 32_000;
+
+type ComposerEditorModule = typeof import("./composer-editor/ComposerEditor");
+type ComposerEditorLoad = { module: ComposerEditorModule } | { failed: true };
+
+// A retry imports the chunk by URL, which the compiler cannot type.
+function isComposerEditorModule(value: unknown): value is ComposerEditorModule {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "default" in value &&
+    typeof value.default === "function"
+  );
+}
+
+// Browsers keep a failed module import, so an import of the same URL fails
+// again at once. A query on the chunk URL makes a new module.
+const loadComposerEditor = (attempt = 0): Promise<ComposerEditorLoad> => {
+  const load =
+    attempt > 0 && editorChunkUrl
+      ? import(/* @vite-ignore */ `${editorChunkUrl}?retry=${attempt}`).then(
+          (module: unknown) => {
+            if (!isComposerEditorModule(module)) {
+              throw new Error(`${editorChunkUrl} is not the composer editor`);
+            }
+            return module;
+          },
+        )
+      : import("./composer-editor/ComposerEditor");
+  return load.then(
+    (module) => ({ module }),
+    () => ({ failed: true }),
+  );
+};
+// Lexical is large, so the editor is not in the first page load. Start to
+// load it at once, so a reader who goes offline later still has it.
+const composerEditorLoad = loadComposerEditor();
+
+// A chunk error while online is often brief, so the load tries again.
+const EDITOR_RETRY_MS = 10_000;
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
@@ -58,6 +114,10 @@ type ConversationDraft = {
   idempotencyKey: string;
   /** Trimmed text the current idempotency key was issued for. */
   lastSubmittedText: string;
+  /** People mentioned in `text`, so a restored draft shows their names. */
+  people?: MentionablePerson[] | undefined;
+  /** References in `text`, so a restored draft shows their kind and state. */
+  references?: ComposerReference[] | undefined;
   text: string;
 };
 
@@ -106,6 +166,14 @@ type ConversationComposerProps = {
   footerStart?: ReactNode;
   /** Text only, for a narrow panel: no files, no key hint, icon-only send. */
   compact?: boolean;
+  /** The Conversation that this composer writes to, if it exists yet. */
+  conversation?: ComposerConversation | undefined;
+  /**
+   * Add the work that a sent Message references to `conversation`'s linked
+   * work. A composer whose Messages go elsewhere, such as Quick question,
+   * leaves it off.
+   */
+  linksWork?: boolean;
   label: string;
   placeholder?: string | undefined;
   /**
@@ -119,19 +187,11 @@ type ConversationComposerProps = {
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to run before a send, such as a question to the reader
-   * or answers that go with the message. `sendsMessage` is false when the
-   * draft is empty, so only those answers go. The draft stays when it
-   * resolves false. Return undefined to send at once.
+   * Return a promise to run before a send, such as a question to the reader.
+   * The draft stays when it resolves false. Return undefined to send at
+   * once.
    */
-  beforeSubmit?: (send: {
-    sendsMessage: boolean;
-  }) => Promise<boolean> | undefined;
-  /**
-   * Enable Send with an empty draft, because `beforeSubmit` has input of its
-   * own to send. An empty draft then sends no message.
-   */
-  sendsWithoutDraft?: boolean;
+  beforeSubmit?: () => Promise<boolean> | undefined;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -172,10 +232,35 @@ export const ConversationComposer = memo(function ConversationComposer(
     touchKeyboardMatches,
     () => false,
   );
-  const id = useId();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useSwipeDownToBlur(textareaRef);
+  // A textarea stands in until the editor loads, and when it cannot load.
+  const [Editor, setEditor] = useState<typeof ComposerEditor>();
+  const [editorLoadAttempt, setEditorLoadAttempt] = useState(0);
+  const editorRef = useRef<ComposerEditorHandle>(null);
+  const editorElementRef = useRef<HTMLDivElement>(null);
+  // Takes text while the editor loads.
+  const standInRef = useRef<HTMLTextAreaElement>(null);
+  useSwipeDownToBlur(editorElementRef);
+  useSwipeDownToBlur(standInRef);
+  // A restored draft opens the stand-in at its full height.
+  useLayoutEffect(() => {
+    if (standInRef.current) fitToText(standInRef.current);
+  }, [Editor]);
   const draftRef = useRef(initialDraft);
+  const peopleRef = useRef(
+    new Map(initialDraft.people?.map((person) => [person.slackUserId, person])),
+  );
+  // Keyed by message text, which is what a reference read back has.
+  const referencesRef = useRef(
+    new Map(
+      initialDraft.references?.map((reference) => [
+        referenceText(reference),
+        reference,
+      ]),
+    ),
+  );
+  const attachLinkedWork = useAttachLinkedWork(
+    props.linksWork ? props.conversation : undefined,
+  );
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for
@@ -201,40 +286,32 @@ export const ConversationComposer = memo(function ConversationComposer(
     };
   }, [storageKey]);
 
-  // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
-  // longer drafts scroll inside it. Measure again when the text rewraps or
-  // the reply layout switches density.
+  // A failed load tries again after a pause, and when the dashboard is
+  // online again.
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    syncComposerHeight(textarea);
-    let width = textarea.clientWidth;
-    let frame: number | undefined;
-    const scheduleHeight = () => {
-      // A height change inside this callback starts a ResizeObserver loop
-      // error. Measure in the next frame instead.
-      if (frame !== undefined) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = undefined;
-        syncComposerHeight(textarea);
-      });
-    };
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === width) return;
-      width = textarea.clientWidth;
-      scheduleHeight();
+    if (Editor || !online) return;
+    let current = true;
+    let retryTimer: number | undefined;
+    const load =
+      editorLoadAttempt === 0
+        ? composerEditorLoad
+        : loadComposerEditor(editorLoadAttempt);
+    void load.then((result) => {
+      if (!current) return;
+      if ("module" in result) {
+        setEditor(() => result.module.default);
+        return;
+      }
+      retryTimer = window.setTimeout(
+        () => setEditorLoadAttempt((attempt) => attempt + 1),
+        EDITOR_RETRY_MS,
+      );
     });
-    observer.observe(textarea);
-    const tallViewport = replyLayout
-      ? window.matchMedia("(min-height: 62.5rem)")
-      : undefined;
-    tallViewport?.addEventListener("change", scheduleHeight);
     return () => {
-      observer.disconnect();
-      tallViewport?.removeEventListener("change", scheduleHeight);
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      current = false;
+      window.clearTimeout(retryTimer);
     };
-  }, [replyLayout]);
+  }, [Editor, online, editorLoadAttempt]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -256,8 +333,33 @@ export const ConversationComposer = memo(function ConversationComposer(
     } else {
       setFileError(`Attach ${COMPOSER_FILE_LIMIT}. Files cannot be empty.`);
     }
-    textareaRef.current?.focus({ preventScroll: true });
+    focusField();
   };
+
+  const focusField = () => {
+    if (editorRef.current) editorRef.current.focus();
+    else standInRef.current?.focus({ preventScroll: true });
+  };
+
+  // Show the text in the editor, or in the stand-in while it loads.
+  const writeField = (text: string, caretAtEnd = false) => {
+    if (editorRef.current) {
+      editorRef.current.setText(text, { caretAtEnd });
+      return;
+    }
+    const field = standInRef.current;
+    if (!field) return;
+    field.value = text;
+    fitToText(field);
+    if (!caretAtEnd) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(text.length, text.length);
+  };
+
+  const draftChips = (text: string) =>
+    text.includes("<")
+      ? chipsIn(text, peopleRef.current, referencesRef.current)
+      : { people: undefined, references: undefined };
 
   const scheduleDraftStorage = () => {
     if (storageTimerRef.current !== undefined) {
@@ -269,37 +371,22 @@ export const ConversationComposer = memo(function ConversationComposer(
     }, DRAFT_STORAGE_DEBOUNCE_MS);
   };
 
-  const syncTextareaHeight = () => {
-    if (textareaRef.current) syncComposerHeight(textareaRef.current);
-  };
-
   const setMessage = (text: string) => {
     const current = draftRef.current;
     if (current.text === text) return;
-    draftRef.current = { ...current, text };
+    draftRef.current = { ...current, ...draftChips(text), text };
     updateCanSend(text);
     scheduleDraftStorage();
   };
 
-  const skillMenu = useComposerSkillMenu(textareaRef, (text) => {
-    setMessage(text);
-    syncTextareaHeight();
-  });
-
-  const replaceMessage = (draft: ConversationDraft) => {
-    draftRef.current = draft;
-    const textarea = textareaRef.current;
-    if (textarea) textarea.value = draft.text;
+  const replaceMessage = (draft: ConversationDraft, caretAtEnd = false) => {
+    draftRef.current = { ...draft, ...draftChips(draft.text) };
+    writeField(draft.text, caretAtEnd);
     updateCanSend(draft.text);
-    syncTextareaHeight();
   };
 
   const canSubmit = () =>
-    Boolean(
-      draftRef.current.text.trim() ||
-      filesRef.current.length ||
-      props.sendsWithoutDraft,
-    ) &&
+    Boolean(draftRef.current.text.trim() || filesRef.current.length) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
@@ -308,11 +395,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.beforeSubmit?.({
-      sendsMessage: Boolean(
-        draftRef.current.text.trim() || filesRef.current.length,
-      ),
-    });
+    const confirmation = props.beforeSubmit?.();
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -364,11 +447,12 @@ export const ConversationComposer = memo(function ConversationComposer(
       setHoldPending(true);
       try {
         await send();
+        attachLinkedWork(text);
       } catch {
         // The parent shows the error. The draft stays for a retry, with
         // focus, so Enter sends it again.
         flushSync(() => setHoldPending(false));
-        textareaRef.current?.focus({ preventScroll: true });
+        focusField();
         return;
       } finally {
         submittingRef.current = false;
@@ -381,18 +465,20 @@ export const ConversationComposer = memo(function ConversationComposer(
     // Clear at once so the reader can compose the next message. The parent
     // keeps a failed send in the mailbox outbox for retry.
     clear();
-    textareaRef.current?.focus({ preventScroll: true });
+    focusField();
     queueMicrotask(() => {
       submittingRef.current = false;
     });
-    await send().catch(() => {});
+    await send().then(
+      () => attachLinkedWork(text),
+      () => {},
+    );
   };
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
-    const next = withPrependedText(draftRef.current, text);
-    replaceMessage(next);
-    storeDraft(storageKey, next);
+    replaceMessage(withPrependedText(draftRef.current, text));
+    storeDraft(storageKey, draftRef.current);
   };
 
   const stopTurn = async () => {
@@ -409,7 +495,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
     if (!restored) return;
     prependDraftText(restored);
-    textareaRef.current?.focus({ preventScroll: true });
+    focusField();
   };
 
   useImperativeHandle(props.ref, () => ({
@@ -420,17 +506,12 @@ export const ConversationComposer = memo(function ConversationComposer(
         ...draftRef.current,
         text: `${draft && `${draft}\n\n`}${text}\n\n`,
       };
-      replaceMessage(next);
-      storeDraft(storageKey, next);
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(next.text.length, next.text.length);
-      textarea.scrollTop = textarea.scrollHeight;
+      replaceMessage(next, true);
+      storeDraft(storageKey, draftRef.current);
     },
     canRestoreFiles: (restored) =>
       !restored.length || composerFilesFit([...restored, ...filesRef.current]),
-    focus: () => textareaRef.current?.focus({ preventScroll: true }),
+    focus: focusField,
     restoreMessage: (message) => {
       // A file-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);
@@ -447,26 +528,77 @@ export const ConversationComposer = memo(function ConversationComposer(
         }
         replaceFiles(merged);
       }
-      textareaRef.current?.focus({ preventScroll: true });
+      focusField();
     },
   }));
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (skillMenu.handleKeyDown(event)) return;
-    if (
-      enterSends &&
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
-      event.preventDefault();
-      void submit();
-    }
-  };
+  const placeholder =
+    props.placeholder ?? `Message ${getDashboardAgentName()}…`;
+  const fieldClass = cn(
+    "min-h-12 max-h-28 w-full overflow-y-auto border-0 bg-transparent outline-none",
+    props.compact
+      ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)]"
+      : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)]",
+    replyLayout ? "md:tall:min-h-14" : !props.compact && "md:min-h-14",
+  );
+  // Padding and type, which the editor's placeholder shares.
+  const textClass = cn(
+    "px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text",
+    props.compact ? "md:text-sm" : "md:px-4",
+    replyLayout && "md:py-2 md:tall:py-3",
+  );
+  // Chat is technical: ids, paths, code. Suppress browser IME assist that
+  // fights identifiers, unless the user turns autocorrect on in settings.
+  // Android Chrome maps `autocomplete="off"` to TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+  // which also turns off keyboard autocorrect, so leave it out when
+  // autocorrect is on.
+  const standIn = (
+    <BareTextarea
+      aria-label={props.label}
+      autoCapitalize={autocorrect ? "sentences" : "off"}
+      autoComplete={autocorrect ? undefined : "off"}
+      autoCorrect={autocorrect ? "on" : "off"}
+      className={cn(
+        fieldClass,
+        textClass,
+        "resize-none placeholder:text-dashboard-text-faint",
+      )}
+      defaultValue={draftRef.current.text}
+      disabled={holdPending}
+      enterKeyHint={enterSends ? "send" : "enter"}
+      inputMode="text"
+      maxLength={DRAFT_MAX_LENGTH}
+      onChange={(event) => {
+        fitToText(event.target);
+        setMessage(event.target.value);
+      }}
+      onFocus={props.onFocus}
+      onKeyDown={(event) => {
+        if (
+          enterSends &&
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          void submit();
+        }
+      }}
+      onPaste={(event) => {
+        const files = Array.from(event.clipboardData.files);
+        if (props.compact || !files.length) return;
+        event.preventDefault();
+        addFiles(files);
+      }}
+      placeholder={placeholder}
+      ref={standInRef}
+      rows={1}
+      spellCheck={autocorrect}
+    />
+  );
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {skillMenu.menu}
       {props.error || fileError ? (
         <div
           aria-live="polite"
@@ -509,12 +641,6 @@ export const ConversationComposer = memo(function ConversationComposer(
           setDragging(false);
           addFiles(Array.from(event.dataTransfer.files));
         }}
-        onPaste={(event) => {
-          const files = Array.from(event.clipboardData.files);
-          if (props.compact || !files.length) return;
-          event.preventDefault();
-          addFiles(files);
-        }}
         onSubmit={submit}
       >
         {files.length ? (
@@ -548,50 +674,49 @@ export const ConversationComposer = memo(function ConversationComposer(
           tabIndex={-1}
           type="file"
         />
-        <label className="sr-only" htmlFor={id}>
-          {props.label}
-        </label>
-        <BareTextarea
-          // Chat is technical: ids, paths, code. Suppress browser IME assist
-          // that fights identifiers, unless the user turns autocorrect on in
-          // settings. Android Chrome maps `autocomplete="off"` to
-          // TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also turns off keyboard
-          // autocorrect, so leave it out when autocorrect is on.
-          autoCapitalize={autocorrect ? "sentences" : "off"}
-          autoComplete={autocorrect ? undefined : "off"}
-          autoCorrect={autocorrect ? "on" : "off"}
-          className={cn(
-            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",
-            props.compact
-              ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)] md:text-sm"
-              : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
-            replyLayout
-              ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
-              : !props.compact && "md:min-h-14",
+        <ComposerConversationContext.Provider value={props.conversation}>
+          {Editor ? (
+            <Editor
+              autocorrect={autocorrect}
+              className={fieldClass}
+              editable={!holdPending}
+              elementRef={editorElementRef}
+              enterKeyHint={enterSends ? "send" : "enter"}
+              enterSends={enterSends}
+              label={props.label}
+              lookup={{
+                origin: window.location.origin,
+                person: (slackUserId) => peopleRef.current.get(slackUserId),
+                reference: (text) => referencesRef.current.get(text),
+              }}
+              maxLength={DRAFT_MAX_LENGTH}
+              onChange={setMessage}
+              onEnter={() => void submit()}
+              onFocus={props.onFocus}
+              onChip={(chip) => {
+                if ("person" in chip) {
+                  peopleRef.current.set(chip.person.slackUserId, chip.person);
+                } else {
+                  referencesRef.current.set(
+                    referenceText(chip.reference),
+                    chip.reference,
+                  );
+                }
+              }}
+              onPasteFiles={props.compact ? undefined : addFiles}
+              placeholder={placeholder}
+              placeholderClassName={textClass}
+              readText={() => draftRef.current.text}
+              ref={editorRef}
+              standInFocused={() =>
+                standInRef.current !== null &&
+                document.activeElement === standInRef.current
+              }
+            />
+          ) : (
+            standIn
           )}
-          disabled={holdPending}
-          enterKeyHint={enterSends ? "send" : "enter"}
-          id={id}
-          inputMode="text"
-          maxLength={32_000}
-          defaultValue={initialDraft.text}
-          {...skillMenu.textboxProps}
-          onBlur={skillMenu.blur}
-          onChange={(event) => {
-            setMessage(event.target.value);
-            syncTextareaHeight();
-            skillMenu.sync();
-          }}
-          onFocus={props.onFocus}
-          onKeyDown={handleKeyDown}
-          onSelect={skillMenu.sync}
-          placeholder={
-            props.placeholder ?? `Message ${getDashboardAgentName()}…`
-          }
-          ref={textareaRef}
-          rows={1}
-          spellCheck={autocorrect}
-        />
+        </ComposerConversationContext.Provider>
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5",
@@ -652,11 +777,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 "disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100",
                 props.compact && "w-9 px-0",
               )}
-              disabled={
-                (!canSend && !files.length && !props.sendsWithoutDraft) ||
-                !online ||
-                sendLocked
-              }
+              disabled={(!canSend && !files.length) || !online || sendLocked}
               variant="default"
               type="submit"
             >
@@ -674,13 +795,30 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
 });
 
-/** Fit the textarea to its text. CSS `max-height` sets the scroll limit. */
-function syncComposerHeight(textarea: HTMLTextAreaElement): void {
-  // Measure from auto height so the box can also shrink after deletes.
-  const previous = textarea.style.height;
-  textarea.style.height = "auto";
-  const next = `${textarea.scrollHeight}px`;
-  textarea.style.height = previous === next ? previous : next;
+/** The known people and references in the text, once each. */
+function chipsIn(
+  text: string,
+  people: ReadonlyMap<string, MentionablePerson>,
+  references: ReadonlyMap<string, ComposerReference>,
+): Pick<ConversationDraft, "people" | "references"> {
+  const found = {
+    people: new Set<MentionablePerson>(),
+    references: new Set<ComposerReference>(),
+  };
+  for (const part of splitComposerText(text, window.location.origin)) {
+    const person =
+      "slackUserId" in part ? people.get(part.slackUserId) : undefined;
+    const reference =
+      "reference" in part
+        ? references.get(referenceText(part.reference))
+        : undefined;
+    if (person) found.people.add(person);
+    if (reference) found.references.add(reference);
+  }
+  return {
+    people: found.people.size ? [...found.people] : undefined,
+    references: found.references.size ? [...found.references] : undefined,
+  };
 }
 
 function emptyDraft(): ConversationDraft {
@@ -689,6 +827,13 @@ function emptyDraft(): ConversationDraft {
     lastSubmittedText: "",
     text: "",
   };
+}
+
+/** Fit the stand-in to its text. CSS `max-height` sets the scroll limit. */
+function fitToText(textarea: HTMLTextAreaElement): void {
+  // Measure from auto height so the box can also shrink after deletes.
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function readStoredDraft(storageKey: string): ConversationDraft {
@@ -705,7 +850,15 @@ function readStoredDraft(storageKey: string): ConversationDraft {
       "text" in draft &&
       typeof draft.text === "string"
     ) {
-      const text = draft.text.slice(0, 32_000);
+      const text = draft.text.slice(0, DRAFT_MAX_LENGTH);
+      const people =
+        "people" in draft
+          ? mentionablePersonSchema.array().safeParse(draft.people).data
+          : undefined;
+      const references =
+        "references" in draft
+          ? composerReferenceSchema.array().safeParse(draft.references).data
+          : undefined;
       const lastSubmittedText =
         "lastSubmittedText" in draft &&
         typeof draft.lastSubmittedText === "string"
@@ -721,6 +874,8 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             ? crypto.randomUUID()
             : draft.idempotencyKey,
         lastSubmittedText,
+        people,
+        references,
         text,
       };
     }

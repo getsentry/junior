@@ -1,6 +1,10 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
-import { objectPresentation } from "@sentry/junior-plugin-api";
+import {
+  objectPresentation,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -442,6 +446,8 @@ type SidebarAnnotationIconName = NonNullable<
 
 /** The open and success green, as GitHub shows an open pull request. */
 export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The closed and removed red, as GitHub shows a closed pull request. */
+export const CLOSED_TONE_CLASS = "text-[#f85149] light:text-[#cf222e]";
 /** The attention amber. It reads on both themes, so use it for icons only. */
 export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
 
@@ -457,7 +463,7 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Draft",
   },
   "circle-x": {
-    className: "text-[#f85149] light:text-[#cf222e]",
+    className: CLOSED_TONE_CLASS,
     Icon: CircleX,
     label: "Closed",
   },
@@ -480,6 +486,22 @@ const SIDEBAR_ICON_PRESENTATION = {
   SidebarAnnotationIconName,
   { className: string; Icon: typeof CircleDot; label: string }
 >;
+
+/** The GitHub color and name of a code change state. */
+export function codeChangeTone(
+  state: CodeChangeState,
+  draft: boolean,
+): { className: string; label: string } {
+  return SIDEBAR_ICON_PRESENTATION[
+    state === "merged"
+      ? "git-merge"
+      : state === "closed"
+        ? "circle-x"
+        : draft
+          ? "circle-dashed"
+          : "circle-dot"
+  ];
+}
 
 /** Show a GitHub-style status icon for linked work, such as an open pull request. */
 export function SidebarAnnotationIcon(props: {
@@ -674,7 +696,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "active";
+  const live = conversationTurnIsActive(detail, conversation);
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -703,7 +725,7 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

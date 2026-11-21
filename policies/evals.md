@@ -17,7 +17,7 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
 - **Guardian** (`evals/guardian/**`): exact `allow` / `ask` / `deny`
   decisions. Hard pass/fail.
 - **Classifiers** (`evals/classifiers/**`): exact choices of a decision model
-  classifier, such as the Review items that a thread reply answers. Hard
+  classifier, such as the Inbox items that a thread reply answers. Hard
   pass/fail.
 
 ### Scenarios

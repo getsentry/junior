@@ -1,11 +1,11 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
+import { createSearchToolsTool } from "@/chat/tools/search-tools";
 import {
-  createSearchToolsTool,
   searchCatalogTools,
   summarizeModelVisibleDescription,
-} from "@/chat/tools/search-tools";
-import { tool } from "@/chat/tools/definition";
+} from "@/chat/tool-support/catalog-search";
+import { tool } from "@/chat/tool-support/definition";
 
 // These cases never reach the rerank model, so no cost is recorded.
 const NO_COST = { owner: "none" } as const;
@@ -118,7 +118,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Issue number." }),
+        issue: Type.Integer({ description: "Issue number." }),
         body: Type.String({ description: "Comment text." }),
       }),
     }),
@@ -129,7 +129,7 @@ function mixedCatalog() {
       exposure: "direct",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
         body: Type.String({ description: "Comment text." }),
       }),
     }),
@@ -158,7 +158,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
       }),
     }),
     github_getRepository: tool({
@@ -173,7 +173,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Issue number." }),
+        issue: Type.Integer({ description: "Issue number." }),
       }),
     }),
     github_updatePullRequest: tool({
@@ -183,7 +183,7 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({
         repo: Type.String(),
-        number: Type.Integer({ description: "Pull request number." }),
+        pull_request: Type.Integer({ description: "Pull request number." }),
       }),
     }),
     mcp__linear__create_issue: tool({

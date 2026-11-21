@@ -1,6 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
+import {
+  conversationIsActiveSql,
+  conversationTurnFailedSql,
+} from "@/chat/conversations/sql/status";
 import { getDb } from "@/chat/db";
 import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
@@ -42,7 +46,7 @@ import {
   statsItems,
   turnRoot,
   verifiedActorWhere,
-} from "./shared";
+} from "./person-report";
 import { trailingUtcHourWindow } from "../reporting-window";
 
 type AggregateRow = {
@@ -212,17 +216,14 @@ function rootBucketRows(args: {
   return getDb()
     .select({
       active: sql<number>`(count(*) FILTER (
-        WHERE ${buckets.isLastTurn} AND ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
+        WHERE ${buckets.isLastTurn} AND ${conversationIsActiveSql(turnRoot)}
       ))::integer`,
       conversations: sql<number>`count(*)::integer`,
       costMicroUsd: microUsdSql(sql`sum(${buckets.costMicroUsd})`),
       date: sql<string>`TO_CHAR(${buckets.bucket}, ${sql.raw(`'${format}'`)})`,
       durationMs: sql<number>`COALESCE(sum(${buckets.durationMs}), 0)::double precision`,
-      // A stopped Conversation reports `stopped`, not `failed`.
       failed: sql<number>`(count(*) FILTER (
-        WHERE ${buckets.isLastTurn}
-          AND ${turnRoot.executionStatus} = 'failed'
-          AND ${turnRoot.stoppedAt} IS NULL
+        WHERE ${buckets.isLastTurn} AND ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL
       ))::integer`,
       tokens: sql<number | null>`sum(${buckets.tokens})::double precision`,
     })

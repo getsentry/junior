@@ -79,7 +79,8 @@ test("stops the active Turn and returns queued text to the composer", async ({
         {
           ...detail,
           isParticipant: true,
-          status: active ? "active" : "completed",
+          status: active ? "working" : "done",
+          turnActive: active,
         },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),
@@ -108,8 +109,9 @@ test("stops the active Turn and returns queued text to the composer", async ({
   // Queued text goes back ahead of the draft.
   await composer.fill("Draft in progress");
   await stop.click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     `${queuedMessage.text}\n${sentMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
   await expect(pending).toBeHidden();
   expect(stopRequests).toBe(1);
@@ -200,7 +202,7 @@ test("edits a queued message back into the composer", async ({
       response,
       json: withRequestedMailbox(
         route,
-        { ...detail, isParticipant: true, status: "active" },
+        { ...detail, isParticipant: true, status: "working", turnActive: true },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),
     });
@@ -268,29 +270,141 @@ test("edits a queued message back into the composer", async ({
     page.getByText("Remove some draft files to edit that message."),
   ).toBeVisible();
   await expect(pending.getByText(queuedMessage.text)).toBeVisible();
+  await expect(composer).toHaveText("", { useInnerText: true });
   for (const name of draftFiles) {
     await page.getByRole("button", { name: `Remove ${name}` }).click();
   }
 
-  // Text goes ahead of the draft and the image comes back with it.
+  // Text with files moves with its files, after the cancel lands.
   await composer.fill("Draft in progress");
   await pending
     .getByRole("button", { name: "Edit queued message" })
     .first()
     .click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     `${queuedMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
   await expect(page.getByRole("img", { name: "queued-chart.png" })).toHaveCount(
     1,
   );
   await expect(pending.getByText(queuedMessage.text)).toBeHidden();
 
+  // Text alone moved before the cancel found nothing. It stays, and the
+  // error tells the reader that Junior has it already.
   await pending.getByRole("button", { name: "Edit queued message" }).click();
   await expect(
     page.getByText("That message was already read or removed."),
   ).toBeVisible();
-  await expect(composer).toHaveValue(
-    `${queuedMessage.text}\nDraft in progress`,
+  await expect(composer).toHaveText(
+    `${readMessage.text}\n${queuedMessage.text}\nDraft in progress`,
+    { useInnerText: true },
   );
+});
+
+test("moves queued text to the composer before the cancel lands", async ({
+  page,
+  dashboard,
+}) => {
+  const conversationId = "slack:CQA123:1770000000.000100";
+  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
+  const createdAt = "2026-06-12T00:00:00.000Z";
+  const queuedMessage: ConversationPendingMessage & { text: string } = {
+    actorIdentity: { email: "dev@example.com" },
+    createdAt,
+    receivedAt: createdAt,
+    delivery: "defer",
+    inboundMessageId: "queued-slow-edit",
+    messageId: "queued-slow-edit",
+    role: "user",
+    source: "web",
+    text: "Queued follow-up",
+  };
+  let queued: ConversationPendingMessage[] = [queuedMessage];
+  let sends = 0;
+  await page.route(`${path}/messages`, async (route) => {
+    sends += 1;
+    await route.fulfill({
+      json: { conversationId, messageId: "sent-edit", status: "accepted" },
+    });
+  });
+  // Each cancel waits until the test answers it.
+  const cancels: ((ok: boolean) => void)[] = [];
+  await page.route(`${path}/pending-messages`, async (route) => {
+    const ok = await new Promise<boolean>((resolve) => cancels.push(resolve));
+    if (!ok) {
+      await route.fulfill({ status: 500, json: { error: "Unavailable" } });
+      return;
+    }
+    queued = [];
+    await route.fulfill({
+      json: {
+        cancelledCount: 1,
+        cancelledInboundMessageIds: [queuedMessage.inboundMessageId],
+        conversationId,
+      },
+    });
+  });
+  await page.route(`${path}*`, async (route) => {
+    const response = await route.fetch({
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
+    });
+    const detail = await response.json();
+    await route.fulfill({
+      response,
+      json: withRequestedMailbox(
+        route,
+        { ...detail, isParticipant: true, status: "working", turnActive: true },
+        { conversationId, generatedAt: createdAt, messages: queued },
+      ),
+    });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const composer = page.getByLabel("Continue this conversation");
+  const pending = page.getByLabel("Pending messages");
+  const edit = pending.getByRole("button", { name: "Edit queued message" });
+
+  await edit.click();
+  await expect(composer).toHaveText(queuedMessage.text, { useInnerText: true });
+  await expect(pending).toBeHidden();
+  await expect.poll(() => cancels.length).toBe(1);
+
+  // A send waits for the cancel. A failed cancel keeps the message queued,
+  // stops the send, and keeps the reader's edits.
+  await composer.press("End");
+  await composer.pressSequentially(" now");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  cancels[0]?.(false);
+  await expect(
+    page.getByText("Could not edit the queued message. Try again."),
+  ).toBeVisible();
+  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
+  await expect(composer).toHaveText(`${queuedMessage.text} now`, {
+    useInnerText: true,
+  });
+  expect(sends).toBe(0);
+
+  // The retry does not add the text a second time, also after leaving the
+  // view remounts the reply box.
+  await chooseTranscriptView(page, "Event log");
+  await chooseTranscriptView(page, "Conversation");
+  await expect(composer).toHaveText(`${queuedMessage.text} now`, {
+    useInnerText: true,
+  });
+  await edit.click();
+  await expect.poll(() => cancels.length).toBe(2);
+  cancels[1]?.(true);
+  await expect(pending).toBeHidden();
+  await expect(
+    page.getByText("Could not edit the queued message. Try again."),
+  ).toBeHidden();
+  await expect(composer).toHaveText(`${queuedMessage.text} now`, {
+    useInnerText: true,
+  });
 });

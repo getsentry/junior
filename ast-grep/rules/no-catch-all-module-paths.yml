@@ -1,0 +1,18 @@
+# A path names the feature and the role of its code. `utils`, `helpers`,
+# `common`, `misc`, and `shared` name neither, so code collects there with no
+# owner. `policies/interface-design.md` owns the layout.
+id: no-catch-all-module-paths
+language: TypeScript
+severity: error
+message: Name this module by the concern it owns, and put it in the feature that owns it. Catch-all names such as utils, helpers, common, misc, and shared say nothing about the code.
+files:
+  - packages/*/src/**/{utils,helpers,common,misc,shared}.ts
+  - packages/*/src/**/{utils,helpers,common,misc,shared}/**/*.ts
+  - apps/**/src/**/{utils,helpers,common,misc,shared}.ts
+  - apps/**/src/**/{utils,helpers,common,misc,shared}/**/*.ts
+ignores:
+  # shadcn/ui generates components that import `cn` from this path
+  # (`aliases.utils` in packages/junior-dashboard/components.json).
+  - packages/junior-dashboard/src/client/lib/utils.ts
+rule:
+  kind: program

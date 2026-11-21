@@ -3,11 +3,12 @@ import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch, takeDueTimerWatches } from "@/chat/events/store";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
-import { createEventTools } from "@/chat/tools/events";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
+import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import {
   createConversationId,
   recordWebConversationActivity,
@@ -40,10 +41,12 @@ async function timerConversation() {
     conversationStore: fixture.conversationStore,
     nowMs: Date.now(),
   });
-  const tools = createEventTools(
-    { ...context(), conversationId },
-    getEventCatalog(),
-  );
+  const toolContext = { ...context(), conversationId };
+  const tools = {
+    listWatches: createListWatchesTool(toolContext),
+    stopWatchingResources: createStopWatchingResourcesTool(toolContext),
+    watchTimer: createWatchTimerTool(toolContext),
+  };
   return { ...fixture, conversationId, tools };
 }
 
@@ -221,7 +224,7 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   expect(saved).toContain("Check the deployment.");
   expect(saved).toContain("Check much later.");
   expect(saved).toContain("Check after the stop.");
-  await expect(fixture.status(conversationId)).resolves.toBe("stopped");
+  await expect(fixture.status(conversationId)).resolves.toBe("done");
 
   // A person's message ends the stop, so the next timer starts a Turn.
   await fixture.continue({
@@ -229,10 +232,11 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
     idempotencyKey: "after-stop",
     message: "Keep watching.",
   });
-  await expect(fixture.status(conversationId)).resolves.toBe("active");
+  await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
   expect(agentRuns).toHaveLength(1);
-  await expect(fixture.status(conversationId)).resolves.toBe("completed");
+  // The starter has not read the reply yet.
+  await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   await expect(
     getConversationStoppedAtMs(conversationId),
   ).resolves.toBeUndefined();
@@ -338,10 +342,12 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     queue,
     state,
   });
-  const childTools = createEventTools(
-    { ...context(), conversationId: child.childConversationId },
-    getEventCatalog(),
-  );
+  const childTools = {
+    watchTimer: createWatchTimerTool({
+      ...context(),
+      conversationId: child.childConversationId,
+    }),
+  };
   await execute(
     childTools["watchTimer"]!,
     { after_ms: 60_000, intent: "Check soon." },

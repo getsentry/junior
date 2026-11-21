@@ -109,6 +109,7 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "junior/no-read-only-object-annotations": "error",
+    "junior/no-record-type-guard": "error",
     "junior/zod-namespace-import": "error"
   },
   "overrides": [
@@ -116,6 +117,12 @@
       "files": ["packages/junior/src/**/*.ts"],
       "rules": {
         "junior/touch-conversation-detail": "error"
+      }
+    },
+    {
+      "files": ["packages/junior/src/api/**/*.ts"],
+      "rules": {
+        "junior/no-response-schema-parse": "error"
       }
     },
     {
@@ -145,7 +152,7 @@
     },
     {
       "files": [
-        "packages/junior/src/chat/cache-warming/warmup.ts",
+        "packages/junior/src/chat/cache-warming/recorder.ts",
         "packages/junior/src/chat/pi/traced-stream.ts",
         "packages/junior/src/chat/sandbox/egress/vercel.ts"
       ],

@@ -4,7 +4,7 @@ import { ArrowUp } from "lucide-react";
 import {
   useWaitingConversationsSettled,
   type WaitingConversation,
-} from "../review-desk/queries";
+} from "../inbox/queries";
 import type { Conversation } from "../types";
 import {
   buildConversationSections,

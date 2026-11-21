@@ -1,9 +1,21 @@
 import type { Locator, Page } from "@playwright/test";
+import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
-import { expandRow } from "./inbox-fixture";
+import {
+  automationAlert,
+  expandRow,
+  failedRunAlert,
+  license,
+  mockInboxItems,
+  rowHead,
+} from "./inbox-fixture";
+import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+
+// The mock Conversation whose asks include a release review and notes.
+const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -29,9 +41,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" });
     const title = row.locator('[data-inbox-slot="title"]');
@@ -53,24 +67,31 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => slots(row)).toEqual(SLOTS);
   });
 
-  test("a row's pills mark each kind by icon, and name a change once", async ({
+  test("a row's pills name each kind in words, and name a change once", async ({
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" });
-    // Each pull request ask names its change by title and number, so the
-    // icon carries the kind and the name keeps it for screen readers.
+    // Each pull request ask says its kind in short words, then names its
+    // change by title and number.
     const review = row.getByRole("button", {
       name: "Review requested #91: Pin the release train to payments 4.2",
     });
     const ready = row.getByRole("button", {
       name: "Ready to merge #2201: Update the package to 0.288.0",
     });
-    await expect(review).toHaveText("Pin the release train to payments 4.2#91");
+    await expect(review).toHaveText(
+      "ReviewPin the release train to payments 4.2#91",
+    );
+    await expect(ready).toHaveText(
+      "Ready to mergeUpdate the package to 0.288.0#2201",
+    );
     await expect(review.locator("[data-ask-kind]")).toHaveAttribute(
       "data-ask-kind",
       "Review requested",
@@ -79,19 +100,27 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-ask-kind",
       "Ready to merge",
     );
-    // The changes the pills name get no chip of their own.
-    await expect(row.locator("[data-linked-work-chip]")).toHaveText([
-      "Return 429 before parsing oversized envelopes#44",
-    ]);
+    // The changes the pills name get no chip of their own. A chip shows
+    // its number, and names its title, which shows on hover.
+    const chip = row.getByRole("link", {
+      name: "Return 429 before parsing oversized envelopes #44",
+    });
+    await expect(row.locator("[data-linked-work-chip]")).toHaveCount(1);
+    await expect(chip).toHaveAttribute("data-linked-work-chip", "");
+    await chip.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "Return 429 before parsing oversized envelopes",
+    );
 
-    // An FYI is its icon alone. To do leaves it out, so Conversations shows it.
+    // An FYI says so in words too. To do leaves it out, so Conversations
+    // shows it.
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const fyi = page
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" })
       .getByRole("button", { name: "FYI", exact: true });
     await expect(fyi).toHaveAttribute("title", "FYI");
-    await expect(fyi).toHaveText("");
+    await expect(fyi).toHaveText("FYI");
 
     // Pull requests mark their asks the same way.
     await page.goto(`${dashboard.baseURL}/?view=prs`);
@@ -104,31 +133,62 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("a row's summary shows its links as titled links", async ({
+  test("a Conversations row's summary shows its links as chips and titles", async ({
     dashboard,
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // Inbox rows name one item each, so a Conversations row shows the
+    // summary.
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          owner: { id: RELEASE_CONVERSATION_ID, kind: "conversation" },
+          rootConversationId: RELEASE_CONVERSATION_ID,
+        },
+      ],
+    });
+    // The preview holds only the first 400 chars of the message, so give
+    // the row a short one with a mention and a pull request.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{
+            conversationId: string;
+            activityPreview?: { text: string };
+          }>;
+        };
+        for (const row of feed.conversations) {
+          if (
+            row.conversationId === RELEASE_CONVERSATION_ID &&
+            row.activityPreview
+          ) {
+            row.activityPreview.text =
+              "<@U123> asks for a review of https://github.com/getsentry/payments/pull/91";
+          }
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" })
       .locator('[data-inbox-slot="summary"]');
-    // A person shows a chip. A Conversation and a pull request show their
-    // titles as plain links, also past the closed row's clamp.
+    // A person shows a chip. A pull request shows its title as a plain
+    // link, also past the closed row's clamp.
     await expect(
       summary.getByRole("link", { name: /Morgan Lee/ }).first(),
-    ).toBeVisible();
-    await expect(
-      summary.getByRole("link", { name: "Investigate checkout latency" }),
     ).toBeVisible();
     await expect(
       summary
         .getByRole("link", { name: /^Pin the release train to payments 4\.2/ })
         .first(),
     ).toBeVisible();
-    await expect(summary).not.toContainText("https://");
   });
 
   test("a row's summary keeps its paragraphs and line breaks", async ({
@@ -136,11 +196,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // In the Inbox, its two asks stack as rows; Conversations keeps the
+    // Conversation row and its summary.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
-      .getByRole("listitem")
-      .filter({ hasText: "Package release and self-update" });
+      .locator("li[data-inbox-row]")
+      .filter({ hasText: "Package release and self-update" })
+      .first();
     const paragraphs = row
       .locator('[data-inbox-slot="summary"]')
       .getByRole("paragraph");
@@ -249,7 +311,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
+        // Request the full page because this test changes it.
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONTENT_VERSION_HEADER]: "",
+          },
+        });
         const feed = (await response.json()) as {
           conversations: Array<{ displayTitle: string }>;
         };
@@ -317,15 +385,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();
     await row.locator('[data-image-tile="work"] button[data-ask-pill]').click();
     await expect(row).toHaveAttribute("data-expanded", "true");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
@@ -388,9 +458,16 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
+    // The Automations page lists the Automations of the Inbox's alerts.
+    await mockInboxItems(page, {
+      open: [
+        automationAlert("scheduled-1", "Weekly project summary"),
+        automationAlert("event-1", "Closed issue summary"),
+      ],
+    });
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
+    await page.goto(`${dashboard.baseURL}/automations`);
+    const todo = page.getByRole("region", { exact: true, name: "To do" });
     const failed = todo.getByRole("button", { name: /Weekly project summary/ });
     const blocked = todo.getByRole("button", { name: /Closed issue summary/ });
     await expect.poll(() => slots(failed)).toEqual(SLOTS);
@@ -408,9 +485,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/`);
+    // The Inbox stacks this Conversation's asks. Its Conversation row, with
+    // every ask, shows in Conversations.
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const row = page
-      .getByRole("region", { name: "To do" })
+      .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
       .first();
@@ -495,18 +574,88 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
-  test("Dismiss and Snooze put an Automation alert away until it changes or wakes", async ({
+  test("Dismiss closes an Automation alert on the server", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = automationAlert("event-1", "Closed issue summary");
+    const actions = await mockInboxItems(page, { open: [alert, license] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Dismiss" })
+      .click();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(actions).toEqual([{ body: { action: "dismiss" }, id: alert.id }]);
+    // The server closed it, so it stays closed in a new page.
+    await page.reload();
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+  });
+
+  test("a failed-run alert sends Run again to the server", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = failedRunAlert("scheduled-1", "Weekly project summary");
+    const actions = await mockInboxItems(page, { open: [alert, license] });
+    const automation = {
+      ...automationReport.automations.find(({ id }) => id === "scheduled-1")!,
+      lastRunStatus: "failed" as const,
+    };
+    await page.route("**/api/automations/scheduled-1", (route) =>
+      route.fulfill({ json: automation }),
+    );
+    await page.route("**/api/automations/scheduled-1/executions", (route) =>
+      route.fulfill({
+        json: {
+          executionDays: [],
+          executions: [
+            {
+              error: "Slack rejected the result message: channel_not_found.",
+              executedAt: "2026-08-06T16:00:00.000Z",
+              executionId: "scheduled-1-run-1",
+              status: "failed",
+            },
+          ],
+          truncated: false,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expandRow(rowHead(todo, alert.title));
+    await expect(todo.getByRole("button", { name: "Pause" })).toBeVisible();
+    // Core takes the step and reads no words, so there is no Other….
+    await expect(todo.getByRole("button", { name: "Other…" })).toHaveCount(0);
+    await expect(
+      todo.getByText("Slack rejected the result message: channel_not_found."),
+    ).toBeVisible();
+    await screenshot(page, "inbox-automation-alert-failed-run", {
+      lightTheme: true,
+    });
+    await todo.getByRole("button", { name: "Run again" }).click();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(actions).toEqual([
+      {
+        body: { action: "submit", answer: { values: { step: ["Run again"] } } },
+        id: alert.id,
+      },
+    ]);
+  });
+
+  test("an Automations card gives a failed run's error as its reason", async ({
     dashboard,
     page,
   }) => {
     const report = structuredClone(automationReport);
-    const blocked = report.automations[1]!;
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T10:00:00.000Z",
-      lastRunStatus: "blocked",
-      status: "blocked",
-      statusReason: "GitHub access expired.",
-    });
+    Object.assign(
+      report.automations.find((automation) => automation.id === "scheduled-1")!,
+      { lastRunStatus: "failed" },
+    );
     await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
       route.fulfill({
         json: mockAutomationCollection(
@@ -515,37 +664,37 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
-    await page.clock.install();
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
-    const head = todo.getByRole("button", { name: /Closed issue summary/ });
-    const attention = page.getByRole("region", {
-      name: `${blocked.title}: attention`,
+    await mockInboxItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
     });
-
-    await head.click();
-    await attention
-      .getByRole("button", { name: "Dismiss", exact: true })
+    const error = "Slack rejected the result message: channel_not_found.";
+    await page.route("**/api/automations/scheduled-1/executions", (route) =>
+      route.fulfill({
+        json: {
+          executionDays: [],
+          executions: [
+            {
+              error,
+              executedAt: "2026-08-06T16:00:00.000Z",
+              executionId: "scheduled-1-run-1",
+              status: "failed",
+            },
+          ],
+          truncated: false,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/automations`);
+    await page
+      .getByRole("region", { exact: true, name: "To do" })
+      .getByRole("button", { name: /Weekly project summary/ })
       .click();
-    await expect(head).toHaveCount(0);
-    await page.reload();
-    await expect(todo).toBeVisible();
-    await expect(head).toHaveCount(0);
-
-    // A newer failure on the same Automation is a new alert, so it shows.
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T11:00:00.000Z",
-      statusReason: "GitHub access expired again.",
+    const details = page.getByRole("region", {
+      name: "Weekly project summary: attention",
     });
-    await page.reload();
-    await expect(head).toBeVisible();
-
-    // Snooze hides it until its time.
-    await head.click();
-    await attention.getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "3 hours" }).click();
-    await expect(head).toHaveCount(0);
-    await page.clock.runFor(3 * 60 * 60 * 1000 + 1000);
-    await expect(head).toBeVisible();
+    // The header and Last run say that it failed; Why says what failed.
+    const why = details.getByRole("definition").first();
+    await expect(details.getByRole("term").first()).toHaveText("Why");
+    await expect(why).toHaveText(error);
   });
 });

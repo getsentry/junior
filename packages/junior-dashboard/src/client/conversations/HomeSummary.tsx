@@ -9,7 +9,7 @@ import { Link } from "react-router";
 import { useActorCodeData, useDashboardCoreData } from "../api";
 import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
-import { useReviewItemCountData } from "../review-desk/queries";
+import { useInboxItemCountData } from "../inbox/queries";
 import { cn } from "../styles";
 import { IdleText } from "./codeChangeIdle";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
@@ -36,13 +36,13 @@ function rollingMerges(days: CodeActivityDay[]) {
 
 /**
  * Show the viewer's last 7 days under the home composer: merges, open code
- * changes, and Review items that wait on them. Counts only code changes that
+ * changes, and Inbox items that wait on them. Counts only code changes that
  * Junior opened in Conversations that the viewer started.
  */
 export function HomeSummary() {
   const email = useDashboardCoreData().data?.me.user.email;
   const code = useActorCodeData(email);
-  const reviewCount = useReviewItemCountData(Boolean(email));
+  const reviewCount = useInboxItemCountData(Boolean(email));
   if (!email) return null;
   // Wait for both: a missing count would read as "all clear".
   if (code.isPending || reviewCount.isPending) return <HomeSummaryLoading />;
@@ -111,9 +111,9 @@ export function HomeSummary() {
               <StatusText tone="bg-amber-300">
                 <Link
                   className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                  to="/review"
+                  to="/inbox"
                 >
-                  on your Review desk
+                  in your Inbox
                 </Link>
               </StatusText>
             ) : (

@@ -8,7 +8,7 @@
  */
 import type {
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -21,7 +21,7 @@ import {
 } from "../webhooks/merge-conflict.js";
 import {
   applyGitHubConflictPolicy,
-  closeGitHubConflictNotices,
+  closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
 import {
@@ -107,7 +107,7 @@ async function checkConflict(
     log: args.log,
     now: args.now,
     ref: input.ref,
-    reviewItems: args.reviewItems,
+    inboxItems: args.inboxItems,
     title: input.title,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
@@ -147,13 +147,13 @@ async function checkRepository(
       });
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
-    await closeGitHubConflictNotices({
+    await closeGitHubConflictItems({
       db: args.db,
       log: args.log,
       numbers: mergeable,
       reason: GITHUB_CONFLICT_GONE_REASON,
       repositoryFullName,
-      reviewItems: args.reviewItems,
+      inboxItems: args.inboxItems,
       status: "done",
     });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
@@ -168,7 +168,7 @@ interface CheckArgs {
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   search: SearchOpenPullRequests;
   state: PluginState;
 }

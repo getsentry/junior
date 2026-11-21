@@ -56,7 +56,7 @@ const SCRIPT_CALL_STATUS = new Map(
 
 /**
  * The tool calls that a `codemode` script made, read from its result text
- * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * (`renderResult` in `chat/tools/codemode.ts`): a status line, `Tool calls (N):`,
  * then `<i>. <tool>: <status>` for each call, with indented notes. The
  * reporting API does not return script arguments, so the calls have no
  * `input`. A call that did not start is not a call.
@@ -117,6 +117,15 @@ export function completedToolCalls(
 ): ToolCall[] {
   return toolCallsOf(name, ...results).filter(
     (call) => call.status === "completed",
+  );
+}
+
+/** Names of the skills that completed `loadSkill` calls loaded. */
+export function loadedSkillNames(
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): unknown[] {
+  return completedToolCalls("loadSkill", ...results).map(
+    (call) => (call.input as { skill_name?: unknown } | undefined)?.skill_name,
   );
 }
 

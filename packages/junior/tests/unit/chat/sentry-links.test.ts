@@ -64,10 +64,29 @@ describe("sentry links", () => {
       projectId: "4501",
     });
 
-    const { buildSentryEventUrl } = await loadSentryLinks();
+    const { buildSentryEventUrl, formatSentryEventReference } =
+      await loadSentryLinks();
 
     expect(
       buildSentryEventUrl("0123456789abcdef0123456789abcdef"),
     ).toBeUndefined();
+    expect(formatSentryEventReference("0123456789abcdef0123456789abcdef")).toBe(
+      "`event_id=0123456789abcdef0123456789abcdef`",
+    );
+  });
+
+  it("links failure references to the Sentry event", async () => {
+    process.env["SENTRY_ORG_SLUG"] = "my-org";
+    mockSentryClient({
+      protocol: "https",
+      host: "o123.ingest.us.sentry.io",
+      projectId: "4501",
+    });
+
+    const { formatSentryEventReference } = await loadSentryLinks();
+
+    expect(formatSentryEventReference("0123456789abcdef0123456789abcdef")).toBe(
+      "[event_id=0123456789abcdef0123456789abcdef](https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef)",
+    );
   });
 });

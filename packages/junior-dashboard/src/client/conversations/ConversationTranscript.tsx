@@ -40,12 +40,6 @@ import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
-import {
-  RecalledOnReplyContext,
-  TranscriptCapturedMemories,
-  TranscriptRecalledMemories,
-} from "./TranscriptMemoryPopover";
-import { isMemoryCaptureEvent } from "./conversationMemory";
 import { TranscriptFailureView } from "./TranscriptFailureView";
 import {
   structuredEventIcon,
@@ -85,14 +79,13 @@ import {
   askRowIndex,
   defaultTranscriptRowSize,
   liveActivityIndex,
+  rowIndexBeforeSeq,
   rowIndexForSeq,
   transcriptListRows,
   transcriptRowSizeClass,
   UNREAD_MARKER_KEY,
   type TranscriptListRow,
-  type TranscriptTurnFooter,
 } from "./transcriptListRows";
-import { TranscriptTurnFooterView } from "./TranscriptTurnFooter";
 import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
@@ -121,11 +114,9 @@ const ASK_HIGHLIGHT_MS = 1_600;
 
 /**
  * Show the transcript row of a question that Junior asked. `version`
- * changes on each request, so the same question can show again. `arrived`
- * means the question came by itself, not by an action of the reader.
+ * changes on each request, so the same question can show again.
  */
 export type TranscriptAskReveal = {
-  arrived: boolean;
   itemId: string;
   version: number;
 };
@@ -133,7 +124,7 @@ export type TranscriptAskReveal = {
 /** The current ask request, and the scroll owner that shows its row. */
 export const TranscriptAskRevealContext = createContext<
   | (TranscriptAskReveal & {
-      showRow(row: Element, options: { arrived: boolean }): boolean;
+      showRow(row: Element): boolean;
     })
   | undefined
 >(undefined);
@@ -385,13 +376,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       renderMessage={(entry, footer) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
-          <div className="grid min-w-0 gap-2">
-            <TranscriptAutomationTriggerView
-              message={entry.message}
-              sourceTask={props.conversation.sourceTask}
-            />
-            <TranscriptRecalledMemories message={entry.message} />
-          </div>
+          <TranscriptAutomationTriggerView
+            message={entry.message}
+            sourceTask={props.conversation.sourceTask}
+          />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
@@ -402,20 +390,12 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
               message={entry.message}
               openKey={entry.key}
             />
-            <TranscriptRecalledMemories
-              className="mt-1"
-              message={entry.message}
-            />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">
             <TranscriptMessageContextView
               message={entry.message}
               conversation={props.conversation}
-            />
-            <TranscriptRecalledMemories
-              className="mt-2"
-              message={entry.message}
             />
           </TranscriptRailEvent>
         ) : (
@@ -438,23 +418,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           icon={structuredEventIcon(entry.part.presentation.icon)}
           kind="structured_event"
         >
-          {isMemoryCaptureEvent(entry.part) ? (
-            <TranscriptCapturedMemories
-              fallback={
-                <TranscriptStructuredEventView
-                  part={entry.part}
-                  timestamp={entry.timestamp}
-                />
-              }
-              timestamp={entry.timestamp}
-              turnId={entry.part.turnId}
-            />
-          ) : (
-            <TranscriptStructuredEventView
-              part={entry.part}
-              timestamp={entry.timestamp}
-            />
-          )}
+          <TranscriptStructuredEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
         </TranscriptRailEvent>
       )}
       renderThread={renderThreadEntry}
@@ -484,7 +451,7 @@ type TranscriptEntryRenderers = {
   ) => ReactNode;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
-  /** `footer` goes under the message text, such as the Turn's memories and Tasks. */
+  /** `footer` goes under the message text, such as the Turn's Tasks. */
   renderMessage: (
     entry: TranscriptMessageEntry,
     footer?: ReactNode,
@@ -508,8 +475,6 @@ function TranscriptEntryList(
     TranscriptListPlacement & {
       entries: TranscriptEntry[];
       keyPrefix: string;
-      /** The history is redacted, so memories show only their titles. */
-      redacted?: boolean;
       /** A Turn is running, so the list ends with its progress. */
       responding?: boolean | undefined;
       unread?: TranscriptUnreadRange | undefined;
@@ -535,17 +500,6 @@ function TranscriptEntryList(
   );
   const indexByKey = useMemo(
     () => new Map(rows.map((row, index) => [row.key, index])),
-    [rows],
-  );
-  const recalledOnReply = useMemo(
-    () =>
-      new Set(
-        rows.flatMap((row) =>
-          row.kind === "entry" && row.footer?.prompt
-            ? [row.footer.prompt.message]
-            : [],
-        ),
-      ),
     [rows],
   );
   const matchCount = searchQuery === undefined ? 0 : rows.length;
@@ -611,10 +565,10 @@ function TranscriptEntryList(
     // Wait until the record is in the DOM, so the scroll sees its place.
     const show = () => {
       const row = list.querySelector(`[data-index="${askIndex}"]`);
-      const record = row?.querySelector("[data-review-item-ask]");
+      const record = row?.querySelector("[data-inbox-item-ask]");
       if (!row || !record) return false;
       shownAskVersion.current = askReveal.version;
-      if (!askReveal.showRow(row, { arrived: askReveal.arrived })) return true;
+      if (!askReveal.showRow(row)) return true;
       const previous = askHighlight.current;
       if (previous) {
         window.clearTimeout(previous.timer);
@@ -645,15 +599,11 @@ function TranscriptEntryList(
   );
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
-  // A memory row can sit at its event or on the message before it.
+  // A revealed event can sit in its row or in the row before it.
   const revealIndex =
     props.revealSeq === undefined
       ? undefined
       : rowIndexForSeq(rows, props.revealSeq);
-  // A Turn's memories show under its reply, which can come after the row of
-  // the memory event.
-  const revealFooterIndex =
-    revealIndex === undefined ? undefined : footerRowIndex(rows, revealIndex);
   const virtualizer = useVirtualRows({
     count: rows.length,
     defaultSize: (sizeClass) =>
@@ -669,7 +619,10 @@ function TranscriptEntryList(
       markerIndex === undefined ? undefined : markerIndex + 1,
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
-      revealFooterIndex,
+      // A memory event has no row. Go to message shows its Turn's row.
+      props.revealSeq === undefined
+        ? undefined
+        : rowIndexBeforeSeq(rows, props.revealSeq),
       matchCount === 0 ? undefined : match,
       askIndex,
     ],
@@ -681,7 +634,6 @@ function TranscriptEntryList(
   useLayoutEffect(() => visibleRows.set(virtualizer.range));
   // Rows render again only when the renderers change, not on each scroll.
   const {
-    redacted,
     renderAttachmentsDelivered,
     renderContext,
     renderFailure,
@@ -693,7 +645,7 @@ function TranscriptEntryList(
     renderTool,
   } = props;
   const renderEntry = useCallback(
-    (entry: TranscriptEntry, footer?: TranscriptTurnFooter): ReactNode => {
+    (entry: TranscriptEntry, tasks?: TranscriptSubagentEntry[]): ReactNode => {
       // Only a Thread has an entry row. Tasks come under a reply or as a
       // Tasks row.
       if (entry.kind === "subagent") return renderThread(entry);
@@ -707,19 +659,9 @@ function TranscriptEntryList(
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
       if (entry.kind === "tool") return renderTool(entry);
-      return renderMessage(
-        entry,
-        footer ? (
-          <TranscriptTurnFooterView
-            footer={footer}
-            redacted={redacted}
-            tasks={renderTasks(footer.tasks)}
-          />
-        ) : undefined,
-      );
+      return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [
-      redacted,
       renderAttachmentsDelivered,
       renderContext,
       renderFailure,
@@ -754,44 +696,30 @@ function TranscriptEntryList(
     <TranscriptAnswerLinks value={answerLinks}>
       <TranscriptOpenRows value={openRows}>
         <TranscriptReplyRatings value={replyRatings}>
-          <RecalledOnReplyContext value={recalledOnReply}>
-            <div
-              className="relative min-w-0"
-              ref={listRef}
-              style={{ height: virtualizer.getTotalSize() }}
-            >
-              {virtualizer.getVirtualItems().map((item) => (
-                <VirtualTranscriptRow
-                  current={matchCount > 0 && item.index === match}
-                  index={item.index}
-                  key={item.key}
-                  live={item.index === liveIndex}
-                  measure={virtualizer.measureElement}
-                  offset={item.start - virtualizer.options.scrollMargin}
-                  renderEntry={renderEntry}
-                  renderTasks={renderTasks}
-                  row={rows[item.index]!}
-                />
-              ))}
-            </div>
-          </RecalledOnReplyContext>
+          <div
+            className="relative min-w-0"
+            ref={listRef}
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((item) => (
+              <VirtualTranscriptRow
+                current={matchCount > 0 && item.index === match}
+                index={item.index}
+                key={item.key}
+                live={item.index === liveIndex}
+                measure={virtualizer.measureElement}
+                offset={item.start - virtualizer.options.scrollMargin}
+                renderEntry={renderEntry}
+                renderTasks={renderTasks}
+                row={rows[item.index]!}
+              />
+            ))}
+          </div>
         </TranscriptReplyRatings>
       </TranscriptOpenRows>
       {thinking}
     </TranscriptAnswerLinks>
   );
-}
-
-/** Find the first row from `start` with a Turn footer under its reply. */
-function footerRowIndex(
-  rows: readonly TranscriptListRow[],
-  start: number,
-): number | undefined {
-  for (let index = start; index < rows.length; index += 1) {
-    const row = rows[index]!;
-    if (row.kind === "entry" && row.footer) return index;
-  }
-  return undefined;
 }
 
 /** Where the list keeps rows mounted outside the viewport. */
@@ -816,7 +744,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   offset: number;
   renderEntry: (
     entry: TranscriptEntry,
-    footer?: TranscriptTurnFooter,
+    tasks?: TranscriptSubagentEntry[],
   ) => ReactNode;
   renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
@@ -850,7 +778,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderEntry(row.entry, row.footer)}
+          {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
@@ -875,7 +803,6 @@ function RedactedTranscriptView(
       entries={groupTranscriptMessages(props.messages)}
       key={props.conversation.conversationId}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
-      redacted
       responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}

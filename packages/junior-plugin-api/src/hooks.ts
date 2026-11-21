@@ -39,6 +39,7 @@ import type {
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
 } from "./tools";
+import type { InboxItemAnsweredHookContext } from "./inbox-items";
 import type {
   PromptMessage,
   SystemPromptContext,
@@ -150,6 +151,12 @@ export interface PluginHooks {
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
+  /**
+   * Do the work that a person asked for with a choice on an item that this
+   * plugin added. Junior calls it again when the person retries after a
+   * failure, so it must be safe to repeat.
+   */
+  inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;

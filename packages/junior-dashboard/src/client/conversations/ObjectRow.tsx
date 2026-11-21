@@ -6,8 +6,10 @@ import {
 import { CircleAlert } from "lucide-react";
 
 import { ActorAvatar } from "../components/ActorAvatar";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
+import { SameTabLink } from "../components/SameTabLink";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
@@ -73,16 +75,14 @@ export function ObjectRow(props: {
       <div className="flex min-w-0 flex-1 flex-col">
         {card.url ? (
           // No outbound icon: the row itself reads as a link to the source.
-          <a
+          <SameTabLink
             // The link covers the row, so the whole row opens the source.
             className="min-w-0 truncate font-medium text-dashboard-text no-underline after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-dashboard-focus"
             href={card.url}
-            rel="noreferrer"
-            target="_blank"
             title={card.title}
           >
             {card.title}
-          </a>
+          </SameTabLink>
         ) : (
           <span
             className="min-w-0 truncate font-medium text-dashboard-text"
@@ -91,8 +91,13 @@ export function ObjectRow(props: {
             {card.title}
           </span>
         )}
-        <span className="min-w-0 truncate text-xs text-dashboard-text-faint">
-          {reference}
+        <span className="flex min-w-0 items-baseline gap-1.5 text-xs text-dashboard-text-faint">
+          <span className="min-w-0 truncate">{reference}</span>
+          {/* Above the row's link, so a pointer gets the exact counts. */}
+          <ChangeSize
+            className="relative"
+            size={card.facts?.type === "code_change" ? card.facts : undefined}
+          />
         </span>
       </div>
       {card.warning ? (
