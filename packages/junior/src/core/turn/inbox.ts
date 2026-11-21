@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import type { UserMessage } from "@earendil-works/pi-ai";
 import { and, asc, eq, notExists, sql } from "drizzle-orm";
+import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
@@ -79,8 +80,12 @@ export type UnreadInput = Pick<
   traceContext: TurnInputTraceContext | null;
 };
 
-/** An unread input as the user message that a step reads. */
-export type InputMessage = { inputId: string; message: UserMessage };
+/** An unread input as the user message that a step reads, and its provenance. */
+export type InputMessage = {
+  inputId: string;
+  message: UserMessage;
+  provenance: ConversationMessageProvenance;
+};
 
 /** The idempotency key of the history event that reads an input. */
 export function inputEventKey(inputId: string): string {
