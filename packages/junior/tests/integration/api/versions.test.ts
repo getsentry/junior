@@ -1,5 +1,5 @@
 import { and, eq, max } from "drizzle-orm";
-import { expectSqlBudget } from "../../fixtures/sql-budget";
+import { expectNoFullScan, expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -471,10 +471,12 @@ describe("versions API", () => {
         )
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
-      statements: 1,
-      serialRounds: 1,
-    });
+    const first = await expectNoFullScan(() =>
+      expectSqlBudget(() => readVersions(app, onScreen), {
+        statements: 1,
+        serialRounds: 1,
+      }),
+    );
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.
     expect(first.conversationDetails).toEqual({
