@@ -64,6 +64,24 @@ describe("Coding File Tools", () => {
     ).not.toHaveLength(0);
   });
 
+  test("when asked for a document to keep, save it under the artifacts directory", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "Write a short markdown checklist for reviewing a database migration, as a file I can come back to in later turns.",
+      ),
+    );
+
+    expect(
+      ["bash", "editFile", "writeFile"]
+        .flatMap((name) => completedToolCalls(name, conversation))
+        .filter((call) =>
+          JSON.stringify(call.input).includes("/vercel/sandbox/artifacts/"),
+        ),
+    ).not.toHaveLength(0);
+  });
+
   test("when comparing fixture behavior, cite the relevant files and leave them unchanged", async ({
     run,
   }) => {
