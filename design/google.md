@@ -39,8 +39,9 @@ Workspace account, so the user connects nothing.
   domains.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
-- Google gets a Sandbox image for a presentation from a public artifact
-  that stops serving within 5 minutes. The URL that the deck keeps opens
+- Google gets a Sandbox image for a presentation from its own public
+  artifact, which Junior unpublishes when the edit ends and which stops
+  serving within 5 minutes either way. The URL that the deck keeps opens
   nothing after that. An install that cannot publish artifacts inserts no
   Sandbox image. No read returns an image's saved URL to the model.
 - Junior reads a file or its comments only for a requester who can open it

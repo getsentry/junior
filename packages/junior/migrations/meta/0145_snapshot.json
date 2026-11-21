@@ -1,5 +1,5 @@
 {
-  "id": "50a6b717-fdce-4455-8068-38f6fbda40da",
+  "id": "a1574245-9089-4ee3-ab30-8026df47fc4d",
   "prevId": "a9c89fe6-259a-465c-a8e0-0815e4aeab77",
   "version": "7",
   "dialect": "postgresql",
@@ -517,28 +517,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_artifacts_public_sha_uidx": {
-          "name": "junior_artifacts_public_sha_uidx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sha256",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_artifacts\".\"visibility\" = 'public'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -375,20 +375,29 @@ describe("Google Slides tools", () => {
       requests,
       revision_id: "rev-1",
     });
-    /** Artifacts that record each published image. */
-    const fakeArtifacts = (options: { fail?: boolean } = {}) => {
+    /** Artifacts that record each published and unpublished image. */
+    const fakeArtifacts = (
+      options: { failAfter?: number; failUnpublish?: boolean } = {},
+    ) => {
       const published: Array<{ body: Uint8Array; expiresInMs?: number }> = [];
+      const unpublished: string[] = [];
       const artifacts: PluginArtifacts = {
         async publishImage(image) {
-          if (options.fail) throw new PluginToolInputError("image is empty");
+          if (published.length === options.failAfter) {
+            throw new PluginToolInputError("image is empty");
+          }
           published.push(image);
           return {
             expiresAt: "2026-11-21T12:05:00.000Z",
             url: `https://junior.example/public/artifacts/${published.length}.png`,
           };
         },
+        async unpublishImage(url) {
+          if (options.failUnpublish) throw new Error("database is down");
+          unpublished.push(url);
+        },
       };
-      return { artifacts, published };
+      return { artifacts, published, unpublished };
     };
 
     it("inserts a sandbox image from a public artifact that expires within 5 minutes", async () => {
@@ -440,6 +449,8 @@ describe("Google Slides tools", () => {
         ],
         writeControl: { requiredRevisionId: "rev-1" },
       });
+      // Google has fetched the image, so its URL stops serving now.
+      expect(store.unpublished).toEqual([url]);
     });
 
     it("refuses a bad image or an install without artifacts before publishing anything or editing", async () => {
@@ -510,22 +521,76 @@ describe("Google Slides tools", () => {
       expect(store.published).toEqual([]);
 
       // The artifact store's own refusal, such as its size limit, reaches
-      // the model before any edit.
-      const failing = fakeArtifacts({ fail: true });
+      // the model before any edit, and an image already published stops
+      // serving.
+      const failing = fakeArtifacts({ failAfter: 1 });
       const tools = slidesTools(
         [deckFile(), editor()],
         0,
         [DECK_ID],
-        { [GRID]: GRID_PNG },
+        { [GRID]: GRID_PNG, [PHOTO]: GRID_PNG },
         failing.artifacts,
       );
       await expect(
-        tools.call("updateGoogleSlides", input([createGrid])),
+        tools.call(
+          "updateGoogleSlides",
+          input([
+            createGrid,
+            { createImage: { ...createGrid.createImage, url: PHOTO } },
+          ]),
+        ),
       ).rejects.toThrow("image is empty");
+      expect(failing.unpublished).toEqual([
+        "https://junior.example/public/artifacts/1.png",
+      ]);
       expect((await tools.calls()).map((item) => item.operation)).toEqual([
         "google.drive.file.get",
         "google.drive.permissions.list",
       ]);
+    });
+
+    it("unpublishes when the edit fails, and applies the edit when an unpublish fails, because the URL expires anyway", async () => {
+      const refused = fakeArtifacts();
+      await expect(
+        slidesTools(
+          [
+            deckFile(),
+            editor(),
+            Response.json(
+              {
+                error: {
+                  message:
+                    "Invalid requests[0].createImage: Access to the provided image was forbidden.",
+                },
+              },
+              { status: 400 },
+            ),
+          ],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          refused.artifacts,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("Access to the provided image was forbidden.");
+      expect(refused.unpublished).toHaveLength(1);
+
+      await expect(
+        slidesTools(
+          [
+            deckFile(),
+            editor(),
+            Response.json({
+              replies: [{}],
+              writeControl: { requiredRevisionId: "rev-2" },
+            }),
+            checkedDeck({ objectId: "s1" }),
+          ],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          fakeArtifacts({ failUnpublish: true }).artifacts,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
     });
   });
 

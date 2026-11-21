@@ -75,15 +75,19 @@ async function readImage(
 }
 
 /**
- * Return the requests after each sandbox path used as an image url is
- * replaced by the URL of a public artifact that expires within minutes.
+ * Replace each sandbox path used as an image url by the URL of a public
+ * artifact that expires within minutes. Call `unpublish` once Google has
+ * fetched the images.
  */
-export async function withSandboxImageUrls(
+export async function publishSandboxImages(
   ctx: GoogleToolContext,
   requests: Array<Record<string, unknown>>,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<{
+  requests: Array<Record<string, unknown>>;
+  unpublish: () => Promise<void>;
+}> {
   const paths = sandboxImagePaths(requests);
-  if (paths.length === 0) return requests;
+  if (paths.length === 0) return { requests, unpublish: async () => {} };
   const { artifacts } = ctx;
   if (!artifacts) {
     throw new PluginToolInputError(
@@ -94,22 +98,43 @@ export async function withSandboxImageUrls(
   // Check every image before any is published, so a bad path publishes
   // nothing.
   const images = await limit.map(paths, (path) => readImage(ctx, path));
-  const urls = new Map(
-    await limit.map(paths, async (path, index) => {
+  const urls = new Map<string, string>();
+  // Each URL stops serving at its expiry whether or not this runs, so a
+  // failed unpublish exposes nothing past the expiry and is not an error.
+  const unpublish = async () => {
+    await limit.map([...urls.values()], (url) =>
+      artifacts.unpublishImage(url).catch(() => undefined),
+    );
+  };
+  // Wait for every publish, even after one fails, so that each published
+  // URL is on `urls` before the unpublish starts.
+  const published = await limit.map(paths, async (path, index) => {
+    try {
       // The checked bytes are the bytes that Google gets.
       const { url } = await artifacts.publishImage({
         body: images[index]!,
         expiresInMs: IMAGE_URL_TTL_MS,
       });
-      return [path, url] as const;
-    }),
-  );
-  return requests.map((request) => {
-    const image = sandboxImage(request);
-    return image
-      ? { [image.kind]: { ...image.body, url: urls.get(image.path) } }
-      : request;
+      urls.set(path, url);
+      return undefined;
+    } catch (error) {
+      return { error };
+    }
   });
+  const failed = published.find((result) => result !== undefined);
+  if (failed) {
+    await unpublish();
+    throw failed.error;
+  }
+  return {
+    requests: requests.map((request) => {
+      const image = sandboxImage(request);
+      return image
+        ? { [image.kind]: { ...image.body, url: urls.get(image.path) } }
+        : request;
+    }),
+    unpublish,
+  };
 }
 
 /**

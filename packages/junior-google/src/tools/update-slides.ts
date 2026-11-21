@@ -12,8 +12,8 @@ import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
 import type { GoogleToolContext } from "../google-api";
 import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
 import {
+  publishSandboxImages,
   sandboxImagePaths,
-  withSandboxImageUrls,
 } from "../slides/sandbox-images";
 import {
   presentationReferenceSchema,
@@ -272,9 +272,10 @@ export const updateGoogleSlidesTool = definePluginTool({
     );
     requireMeaningfulRequests(input.requests);
     await requireReadableSources(ctx, input.requests);
-    const response = await googleFileRequest(ctx, file.ref, {
+    const images = await publishSandboxImages(ctx, input.requests);
+    const batchUpdate = googleFileRequest(ctx, file.ref, {
       body: {
-        requests: await withSandboxImageUrls(ctx, input.requests),
+        requests: images.requests,
         writeControl: { requiredRevisionId: input.revision_id },
       },
       editable: file,
@@ -293,6 +294,13 @@ export const updateGoogleSlidesTool = definePluginTool({
       }
       throw error;
     });
+    let response: Awaited<typeof batchUpdate>;
+    try {
+      response = await batchUpdate;
+    } finally {
+      // Google has fetched each image by the time batchUpdate returns.
+      await images.unpublish();
+    }
     const after = revisionAfterUpdate(response.body);
     const { replies } = replySchema.parse(response.body);
     // The edit has applied, so a failed read must not look like a failed

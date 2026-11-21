@@ -1,6 +1,6 @@
 import type { PluginArtifacts } from "@sentry/junior-plugin-api";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { publishImage } from "@/chat/artifacts/store";
+import { publishImage, unpublishArtifact } from "@/chat/artifacts/store";
 import { getSqlExecutor } from "@/chat/db";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 
@@ -34,6 +34,13 @@ export function createPluginArtifacts(
           ? { expiresAt: image.expiresAt.toISOString() }
           : undefined),
       };
+    },
+    async unpublishImage(url) {
+      await unpublishArtifact({
+        conversationId,
+        db: getSqlExecutor(),
+        ref: url,
+      });
     },
   };
 }

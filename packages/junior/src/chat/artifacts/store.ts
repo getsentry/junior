@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import {
   detectImageMediaType,
   type InputImageType,
@@ -114,21 +114,26 @@ export async function publishImage(args: {
   const sha256 = createHash("sha256").update(args.body).digest("hex");
   const now = args.now ?? new Date();
 
-  const [existing] = await args.db
-    .db()
-    .select({
-      id: juniorArtifacts.id,
-    })
-    .from(juniorArtifacts)
-    .where(
-      and(
-        eq(juniorArtifacts.conversationId, args.conversationId),
-        eq(juniorArtifacts.sha256, sha256),
-        eq(juniorArtifacts.visibility, "public"),
-      ),
-    );
+  // One public id per conversation+bytes for artifacts that do not expire.
+  // An expiring artifact gets its own id, so no URL that serves longer ever
+  // shares its row. Other conversations get their own id.
+  const [existing] = args.expiresAt
+    ? []
+    : await args.db
+        .db()
+        .select({
+          id: juniorArtifacts.id,
+        })
+        .from(juniorArtifacts)
+        .where(
+          and(
+            eq(juniorArtifacts.conversationId, args.conversationId),
+            eq(juniorArtifacts.sha256, sha256),
+            eq(juniorArtifacts.visibility, "public"),
+            isNull(juniorArtifacts.expiresAt),
+          ),
+        );
 
-  // One public id per conversation+bytes. Other conversations get their own id.
   const id = existing?.id ?? randomUUID();
   const filename = `${id}.${extension}`;
   const storageKey = artifactKey(filename);
@@ -140,53 +145,48 @@ export async function publishImage(args: {
     key: storageKey,
   });
 
-  // Unique on (conversation_id, sha256) among public rows. Conflict keeps the
-  // existing public id.
-  const [row] = await args.db
-    .db()
-    .insert(juniorArtifacts)
-    .values({
-      bytes: args.body.byteLength,
-      contentType,
-      conversationId: args.conversationId,
-      createdAt: now,
-      deleteRequestedAt: null,
-      expiresAt: args.expiresAt ?? null,
-      ext: extension,
-      id,
-      sha256,
-      storageKey,
-      visibility: "public",
-    })
-    .onConflictDoUpdate({
-      target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
-      targetWhere: eq(juniorArtifacts.visibility, "public"),
-      set: {
-        bytes: args.body.byteLength,
-        contentType,
-        deleteRequestedAt: null,
-        // A row that no longer serves takes the new expiry. A live row keeps
-        // the later one, and no expiry beats both, so publishing the same
-        // bytes again never cuts short a URL that is already out.
-        expiresAt: sql`case
-          when ${juniorArtifacts.deleteRequestedAt} is not null
-            or ${juniorArtifacts.expiresAt} <= ${now.toISOString()}::timestamptz
-            then excluded.expires_at
-          when ${juniorArtifacts.expiresAt} is null
-            or excluded.expires_at is null
-            then null
-          else greatest(${juniorArtifacts.expiresAt}, excluded.expires_at)
-        end`,
-        ext: extension,
-        // Keep the winning row's id/storage key. A raced put may leave an
-        // unused object; that is fine for mvp.
-      },
-    })
-    .returning({
-      expiresAt: juniorArtifacts.expiresAt,
-      ext: juniorArtifacts.ext,
-      id: juniorArtifacts.id,
-    });
+  const values = {
+    bytes: args.body.byteLength,
+    contentType,
+    conversationId: args.conversationId,
+    createdAt: now,
+    deleteRequestedAt: null,
+    expiresAt: args.expiresAt ?? null,
+    ext: extension,
+    id,
+    sha256,
+    storageKey,
+    visibility: "public" as const,
+  };
+  const returning = { ext: juniorArtifacts.ext, id: juniorArtifacts.id };
+  const [row] = args.expiresAt
+    ? await args.db
+        .db()
+        .insert(juniorArtifacts)
+        .values(values)
+        .returning(returning)
+    : // Unique on (conversation_id, sha256) among public rows that do not
+      // expire. Conflict keeps the existing public id.
+      await args.db
+        .db()
+        .insert(juniorArtifacts)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
+          targetWhere: and(
+            eq(juniorArtifacts.visibility, "public"),
+            isNull(juniorArtifacts.expiresAt),
+          ),
+          set: {
+            bytes: args.body.byteLength,
+            contentType,
+            deleteRequestedAt: null,
+            ext: extension,
+            // Keep the winning row's id/storage key. A raced put may leave an
+            // unused object; that is fine for mvp.
+          },
+        })
+        .returning(returning);
 
   if (!row) {
     throw new Error("failed to publish artifact row");
@@ -195,7 +195,7 @@ export async function publishImage(args: {
   return {
     bytes: args.body.byteLength,
     contentType,
-    expiresAt: row.expiresAt,
+    expiresAt: args.expiresAt ?? null,
     url: `${baseUrl}/public/artifacts/${row.id}.${row.ext}`,
   };
 }

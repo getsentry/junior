@@ -118,6 +118,8 @@ export interface PluginArtifacts {
     /** ISO time when the URL stops serving. Absent when it does not expire. */
     expiresAt?: string;
   }>;
+  /** Stop serving an image that this conversation published, by its URL. */
+  unpublishImage(url: string): Promise<void>;
 }
 
 export const pluginToolContentSchema = z.discriminatedUnion("type", [
