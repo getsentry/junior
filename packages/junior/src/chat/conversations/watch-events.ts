@@ -15,7 +15,8 @@ import {
   CORE_EVENT_NAMESPACE,
   type EventRegistrationInput,
 } from "@/chat/events/catalog";
-import { canReadConversation } from "@/chat/conversations/event-access";
+import { canReadConversation } from "@/api/conversations/access";
+import { getDb } from "@/chat/db";
 import { findMatchingWatches } from "@/chat/events/store";
 import { logException } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -161,7 +162,11 @@ export async function publishConversationStatus(
     const { ingestEvent } = await import("@/chat/events/ingest");
     await ingestEvent(event, {
       admit: async (watch) =>
-        await canReadConversation(watch.conversationId, conversationId),
+        await canReadConversation(
+          getDb(),
+          watch.conversationId,
+          conversationId,
+        ),
       nowMs,
       queue: options.queue,
       state: options.state,

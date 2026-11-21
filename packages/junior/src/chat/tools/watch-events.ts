@@ -11,7 +11,8 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { canReadConversation } from "@/chat/conversations/event-access";
+import { canReadConversation } from "@/api/conversations/access";
+import { getDb } from "@/chat/db";
 import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
@@ -120,7 +121,9 @@ async function requireWatchableConversation(
   watcherConversationId: string,
   conversationId: string,
 ): Promise<void> {
-  if (!(await canReadConversation(watcherConversationId, conversationId))) {
+  if (
+    !(await canReadConversation(getDb(), watcherConversationId, conversationId))
+  ) {
     throw new ToolInputError(
       `Conversation is not accessible: ${conversationId}`,
     );

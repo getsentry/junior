@@ -4,37 +4,11 @@
  * always readable. Other Conversations are readable when they are public or
  * at the same Destination as the current one.
  */
-import {
-  canAccessConversation,
-  readConversationAccessFromSql,
-} from "@/api/conversations/access";
+import { canReadConversation } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationStore, getDb } from "@/chat/db";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-
-/**
- * Whether work in `requesterConversationId` may read `conversationId`. A
- * missing target is not readable. A requester that is not stored yet
- * reaches only public targets.
- */
-export async function canReadConversation(
-  requesterConversationId: string,
-  conversationId: string,
-): Promise<boolean> {
-  const access = await readConversationAccessFromSql(getDb(), [
-    requesterConversationId,
-    conversationId,
-  ]);
-  const target = access.get(conversationId);
-  return (
-    target !== undefined &&
-    canAccessConversation({
-      requester: access.get(requesterConversationId) ?? { visibility: null },
-      target,
-    })
-  );
-}
 
 /**
  * Throw a repairable tool error unless the active context may read the event
@@ -49,7 +23,7 @@ export async function assertCanReadConversationEvents(
     `Conversation events are not accessible: ${conversationId}`,
   );
   const [readable, target] = await Promise.all([
-    canReadConversation(context.conversationId, conversationId),
+    canReadConversation(getDb(), context.conversationId, conversationId),
     getConversationStore().get({ conversationId }),
   ]);
   if (!readable || !target) {
