@@ -1,5 +1,9 @@
 import { and, eq, max } from "drizzle-orm";
-import { expectSqlBudget } from "../../fixtures/sql-budget";
+import {
+  expectNoFullScan,
+  expectPlanCost,
+  expectSqlBudget,
+} from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -131,12 +135,18 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await expectSqlBudget(() => read(), {
-      statements: 1,
-      serialRounds: 1,
-    });
+    const first = await expectPlanCost(
+      () =>
+        expectSqlBudget(() => read(), {
+          statements: 1,
+          serialRounds: 1,
+        }),
+      2_500,
+    );
     expect(await read()).toEqual(first);
-    expect(await detailVersion()).toBe(first.conversation);
+    expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
+      first.conversation,
+    );
     // A Conversation that does not exist has no token.
     expect(
       (await read("slack:CVERSIONS:missing")).conversation,
@@ -471,10 +481,16 @@ describe("versions API", () => {
         )
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
-      statements: 1,
-      serialRounds: 1,
-    });
+    const first = await expectPlanCost(
+      () =>
+        expectNoFullScan(() =>
+          expectSqlBudget(() => readVersions(app, onScreen), {
+            statements: 1,
+            serialRounds: 1,
+          }),
+        ),
+      5_000,
+    );
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.
     expect(first.conversationDetails).toEqual({

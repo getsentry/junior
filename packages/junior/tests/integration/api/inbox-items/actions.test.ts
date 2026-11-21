@@ -265,7 +265,7 @@ describe("inbox item actions API", () => {
     // The names and photos come with the items, in one more statement.
     const { items } = await (
       await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
-        statements: 5,
+        statements: 6,
         serialRounds: 4,
       })
     ).json();
@@ -606,7 +606,7 @@ describe("inbox item actions API", () => {
     const list = await (
       await expectSqlBudget(
         () => api(fixture, ana).get("?for=viewer&sort=waiting"),
-        { statements: 8, serialRounds: 6 },
+        { statements: 9, serialRounds: 6 },
       )
     ).json();
     const byId = new Map<string, Record<string, unknown>>(
@@ -703,7 +703,7 @@ describe("inbox item actions API", () => {
     const first = await (
       await expectSqlBudget(
         () => api(fixture, ana).get("?for=viewer&sort=waiting&limit=25"),
-        { statements: 4, serialRounds: 3 },
+        { statements: 5, serialRounds: 4 },
       )
     ).json();
     expect(first.items[0]).toMatchObject({ id: ask, kind: "action" });

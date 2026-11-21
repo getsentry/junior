@@ -9,6 +9,7 @@ import {
   failedRunAlert,
   license,
   mockInboxItems,
+  rollout,
   rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
@@ -565,6 +566,30 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       await expect(row.getByLabel(/^Linked work, newest first/)).toHaveCount(0);
     }
+  });
+
+  test("a question row with no main step ends its hover actions with Expand", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [rollout, license] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, rollout.title);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await head.hover();
+    const names = await row
+      .locator('[data-inbox-slot="meta"] :is(a, button)')
+      .evaluateAll((nodes) =>
+        nodes.map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+        ),
+      );
+    expect(names[0]).toBe("Dismiss");
+    expect(names.at(-1)).toBe("Expand");
+    await row.getByRole("button", { exact: true, name: "Expand" }).click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
   });
 
   test("Dismiss closes an Automation alert on the server", async ({
