@@ -1,4 +1,5 @@
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
@@ -178,6 +179,8 @@ export function createGitHubWebhookRoute(args: {
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
   /** Logins from the `trustedAuthors` plugin option. */
   trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
@@ -359,6 +362,8 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
+              responses: args.state,
+              tokens: args.tokens,
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
@@ -453,15 +458,18 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      const env = {
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        privateKeyEnv: args.privateKeyEnv,
+        responses: args.state,
+        tokens: args.tokens,
+      };
       await syncGitHubPullRequestActions({
         botEmail,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         reviewItems: args.reviewItems,
@@ -471,11 +479,7 @@ export function createGitHubWebhookRoute(args: {
         body,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         eventName,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
