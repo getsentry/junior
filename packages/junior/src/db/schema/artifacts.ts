@@ -58,7 +58,7 @@ export const juniorArtifacts = pgTable(
     // One URL per conversation and bytes for artifacts that do not expire.
     // An expiring artifact always gets its own row, so its expiry is never
     // shared with a URL that serves longer.
-    uniqueIndex("junior_artifacts_public_sha_uidx")
+    uniqueIndex("junior_artifacts_permanent_sha_uidx")
       .on(table.conversationId, table.sha256)
       .where(
         sql`${table.visibility} = 'public' and ${table.expiresAt} is null`,

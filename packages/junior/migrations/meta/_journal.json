@@ -1027,15 +1027,22 @@
     {
       "idx": 146,
       "version": "7",
-      "when": 1795286163936,
+      "when": 1795286465669,
       "tag": "0146_artifact_expiry",
       "breakpoints": true
     },
     {
       "idx": 147,
       "version": "7",
-      "when": 1795286165535,
-      "tag": "0147_artifact_expiry_index",
+      "when": 1795286467576,
+      "tag": "0147_artifact_permanent_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1795286469457,
+      "tag": "0148_artifact_drop_public_sha_index",
       "breakpoints": true
     }
   ]
