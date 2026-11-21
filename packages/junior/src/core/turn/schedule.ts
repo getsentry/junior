@@ -4,12 +4,14 @@
 // can reach a worker that does not see the Turn yet: the claim finds nothing,
 // the message is acknowledged, and the Turn never runs. The caller's
 // `assignTurn` picks which Turn takes the input.
+import { randomUUID } from "node:crypto";
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
-import { addInput, findInputTurn, type TurnInput } from "@/core/turn/inbox";
+import { findInputTurn, type TurnInput } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { createTurn, findOpenTurn, type Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorTurnInbox } from "@/db/schema";
 
 /**
  * A `TurnInput` with the kind of the Source that sent it. A Turn that the
@@ -35,6 +37,18 @@ type ScheduleOptions = {
 };
 
 type Placement = ScheduleResult & { publish: boolean };
+
+// Not exported: scheduleInput is the only writer, so every input row is
+// written under the Conversation lock.
+async function addInput(
+  executor: JuniorSqlDatabase,
+  input: TurnInput & { turnId: string },
+): Promise<void> {
+  await executor
+    .db()
+    .insert(juniorTurnInbox)
+    .values({ ...input, id: randomUUID() });
+}
 
 async function placeInput(
   executor: JuniorSqlDatabase,
