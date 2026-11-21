@@ -18,6 +18,7 @@ import type {
   OwnedObjectAnnotation,
   InboxItemActionBody,
   InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
@@ -88,6 +89,7 @@ import {
   RowOpenLink,
   RowQuickActions,
   type InboxCardActions,
+  type RowOpenTarget,
 } from "./RowHoverActions";
 import {
   ButtonLabel,
@@ -96,6 +98,7 @@ import {
   type ButtonLook,
 } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
+import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -137,16 +140,18 @@ function rowSummary(conversation: Conversation | undefined) {
  * What the row's Open action opens: an item row's owner, such as its
  * Automation, or the row's Conversation.
  */
-function rowOpenTarget(props: InboxRowProps): { label: string; path: string } {
+function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
   const newest = props.bundle?.newest;
   const id = props.conversationId;
   if (newest && (props.itemTitle !== undefined || id === undefined))
     return {
       label: itemOwnerLinkLabel(newest),
+      onClick: props.onOpen,
       path: itemOwnerPath(newest, { askItemId: newest.id }),
     };
   return {
     label: "Open conversation",
+    onClick: props.onOpen,
     path: conversationPath(id!, {
       askItemId:
         newest && itemConversationId(newest) === id ? newest.id : undefined,
@@ -195,6 +200,8 @@ type InboxRowProps = {
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
   onWake?(): void;
+  /** Runs when the row opens what it names, such as its Conversation. */
+  onOpen?(): void;
   rowKey: string;
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
@@ -206,6 +213,8 @@ type InboxRowProps = {
   take?: string;
   time: string;
   title: string;
+  /** Why the viewer's snooze of an item in the row woke. */
+  wake?: InboxSnoozeWake | undefined;
 };
 
 /**
@@ -452,7 +461,11 @@ function InboxRowBody(
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
   const { path } = rowOpenTarget(props);
-  const openConversation = useOpenPath(path);
+  const openPath = useOpenPath(path);
+  const openConversation = (event: MouseEvent) => {
+    props.onOpen?.();
+    openPath(event);
+  };
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
@@ -503,6 +516,8 @@ function InboxRowBody(
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
   const regionId = rowRegionId(props.rowKey);
+  // An open Conversation row's cards each say why their item woke.
+  const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
@@ -604,6 +619,7 @@ function InboxRowBody(
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
                 onClick={(event) => {
+                  if (opens) props.onOpen?.();
                   if (
                     opens ||
                     event.button !== 0 ||
@@ -660,6 +676,15 @@ function InboxRowBody(
                 ) : null}
               </Link>
             </span>
+            {wake ? (
+              <span
+                className={cn(lineClass, "text-xs text-dashboard-text-muted")}
+                data-inbox-slot="wake"
+                ref={fadeWhenOverflowing}
+              >
+                {wakeReasonText(wake)}
+              </span>
+            ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
             {cast || hasChips ? (
@@ -814,6 +839,7 @@ function InboxRowBody(
               rowActions={inlineActions ? rowActions(props, true) : undefined}
               sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
+              wake={item.wake}
             />
           ))}
           {props.actionsBelow || inlineActions ? null : rowActions(props)}
@@ -848,7 +874,7 @@ function ExpandedActions(props: {
   inline: boolean;
   eventSnooze?: EventSnooze | undefined;
   look?: ButtonLook | undefined;
-  open: { label: string; path: string };
+  open: RowOpenTarget;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
@@ -861,6 +887,7 @@ function ExpandedActions(props: {
           buttonVariants({ variant: "ghost" }),
           props.look && LOOK_CLASSES[props.look],
         )}
+        onClick={props.open.onClick}
         to={props.open.path}
       >
         <ArrowUpRight aria-hidden="true" size={15} />

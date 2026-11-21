@@ -80,6 +80,11 @@ export function useInboxSnoozes(read: SnoozedRead) {
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   // The items that were just woken, by id.
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
+  // The woken items that the viewer opened, by id. The server forgets why
+  // they woke at once; the lists keep their copy until they read again.
+  const [openedWakes, setOpenedWakes] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   // When the viewer's last snooze change saved and the lists refetched.
   // Snoozed read before that time may be stale.
   const [savedAtMs, setSavedAtMs] = useState(-Infinity);
@@ -168,6 +173,29 @@ export function useInboxSnoozes(read: SnoozedRead) {
   /** Wake one item now. The other items of its stack stay snoozed. */
   const wakeItem = (item: InboxItemPayload) =>
     unsnooze([item.id], itemSubject(item));
+  /**
+   * The viewer opened these items, so the server forgets why they woke. If
+   * that fails, they say it again.
+   */
+  const openWoken = (items: readonly InboxItemPayload[]) => {
+    const ids = items
+      .filter((item) => item.wake && !openedWakes.has(item.id))
+      .map((item) => item.id);
+    if (ids.length === 0) return;
+    const mark = (opened: boolean) =>
+      setOpenedWakes((current) => {
+        const next = new Set(current);
+        for (const id of ids) {
+          if (opened) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    mark(true);
+    deleteDashboardResource(`${SNOOZES_PATH}/wakes`, {
+      inboxItemIds: ids,
+    }).catch(() => mark(false));
+  };
   return {
     /**
      * The item's row was just snoozed, and the lists have not refreshed
@@ -193,6 +221,9 @@ export function useInboxSnoozes(read: SnoozedRead) {
         : read.itemIds.has(itemId),
     /** Snoozed could not be read, so `hidesItem` stays unknown. */
     failed: read.failed,
+    openWoken,
+    /** The viewer opened the item since it woke. */
+    wakeOpened: (itemId: string) => openedWakes.has(itemId),
     snooze,
     snoozeItem,
     wake,

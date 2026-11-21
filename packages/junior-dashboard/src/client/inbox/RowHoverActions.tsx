@@ -62,7 +62,7 @@ export function RowQuickActions(props: {
   expanded: boolean;
   /** An action before Open, such as the code change's own page. */
   lead?: ReactNode;
-  open: { label: string; path: string };
+  open: RowOpenTarget;
 }) {
   const { actions } = props;
   if (props.expanded) return null;
@@ -87,11 +87,14 @@ export function RowQuickActions(props: {
   );
 }
 
+/** What a row's Open opens, and what else runs when it does. */
+export type RowOpenTarget = { label: string; onClick?(): void; path: string };
+
 /**
  * The hover action that opens the row's Conversation, or another owner such
  * as an Automation, in the main area.
  */
-export function RowOpenLink(props: { label: string; path: string }) {
+export function RowOpenLink(props: RowOpenTarget) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -101,6 +104,7 @@ export function RowOpenLink(props: { label: string; path: string }) {
           <Link
             aria-label={props.label}
             className={ROW_ACTION_BUTTON_CLASS}
+            onClick={props.onClick}
             to={props.path}
           >
             <ArrowUpRight aria-hidden="true" size={14} />
