@@ -55,6 +55,8 @@ export const NAME_ALLOWLIST = {
   ],
   // The Drizzle name of the old Brief cost column in COLUMN_ALLOWLIST.
   cost_usd: ["packages/junior/src/db/schema/conversation-briefs.ts"],
+  // A Postgres planner setting, not an amount.
+  jit_above_cost: ["packages/junior/src/cli/upgrade.ts"],
 };
 
 /**
