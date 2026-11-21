@@ -49,6 +49,11 @@ each rule, so new code cannot drift from it.
   condition. A known full scan with a fix on the way gets a named `allowed`
   entry with a reason. An entry that matches nothing fails, so the fix
   removes it.
+- Keep the estimated plan cost of each statement of a polled API route inside
+  a budget. Integration tests check it with `expectPlanCost` from the same
+  file. A statement that does work for each item of a list, such as one
+  correlated subquery for each ID, costs more before the test data is big
+  enough to make it slow. Set the max to about 1.5 times the measured cost.
 - Keep the JSON body of hot API routes inside a size budget. A budget holds
   the size of the largest item of a list. A nested list with no cap on its
   count gets its own budget. Integration tests measure it with

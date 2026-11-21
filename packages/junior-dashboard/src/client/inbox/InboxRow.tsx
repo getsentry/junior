@@ -19,6 +19,7 @@ import type {
   OwnedObjectAnnotation,
   InboxItemActionBody,
   InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
@@ -64,7 +65,7 @@ import {
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { openOnClick, useOpenPath } from "./rowClick";
+import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
 import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
@@ -96,6 +97,7 @@ import {
   type ButtonLook,
 } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
+import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -140,6 +142,7 @@ function rowSummary(conversation: Conversation | undefined) {
 type RowOpenTarget = {
   automation: boolean;
   label: string;
+  onClick?(): void;
   path: string;
 };
 
@@ -150,11 +153,13 @@ function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
     return {
       automation: newest.owner.kind === "automation",
       label: itemOwnerLinkLabel(newest),
+      onClick: props.onOpen,
       path: itemOwnerPath(newest, { askItemId: newest.id }),
     };
   return {
     automation: false,
     label: "Open conversation",
+    onClick: props.onOpen,
     path: conversationPath(id!, {
       askItemId:
         newest && itemConversationId(newest) === id ? newest.id : undefined,
@@ -201,6 +206,8 @@ type InboxRowProps = {
   onToggle(): void;
   /** Set on a snoozed row: it wakes instead of snoozing. */
   onWake?(): void;
+  /** Runs when the row opens what it names, such as its Conversation. */
+  onOpen?(): void;
   rowKey: string;
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
@@ -212,6 +219,8 @@ type InboxRowProps = {
   take?: string;
   time: string;
   title: string;
+  /** Why the viewer's snooze of an item in the row woke. */
+  wake?: InboxSnoozeWake | undefined;
 };
 
 /**
@@ -445,7 +454,11 @@ function InboxRowBody(
   // the item, and expands to show its answer controls.
   const opens = !props.itemTitle;
   const { path } = rowOpenTarget(props);
-  const openConversation = useOpenPath(path);
+  const openPath = useOpenPath(path);
+  const openConversation = (event: MouseEvent) => {
+    props.onOpen?.();
+    openPath(event);
+  };
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
   const openItems =
@@ -496,6 +509,8 @@ function InboxRowBody(
   );
   const images = imageWork.length > 0 || media.some(isImageMedia);
   const regionId = rowRegionId(props.rowKey);
+  // An open Conversation row's cards each say why their item woke.
+  const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
@@ -592,6 +607,10 @@ function InboxRowBody(
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
+                // A middle click opens the link in a new tab.
+                onAuxClick={(event) => {
+                  if (event.button === 1) props.onOpen?.();
+                }}
                 // On a row for one item, a plain click or Enter expands it in
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
@@ -603,8 +622,10 @@ function InboxRowBody(
                     event.ctrlKey ||
                     event.shiftKey ||
                     event.altKey
-                  )
+                  ) {
+                    props.onOpen?.();
                     return;
+                  }
                   event.preventDefault();
                   props.onToggle();
                 }}
@@ -652,6 +673,15 @@ function InboxRowBody(
                 ) : null}
               </Link>
             </span>
+            {wake ? (
+              <span
+                className={cn(lineClass, "text-xs text-dashboard-text-muted")}
+                data-inbox-slot="wake"
+                ref={fadeWhenOverflowing}
+              >
+                {wakeReasonText(wake)}
+              </span>
+            ) : null}
             {/* Who is in it and what it asks, in one small line under the
                 title. */}
             {cast || hasChips ? (
@@ -806,6 +836,7 @@ function InboxRowBody(
               rowActions={inlineActions ? rowActions(props, true) : undefined}
               sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
+              wake={item.wake}
             />
           ))}
           {props.actionsBelow || inlineActions ? null : rowActions(props)}
@@ -881,6 +912,7 @@ function ExpandedActions(props: {
           buttonVariants({ variant: "ghost" }),
           props.look && LOOK_CLASSES[props.look],
         )}
+        {...onLinkOpen(props.open.onClick)}
         to={props.open.path}
       >
         <OwnerIcon aria-hidden="true" size={15} />

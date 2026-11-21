@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type {
   InboxItemActionBody,
   InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 
 import { ClampedDisplayText } from "../display-text/DisplayText";
@@ -22,6 +23,7 @@ import {
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { wakeReasonText } from "./snoozeSentences";
 import { InboxItemTitle } from "./InboxItemPeople";
 import {
   itemConversationId,
@@ -51,6 +53,8 @@ export function InboxRowCard(props: {
   /** The row's head shows the subject's size. */
   sizeShown?: boolean;
   take?: string;
+  /** Why the viewer's snooze of the item woke. */
+  wake?: InboxSnoozeWake | undefined;
 }) {
   const { actions, item, onAction } = props;
   const text = inboxItemText(item);
@@ -149,6 +153,13 @@ export function InboxRowCard(props: {
                 {item.addedByLabel}
               </span>
             </Link>
+          ) : null}
+          {/* An item row's head says why it woke, so only a Conversation
+              row's card does. */}
+          {props.wake ? (
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              {wakeReasonText(props.wake)}
+            </p>
           ) : null}
         </>
       )}
