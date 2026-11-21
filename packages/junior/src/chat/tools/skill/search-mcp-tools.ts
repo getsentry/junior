@@ -247,13 +247,8 @@ function unknownProviderSuggestions(
  * description stays the same on every Turn of a deployment.
  */
 function renderSearchMcpToolsDescription(providers: ProviderSummary[]): string {
-  const intro =
-    "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.";
-  if (providers.length === 0) {
-    return intro;
-  }
   return [
-    intro,
+    "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     "Configured providers:",
     ...providers.map(
       (entry) =>

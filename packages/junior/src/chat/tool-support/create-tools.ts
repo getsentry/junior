@@ -184,6 +184,15 @@ function slackOf(run: ToolRun): SlackToolContext {
   return run.slack;
 }
 
+// A deployment without MCP providers has nothing for the MCP tools to find or
+// call, so the Turn does not list them.
+function configuredMcpToolManager(run: ToolRun) {
+  const manager = run.context.mcpToolManager;
+  return manager && manager.getAvailableProviderCatalog().length > 0
+    ? manager
+    : undefined;
+}
+
 function isPublic(run: ToolRun): boolean {
   return run.context.conversationPrivacy === "public";
 }
@@ -545,14 +554,14 @@ const RUN_BUILT_TOOL_BUILDERS = {
         })
       : undefined;
   },
-  searchMcpTools: (run) =>
-    run.context.mcpToolManager
-      ? createSearchMcpToolsTool(run.context.mcpToolManager)
-      : undefined,
-  callMcpTool: (run) =>
-    run.context.mcpToolManager
-      ? createCallMcpToolTool(run.context.mcpToolManager)
-      : undefined,
+  searchMcpTools: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createSearchMcpToolsTool(manager) : undefined;
+  },
+  callMcpTool: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createCallMcpToolTool(manager) : undefined;
+  },
   slackCanvasCreate: (run) => {
     if (!run.slack?.destinationChannelId) return undefined;
     return resolveChannelCapabilities(run.slack.destinationChannelId)
