@@ -56,12 +56,14 @@ export function LeadWatchReport(props: {
       </span>
       <span className="flex min-w-0 items-center gap-2.5">
         <span className="flex min-w-0 items-baseline gap-0.5 text-dashboard-text-muted">
-          {id && title ? (
+          {id ? (
+            // A row past the loaded feed pages has no title, but its id
+            // still opens it.
             <Link
               className="min-w-0 truncate font-medium text-dashboard-text no-underline hover:underline"
               to={conversationPath(id)}
             >
-              {title}
+              {title ?? "A watched conversation"}
             </Link>
           ) : (
             <span className="min-w-0 truncate">A watched conversation</span>

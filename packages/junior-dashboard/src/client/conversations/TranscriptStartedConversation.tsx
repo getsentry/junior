@@ -33,15 +33,18 @@ export function TranscriptStartedConversation(props: {
   const watched = lead?.watchedIds.has(id) ?? false;
   const prefetch = usePrefetchConversation(id);
   // A started Conversation is a root of the person, so it is a feed row. The
-  // row can be past the loaded feed pages. Then only a Inbox item tells its
-  // state, and the card shows none rather than a wrong one.
+  // row can be past the loaded feed pages. Then only an Inbox item tells its
+  // state. Until the Inbox items load, or with neither, the card shows no
+  // state rather than a wrong one.
   const conversation = lead?.conversations.get(id);
-  const waiting = lead?.waiting.get(id);
-  const state = conversation
-    ? leadWorkState(conversation, waiting)
-    : waiting
-      ? "needs_you"
-      : undefined;
+  const waiting = lead?.waiting?.get(id);
+  const state = !lead?.waiting
+    ? undefined
+    : conversation
+      ? leadWorkState(conversation, waiting)
+      : waiting
+        ? "needs_you"
+        : undefined;
   const input = startConversationInputSchema.safeParse(props.input);
   const title =
     conversation?.displayTitle ??

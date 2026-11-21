@@ -272,10 +272,9 @@ export function ConversationWorkspace(props: {
                   pendingArchiveUpdate={pendingArchiveUpdates.find(
                     (update) => update.conversationId === selectedId,
                   )}
-                  // Home has no list, so it has nothing to show or hide.
-                  sidebarToggle={
-                    home && !showSidebar ? undefined : sidebarToggle
-                  }
+                  // Without the list panel, such as on home or a narrow
+                  // screen, there is nothing to show or hide.
+                  sidebarToggle={showSidebar ? sidebarToggle : undefined}
                 />
               </FeedThreads>
             </UnsentAnswersProvider>

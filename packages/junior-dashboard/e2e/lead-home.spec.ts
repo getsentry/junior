@@ -189,5 +189,10 @@ test.describe("on a touch screen", () => {
     ).toBeVisible();
     await page.getByRole("link", { name: "Your Lead" }).click();
     await expect(transcript.getByText(LEAD_REPLY)).toBeVisible();
+    // The app bar names the open Lead, and no list is beside it to toggle.
+    await expect(page.getByRole("heading", { name: "Your Lead" })).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Show conversation list" }),
+    ).toHaveCount(0);
   });
 });

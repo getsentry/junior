@@ -100,7 +100,7 @@ import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrom
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useLead } from "../lead/Lead";
 import { LeadFirstRun } from "../lead/LeadFirstRun";
-import { LeadHeader, leadColumnClass } from "../lead/LeadHeader";
+import { LeadHeader } from "../lead/LeadHeader";
 import { LeadPageScope } from "../lead/LeadPageProvider";
 import {
   ChatLayout,
@@ -226,13 +226,21 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  // A Lead has no details: it is private and never archives. Home knows the
-  // Lead's id before its detail loads, so its chrome does not flash.
+  // A Lead has no details: it is private and never archives. Home and the
+  // narrow list know the Lead's id before its detail loads. Without either,
+  // the page shows neither chrome until the detail says which page this is,
+  // so the wrong one does not flash.
   const leadId = useLead(false).data?.conversationId;
   const lead =
     props.detail.data?.kind === "lead" || leadId === props.conversationId;
+  const kindKnown = props.detail.data !== undefined || leadId !== undefined;
   const showDetails =
-    !lead && detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
+    kindKnown &&
+    !lead &&
+    detailsOpen &&
+    !eventOpen &&
+    !turnContext &&
+    !quickQuestion.thread;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -700,7 +708,15 @@ export function ConversationPage(props: {
           <ChatLayout
             header={
               lead ? (
-                <LeadHeader sidebarToggle={props.sidebarToggle} />
+                <LeadHeader
+                  mobileHidden={location.pathname !== "/"}
+                  sidebarToggle={props.sidebarToggle}
+                />
+              ) : !kindKnown ? (
+                <div
+                  aria-hidden="true"
+                  className="hidden h-13 border-b border-dashboard-border md:block"
+                />
               ) : (
                 <ConversationHeader
                   agentTree={conversationDetail?.agentTree}
@@ -834,10 +850,7 @@ export function ConversationPage(props: {
               view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
             }
             scroll={
-              <TranscriptColumn
-                className={lead ? leadColumnClass : undefined}
-                full={view === "raw"}
-              >
+              <TranscriptColumn full={view === "raw"}>
                 {leadFirstRun ? (
                   <LeadFirstRun onTry={prefillReply} />
                 ) : transcriptPending ? (
