@@ -60,8 +60,8 @@ export function InboxRowCard(props: {
     (item.kind === "notice" || !item.request) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
-  // Next to a main action, the others show only their icons on a phone, so
-  // the line fits.
+  // Next to a main action, Snooze and Dismiss show only their icons on a
+  // phone, so the line fits.
   const look = props.primaryAction ? "narrow" : undefined;
   const notices = props.notices.map((notice) => (
     <FoldedNotice
