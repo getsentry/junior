@@ -23,6 +23,7 @@ conversation="/conversations/slack:CQA123:1770003600.000200"
 set -- \
   "conversations__dark|/|dark" \
   "conversations__light|/|light" \
+  "conversations-threads__dark|/?q=Dashboard%20QA|dark" \
   "conversation__dark|$conversation|dark" \
   "conversation-details__dark|$conversation?details=1|dark" \
   "inbox__dark|/inbox|dark" \

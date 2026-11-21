@@ -21,12 +21,15 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var archivedAt: Timestamp?
   public var pinnedAt: Timestamp?
   public var url: String?
+  /// Visible Threads under it, each with its own. Only `searchConversations`
+  /// with `includeThreads` sets them; Tasks never show.
+  public var threads: [MCPConversation]?
 
   public var id: String { conversationId }
 
   private enum CodingKeys: String, CodingKey {
     case conversationId, title, status, turnActive, surface, channelName, locationUrl, startedAt, lastSeenAt
-    case archivedAt, pinnedAt, url
+    case archivedAt, pinnedAt, url, threads
   }
 
   public init(from decoder: Decoder) throws {
@@ -47,6 +50,7 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
     archivedAt = try container.decodeIfPresent(Timestamp.self, forKey: .archivedAt)
     pinnedAt = try container.decodeIfPresent(Timestamp.self, forKey: .pinnedAt)
     url = try container.decodeIfPresent(String.self, forKey: .url)
+    threads = try container.decodeIfPresent([MCPConversation].self, forKey: .threads)
   }
 
   /// Where it lives, as the dashboard labels it.

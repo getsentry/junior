@@ -348,12 +348,28 @@ export function createMockMcpTools({ app, origin }) {
           description:
             "Return conversations that are not archived (default) or that are archived. A search ignores this filter.",
         },
+        includeThreads: {
+          type: "boolean",
+          optional: true,
+          description:
+            "True nests the Threads of each conversation under it in `threads`.",
+        },
       },
-      async run({ q, status }) {
+      async run({ includeThreads, q, status }) {
         const query = new URLSearchParams({ status });
         if (q) query.set("q", q);
         const feed = await apiJson("GET", `/conversations?${query}`);
-        return { conversations: feed.conversations.map(mcpConversation) };
+        const row = (item) => ({
+          ...mcpConversation(item),
+          ...(item.threads?.length
+            ? { threads: item.threads.map(row) }
+            : undefined),
+        });
+        return {
+          conversations: feed.conversations.map(
+            includeThreads ? row : mcpConversation,
+          ),
+        };
       },
     },
     {
