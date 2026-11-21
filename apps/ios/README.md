@@ -18,7 +18,7 @@ the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
 
 Each screen calls MCP tools (`searchConversations`, `getConversation`,
 `sendMessage`, …); their result types mirror the tool schemas in
-`packages/junior/src/api/mcp`. What MCP lacks (answering a Review item,
+`packages/junior/src/api/mcp`. What MCP lacks (answering an Inbox item,
 changing an Automation, the event log) opens the dashboard in the in-app
 browser.
 
@@ -116,5 +116,5 @@ stable published URL before release. Junior caches the document for 5 minutes.
 
 MCP has user and assistant messages but no tool calls, so transcripts show no
 activity rows. It has no read position (the app opens at the latest message),
-no attachments, no spend, and no way to answer a Review item or change an
+no attachments, no spend, and no way to answer an Inbox item or change an
 Automation; those open on the web.

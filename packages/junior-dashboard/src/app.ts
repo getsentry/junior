@@ -55,7 +55,7 @@ import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockTodos } from "./mock-reporting/todos";
 import { resetMockWatches } from "./mock-reporting/watches";
-import { resetMockReviewItems } from "./mock-reporting/review-items";
+import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
@@ -101,7 +101,7 @@ export function resetMockDashboardState(): void {
   mockUserSettingsByEmail.clear();
   resetMockReadPositions();
   resetMockTodos();
-  resetMockReviewItems();
+  resetMockInboxItems();
   resetMockSends();
   resetMockWatches();
 }

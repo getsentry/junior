@@ -1,4 +1,4 @@
-/** Review items and an API mock shared by the Inbox e2e specs. */
+/** Inbox items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
@@ -259,7 +259,7 @@ export const grab = {
 };
 
 /**
- * The alert of an Automation that needs its creator: a Review item that the
+ * The alert of an Automation that needs its creator: an Inbox item that the
  * Automation owns, with no Conversation.
  */
 export function automationAlert(automationId: string, title: string) {
@@ -312,7 +312,7 @@ type MockItem = Omit<typeof license, "status"> & {
  * `now`, which is the test's clock. The versions token moves with them, as
  * on the server.
  */
-export async function mockReviewItems(
+export async function mockInboxItems(
   page: Page,
   options: {
     /**
@@ -331,8 +331,8 @@ export async function mockReviewItems(
     pageSize?: number;
     /** Snoozes that exist before the page loads. */
     snoozes?: ({ untilMs: number } & (
-      | { conversationId: string; reviewItemId?: string }
-      | { reviewItemId: string }
+      | { conversationId: string; inboxItemId?: string }
+      | { inboxItemId: string }
     ))[];
   } = {},
 ) {
@@ -360,12 +360,12 @@ export async function mockReviewItems(
   /** The open items of a snooze subject: one item, or a row's items. */
   const itemsOf = (subject: {
     conversationId?: string;
-    reviewItemId?: string;
+    inboxItemId?: string;
   }) =>
     open
       .filter((i) =>
-        subject.reviewItemId
-          ? i.id === subject.reviewItemId
+        subject.inboxItemId
+          ? i.id === subject.inboxItemId
           : inRow(subject.conversationId!, i),
       )
       .map((i) => i.id);
@@ -394,12 +394,12 @@ export async function mockReviewItems(
     const body = request.postDataJSON();
     if (request.method() === "POST") {
       // One snooze per open item that it hides; it replaces the last one.
-      const reviewItemIds = itemsOf(body);
+      const inboxItemIds = itemsOf(body);
       // A snooze with no time waits for its Event.
       const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-      for (const id of reviewItemIds) snoozes.set(id, untilMs);
+      for (const id of inboxItemIds) snoozes.set(id, untilMs);
       snoozeChanges++;
-      return route.fulfill({ json: { reviewItemIds }, status: 201 });
+      return route.fulfill({ json: { inboxItemIds }, status: 201 });
     }
     if (request.method() === "DELETE") {
       // Without an item, every snooze in the row wakes.
@@ -416,7 +416,7 @@ export async function mockReviewItems(
     return route.fulfill({
       json: {
         ...versions,
-        reviewItems: `${versions.reviewItems}:${snoozeChanges}:${sleeping}`,
+        inboxItems: `${versions.inboxItems}:${snoozeChanges}:${sleeping}`,
       },
       response,
     });
@@ -424,9 +424,9 @@ export async function mockReviewItems(
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
-  await page.route("**/api/review-items**", async (route) => {
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
       const sleeping = await snoozedRows();

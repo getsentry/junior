@@ -1,4 +1,4 @@
-import { createSearchReviewItemsTool } from "@/chat/review-items/tools/search";
+import { createSearchInboxItemsTool } from "@/chat/inbox-items/tools/search";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
@@ -28,8 +28,8 @@ import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createReplyTool } from "@/chat/tools/runtime/reply";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
-import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
-import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
+import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -46,7 +46,7 @@ import {
 } from "@/chat/slack/tool-support/context";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -155,9 +155,7 @@ interface ToolRun {
   canSendFilesToActiveConversation: boolean;
   automation: AutomationToolContext;
   automationDisabledReason: string | undefined;
-  reviewItemServices: () => ReturnType<
-    typeof createSlackReviewItemToolServices
-  >;
+  inboxItemServices: () => ReturnType<typeof createSlackInboxItemToolServices>;
 }
 
 type ToolBinder = (run: ToolRun) => AnyToolDefinition | undefined;
@@ -203,7 +201,7 @@ const STATIC_TOOL_BINDERS = {
   updateTodos: (run) =>
     createUpdateTodosTool(
       run.context,
-      run.reviewItemServices().findMentionedUserId,
+      run.inboxItemServices().findMentionedUserId,
     ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
@@ -356,15 +354,15 @@ const STATIC_TOOL_BINDERS = {
   // model can read the active destination or another accessible public channel.
   slackChannelListMessages: (run) =>
     createSlackChannelListMessagesTool(slackOf(run)),
-  // Review items link to root Conversations, where a person can see them.
-  // `addReviewItem` is how the agent asks a person anything, so it is loaded
+  // Inbox items link to root Conversations, where a person can see them.
+  // `addInboxItem` is how the agent asks a person anything, so it is loaded
   // in every root Turn. A child agent asks its parent instead.
-  addReviewItem: (run) =>
-    createAddReviewItemTool(run.context, run.reviewItemServices()),
-  searchReviewItems: (run) =>
-    createSearchReviewItemsTool(run.context, run.reviewItemServices()),
-  updateReviewItem: (run) =>
-    createUpdateReviewItemTool(run.context, run.reviewItemServices()),
+  addInboxItem: (run) =>
+    createAddInboxItemTool(run.context, run.inboxItemServices()),
+  searchInboxItems: (run) =>
+    createSearchInboxItemsTool(run.context, run.inboxItemServices()),
+  updateInboxItem: (run) =>
+    createUpdateInboxItemTool(run.context, run.inboxItemServices()),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
@@ -411,9 +409,9 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.subscriptions
       ? undefined
       : "Only a person's Turn can change subscriptions.",
-  addReviewItem: INBOX_LIMIT,
-  searchReviewItems: INBOX_LIMIT,
-  updateReviewItem: INBOX_LIMIT,
+  addInboxItem: INBOX_LIMIT,
+  searchInboxItems: INBOX_LIMIT,
+  updateInboxItem: INBOX_LIMIT,
 };
 
 function attachmentStore(run: ToolRun) {
@@ -630,8 +628,8 @@ export function createTools(
     ),
     automation: automationToolContext(context),
     automationDisabledReason: automationToolsDisabledReason(context),
-    reviewItemServices: once(() =>
-      createSlackReviewItemToolServices(
+    inboxItemServices: once(() =>
+      createSlackInboxItemToolServices(
         () => context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
       ),
     ),

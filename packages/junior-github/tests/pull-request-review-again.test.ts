@@ -15,7 +15,7 @@ import {
   signedRequest,
   stubGitHubAppEnv,
   type GitHubState,
-  type ReviewItemCall,
+  type InboxItemCall,
 } from "./pull-request-action-harness";
 
 describe("review again after a change request", () => {
@@ -29,7 +29,7 @@ describe("review again after a change request", () => {
 
   it("checks the next action on a team review request", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     mockGitHub(
       {
         draft: false,
@@ -67,7 +67,7 @@ describe("review again after a change request", () => {
 
   it("asks the requester again after a push that follows their change request", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const requests: string[] = [];
     const github: GitHubState = {
       draft: false,
@@ -157,7 +157,7 @@ describe("review again after a change request", () => {
 
   it("asks the requester again when Junior replies to their change request with no push, until they reply", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const requests: string[] = [];
     const github: GitHubState = {
       draft: false,
@@ -269,7 +269,7 @@ describe("review again after a change request", () => {
 
   it("asks the requester again when a change request is addressed with no push", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const github: GitHubState = {
       draft: false,
       mergeableStates: ["blocked"],
@@ -338,7 +338,7 @@ describe("review again after a change request", () => {
     "does not ask the requester again after $name",
     async ({ autoMerge, reviews, webhookState }) => {
       const fixture = await createGitHubFixture();
-      const calls: ReviewItemCall[] = [];
+      const calls: InboxItemCall[] = [];
       const requests: string[] = [];
       const github: GitHubState = {
         autoMerge,

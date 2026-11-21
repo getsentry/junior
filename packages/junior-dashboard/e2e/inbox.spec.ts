@@ -117,7 +117,7 @@ const migration = {
   title: "Pick the billing migration window",
 };
 
-async function mockReviewItems(
+async function mockInboxItems(
   page: Page,
   options: { open?: unknown[]; pageSize?: number } = {},
 ) {
@@ -131,9 +131,9 @@ async function mockReviewItems(
   ]) as (typeof license)[];
   const archived = [answered];
   const items = [...open, ...archived];
-  await page.route("**/api/review-items**", async (route) => {
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
@@ -175,24 +175,24 @@ test("an old /review link opens the item in the Inbox", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
+  await mockInboxItems(page);
   await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/inbox?item=${license.id}`);
   await expect(
     page
-      .getByRole("region", { name: "Selected review item" })
+      .getByRole("region", { name: "Selected inbox item" })
       .getByRole("heading", { name: license.title }),
   ).toBeVisible();
 });
 
-test("each review item gets a fresh answer form", async ({
+test("each inbox item gets a fresh answer form", async ({
   dashboard,
   page,
 }) => {
-  const actions = await mockReviewItems(page);
+  const actions = await mockInboxItems(page);
   await page.goto(`${dashboard.baseURL}/inbox?item=${license.id}`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  const list = page.getByRole("navigation", { name: "Review items" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
+  const list = page.getByRole("navigation", { name: "Inbox items" });
   await expect(
     detail.getByRole("heading", { name: license.title }),
   ).toBeVisible();
@@ -256,10 +256,10 @@ test("an item keeps unsent answers after another item or a reload", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
+  await mockInboxItems(page);
   await page.goto(`${dashboard.baseURL}/inbox?item=${license.id}`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  const list = page.getByRole("navigation", { name: "Review items" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
+  const list = page.getByRole("navigation", { name: "Inbox items" });
   await detail.getByRole("radio", { name: "Approve" }).click();
   await detail.getByLabel("Reason").fill("MIT license, no");
 
@@ -280,9 +280,9 @@ test("the inbox shows an item in its conversation", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  const list = page.getByRole("navigation", { name: "Review items" });
+  await mockInboxItems(page);
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
+  const list = page.getByRole("navigation", { name: "Inbox items" });
   await expectRequestBudget(
     page,
     async () => {
@@ -310,7 +310,7 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
   await expect(detail.getByRole("button", { name: "Roll out" })).toBeVisible();
   const details = page.getByRole("complementary", {
-    name: "Review item details",
+    name: "Inbox item details",
   });
   await expect(details.getByText(rollout.body)).toBeVisible();
   await screenshot(page, "review-desk", { lightTheme: true, view: "desktop" });
@@ -330,16 +330,16 @@ test("the inbox shows an item in its conversation", async ({
   ).toBeVisible();
 });
 
-test("review item changes show as rows, not as context for other items", async ({
+test("inbox item changes show as rows, not as context for other items", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
+  await mockInboxItems(page);
   // Right after Junior asked for this item, the person took another item and
   // then answered it. A Watch Event then arrived with the relay of someone's
   // take of this item from another Conversation.
-  const takeText = `Dashboard User took review item "${answered.title}".`;
-  const answerText = `Dashboard User answered review item "${answered.title}".`;
+  const takeText = `Dashboard User took inbox item "${answered.title}".`;
+  const answerText = `Dashboard User answered inbox item "${answered.title}".`;
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}*`,
     async (route) => {
@@ -367,7 +367,7 @@ test("review item changes show as rows, not as context for other items", async (
           text,
         },
       });
-      const relayText = `Someone took review item "${rollout.title}".`;
+      const relayText = `Someone took inbox item "${rollout.title}".`;
       const eventBatch = {
         seq: 100_002,
         createdAt: new Date(askedAt + 12).toISOString(),
@@ -407,7 +407,7 @@ test("review item changes show as rows, not as context for other items", async (
   );
 
   await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
   await expect(
     detail.getByText("Find the slow checkout requests"),
   ).toBeVisible();
@@ -452,17 +452,17 @@ test("on mobile the list opens one item at a time", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
+  await mockInboxItems(page);
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`${dashboard.baseURL}/inbox`);
-  const list = page.getByRole("navigation", { name: "Review items" });
+  const list = page.getByRole("navigation", { name: "Inbox items" });
   await expect(
-    page.getByRole("region", { name: "Selected review item" }),
+    page.getByRole("region", { name: "Selected inbox item" }),
   ).toBeHidden();
   await screenshot(page, "review-desk-list", { view: "mobile" });
 
   await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  const detail = page.getByRole("region", { name: "Selected review item" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
   await expect(
     detail.getByRole("heading", { name: rollout.title }),
   ).toBeVisible();
@@ -476,10 +476,10 @@ test("a search lists open and archived items together", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
+  await mockInboxItems(page);
   await page.goto(`${dashboard.baseURL}/inbox`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  await page.getByLabel("Search review items").fill("license");
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
+  await page.getByLabel("Search inbox items").fill("license");
   await expect(page).toHaveURL(/[?&]q=license/);
   const results = page.getByRole("list", { name: "Search results" });
   await expect(results.getByRole("link")).toHaveCount(3);
@@ -498,9 +498,9 @@ test("a search lists open and archived items together", async ({
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   // The mock reporting has blocked Automations. Their alerts are Review
   // items, so they do not list again on their own.
-  await mockReviewItems(page, { open: [] });
+  await mockInboxItems(page, { open: [] });
   await page.goto(`${dashboard.baseURL}/inbox`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
   await expect(detail.getByText("Nothing needs you")).toBeVisible();
   await expect(
     page.getByRole("link", { name: new RegExp(answered.title) }),
@@ -521,10 +521,10 @@ test("a failed-run alert sends Pause to the server", async ({
     rootConversationId: undefined,
     title: "Weekly project summary",
   };
-  const actions = await mockReviewItems(page, { open: [alert] });
+  const actions = await mockInboxItems(page, { open: [alert] });
   await page.goto(`${dashboard.baseURL}/inbox`);
   await page.getByRole("link", { name: /Weekly project summary/ }).click();
-  const detail = page.getByRole("region", { name: "Selected review item" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
   await expect(detail.getByRole("button", { name: "Run again" })).toBeVisible();
   // Core takes the step and reads no words, so there is no Other….
   await expect(detail.getByRole("button", { name: "Other…" })).toHaveCount(0);
@@ -551,13 +551,13 @@ test("an Automation alert names its Automation as its source", async ({
     rootConversationId: undefined,
     title: "Weekly project summary",
   };
-  await mockReviewItems(page, { open: [alert] });
+  await mockInboxItems(page, { open: [alert] });
   await page.goto(`${dashboard.baseURL}/inbox`);
   const row = page.getByRole("link", { name: /Weekly project summary/ });
   await expect(row).toContainText("Automation");
   // It has no Conversation to excerpt, so it links to its Automation.
   await row.click();
-  const detail = page.getByRole("region", { name: "Selected review item" });
+  const detail = page.getByRole("region", { name: "Selected inbox item" });
   await expect(
     detail.getByRole("link", { name: /Open automation/ }),
   ).toBeVisible();
@@ -568,7 +568,7 @@ test("Send sends docked picks and asks before a message drops others", async ({
   page,
 }) => {
   // A notice fills the first page, so the question docks from the second.
-  const actions = await mockReviewItems(page, {
+  const actions = await mockInboxItems(page, {
     open: [{ ...prReady, conversationIds: [conversationId] }, migration],
     pageSize: 1,
   });
@@ -605,7 +605,7 @@ test("Send sends docked picks and asks before a message drops others", async ({
             data: {
               calls: [
                 {
-                  name: "addReviewItem",
+                  name: "addInboxItem",
                   output: { item: { id: migration.id } },
                   status: "completed",
                   toolCallId: "add-migration",

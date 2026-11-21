@@ -16,7 +16,7 @@ new RuleTester({
     // Placeholders, prose mentions, and Slack syntax are not tags.
     `program.argument("<id>", "Memory id");`,
     `const usage = "--port <port>";`,
-    "const note = `A \\`<review-item-answer id>\\` is an answer.`;",
+    "const note = `A \\`<inbox-item-answer id>\\` is an answer.`;",
     "const link = `<${url}|${label}>`;",
     "const mention = `<@${userId}>`;",
     `const prompt = "Return the summary inside " + tags + " tags.";`,

@@ -241,12 +241,12 @@ test("reports ellipsis truncation in the new UI only", () => {
     findNewUiEllipsis([
       { path: "src/client/shell/Row.tsx", contents },
       { path: "src/client/classic/Row.tsx", contents },
-      { path: "src/client/inbox/ReviewItemCard.tsx", contents },
-      { path: "src/client/shell/inbox/ReviewItemCard.tsx", contents },
+      { path: "src/client/inbox/InboxItemCard.tsx", contents },
+      { path: "src/client/shell/inbox/InboxItemCard.tsx", contents },
     ]),
     [
       "src/client/shell/Row.tsx",
-      "src/client/shell/inbox/ReviewItemCard.tsx",
+      "src/client/shell/inbox/InboxItemCard.tsx",
     ].flatMap((path) => [
       `${path}:1: <span className="min-w-0 truncate">`,
       `${path}:2: <span className="md:truncate">`,

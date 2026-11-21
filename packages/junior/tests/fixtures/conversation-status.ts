@@ -1,5 +1,5 @@
 /** Shared setup for the Conversation status and tree state tests. */
-import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { expect } from "vitest";
@@ -22,7 +22,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createWatch } from "@/chat/events/store";
 import {
   juniorConversationBriefs,
@@ -285,18 +285,18 @@ export async function recordAnswer(
   ]);
 }
 
-/** Add one Review item as the agent of `conversationId` does. */
+/** Add one Inbox item as the agent of `conversationId` does. */
 export async function addItem(
   conversationId: string,
   input: Record<string, unknown>,
 ): Promise<string> {
-  const tool = createAddReviewItemTool(
+  const tool = createAddInboxItemTool(
     {
       conversationId,
       resolveActorIdentity: async () => undefined,
       source: { kind: "scheduled_automation" },
     },
-    createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
   const result = await (tool as any).execute(
     (tool as any).prepareArguments(input),

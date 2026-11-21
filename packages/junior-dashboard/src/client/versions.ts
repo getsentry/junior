@@ -13,13 +13,13 @@ import {
 } from "./conversations/queries";
 import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
-import { REVIEW_ITEMS_QUERY_KEY } from "./inbox/queries";
+import { INBOX_ITEMS_QUERY_KEY } from "./inbox/queries";
 import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
 
 /** The tokens of the reads that every tab shows, whatever is open. */
-const TAB_TOKENS = ["conversations", "reviewItems", "spend"] as const;
+const TAB_TOKENS = ["conversations", "inboxItems", "spend"] as const;
 
 /**
  * The reads below refresh only when their token moves, so this interval is
@@ -144,12 +144,12 @@ function refreshChangedReads(
       : [],
   );
   // Waiting Conversations outside the newest page join the feed.
-  if (moved("conversations") || moved("reviewItems")) {
+  if (moved("conversations") || moved("inboxItems")) {
     void invalidateConversationFeeds(client);
   }
-  if (moved("reviewItems")) {
+  if (moved("inboxItems")) {
     // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The token does not say which item moved, and each row reads its own item.
-    void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
+    void client.invalidateQueries({ queryKey: INBOX_ITEMS_QUERY_KEY });
   }
   if (moved("spend")) {
     void client.invalidateQueries({
@@ -183,7 +183,7 @@ function refreshChangedReads(
 
 /**
  * Poll one cheap change check for the whole tab, in place of separate polls
- * of the feed, spend, Review items, and each idle Conversation on screen.
+ * of the feed, spend, Inbox items, and each idle Conversation on screen.
  */
 export function useVersionsPoll(
   conversationId: string | undefined,

@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import {
   automationListSchema,
-  reviewItemCountSchema,
+  inboxItemCountSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
 import pLimit from "p-limit";
@@ -14,14 +14,14 @@ import { automationKeys } from "../api";
 import { fetchDashboardJson } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
 import {
-  invalidateReviewItemCollections,
-  REVIEW_ITEMS_QUERY_KEY,
+  invalidateInboxItemCollections,
+  INBOX_ITEMS_QUERY_KEY,
 } from "./queries";
 
 // The new UI's reads for the Inbox count and the Automations that need
 // attention. The current UI does not load them.
 
-const REVIEW_ITEM_COUNT_QUERY_KEY = [...REVIEW_ITEMS_QUERY_KEY, "count"];
+const INBOX_ITEM_COUNT_QUERY_KEY = [...INBOX_ITEMS_QUERY_KEY, "count"];
 const ATTENTION_PAGE_READS = 8;
 
 /**
@@ -35,10 +35,10 @@ export function useInboxCountData(enabled: boolean) {
   return useQuery({
     enabled,
     placeholderData: keepPreviousData,
-    queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
+    queryKey: INBOX_ITEM_COUNT_QUERY_KEY,
     queryFn: revalidatedJsonQuery(
-      reviewItemCountSchema,
-      "/api/review-items/count?include=automations,snoozed",
+      inboxItemCountSchema,
+      "/api/inbox-items/count?include=automations,snoozed",
     ),
     retry: false,
   });
@@ -46,14 +46,14 @@ export function useInboxCountData(enabled: boolean) {
 
 /**
  * Refresh the reads that one Automation change can affect: every list, the
- * runs list, which shows titles, and the Review item collections, because
+ * runs list, which shows titles, and the Inbox item collections, because
  * the change can close or add the Automation's alert.
  */
 function invalidateAutomationListReads(queryClient: QueryClient) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: automationKeys.lists() }),
     queryClient.invalidateQueries({ queryKey: automationKeys.runs() }),
-    invalidateReviewItemCollections(queryClient),
+    invalidateInboxItemCollections(queryClient),
   ]);
 }
 
@@ -112,7 +112,7 @@ export function scrollPages(query: {
 /**
  * The viewer's Automations that need attention: blocked, a trigger that is
  * unavailable, or a last run that failed or blocked. The Automation list
- * computes it; there is no Review item for it.
+ * computes it; there is no Inbox item for it.
  */
 export function useAutomationAttentionData(enabled: boolean) {
   return useQuery({
