@@ -7,7 +7,7 @@ import Foundation
 /// server, so the demo and the UI tests show the same Conversations.
 public actor DemoServer {
   private var conversations: [DemoConversation]
-  private var reviewItems: [JSONObject]
+  private var inboxItems: [JSONObject]
   /// `getAutomation` results: `{ automation, runs }`.
   private var automations: [JSONObject]
   /// Idempotency keys of sent messages, so a retry sends nothing.
@@ -22,7 +22,7 @@ public actor DemoServer {
   public init(now: @escaping @Sendable () -> Date = { Date() }) {
     let data = DemoData.load(movedTo: now())
     conversations = data.conversations
-    reviewItems = data.reviewItems
+    inboxItems = data.inboxItems
     automations = data.automations
     self.now = now
   }
@@ -96,10 +96,10 @@ public actor DemoServer {
         "cancelledCount": .number(Double(ids.count)), "cancelledInboundMessageIds": .array(ids),
         "conversationId": .string(conversations[index].id),
       ])
-    case "searchReviewItems": return searchReviewItems(arguments)
-    case "getReviewItem":
-      guard let item = reviewItems.first(where: { $0["id"]?.string == arguments.text("id") }) else {
-        throw DemoToolError("Review item not found.")
+    case "searchInboxItems": return searchInboxItems(arguments)
+    case "getInboxItem":
+      guard let item = inboxItems.first(where: { $0["id"]?.string == arguments.text("id") }) else {
+        throw DemoToolError("Inbox item not found.")
       }
       return .object(["item": .object(item)])
     case "searchAutomations": return searchAutomations(arguments)
@@ -332,13 +332,13 @@ public actor DemoServer {
     return line.count > 60 ? "\(line.prefix(59))…" : line
   }
 
-  // MARK: Review items and Automations
+  // MARK: Inbox items and Automations
 
-  private func searchReviewItems(_ arguments: JSONObject) -> JSONValue {
+  private func searchInboxItems(_ arguments: JSONObject) -> JSONValue {
     let words = arguments.text("q")?.lowercased()
     let conversationId = arguments.text("conversationId")
     let limit = min(max(arguments.integer("limit") ?? 20, 1), 50)
-    let items = reviewItems.filter { item in
+    let items = inboxItems.filter { item in
       guard item["status"]?.string == "open" else { return false }
       if let words {
         let text = "\(item["title"]?.string ?? "")\n\(item["body"]?.string ?? "")"

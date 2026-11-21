@@ -5,15 +5,15 @@ import {
   type InboxSnoozeCreateBody,
   type InboxSnoozeResource,
   type InboxSnoozeSubjectBody,
-  type ReviewItemPayload,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
 
 import { useToastManager } from "../components/ui/toast";
 import { useDebouncedValue } from "../debouncedValue";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
-import { invalidateReviewItemCollections } from "./queries";
-import { itemConversationId, type InboxBundle } from "./reviewItemFormat";
+import { invalidateInboxItemCollections } from "./queries";
+import { itemConversationId, type InboxBundle } from "./inboxItemFormat";
 import type { CustomSnoozeEnd } from "./snoozeChoices";
 
 const SNOOZES_PATH = "/api/inbox/snoozes";
@@ -44,10 +44,10 @@ interface SnoozedRead {
 }
 
 /** The snooze subject of one item: its item in its root's row, or itself. */
-function itemSubject(item: ReviewItemPayload): InboxSnoozeSubjectBody {
+function itemSubject(item: InboxItemPayload): InboxSnoozeSubjectBody {
   return item.rootConversationId
-    ? { conversationId: item.rootConversationId, reviewItemId: item.id }
-    : { reviewItemId: item.id };
+    ? { conversationId: item.rootConversationId, inboxItemId: item.id }
+    : { inboxItemId: item.id };
 }
 
 /**
@@ -56,10 +56,10 @@ function itemSubject(item: ReviewItemPayload): InboxSnoozeSubjectBody {
  * Automation, has one open alert at a time, so its stack is that item.
  */
 function rowSubject(bundle: InboxBundle): InboxSnoozeSubjectBody {
-  if (!bundle.conversationId) return { reviewItemId: bundle.newest.id };
+  if (!bundle.conversationId) return { inboxItemId: bundle.newest.id };
   return bundle.key === bundle.conversationId
     ? { conversationId: bundle.conversationId }
-    : { conversationId: bundle.conversationId, reviewItemId: bundle.key };
+    : { conversationId: bundle.conversationId, inboxItemId: bundle.key };
 }
 
 /**
@@ -121,7 +121,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
     // The refetch cancels reads in flight, so every read that ends after
     // it started after the save.
     const saved = Date.now();
-    await invalidateReviewItemCollections(queryClient);
+    await invalidateInboxItemCollections(queryClient);
     hide(key, saved);
     endChange(saved);
   };
@@ -135,7 +135,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
     try {
       await deleteDashboardResource(SNOOZES_PATH, subject);
       const saved = Date.now();
-      await invalidateReviewItemCollections(queryClient);
+      await invalidateInboxItemCollections(queryClient);
       endChange(saved);
     } catch {
       endChange();
@@ -157,7 +157,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
   const snooze = (bundle: InboxBundle, end: SnoozeEnd) =>
     save(bundle.key, rowSubject(bundle), end);
   /** Snooze one item until `end`. The rest of its stack stays. */
-  const snoozeItem = (item: ReviewItemPayload, end: SnoozeEnd) =>
+  const snoozeItem = (item: InboxItemPayload, end: SnoozeEnd) =>
     save(item.id, itemSubject(item), end);
   /** Wake a snoozed row now: undo the viewer's snoozes on its items. */
   const wake = (bundle: InboxBundle) =>
@@ -166,7 +166,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
       rowSubject(bundle),
     );
   /** Wake one item now. The other items of its stack stay snoozed. */
-  const wakeItem = (item: ReviewItemPayload) =>
+  const wakeItem = (item: InboxItemPayload) =>
     unsnooze([item.id], itemSubject(item));
   return {
     /**
@@ -175,7 +175,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
      * server also hides items that link a thread of that Conversation;
      * those leave when the lists refresh.
      */
-    hides: (item: ReviewItemPayload) =>
+    hides: (item: InboxItemPayload) =>
       [
         item.id,
         item.rootConversationId,

@@ -21,7 +21,7 @@ import { requireViewer } from "../viewer";
 
 /**
  * Create authenticated routes for the viewer's Inbox snoozes. The snoozed
- * rows are listed by `GET /api/review-items?for=viewer&snoozed=true`.
+ * rows are listed by `GET /api/inbox-items?for=viewer&snoozed=true`.
  */
 export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
@@ -33,14 +33,14 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const { triggers, wakeAt, ...subject } = context.req.valid("json");
       try {
-        const reviewItemIds = await createViewerSnooze(context.get("viewer"), {
+        const inboxItemIds = await createViewerSnooze(context.get("viewer"), {
           subject,
           ...(triggers ? { triggers } : undefined),
           ...(wakeAt ? { wakeAtMs: Date.parse(wakeAt) } : undefined),
         });
         return jsonResponse(
           inboxSnoozeSchema,
-          { reviewItemIds },
+          { inboxItemIds },
           { status: 201 },
         );
       } catch (error) {

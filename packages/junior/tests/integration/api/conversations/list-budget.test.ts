@@ -38,7 +38,7 @@ function url(length: number): string {
 
 /**
  * Give a root the most that a feed row can show: a full title, Threads, a
- * long latest message, a Brief, an open Review item, and annotations at their max
+ * long latest message, a Brief, an open Inbox item, and annotations at their max
  * lengths.
  */
 async function makeHeavy(fixture: StatusFixture, conversationId: string) {

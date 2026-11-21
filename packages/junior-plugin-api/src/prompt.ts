@@ -126,7 +126,7 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
    * The request of this Turn: what a person wrote, the task or message of a
    * parent agent, or the instructions of an Automation. Runtime text, such as
    * tags, generic instructions, Events, child agent results, and the question
-   * of a Review item, is not in it. Empty when the Turn has no request.
+   * of an Inbox item, is not in it. Empty when the Turn has no request.
    */
   text: string;
   users: {

@@ -5,7 +5,7 @@ import {
   digest,
   expandRow,
   license,
-  mockReviewItems,
+  mockInboxItems,
   pinChecks,
   pinReview,
   prReady,
@@ -49,7 +49,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
+    await mockInboxItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -67,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // wakes the item at its time.
     expect((await created).postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
       wakeAt: expect.any(String),
     });
     const todo = page.getByRole("region", { name: "To do" });
@@ -88,7 +88,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
-    await mockReviewItems(page, { open: [alert, license] });
+    await mockInboxItems(page, { open: [alert, license] });
     const automation = {
       ...automationReport.automations.find(({ id }) => id === "event-1")!,
       status: "blocked" as const,
@@ -121,7 +121,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Tomorrow" }).click();
     // The alert has no Conversation, so the snooze names the item only.
     expect((await created).postDataJSON()).toEqual({
-      reviewItemId: alert.id,
+      inboxItemId: alert.id,
       wakeAt: expect.any(String),
     });
     await expect(rowHead(todo, alert.title)).toHaveCount(0);
@@ -151,7 +151,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Wake" }).click();
-    expect((await deleted).postDataJSON()).toEqual({ reviewItemId: alert.id });
+    expect((await deleted).postDataJSON()).toEqual({ inboxItemId: alert.id });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
 
@@ -166,7 +166,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       conversationIds: [rollout.owner.id],
       rootConversationId: rollout.rootConversationId,
     };
-    await mockReviewItems(page, { open: [rollout, notice] });
+    await mockInboxItems(page, { open: [rollout, notice] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     const created = page.waitForRequest(
@@ -181,7 +181,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Tomorrow" }).click();
     expect((await created).postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
       wakeAt: expect.any(String),
     });
     await expect(todo).toHaveCount(0);
@@ -200,7 +200,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Wake" }).click();
     expect((await deleted).postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
   });
@@ -209,7 +209,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
+    await mockInboxItems(page, { open: [license, rollout] });
     await page.route("**/api/inbox/snoozes", (route) =>
       route.request().method() === "POST"
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
@@ -228,7 +228,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
@@ -268,7 +268,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-release-checklist",
       title: "Approve the release checklist",
     };
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, pinReview, checklist, linked],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -280,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Hold the reads that follow the snooze, so only the page hides the rows.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**", async (route) => {
+    await page.route("**/api/inbox-items?**", async (route) => {
       await held;
       await route.fallback();
     });
@@ -300,7 +300,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [pinReview, pinChecks],
       snoozes: [
         {
@@ -319,7 +319,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
@@ -329,7 +329,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ],
     });
     // Only Snoozed can tell whether a snooze hides the item.
-    await page.route("**/api/review-items?**snoozed=true**", (route) =>
+    await page.route("**/api/inbox-items?**snoozed=true**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
     await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
@@ -343,7 +343,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     // A pull request row opens from its item link.
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
@@ -353,7 +353,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Hold the reads that follow the snooze, so only the page hides the row.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**", async (route) => {
+    await page.route("**/api/inbox-items?**", async (route) => {
       await held;
       await route.fallback();
     });
@@ -368,7 +368,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
@@ -409,7 +409,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
     expect((await created).postDataJSON()).toEqual({
       conversationId: prReview.rootConversationId,
-      reviewItemId: prReview.id,
+      inboxItemId: prReview.id,
       triggers: [
         { eventType: "pull_request.merged", outcome: "resolve" },
         { eventType: "pull_request.closed_unmerged", outcome: "resolve" },
@@ -424,7 +424,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.setViewportSize({ height: 560, width: 1280 });
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
@@ -442,7 +442,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const ask = { ...prReview, canAct: false };
-    await mockReviewItems(page, { open: [license, ask] });
+    await mockInboxItems(page, { open: [license, ask] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -460,7 +460,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
     expect((await created).postDataJSON()).toEqual({
       conversationId: ask.rootConversationId,
-      reviewItemId: ask.id,
+      inboxItemId: ask.id,
       triggers: [{ eventType: "pull_request.checks.passed", outcome: "wake" }],
     });
     await expect(openRowOf(page)).toHaveCount(0);
@@ -470,7 +470,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, rollout] });
+    await mockInboxItems(page, { open: [license, rollout] });
     await page.goto(`${dashboard.baseURL}/`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -508,7 +508,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
     expect((await created).postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
       triggers: [
         {
           eventType: "pull_request.merged",
@@ -530,7 +530,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.setViewportSize(mobile);
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -567,7 +567,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
     expect((await created).postDataJSON()).toEqual({
       conversationId: prReview.rootConversationId,
-      reviewItemId: prReview.id,
+      inboxItemId: prReview.id,
       triggers: [
         { eventType: "pull_request.comment.created", outcome: "wake" },
         { eventType: "issue.closed", outcome: "wake", resourceUrl: issue },
@@ -580,7 +580,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license, prReview] });
+    await mockInboxItems(page, { open: [license, prReview] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -628,7 +628,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // Nothing in this browser knows about the snooze: the server keeps it.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
@@ -657,7 +657,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Wake is per item, even when the snooze came from the whole row.
     expect((await woken).postDataJSON()).toEqual({
       conversationId: rollout.owner.id,
-      reviewItemId: rollout.id,
+      inboxItemId: rollout.id,
     });
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
     await nav.getByRole("link", { name: /^Inbox/ }).click();
@@ -669,7 +669,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // One item a page: the digest's row is on Snoozed's second page.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
@@ -691,7 +691,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, digest, prReady],
       pageSize: 1,
       snoozes: [rollout, digest].map((item) => ({
@@ -703,7 +703,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let failing = true;
     await page.route(
       (url) =>
-        url.pathname === "/api/review-items" &&
+        url.pathname === "/api/inbox-items" &&
         url.searchParams.get("snoozed") === "true" &&
         url.searchParams.has("cursor"),
       (route) =>
@@ -728,7 +728,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [license, rollout],
       snoozes: [
         {
@@ -740,7 +740,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Snoozed rows arrive after the Inbox is ready.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/review-items?**snoozed=true**", async (route) => {
+    await page.route("**/api/inbox-items?**snoozed=true**", async (route) => {
       await held;
       await route.fallback();
     });
@@ -762,7 +762,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.clock.install({ time: NOW_MS });
     // The server checks the wake time against the page's clock.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       now: () => page.evaluate(() => Date.now()),
       open: [license, rollout],
     });

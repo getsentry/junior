@@ -5,7 +5,7 @@ description: Prove what Junior does by launching the local example app (`pnpm de
 
 # Verify Junior
 
-Users touch Junior in Slack (Turns and Review item cards), in the dashboard (Conversations, Inbox, Automations, System), and on GitHub (PRs, issues). The local example app (`apps/example`) serves the dashboard and runs real Turns, with a real model, in a queue worker. A message sent from the dashboard composer runs the same agent, tools, Guardian review, and Inbox as Slack. Slack and GitHub need their own credentials (see each feature's `Gotchas`).
+Users touch Junior in Slack (Turns and Inbox item cards), in the dashboard (Conversations, Inbox, Automations, System), and on GitHub (PRs, issues). The local example app (`apps/example`) serves the dashboard and runs real Turns, with a real model, in a queue worker. A message sent from the dashboard composer runs the same agent, tools, Guardian review, and Inbox as Slack. Slack and GitHub need their own credentials (see each feature's `Gotchas`).
 
 Helpers are Node scripts in `scripts/`. Run them from the repo root. The feature map is [features/README.md](features/README.md).
 
@@ -24,7 +24,7 @@ S=.agents/skills/verify-junior/scripts
    ```
 
    - Each run gets a new, empty Postgres database (`verify_junior_<run>`) and an empty Redis database (1 to 15) in the compose services. `pnpm dev` migrates the database. Your `junior` database and Redis database 0 are not touched.
-   - `--mock` sets `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true`. The dashboard then shows fixed Conversations, Review items, Automations, and stats, and the composer runs no agent. Use it only where a feature file says so.
+   - `--mock` sets `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true`. The dashboard then shows fixed Conversations, Inbox items, Automations, and stats, and the composer runs no agent. Use it only where a feature file says so.
    - `launch` refuses when port 3000 or 8969 is in use. `pnpm dev` binds both, so only one instance can run on a machine.
    - `pnpm dev` runs inside `sentry local run`, so Nitro and the queue worker report to one Sentry Local server on port 8969. `launch` tails it to `$RUN_DIR/telemetry.ndjson`. See [Telemetry](#telemetry).
    - It generates a disposable `JUNIOR_ENCRYPTION_KEYS` and never writes it to a file.
