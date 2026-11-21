@@ -22,12 +22,16 @@
 // | releaseTurn            | running, fenced       |             |          |          | cleared  |
 // | cancelTurn             | queued or running     | +1          |          |          | cleared  |
 //
+// commitStep (completed) queues the Turn instead, like commitStep (continue),
+// while the Turn has an input that no step has read.
+//
 // Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
 // over such a Turn, so the queue's redelivery after a crash resumes it.
 //
 // Fenced: the write matches only while the Turn runs under the caller's
 // `lease_epoch`, so a worker that lost its lease changes nothing and gets
-// `false`. holdsLease reads the same fence without a write. Step: the write
+// `false`, or undefined from commitStep. holdsLease reads the same fence
+// without a write. Step: the write
 // also matches only at the caller's claimed `step_seq`, so a second commit of
 // the same step changes nothing. Lease times use the database clock, so hosts
 // agree on expiry.
@@ -41,6 +45,11 @@ import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import {
+  findUnreadInputs,
+  inputEventKey,
+  type InputMessage,
+} from "@/core/turn/inbox";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
@@ -179,17 +188,20 @@ export async function holdsLease(
 }
 
 /**
- * Commits a step in one transaction: it appends the step's messages to the
- * Conversation history and releases the lease. A Turn that continues goes
- * back to queued for its next step, which needs a new claim. A Turn that the
- * step completed ends. False when the lease is lost or the step is already
- * committed, and then nothing is written.
+ * Commits a step in one transaction: it appends the inputs that the step
+ * read, then the step's messages, to the Conversation history and releases
+ * the lease. A Turn that continues goes back to queued for its next step,
+ * which needs a new claim. A Turn that the step completed ends, unless it
+ * still has unread inputs: then it continues, so the next step reads them.
+ * Returns what the Turn does next. Undefined when the lease is lost or the
+ * step is already committed, and then nothing is written.
  */
 export async function commitStep(
   executor: JuniorSqlDatabase,
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
-): Promise<boolean> {
+  inputs: InputMessage[],
+): Promise<"continue" | "completed" | undefined> {
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
     attempts: 0,
@@ -199,11 +211,12 @@ export async function commitStep(
   };
   return executor.transaction(() =>
     withConversationEventLock(executor, turn.conversationId, async () => {
+      const outcome = await commitOutcome(executor, turn.turnId, step, inputs);
       const rows = await executor
         .db()
         .update(juniorTurns)
         .set(
-          step.outcome === "completed"
+          outcome === "completed"
             ? { ...nextStep, state: "completed", endedAt: sql`now()` }
             : { ...nextStep, state: "queued" },
         )
@@ -216,18 +229,46 @@ export async function commitStep(
         )
         .returning({ id: juniorTurns.id });
       if (rows.length === 0) {
-        return false;
+        return undefined;
       }
       await createSqlConversationEventStore(executor).append(
         turn.conversationId,
-        step.messages.map((message) => ({
-          data: historyItemFromPiMessage(message, contextProvenance),
-          createdAtMs: message.timestamp,
-        })),
+        [
+          ...inputs.map(({ inputId, message }) => ({
+            data: historyItemFromPiMessage(message, contextProvenance),
+            idempotencyKey: inputEventKey(inputId),
+            createdAtMs: message.timestamp,
+          })),
+          ...step.messages.map((message) => ({
+            data: historyItemFromPiMessage(message, contextProvenance),
+            createdAtMs: message.timestamp,
+          })),
+        ],
       );
-      return true;
+      return outcome;
     }),
   );
+}
+
+/**
+ * A completed step ends the Turn only when the commit reads every unread
+ * input. The scheduler can add an input after the step read them, and the
+ * Conversation lock keeps more out until the commit ends.
+ */
+async function commitOutcome(
+  executor: JuniorSqlDatabase,
+  turnId: string,
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+  inputs: InputMessage[],
+): Promise<"continue" | "completed"> {
+  if (step.outcome === "continue") {
+    return "continue";
+  }
+  const read = new Set(inputs.map((input) => input.inputId));
+  const unread = await findUnreadInputs(executor, turnId);
+  return unread.every((input) => read.has(input.inputId))
+    ? "completed"
+    : "continue";
 }
 
 /** Ends a running Turn as failed, with the reason. False when the lease is lost. */

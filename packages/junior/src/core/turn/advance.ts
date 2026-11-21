@@ -11,6 +11,11 @@ import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
+import {
+  findUnreadInputs,
+  type InputMessage,
+  type UnreadInput,
+} from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import {
   claimTurn,
@@ -21,7 +26,12 @@ import {
   type ClaimedTurn,
   type TurnLease,
 } from "@/core/turn/state";
-import { runStep, type StepInput, type StepResult } from "@/core/turn/step";
+import {
+  hasPendingToolCalls,
+  runStep,
+  type StepInput,
+  type StepResult,
+} from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 
 // How often a running step checks that its lease still holds. A cancel or a
@@ -36,8 +46,16 @@ export type PreparedStep = Omit<
 
 type AdvanceTurnOptions = {
   client: ModelClient;
-  /** Builds the system prompt, tools and model settings for the claimed Turn. */
-  prepare: (turn: ClaimedTurn) => Promise<PreparedStep>;
+  /**
+   * Builds the system prompt, tools and model settings for the claimed Turn,
+   * and turns each unread input into a user message. It must return every
+   * input it gets, once, in the order the step reads them. It gets no inputs
+   * when the step runs tool calls.
+   */
+  prepare: (
+    turn: ClaimedTurn,
+    inputs: UnreadInput[],
+  ) => Promise<PreparedStep & { inputs: InputMessage[] }>;
   /** Names the invocation that holds the lease. */
   owner: string;
   leaseMs: number;
@@ -100,12 +118,19 @@ async function runClaimedStep(
     "app.turn.step_seq": claim.stepSeq,
     "gen_ai.conversation.id": claim.conversationId,
   });
-  const prepared = await prepare(claim);
+  const history = projectConversationEvents(events).messages;
+  // A tool batch must follow its tool calls, so only a model request reads
+  // inputs. The inputs wait for the model request after the batch.
+  const unread = hasPendingToolCalls(history)
+    ? []
+    : await findUnreadInputs(executor, claim.turnId);
+  const { inputs, ...prepared } = await prepare(claim, unread);
+  checkPreparedInputs(unread, inputs);
   const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
     client,
     session: claim.conversationId,
-    messages: projectConversationEvents(events).messages,
+    messages: [...history, ...inputs.map((input) => input.message)],
     // A later claim of the same step means an earlier attempt did not commit.
     replay: claim.attempts > 1,
   });
@@ -114,12 +139,10 @@ async function runClaimedStep(
   }
   switch (result.outcome) {
     case "continue":
-      if (await commitStep(executor, claim, result)) {
+    case "completed":
+      if ((await commitStep(executor, claim, result, inputs)) === "continue") {
         await publishTurnStep(claim.turnId);
       }
-      return;
-    case "completed":
-      await commitStep(executor, claim, result);
       return;
     case "failed":
       await failTurn(executor, claim, result.error);
@@ -128,6 +151,24 @@ async function runClaimedStep(
       const unhandled: never = result;
       throw new Error(`Unhandled step result: ${JSON.stringify(unhandled)}`);
     }
+  }
+}
+
+/** Throws unless `prepare` returned each unread input exactly once. */
+function checkPreparedInputs(
+  unread: UnreadInput[],
+  prepared: InputMessage[],
+): void {
+  const expected = new Set(unread.map((input) => input.inputId));
+  const returned = prepared.map((input) => input.inputId);
+  if (
+    returned.length !== expected.size ||
+    new Set(returned).size !== returned.length ||
+    returned.some((inputId) => !expected.has(inputId))
+  ) {
+    throw new Error(
+      `prepare must return each unread input once: expected [${[...expected].join(", ")}], got [${returned.join(", ")}]`,
+    );
   }
 }
 

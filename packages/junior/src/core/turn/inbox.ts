@@ -1,10 +1,16 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
-// written, and its idempotency key is unique in the Conversation.
+// written, and its idempotency key is unique in the Conversation. An input is
+// read once the Conversation history has its event, keyed `inbox:<row id>`.
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import type { UserMessage } from "@earendil-works/pi-ai";
+import { and, asc, eq, notExists, sql } from "drizzle-orm";
 import type { Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorTurnInbox, juniorTurns } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorTurnInbox,
+  juniorTurns,
+} from "@/db/schema";
 import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
 
 /**
@@ -60,4 +66,57 @@ export async function findInputTurn(
       ),
     );
   return turn;
+}
+
+const INPUT_EVENT_KEY_PREFIX = "inbox:";
+
+/** An input of a Turn that no history event has read yet. */
+export type UnreadInput = Pick<
+  TurnInput,
+  "actorIdentityId" | "payload" | "sentAt"
+> & {
+  inputId: string;
+  traceContext: TurnInputTraceContext | null;
+};
+
+/** An unread input as the user message that a step reads. */
+export type InputMessage = { inputId: string; message: UserMessage };
+
+/** The idempotency key of the history event that reads an input. */
+export function inputEventKey(inputId: string): string {
+  return `${INPUT_EVENT_KEY_PREFIX}${inputId}`;
+}
+
+/** Finds the inputs of a Turn that the history has not read, oldest first. */
+export async function findUnreadInputs(
+  executor: JuniorSqlDatabase,
+  turnId: string,
+): Promise<UnreadInput[]> {
+  const db = executor.db();
+  const readEvent = db
+    .select({ one: sql`1` })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(
+          juniorConversationEvents.conversationId,
+          juniorTurnInbox.conversationId,
+        ),
+        eq(
+          juniorConversationEvents.idempotencyKey,
+          sql`${INPUT_EVENT_KEY_PREFIX}::text || ${juniorTurnInbox.id}::text`,
+        ),
+      ),
+    );
+  return db
+    .select({
+      inputId: juniorTurnInbox.id,
+      actorIdentityId: juniorTurnInbox.actorIdentityId,
+      payload: juniorTurnInbox.payload,
+      sentAt: juniorTurnInbox.sentAt,
+      traceContext: juniorTurnInbox.traceContext,
+    })
+    .from(juniorTurnInbox)
+    .where(and(eq(juniorTurnInbox.turnId, turnId), notExists(readEvent)))
+    .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
 }

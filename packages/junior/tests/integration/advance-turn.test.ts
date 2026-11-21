@@ -12,12 +12,18 @@ import type {
   ModelSettings,
 } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
-import { advanceTurn, type PreparedStep } from "@/core/turn/advance";
+import { advanceTurn } from "@/core/turn/advance";
+import {
+  findUnreadInputs,
+  type InputMessage,
+  type UnreadInput,
+} from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC, turnStepCallback } from "@/core/turn/queue";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
+  juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
 import {
@@ -153,8 +159,46 @@ async function loadHistory() {
   return projectConversationEvents(events).messages;
 }
 
+type Prepare = Parameters<typeof advanceTurn>[2]["prepare"];
+
 /** How a test prepares a step, and the model client that the step uses. */
-type Step = { prepare: () => Promise<PreparedStep>; client?: ModelClient };
+type Step = { prepare: Prepare; client?: ModelClient };
+
+/** Formats an input as the user message of its text. */
+function inputMessage(input: UnreadInput): InputMessage {
+  return {
+    inputId: input.inputId,
+    message: {
+      role: "user",
+      content: [{ type: "text", text: String(input.payload["text"]) }],
+      timestamp: input.sentAt.getTime(),
+    },
+  };
+}
+
+async function addTestInput(text: string) {
+  const inputId = randomUUID();
+  await fixture.sql
+    .db()
+    .insert(juniorTurnInbox)
+    .values({
+      id: inputId,
+      conversationId: CONVERSATION_ID,
+      turnId,
+      actorIdentityId: "identity:actor",
+      payload: { text },
+      idempotencyKey: `slack-event:${inputId}`,
+      sentAt: new Date(),
+    });
+  return inputId;
+}
+
+function userText(text: string) {
+  return expect.objectContaining({
+    role: "user",
+    content: [{ type: "text", text }],
+  });
+}
 
 /** A step whose model gives the replies in order. */
 function prepareWith(
@@ -162,8 +206,13 @@ function prepareWith(
   tools: ToolDefinition[] = [],
 ): Required<Step> {
   return {
-    prepare: () =>
-      Promise.resolve({ systemPrompt: "You are Junior.", tools, model: MODEL }),
+    prepare: (_turn, inputs) =>
+      Promise.resolve({
+        systemPrompt: "You are Junior.",
+        tools,
+        model: MODEL,
+        inputs: inputs.map(inputMessage),
+      }),
     client: fakeModelClient(
       replies.map((message) => ({ type: "message", message })),
     ),
@@ -485,6 +534,7 @@ describe("advanceTurn", () => {
     await advance({ ...retryStep, prepare: retry });
     expect(retry).toHaveBeenCalledWith(
       expect.objectContaining({ stepSeq: 1, attempts: 2 }),
+      [],
     );
     // The retry is a replay, so it skips the tool that must not run twice.
     expect(executed).toEqual([]);
@@ -530,6 +580,7 @@ describe("advanceTurn", () => {
 
     expect(last).toHaveBeenCalledWith(
       expect.objectContaining({ attempts: MAX_ATTEMPTS }),
+      [],
     );
     await expect(readTurn()).resolves.toMatchObject({
       state: "queued",
@@ -611,5 +662,124 @@ describe("advanceTurn", () => {
       expect.objectContaining({ role: "assistant" }),
       expect.objectContaining({ role: "toolResult", isError: true }),
     ]);
+  });
+  it("reads an unread input into the history before the reply", async () => {
+    const inputId = await addTestInput("How many Turns?");
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
+
+    await advance(prepareWith([reply]));
+
+    await expect(readTurn()).resolves.toMatchObject({ state: "completed" });
+    await expect(loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      reply,
+    ]);
+    const events = await createSqlConversationEventStore(
+      fixture.sql,
+    ).loadCurrentHistory(CONVERSATION_ID);
+    expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `inbox:${inputId}`,
+      undefined,
+    ]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
+  });
+
+  it("leaves the input unread when the model step fails", async () => {
+    const inputId = await addTestInput("How many Turns?");
+
+    await advance(
+      prepareWith([
+        createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
+      ]),
+    );
+
+    await expect(readTurn()).resolves.toMatchObject({ state: "failed" });
+    await expect(loadHistory()).resolves.toEqual([]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId }),
+    ]);
+  });
+
+  it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
+    await addTestInput("How many Turns?");
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
+    const step = prepareWith([reply]);
+    let lateInputId: string | undefined;
+
+    await advance({
+      prepare: step.prepare,
+      client: {
+        complete: async (request, signal) => {
+          lateInputId = await addTestInput("And how many failed?");
+          return step.client.complete(request, signal);
+        },
+      },
+    });
+
+    const turn = await readTurn();
+    expect(turn).toMatchObject({ state: "queued", stepSeq: 1 });
+    expect(turn.endedAt).toBeNull();
+    await expect(loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      reply,
+    ]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId: lateInputId }),
+    ]);
+    await expect(deliveredStepMessages()).resolves.toBe(1);
+  });
+
+  it("reads no inputs in a tool step", async () => {
+    const executed: string[] = [];
+    const reply = sendCallReply();
+    await advance(prepareWith([reply]));
+    const inputId = await addTestInput("Also send it to Sam.");
+    const toolStep = prepareWith([], [sendTool(executed)]);
+    const prepare = vi.fn(toolStep.prepare);
+
+    await advance({ ...toolStep, prepare });
+
+    expect(prepare).toHaveBeenCalledWith(expect.anything(), []);
+    expect(executed).toEqual(["call-1"]);
+    await expect(loadHistory()).resolves.toEqual([
+      reply,
+      expect.objectContaining({ role: "toolResult" }),
+    ]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId }),
+    ]);
+  });
+
+  it.each([
+    ["misses an input", (inputs: InputMessage[]) => inputs.slice(1)],
+    [
+      "adds an input",
+      (inputs: InputMessage[]) => [
+        ...inputs,
+        { ...inputs[0]!, inputId: randomUUID() },
+      ],
+    ],
+  ])("throws when prepare %s, and writes nothing", async (_change, change) => {
+    await addTestInput("How many Turns?");
+    const step = prepareWith([
+      createAssistantMessage({ type: "text", text: "Three." }),
+    ]);
+    const prepare: Prepare = async (turn, inputs) => {
+      const prepared = await step.prepare(turn, inputs);
+      return { ...prepared, inputs: change(prepared.inputs) };
+    };
+
+    await expect(advance({ ...step, prepare })).rejects.toThrow(
+      "prepare must return each unread input once",
+    );
+
+    await expect(readTurn()).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 0,
+    });
+    await expect(loadHistory()).resolves.toEqual([]);
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toHaveLength(
+      1,
+    );
   });
 });
