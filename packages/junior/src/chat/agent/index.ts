@@ -40,6 +40,10 @@ import {
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import {
+  loadLeadingSystemSections,
+  recordLeadingSystemSections,
+} from "@/chat/conversations/leading-system-sections";
+import {
   contextProvenance,
   instructionActors,
   instructionProvenanceFor,
@@ -737,7 +741,7 @@ async function executeAgentRunInPrivacyContext(
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
     // Prompt assembly fills this; compaction updates close over it.
-    let baseInstructions = "";
+    let systemPrompt = "";
 
     setTags({
       ...runLogContext,
@@ -807,14 +811,17 @@ async function executeAgentRunInPrivacyContext(
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
     // ── Prompt context ───────────────────────────────────────────────
+    const savedLeadingSystemSections =
+      await loadLeadingSystemSections(conversationId);
     const {
-      baseInstructions: assembledBaseInstructions,
+      systemPrompt: assembledSystemPrompt,
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
       platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
+      newLeadingSystemSections,
       sectionsMessage,
       shouldPromptAgent,
       turnContexts,
@@ -831,6 +838,7 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
+      leadingSystemSections: savedLeadingSystemSections,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
@@ -842,7 +850,18 @@ async function executeAgentRunInPrivacyContext(
       turnContext: promptTurnContext,
       userContentParts,
     });
-    baseInstructions = assembledBaseInstructions;
+    systemPrompt = assembledSystemPrompt;
+    // Saved before any model call, so every later slice and Turn sends the
+    // same system prompt.
+    const leadingSystemSections =
+      savedLeadingSystemSections ?? newLeadingSystemSections ?? {};
+    if (newLeadingSystemSections) {
+      await requireConversationLease("save");
+      await recordLeadingSystemSections({
+        conversationId,
+        sections: newLeadingSystemSections,
+      });
+    }
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
       async commit(messages) {
@@ -889,6 +908,7 @@ async function executeAgentRunInPrivacyContext(
       const compaction = await compactWithPreparedSummary(
         {
           conversationId,
+          leadingSystemSections,
           modelId: activeModelId,
           onCompactionStart: () =>
             observers.onStatus?.({ text: "Compacting context" }),
@@ -898,7 +918,7 @@ async function executeAgentRunInPrivacyContext(
           // Not `agent.state.systemPrompt`: it also folds in saved system
           // messages, which the history estimate counts.
           requestOverheadTokens: estimateRequestOverheadTokens(
-            baseInstructions,
+            systemPrompt,
             agent!.state.tools,
             activeModelId,
           ),
@@ -1181,7 +1201,7 @@ async function executeAgentRunInPrivacyContext(
               lastRequestInputSize([message]),
             ),
         }),
-        { systemPrompt: baseInstructions, tools: wiring.agentTools },
+        { systemPrompt, tools: wiring.agentTools },
       ),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
@@ -1306,7 +1326,7 @@ async function executeAgentRunInPrivacyContext(
         };
       },
       initialState: {
-        systemPrompt: baseInstructions,
+        systemPrompt,
         model: resolveGatewayModel(activeModelId),
         thinkingLevel: toPiReasoningLevel(reasoningLevel),
         tools: wiring.agentTools,

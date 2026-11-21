@@ -18,7 +18,10 @@ import {
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import { renderThreadContext } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
-import { foldSystemMessages } from "@/chat/pi/agent-history";
+import {
+  type SystemSections,
+  systemSectionsChange,
+} from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
@@ -88,6 +91,11 @@ export interface CompactContextResult {
 /** Inputs of a capacity compaction or a prepared-summary swap. */
 export interface ActiveContextCompactionArgs {
   conversationId: string;
+  /**
+   * The Conversation's leading capability sections, part of the system
+   * prompt. None before the first Turn that saves them.
+   */
+  leadingSystemSections?: SystemSections | undefined;
   modelId: string;
   onCompactionStart?: () => void | Promise<void>;
   pendingMessages?:
@@ -242,8 +250,8 @@ function withoutRequestContext(text: string): string {
 
 /**
  * Remove the copies of capability sections that the Turn context of older
- * Turns held. Later system messages hold them now, and compaction folds
- * those.
+ * Turns held. The leading sections and later system messages hold them now,
+ * and compaction keeps their changes.
  */
 function withoutCapabilitySections(content: unknown[]): unknown[] {
   return content.map((part) => {
@@ -661,7 +669,7 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
   for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
-      // A replacement adds only user messages and folded system state.
+      // A replacement adds only user messages and section changes.
       const role = (message as { role?: unknown }).role;
       if (role !== "user" && role !== "system") return undefined;
       continue;
@@ -837,7 +845,10 @@ async function compactActiveAboveThreshold(
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
-  const systemMessage = foldSystemMessages(args.piMessages);
+  const systemMessage = systemSectionsChange(
+    args.leadingSystemSections ?? {},
+    args.piMessages,
+  );
   const systemEntries = systemMessage
     ? [{ message: systemMessage, provenance: contextProvenance }]
     : [];
@@ -894,10 +905,10 @@ async function compactActiveAboveThreshold(
     ),
     provenance: contextProvenance,
   };
-  // The current system state directly follows the summary of the history
-  // that held it. A system message must follow a user message. With no
-  // assistant message before it, the request folds it into the system
-  // prompt.
+  // The section changes directly follow the summary of the history that
+  // held them. A system message must follow a user message. Pi sends it
+  // right before the next assistant message; the system prompt stays the
+  // same.
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;

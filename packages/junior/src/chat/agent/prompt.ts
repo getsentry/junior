@@ -33,7 +33,11 @@ import { listTodos } from "@/chat/todos/store";
 import type { Todo } from "@/chat/todos/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
-import { systemSectionsUpdate } from "@/chat/pi/agent-history";
+import {
+  agentSystemPrompt,
+  type SystemSections,
+  systemSectionsUpdate,
+} from "@/chat/pi/agent-history";
 import {
   renderAgentsInstructionsForPrompt,
   type RepositoryInstructions,
@@ -86,8 +90,9 @@ export interface PromptInput {
 
 /** Fully assembled prompt state for one run slice. */
 export interface PromptAssembly {
-  baseInstructions: string;
-  /** Platform that `baseInstructions` was built for. */
+  /** Base prompt and leading capability sections, from `agentSystemPrompt`. */
+  systemPrompt: string;
+  /** Platform that `systemPrompt` was built for. */
   platform: Platform;
   contextContentParts: UserContentPart[];
   inputMessages: Array<{
@@ -98,8 +103,14 @@ export interface PromptAssembly {
   promptTimestamp?: number;
   promptHistoryMessages: PiMessage[];
   /**
+   * The leading capability sections to save, when this is the first Turn of
+   * the Conversation that builds them.
+   */
+  newLeadingSystemSections?: SystemSections;
+  /**
    * A system message with the capability sections that changed since the
-   * history, for a new prompt. It goes before the Turn's context message.
+   * leading sections and history, for a new prompt. It goes before the
+   * Turn's context message.
    */
   sectionsMessage?: SystemMessage;
   shouldPromptAgent: boolean;
@@ -635,6 +646,16 @@ export function promptPlatform(
   return run.delivery && run.location?.provider === "slack" ? "slack" : "local";
 }
 
+function presentSections(
+  sections: Record<string, string | null>,
+): SystemSections {
+  return Object.fromEntries(
+    Object.entries(sections).filter(
+      (entry): entry is [string, string] => entry[1] !== null,
+    ),
+  );
+}
+
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
@@ -645,6 +666,8 @@ export async function assemblePrompt(args: {
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
   existingTurnStartMessageIndex?: number | undefined;
+  /** Saved leading capability sections, from `loadLeadingSystemSections`. */
+  leadingSystemSections?: SystemSections | undefined;
   priorPiMessages?: PiMessage[] | undefined;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
@@ -710,22 +733,38 @@ export async function assemblePrompt(args: {
     workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
-  // Before the first assistant message, the request folds it into the
-  // system prompt. Later, Pi sends it right before the next assistant
-  // message, after this prompt. A resumed slice already holds it.
-  const sectionsMessage = loadsTurnContext
+  // A resumed slice already holds them.
+  const sections = loadsTurnContext
+    ? buildCapabilitySections({
+        availableSkills: args.availableSkills,
+        activeMcpCatalogs: args.activeMcpCatalogs,
+        scriptTools: args.scriptTools,
+        toolGuidance: args.toolGuidance,
+        workspaces: workspaces ?? [],
+      })
+    : undefined;
+  // The first Turn that builds the sections keeps them as the leading
+  // sections of every later request, so the system prompt never changes.
+  const newLeadingSystemSections =
+    sections && !args.leadingSystemSections
+      ? presentSections(sections)
+      : undefined;
+  const leadingSystemSections =
+    args.leadingSystemSections ?? newLeadingSystemSections ?? {};
+  // Pi sends a change right before the next assistant message, after this
+  // prompt.
+  const sectionsMessage = sections
     ? systemSectionsUpdate(
+        leadingSystemSections,
         promptHistoryMessages,
-        buildCapabilitySections({
-          availableSkills: args.availableSkills,
-          activeMcpCatalogs: args.activeMcpCatalogs,
-          scriptTools: args.scriptTools,
-          toolGuidance: args.toolGuidance,
-          workspaces: workspaces ?? [],
-        }),
+        sections,
         trimmedPrompt.promptTimestamp ?? Date.now(),
       )
     : undefined;
+  const systemPrompt = agentSystemPrompt(
+    baseInstructions,
+    leadingSystemSections,
+  );
   // It returns nothing when no section has news for this Turn.
   const turnContextPrompt = loadsTurnContext
     ? buildTurnContextPrompt({
@@ -783,7 +822,7 @@ export async function assemblePrompt(args: {
   const inputMessages = [
     {
       role: "system",
-      content: [{ type: "text", text: baseInstructions }],
+      content: [{ type: "text", text: systemPrompt }],
     },
     ...(sectionsMessage
       ? [
@@ -818,7 +857,7 @@ export async function assemblePrompt(args: {
       ? [
           {
             role: "system",
-            parts: [{ type: "text", content: baseInstructions }],
+            parts: [{ type: "text", content: systemPrompt }],
           },
           ...(sectionsMessage
             ? [toCanonicalInputMessage(sectionsMessage)]
@@ -848,7 +887,7 @@ export async function assemblePrompt(args: {
   );
 
   return {
-    baseInstructions,
+    systemPrompt,
     contextContentParts,
     inputMessages,
     inputMessagesAttribute,
@@ -857,6 +896,7 @@ export async function assemblePrompt(args: {
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
       : undefined),
     promptHistoryMessages,
+    ...(newLeadingSystemSections ? { newLeadingSystemSections } : undefined),
     ...(sectionsMessage ? { sectionsMessage } : undefined),
     shouldPromptAgent,
     turnContexts: [
