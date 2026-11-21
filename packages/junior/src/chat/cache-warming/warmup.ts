@@ -77,7 +77,12 @@ import {
   recordWarmupCost,
 } from "./savings";
 import { compactOnIdle, mayCompactOnIdle } from "./idle-compaction";
-import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
+import {
+  loadSnapshot,
+  saveSnapshot,
+  type SnapshotSize,
+  type SnapshotSkipReason,
+} from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
 import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
 import { readSegmentState } from "./work-state";
@@ -132,6 +137,12 @@ interface WarmState {
   reasoning?: ThinkingLevel;
   /** Unset in idle periods from before it was stored. */
   snapshot?: SnapshotSize;
+  /**
+   * Set when the snapshot was over a limit and nothing was stored. Such an
+   * idle period sends no warmup. Its first slot only compacts on idle or
+   * stops, because compaction on idle needs no snapshot.
+   */
+  snapshotSkipReason?: SnapshotSkipReason;
   /**
    * Estimated system prompt and tool tokens of the request, for the size
    * check of a compaction on idle. Set only for a prefix at or above the
@@ -302,6 +313,10 @@ async function startIdlePeriod(
       cacheTtlMs: ttlMs,
     }),
   );
+  const mayCompact = mayCompactOnIdle({
+    modelId: request.model.id,
+    prefixTokens,
+  });
   const { skipReason, ...snapshot } = await saveSnapshot(
     state,
     conversationId,
@@ -336,10 +351,14 @@ async function startIdlePeriod(
       "app.cache_warming.prefix_tokens": prefixTokens,
       ...snapshotAttributes(snapshot),
     });
-    return { ...idle, prefixTokens };
+    // Compaction on idle needs no snapshot, so a large prefix keeps its
+    // first slot for that.
+    if (!mayCompact || !getChatConfig().idleCompactionEnabled) {
+      return { ...idle, prefixTokens };
+    }
   }
-  // Read here, not on each model call: only a period that Junior can warm
-  // records a gap.
+  // Read here, not on each model call: only a period that Junior can warm or
+  // compact on idle records a gap.
   const segmentState = await readSegmentState(conversationId, Date.now());
   const segmentInput = { ...turn, ...segmentState };
   const parentSegment = parentGapSegment(segmentInput);
@@ -358,9 +377,10 @@ async function startIdlePeriod(
       cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
       snapshot,
+      ...(skipReason ? { snapshotSkipReason: skipReason } : undefined),
       // The request folds leading system messages into its system prompt,
       // so this counts them twice. That only makes the swap stricter.
-      ...(mayCompactOnIdle({ modelId: request.model.id, prefixTokens })
+      ...(mayCompact
         ? {
             requestOverheadTokens: estimateRequestOverheadTokens(
               request.context.systemPrompt ?? "",
@@ -399,7 +419,8 @@ async function recordSavings(
     idle.warm?.modelId ?? request.model.id,
     savings,
     {
-      warmed: idle.warm !== undefined,
+      warmed:
+        idle.warm !== undefined && idle.warm.snapshotSkipReason === undefined,
       outcome: idlePeriodOutcome(gap, savings, warmups),
     },
   );
@@ -674,7 +695,9 @@ export function createCacheWarmingRecorder(
  *   fingerprint, so the idle period stops), `stopped` (warming stopped or
  *   the tools returned first; no log),
  *   `image_missing` (an image key of the snapshot expired, so the idle period
- *   stops), or a `decideWarmup` reason.
+ *   stops), `snapshot_too_large` or `images_too_large` (no snapshot was
+ *   stored, so the slot could only compact on idle or stop), or a
+ *   `decideWarmup` reason.
  *
  * Idle warmups carry the sizes of the idle period's snapshot:
  * `snapshot_bytes` (compressed, without images), `snapshot_image_count`
@@ -682,7 +705,9 @@ export function createCacheWarmingRecorder(
  * (their base64 data). A snapshot over a limit stores nothing and warns
  * `cache_warming.snapshot.skipped` with `prefix_tokens`, the same sizes, and
  * `skip_reason` `snapshot_too_large` (still over the limit without its
- * images) or `images_too_large` (its images are over their limit). Each
+ * images) or `images_too_large` (its images are over their limit). At or
+ * above the background compaction mark, its idle period still gets its
+ * first slot, for compaction on idle. Each
  * snapshot also records the unsampled distribution metrics
  * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
  * with `app.cache_warming.stored` false for a snapshot over a limit.
@@ -834,7 +859,8 @@ export async function runCacheWarmup(
           chooseIdleCompaction({
             ...returns,
             compactedTokens,
-            canWarm: !late && !breaker && !promptChanged,
+            canWarm:
+              !warm.snapshotSkipReason && !late && !breaker && !promptChanged,
           }),
       });
       if (idleCompaction) {
@@ -861,6 +887,12 @@ export async function runCacheWarmup(
       }
       if (idleCompaction?.outcome === "stopped") {
         await skip("idle_compaction_stopped");
+        return;
+      }
+      // No snapshot to warm, so the cache expires after this slot, and the
+      // idle period stops after its one choice.
+      if (warm.snapshotSkipReason) {
+        await skip(warm.snapshotSkipReason);
         return;
       }
       if (late) {
