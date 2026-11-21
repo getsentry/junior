@@ -10,6 +10,7 @@ import { getSqlExecutor } from "@/chat/db";
 import {
   mcpConversationIdSchema,
   mcpMessages,
+  readMcpAuthors,
   mcpMessageSchema,
 } from "../conversation";
 import {
@@ -89,7 +90,10 @@ export function registerListConversationMessagesTool(
         conversationId,
         limit: EVENT_SCAN_LIMIT,
       });
-      const scanned = mcpMessages(page.events);
+      const scanned = mcpMessages(
+        page.events,
+        await readMcpAuthors(conversationId),
+      );
       const messages = scanned.slice(-limit);
       const olderSeq =
         scanned.length > messages.length ? messages[0]?.seq : page.previousSeq;

@@ -9,11 +9,15 @@ import {
 } from "@/api/schema/conversation";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { getDb } from "@/chat/db";
+import { AVATAR_PATH_PREFIX } from "@/chat/identities/avatar";
 import { logException } from "@/chat/logging";
 import type { User } from "@sentry/junior-plugin-api";
+import { readConversationAuthors } from "@/api/conversations/participants";
 import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
 import { conversationPendingMessageDeliverySchema } from "@/api/schema/conversation-pending-messages";
 import { conversationTreeStateSchema } from "@/api/schema/conversation-tree-state";
+import { MCP_AVATAR_PATH_PREFIX } from "./oauth/metadata";
 
 /** MCP view of one Conversation. It omits dashboard-only fields. */
 export const mcpConversationSchema = z
@@ -113,9 +117,47 @@ function mcpAttachments(
     : undefined;
 }
 
-function mcpAuthor(identity: ActorIdentity | undefined): string | undefined {
-  return identity?.fullName ?? identity?.slackUserName ?? identity?.email;
+/** The people who wrote in one Conversation, by Identity id. */
+export type McpAuthors = Readonly<Record<string, ActorIdentity>>;
+
+/** Read the people who wrote in one Conversation, by Identity id. */
+export async function readMcpAuthors(
+  conversationId: string,
+): Promise<McpAuthors> {
+  return (await readConversationAuthors(getDb(), conversationId)).authors;
 }
+
+// The name and photo of the person who wrote one Message. As in the
+// dashboard transcript, the participant behind the Identity comes first,
+// then the author that the Message stored. The photo path moves to the MCP
+// edge, which accepts the MCP bearer token.
+function mcpAuthor(
+  message: { actorIdentity?: ActorIdentity; actorIdentityId?: string },
+  authors: McpAuthors,
+): { author?: string; authorAvatarUrl?: string } {
+  const identity =
+    (message.actorIdentityId && authors[message.actorIdentityId]) ||
+    message.actorIdentity;
+  const author =
+    identity?.fullName ?? identity?.slackUserName ?? identity?.email;
+  const photo = identity?.avatarUrl;
+  return {
+    ...(author ? { author } : undefined),
+    ...(photo?.startsWith(AVATAR_PATH_PREFIX)
+      ? {
+          authorAvatarUrl:
+            MCP_AVATAR_PATH_PREFIX + photo.slice(AVATAR_PATH_PREFIX.length),
+        }
+      : undefined),
+  };
+}
+
+const mcpAuthorAvatarUrlSchema = z
+  .string()
+  .optional()
+  .describe(
+    "Path of the author's profile photo on this server. GET it with the same bearer token.",
+  );
 
 /** MCP view of one user or assistant Message. */
 export const mcpMessageSchema = z
@@ -134,6 +176,7 @@ export const mcpMessageSchema = z
     createdAt: z.string(),
     role: z.enum(["assistant", "user"]),
     author: z.string().optional(),
+    authorAvatarUrl: mcpAuthorAvatarUrlSchema,
     text: z.string(),
     attachments: mcpAttachmentsSchema,
   })
@@ -148,6 +191,7 @@ export type McpMessage = z.output<typeof mcpMessageSchema>;
  */
 export function mcpMessages(
   events: readonly ConversationReportEvent[],
+  authors: McpAuthors,
 ): McpMessage[] {
   return events.flatMap((event) => {
     const data = event.data;
@@ -155,14 +199,13 @@ export function mcpMessages(
     const text = data.text ?? "";
     const attachments = mcpAttachments(data.attachments);
     if (!text && !attachments) return [];
-    const author = mcpAuthor(data.actorIdentity);
     return [
       {
         seq: event.seq,
         messageId: data.messageId,
         createdAt: event.createdAt,
         role: data.role,
-        ...(author ? { author } : undefined),
+        ...mcpAuthor(data, authors),
         text,
         ...(attachments ? { attachments } : undefined),
       },
@@ -201,6 +244,7 @@ const mcpPendingMessageSchema = z
     messageId: z.string(),
     createdAt: z.string(),
     author: z.string().optional(),
+    authorAvatarUrl: mcpAuthorAvatarUrlSchema,
     text: z.string(),
     attachments: mcpAttachmentsSchema,
     delivery: conversationPendingMessageDeliverySchema.describe(
@@ -243,15 +287,18 @@ export async function readMcpPendingWork(
   const report = await readConversationPendingMessages(conversationId, {
     viewer: user,
   });
-  const pendingMessages = (report?.messages ?? []).flatMap((message) => {
+  const messages = report?.messages ?? [];
+  const authors = messages.some((message) => message.actorIdentityId)
+    ? await readMcpAuthors(conversationId)
+    : {};
+  const pendingMessages = messages.flatMap((message) => {
     if (message.text === undefined) return [];
-    const author = mcpAuthor(message.actorIdentity);
     const attachments = mcpAttachments(message.attachments);
     return [
       {
         messageId: message.messageId,
         createdAt: message.createdAt,
-        ...(author ? { author } : undefined),
+        ...mcpAuthor(message, authors),
         text: message.text,
         ...(attachments ? { attachments } : undefined),
         delivery: message.delivery,

@@ -17,6 +17,9 @@ const AFTER_EVENT_SCAN_LIMIT = 200;
 const AFTER_MESSAGE_LIMIT = 20;
 const EVENT_SCAN_LIMIT = 200;
 const RECENT_RUN_LIMIT = 10;
+const DASHBOARD_AVATAR_PREFIX = "/api/people/avatars/";
+/** The path prefix of the profile photos that tool results name. */
+export const MCP_AVATAR_PREFIX = "/api/mcp/avatars/";
 
 /** A tool error that the client model can read, like `mcpToolError`. */
 class ToolError extends Error {}
@@ -193,11 +196,22 @@ export function createMockMcpTools({ app, origin }) {
       : undefined;
   }
 
-  function mcpAuthor(identity) {
-    return identity?.fullName ?? identity?.slackUserName ?? identity?.email;
+  // The participant behind the Identity, then the stored author. The photo
+  // path moves to the MCP edge, which takes the MCP bearer token.
+  function mcpAuthor(message, authors) {
+    const identity =
+      (message.actorIdentityId && authors?.[message.actorIdentityId]) ||
+      message.actorIdentity;
+    const photo = identity?.avatarUrl;
+    return {
+      author: identity?.fullName ?? identity?.slackUserName ?? identity?.email,
+      authorAvatarUrl: photo?.startsWith(DASHBOARD_AVATAR_PREFIX)
+        ? MCP_AVATAR_PREFIX + photo.slice(DASHBOARD_AVATAR_PREFIX.length)
+        : undefined,
+    };
   }
 
-  function mcpMessages(events) {
+  function mcpMessages(events, authors) {
     return events.flatMap((event) => {
       const data = event.data;
       if (data.type !== "message" || data.role === "system") return [];
@@ -210,7 +224,7 @@ export function createMockMcpTools({ app, origin }) {
           messageId: data.messageId,
           createdAt: event.createdAt,
           role: data.role,
-          author: mcpAuthor(data.actorIdentity),
+          ...mcpAuthor(data, authors),
           text,
           attachments,
         },
@@ -226,6 +240,9 @@ export function createMockMcpTools({ app, origin }) {
     if (!result.ok) throw apiFailure(result);
     const report = result.json;
     const messages = droppedPending.has(id) ? [] : report.messages;
+    const authors = messages.some((message) => message.actorIdentityId)
+      ? (await requireDetail(id)).authors
+      : undefined;
     const pendingMessages = messages.flatMap((message) =>
       message.text === undefined
         ? []
@@ -233,7 +250,7 @@ export function createMockMcpTools({ app, origin }) {
             {
               messageId: message.messageId,
               createdAt: message.createdAt,
-              author: mcpAuthor(message.actorIdentity),
+              ...mcpAuthor(message, authors),
               text: message.text,
               attachments: mcpAttachments(message.attachments),
               delivery: message.delivery,
@@ -254,10 +271,10 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function messagesAfter(events, afterSeq) {
+  function messagesAfter(events, afterSeq, authors) {
     const newer = events.filter((event) => event.seq > afterSeq);
     const page = newer.slice(0, AFTER_EVENT_SCAN_LIMIT);
-    const scanned = mcpMessages(page);
+    const scanned = mcpMessages(page, authors);
     const messages = scanned.slice(0, AFTER_MESSAGE_LIMIT);
     const cut = scanned.length > messages.length;
     return {
@@ -382,10 +399,14 @@ export function createMockMcpTools({ app, origin }) {
             ? undefined
             : detail.eventHistory.status === "expired"
               ? { messages: [], hasMore: false, seq: afterSeq }
-              : messagesAfter((await readTranscript(id)).events, afterSeq);
+              : messagesAfter(
+                  (await readTranscript(id)).events,
+                  afterSeq,
+                  detail.authors,
+                );
         const lastReply = newer
           ? undefined
-          : mcpMessages(detail.events)
+          : mcpMessages(detail.events, detail.authors)
               .filter((message) => message.role === "assistant")
               .at(-1);
         const brief = detail.brief?.content;
@@ -450,7 +471,7 @@ export function createMockMcpTools({ app, origin }) {
         const page = older.slice(-EVENT_SCAN_LIMIT);
         const previousSeq =
           older.length > page.length ? page[0]?.seq : undefined;
-        const scanned = mcpMessages(page);
+        const scanned = mcpMessages(page, detail.authors);
         const messages = scanned.slice(-limit);
         const olderSeq =
           scanned.length > messages.length ? messages[0]?.seq : previousSeq;

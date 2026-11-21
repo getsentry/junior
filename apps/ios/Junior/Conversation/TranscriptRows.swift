@@ -53,7 +53,11 @@ struct MessageRow: View {
   }
 
   @ViewBuilder private var avatar: some View {
-    if message.isAssistant { Avatar(kind: .agent) } else { Avatar(kind: .person(message.author)) }
+    if message.isAssistant {
+      Avatar(kind: .agent)
+    } else {
+      Avatar(kind: .person(message.author, photo: message.authorAvatarUrl))
+    }
   }
 
   private var header: some View {

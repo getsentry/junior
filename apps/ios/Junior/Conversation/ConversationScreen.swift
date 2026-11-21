@@ -292,7 +292,7 @@ private struct QueuedStack: View {
         if messages.count <= 5 || expanded {
           ForEach(messages) { message in
             HStack(spacing: 8) {
-              Avatar(kind: .person(message.author))
+              Avatar(kind: .person(message.author, photo: message.authorAvatarUrl))
               Text(message.text)
                 .type(.sm)
                 .foregroundStyle(Tokens.textSubtle)

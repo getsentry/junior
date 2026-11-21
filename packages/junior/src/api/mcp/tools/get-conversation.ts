@@ -19,6 +19,7 @@ import {
   mcpAuthorizationSchema,
   mcpMessages,
   mcpMessageSchema,
+  type McpAuthors,
   type McpMessage,
   mcpPendingMessagesSchema,
   readMcpPendingWork,
@@ -67,6 +68,7 @@ const AFTER_MESSAGE_LIMIT = 20;
 async function readMessagesAfter(
   conversationId: string,
   afterSeq: number,
+  authors: McpAuthors,
 ): Promise<{ messages: McpMessage[]; hasMore: boolean; seq: number }> {
   // Participants can see private content.
   const page = await readConversationEventPageAfter(getSqlExecutor(), {
@@ -75,7 +77,7 @@ async function readMessagesAfter(
     conversationId,
     limit: AFTER_EVENT_SCAN_LIMIT,
   });
-  const scanned = mcpMessages(page.events);
+  const scanned = mcpMessages(page.events, authors);
   const messages = scanned.slice(0, AFTER_MESSAGE_LIMIT);
   const cut = scanned.length > messages.length;
   return {
@@ -164,10 +166,14 @@ export function registerGetConversationTool(
           ? undefined
           : detail.eventHistory.status === "expired"
             ? { messages: [], hasMore: false, seq: afterSeq }
-            : await readMessagesAfter(conversationId, afterSeq);
+            : await readMessagesAfter(
+                conversationId,
+                afterSeq,
+                detail.authors ?? {},
+              );
       const lastReply = newer
         ? undefined
-        : mcpMessages(detail.events)
+        : mcpMessages(detail.events, detail.authors ?? {})
             .filter((message) => message.role === "assistant")
             .at(-1);
       const cursorSeq = newer?.seq ?? detail.events.at(-1)?.seq ?? -1;

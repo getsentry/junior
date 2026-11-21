@@ -65,6 +65,30 @@ public actor MCPClient {
     }
   }
 
+  /// The bytes of a profile photo that a tool result names by path. Only a
+  /// path on this server gets the bearer token.
+  public func photo(_ path: String) async throws -> Data {
+    let base = server.baseURL
+    guard let url = server.page(path), url.scheme == base.scheme, url.host() == base.host(), url.port == base.port,
+      url.path().hasPrefix("/api/mcp/")
+    else { throw JuniorAPIError.decoding("Not a photo path on this server.") }
+    var token = try await accessToken()
+    for attempt in 0..<2 {
+      var request = URLRequest(url: url)
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+      let (data, response) = try await load(request)
+      if response.statusCode == 401, attempt == 0 {
+        token = try await refreshedToken(replacing: token)
+        continue
+      }
+      guard (200..<300).contains(response.statusCode) else {
+        throw JuniorAPIError.server(status: response.statusCode, message: nil)
+      }
+      return data
+    }
+    throw JuniorAPIError.server(status: 401, message: nil)
+  }
+
   public struct ServerInfo: Decodable, Sendable {
     public var name: String
     public var version: String?
