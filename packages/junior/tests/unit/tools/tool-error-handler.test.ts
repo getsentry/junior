@@ -18,7 +18,7 @@ vi.mock("@/chat/logging", () => ({
 import { McpToolError } from "@/chat/mcp/errors";
 import { OAuthProviderError } from "@/chat/oauth-response";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
-import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { handleToolExecutionError } from "@/chat/tool-support/tool-error-handler";
 
 describe("handleToolExecutionError", () => {
   beforeEach(() => {

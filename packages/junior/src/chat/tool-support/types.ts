@@ -1,0 +1,174 @@
+import type { FileUpload } from "chat";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
+import type {
+  AgentInvocationSource,
+  EventAutomationSource,
+  WebSource,
+  EventSource,
+  Destination,
+  Identity,
+  Location,
+  LocalDestination,
+  LocalSource,
+  PluginDispatchSource,
+  PluginEgress,
+  SlackDestination,
+  SlackSource,
+  Source,
+  ScheduledAutomationSource,
+  User,
+} from "@sentry/junior-plugin-api";
+import type { McpToolManager } from "@/chat/mcp/tool-manager";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
+import type { Skill } from "@/chat/skills";
+import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
+import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
+import type { SlackActionToken } from "@/chat/slack/action-token";
+import type { GeneratedFileRef } from "@/chat/sandbox/file-uploads";
+import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { Workspace } from "@/chat/workspaces/types";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+
+export interface ImageGenerateToolDeps {
+  fetch?: typeof fetch;
+}
+
+export interface WebFetchToolDeps {
+  execute?: (input: {
+    url: string;
+  }) => Promise<JuniorToolOutput> | JuniorToolOutput;
+}
+
+export interface WebSearchToolDeps {
+  execute?: (input: {
+    query: string;
+    max_results?: number | undefined;
+  }) => Promise<JuniorToolOutput> | JuniorToolOutput;
+}
+
+/** Optional host image reader for deterministic tool execution without sandbox I/O. */
+export interface ViewImageToolDeps {
+  readFile?: (path: string) => Promise<Buffer | null | undefined>;
+}
+
+export interface ToolHooks {
+  /**
+   * Materialize generated files and return sandbox paths that exist before the
+   * generating tool reports success.
+   */
+  writeGeneratedFiles?: (
+    files: FileUpload[],
+  ) => GeneratedFileRef[] | Promise<GeneratedFileRef[]>;
+  onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+  toolOverrides?:
+    | {
+        imageGenerate?: ImageGenerateToolDeps;
+        viewImage?: ViewImageToolDeps;
+        webFetch?: WebFetchToolDeps;
+        webSearch?: WebSearchToolDeps;
+      }
+    | undefined;
+}
+
+interface BaseToolRuntimeContext {
+  attachmentStorage?: AttachmentStorage | undefined;
+  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
+  messageAgent?: MessageAgent;
+  spawnAgent?: SpawnAgent;
+  /**
+   * Opaque Junior conversation/session identity for this turn.
+   * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
+   * Scheduled/web turns use an internal id such as `agent-dispatch:{id}`.
+   * Do not parse as Slack unless the value starts with `slack:`.
+   */
+  conversationId: string;
+  /** Turn that runs this tool call. */
+  turnId?: string;
+  /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
+  turnTools: TurnBehavior["tools"];
+  /**
+   * Tools that the Turn lists, from its Prompt mode. A Thread lists the tools
+   * of every sender, and the ones that `turnTools` does not allow are
+   * disabled. Omitted means `turnTools`.
+   */
+  listedTools?: TurnBehavior["tools"];
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
+  parentConversationId?: string;
+  /** Location associated with this Conversation. */
+  location?: Location;
+  // TODO(dcramer): Remove locationId after memory and plugin contexts read
+  // Location directly.
+  /** Legacy Location identity used by memory and plugin contexts. */
+  locationId?: string;
+  /** Stored Conversation visibility used by tools. */
+  conversationPrivacy?: ConversationPrivacy | undefined;
+
+  /** Runtime-owned default outbound destination for this invocation. */
+  destination: Destination;
+
+  actor?: Actor | undefined;
+  resolveActorIdentity?:
+    | (() => Promise<{ identity: Identity; user?: User } | undefined>)
+    | undefined;
+  /** Runtime-owned source where this invocation came from. */
+  source: Source;
+  /** Runtime surface that owns final delivery semantics for this turn. */
+  surface?: AgentTurnSurface;
+  userText?: string;
+  configuration?: Record<string, unknown>;
+  egress: PluginEgress;
+  mcpToolManager?: McpToolManager;
+  workspace: SandboxWorkspace;
+  workspaces?: {
+    activeWorkspaceId(): string | undefined;
+    switch(workspace: Workspace, signal?: AbortSignal): Promise<void>;
+  };
+  /** Report whether the model currently executing the turn accepts images. */
+  supportsImageInput?: () => boolean;
+}
+
+interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: SlackDestination;
+  actor?: SlackActor | undefined;
+  source: SlackSource;
+  slackActionToken?: SlackActionToken | undefined;
+}
+
+interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: LocalDestination;
+  actor?: LocalActor | undefined;
+  source: LocalSource;
+  slackActionToken?: never | undefined;
+}
+
+interface WebToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: Destination;
+  actor?: WebActor | undefined;
+  source: WebSource;
+  slackActionToken?: never | undefined;
+}
+
+export type ToolRuntimeContext =
+  | LocalToolRuntimeContext
+  | SlackToolRuntimeContext
+  | WebToolRuntimeContext
+  | (BaseToolRuntimeContext & {
+      destination: Destination;
+      actor?: Actor | undefined;
+      source:
+        | AgentInvocationSource
+        | EventAutomationSource
+        | PluginDispatchSource
+        | EventSource
+        | ScheduledAutomationSource;
+      slackActionToken?: never | undefined;
+    });
+
+export interface ToolState {
+  getOperationResult: <T>(operationKey: string) => T | undefined;
+  setOperationResult: (operationKey: string, result: unknown) => void;
+}

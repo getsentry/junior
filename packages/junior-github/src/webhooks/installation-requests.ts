@@ -4,6 +4,12 @@
  * A webhook delivery has no Turn and no egress context, so these requests
  * call GitHub directly. Other plugin code must use host egress.
  */
+import {
+  graphqlReactionContent,
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+} from "../pull-request-feedback.js";
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -20,12 +26,6 @@ import {
   pullRequestLifecycles,
 } from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
-import {
-  graphqlReactionContent,
-  pullRequestCommentReactionsPath,
-  pullRequestFeedbackReactionContent,
-  pullRequestReviewPath,
-} from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
 export interface GitHubInstallationEnv {

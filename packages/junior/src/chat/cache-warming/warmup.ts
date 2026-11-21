@@ -25,7 +25,7 @@ import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import type { ToolDefinitionsKey } from "@/chat/tools/registry";
+import type { ToolDefinitionsKey } from "@/chat/tool-support/registry";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";

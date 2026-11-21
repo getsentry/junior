@@ -2,7 +2,10 @@ import { renderTag } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
+import type {
+  ImageGenerateToolDeps,
+  ToolHooks,
+} from "@/chat/tool-support/types";
 import { botConfig } from "@/chat/config";
 import {
   completeText,
@@ -11,9 +14,9 @@ import {
 } from "@/chat/core-model";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
-import { generatedFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
-import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { generatedFileRefSchema } from "@/chat/sandbox/file-uploads";
+import { readSandboxImage } from "@/chat/sandbox/image-files";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 

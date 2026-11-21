@@ -25,7 +25,7 @@ import {
 import type { ScriptCallStatus } from "@/chat/guardian/proposal";
 import * as Sentry from "@/chat/sentry";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type {
   ScriptToolCallOutcome,
   ToolPipeline,

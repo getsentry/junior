@@ -23,7 +23,7 @@ import {
   requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter } from "../conversation-footer.js";
 import {
   githubApi,
   githubErrorMessage,

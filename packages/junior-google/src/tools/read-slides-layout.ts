@@ -8,14 +8,14 @@ import {
   googleFileRequest,
   MAX_CONTENT_CHARS,
   parseFileReference,
-} from "./files";
-import { readRequesterFile } from "./file-access";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import { readRequesterFile } from "../drive/file-access";
+import type { GoogleToolContext } from "../google-api";
 import {
   presentationReferenceSchema,
   presentationUrl,
   slideObjectIdSchema,
-} from "./slides";
+} from "../slides/presentation";
 
 // The whole deck at full detail is often too long for one result, so it
 // returns an outline: element ids, sizes, positions, shape types, and text.

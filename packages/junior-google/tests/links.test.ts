@@ -5,7 +5,7 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { saveGoogleAccount } from "../src/store";
 import {
   ACCOUNT_EMAIL,

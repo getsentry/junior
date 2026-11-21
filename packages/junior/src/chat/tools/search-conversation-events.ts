@@ -3,22 +3,22 @@ import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
-  type KnownConversationEventType,
 } from "@/chat/conversations/history";
 import {
   assertCanReadConversationEvents,
   stripReplacementHistory,
 } from "@/chat/conversations/event-access";
-import { searchConversationEventText } from "@/chat/conversations/event-search";
+import {
+  DEFAULT_EVENT_SEARCH_LIMIT,
+  searchConversationEventText,
+} from "@/chat/conversations/event-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
-/** Events that a search returns when the call sets no limit. */
-export const DEFAULT_EVENT_SEARCH_LIMIT = 25;
 const MAX_LIMIT = 100;
 const MAX_EVENT_DATA_BYTES = 4_000;
 const MAX_IDENTITY_CHARS = 256;
@@ -272,5 +272,3 @@ function eventIdentity(data: Record<string, unknown>) {
     }),
   );
 }
-
-export type { KnownConversationEventType };
