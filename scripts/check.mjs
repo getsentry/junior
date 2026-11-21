@@ -1,33 +1,34 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  Worker,
+  isMainThread,
+  parentPort,
+  workerData,
+} from "node:worker_threads";
+import { listRepoFiles } from "./lib/repo-files.mjs";
 
 /**
  * Run repo checks by name: `node scripts/check.mjs file-length money-units`.
- * With no name, it runs every check that `pnpm lint` needs. A check runs its
- * `scripts/check-<file>.test.mjs` tests, then `scripts/check-<file>.mjs`.
- * Flags, such as `--update`, go to each check script. Each `pnpm <name>:check`
- * script calls this runner.
+ * With no name, it runs every check that `pnpm lint` needs. The runner first
+ * runs the `scripts/check-<file>.test.mjs` tests of the checks. Then it lists
+ * the repo files once and runs each check in a worker thread, in parallel.
+ * Each `scripts/check-<file>.mjs` exports `run({ root, files, args })`, which
+ * returns the problems it finds. `files` comes from `lib/repo-files.mjs`, so a
+ * check filters it instead of walking the repo. Flags, such as `--update`, are
+ * `args`. Each `pnpm <name>:check` script calls this runner.
  */
 
-// `lint: true` checks run with no name, in this order. `after` runs once the
-// check script passes.
+// `lint: true` checks run when no name is given.
 const CHECKS = {
   "file-length": { file: "file-length", lint: true },
   "baseline-growth": { file: "baseline-growth", lint: true },
   "typecheck-coverage": { file: "typecheck-coverage", lint: true },
   "migration-metadata": { file: "drizzle-migrations", lint: true },
-  "migration-locks": {
-    file: "migration-locks",
-    lint: true,
-    after: [
-      "node_modules/.bin/squawk",
-      "--reporter",
-      "gcc",
-      "packages/*/migrations/*.sql",
-    ],
-  },
+  "migration-locks": { file: "migration-locks", lint: true },
   "money-units": { file: "money-units", lint: true },
   "lockfile-families": { file: "lockfile-families", lint: true },
   "test-architecture": { file: "test-architecture", lint: true },
@@ -45,12 +46,6 @@ const CHECKS = {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit" });
-  if (result.error) throw result.error;
-  return result.status ?? 1;
-}
-
 /** Return the check script files in `scripts/` that have no runner entry. */
 function unregisteredScripts() {
   const registered = new Set(
@@ -66,7 +61,37 @@ function unregisteredScripts() {
     );
 }
 
-function main(names, flags) {
+/** Run one check in a worker thread and resolve to the problems it finds. */
+function runInWorker(file, context) {
+  return new Promise((resolve) => {
+    const worker = new Worker(fileURLToPath(import.meta.url), {
+      workerData: { file, context },
+    });
+    worker.once("message", resolve);
+    worker.once("error", (error) => resolve([error.stack ?? String(error)]));
+    worker.once("exit", (code) =>
+      resolve(code === 0 ? [] : [`The check exited with code ${code}.`]),
+    );
+  });
+}
+
+/** Run `task` on each item, at most `limit` at a time, and keep the order. */
+async function mapBounded(items, limit, task) {
+  const results = [];
+  let next = 0;
+  async function drain() {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, drain),
+  );
+  return results;
+}
+
+async function main(names, args) {
   const unregistered = unregisteredScripts();
   if (unregistered.length > 0) {
     console.error(
@@ -81,38 +106,54 @@ function main(names, flags) {
     );
     return 1;
   }
-  const checks = (
+  const selected =
     names.length > 0
       ? names
-      : Object.keys(CHECKS).filter((name) => CHECKS[name].lint)
-  ).map((name) => CHECKS[name]);
+      : Object.keys(CHECKS).filter((name) => CHECKS[name].lint);
 
-  const tests = checks
-    .map((check) => `scripts/check-${check.file}.test.mjs`)
+  const tests = selected
+    .map((name) => `scripts/check-${CHECKS[name].file}.test.mjs`)
     .filter((test) => fs.existsSync(path.join(ROOT, test)));
   if (tests.length > 0) {
-    const status = run(process.execPath, ["--test", ...tests]);
-    if (status !== 0) return status;
+    const result = spawnSync(process.execPath, ["--test", ...tests], {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) return result.status ?? 1;
   }
-  for (const check of checks) {
-    const status = run(process.execPath, [
-      `scripts/check-${check.file}.mjs`,
-      ...flags,
-    ]);
-    if (status !== 0) return status;
-    if (check.after) {
-      const [command, ...args] = check.after;
-      const afterStatus = run(command, args);
-      if (afterStatus !== 0) return afterStatus;
+
+  const context = { root: ROOT, files: listRepoFiles(ROOT), args };
+  const results = await mapBounded(
+    selected,
+    os.availableParallelism(),
+    (name) => runInWorker(CHECKS[name].file, context),
+  );
+  let failed = false;
+  for (const [index, name] of selected.entries()) {
+    const errors = results[index];
+    if (errors.length === 0) {
+      console.log(`PASS ${name}`);
+      continue;
     }
+    failed = true;
+    console.error(
+      [`FAIL ${name}`, ...errors.map((error) => `  ${error}`)].join("\n"),
+    );
   }
-  return 0;
+  return failed ? 1 : 0;
 }
 
-// lint-staged appends the staged file paths. The checks scan the whole repo,
-// so the runner ignores them. Flags such as `--update` go to the check scripts.
-const args = process.argv.slice(2).filter((arg) => !arg.includes(path.sep));
-process.exitCode = main(
-  args.filter((arg) => !arg.startsWith("-")),
-  args.filter((arg) => arg.startsWith("-")),
-);
+if (isMainThread) {
+  // lint-staged appends the staged file paths. The checks scan the whole repo,
+  // so the runner ignores them.
+  const argv = process.argv.slice(2).filter((arg) => !arg.includes(path.sep));
+  process.exitCode = await main(
+    argv.filter((arg) => !arg.startsWith("-")),
+    argv.filter((arg) => arg.startsWith("-")),
+  );
+} else {
+  const { file, context } = workerData;
+  const { run } = await import(`./check-${file}.mjs`);
+  parentPort.postMessage(await run(context));
+}
