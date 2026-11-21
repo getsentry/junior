@@ -123,10 +123,18 @@ export const juniorGitHubPullRequests = pgTable(
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
     /**
-     * When a person last chose Resume on the stopped merge conflict item.
+     * When a person last chose Resume on the merge conflict item.
      * It counts as activity by a person, so the fix count starts again.
      */
     conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
+      withTimezone: true,
+    }),
+    /**
+     * When Junior last asked the requester to resume a merge conflict fix
+     * that did not land. It asks once after each Resume, so a Dismiss ends
+     * the asks on the pull request.
+     */
+    conflictFixAskedAt: timestamp("conflict_fix_asked_at", {
       withTimezone: true,
     }),
     /**

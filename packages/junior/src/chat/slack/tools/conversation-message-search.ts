@@ -11,7 +11,7 @@ import {
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;

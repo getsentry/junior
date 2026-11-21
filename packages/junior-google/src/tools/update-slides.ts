@@ -5,13 +5,16 @@ import {
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { revisionAfterUpdate } from "./doc-edits";
-import { requireEditableFile } from "./editable-file";
-import { readRequesterFile } from "./file-access";
-import { FILE_ID_PATTERN, googleFileRequest } from "./files";
-import type { GoogleToolContext } from "./shared";
-import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "./slide-checks";
-import { presentationReferenceSchema, presentationUrl } from "./slides";
+import { revisionAfterUpdate } from "../docs/edits";
+import { requireEditableFile } from "../drive/editable-file";
+import { readRequesterFile } from "../drive/file-access";
+import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
+import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
+import {
+  presentationReferenceSchema,
+  presentationUrl,
+} from "../slides/presentation";
 
 // Google validates each request. The tool checks only the shape that every
 // batchUpdate request has: one key, the request kind.

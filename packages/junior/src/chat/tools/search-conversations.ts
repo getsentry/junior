@@ -7,6 +7,7 @@ import {
 } from "@/chat/briefs/schema";
 import {
   searchConversations,
+  type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
@@ -14,23 +15,12 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const SUMMARY_MAX_LENGTH = 1_000;
 const CONVERSATION_IDS_MAX = 25;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
-
-/** Provider-owned channel filter and match details for Conversation search. */
-export interface ConversationSearchChannelPort {
-  channelFilterSchema: z.ZodString;
-  describeMatch(match: ConversationSearchResult): Promise<{
-    channel_id?: string;
-    channel_name?: string;
-    permalink?: string;
-  }>;
-  resolveChannel(input: string): Promise<string>;
-}
 
 /**
  * What the agent of the Conversation does now. The words match the

@@ -1,7 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 
 /** Use the same plugin registrations in eval workers, snapshots, and egress. */
@@ -12,7 +11,6 @@ export function evalRuntimePlugins(
     // The default config, as tests pass it to `agent({ plugins })`. The GitHub
     // mock answers the installation permission lookup.
     ...(packages.includes("@sentry/junior-github") ? [githubPlugin()] : []),
-    ...(packages.includes("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.includes("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
 }

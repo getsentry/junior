@@ -56,8 +56,8 @@ import {
   bm25InverseDocumentFrequency,
   bm25NormalizedFrequency,
   bm25Saturation,
-  fuseRankedLists,
-} from "@sentry/junior-search";
+} from "@/search/bm25";
+import { fuseRankedLists } from "@/search/rank-fusion";
 import type { JuniorDatabase } from "@/db/db";
 import { setSpanAttributes } from "@/chat/logging";
 import {
@@ -66,7 +66,7 @@ import {
   juniorConversationEvents,
 } from "@/db/schema";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
-import { guardedCosineDistance } from "@sentry/junior-plugin-api/embeddings";
+import { guardedCosineDistance } from "@/db/embeddings";
 import { embedConversationQuery } from "./embedding";
 import { lexemesSql, searchedEventTextSql, seqIn } from "./event-lexemes";
 import {
@@ -89,6 +89,9 @@ const BM25_B = 0.75;
 // so in each leg a tool call counts half as much as other events. With RRF
 // k = 60, a tool call at rank 1 then scores below an event at rank 61.
 const TOOL_CALL_WEIGHT = 0.5;
+
+/** Events that a search returns when the call sets no limit. */
+export const DEFAULT_EVENT_SEARCH_LIMIT = 25;
 
 /** One event search. The bounds and types only make the result smaller. */
 export interface ConversationEventTextSearch {

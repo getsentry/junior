@@ -23,6 +23,7 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { useAnchorClass } from "./links";
+import { SameTabLink } from "../components/SameTabLink";
 import { PersonInline, PersonReference } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
@@ -186,14 +187,7 @@ export function ObjectLinkPreview(props: {
       }
       // Running text links carry no outbound icon, so a paragraph of links
       // reads as text.
-      trigger={
-        <a
-          className={props.className}
-          href={props.href}
-          rel="noreferrer"
-          target="_blank"
-        />
-      }
+      trigger={<SameTabLink className={props.className} href={props.href} />}
     >
       {props.children}
     </HoverPreview>

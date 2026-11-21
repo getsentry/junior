@@ -7,7 +7,7 @@ import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
 import type { ReviewItemChange } from "./messages";
 import {

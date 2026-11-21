@@ -363,6 +363,39 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
   });
 
+  test("shows cache health and warmup outcomes from Sentry", async ({
+    page,
+    dashboard,
+  }) => {
+    const week = page.waitForResponse("**/api/cache-warming/health?window=7d");
+    await page.goto(`${dashboard.baseURL}/system`);
+    expect((await week).ok()).toBe(true);
+    const health = page.getByRole("region", { name: "Cache health" });
+    await expect(
+      health.getByText(/^Write share, [\d.]+% last week$/),
+    ).toBeVisible();
+    await expect(
+      health.getByText("Warming stopped early", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      health.getByLabel(
+        "Prompt cache write share and full-rewrite rate over time",
+      ),
+    ).toBeVisible();
+
+    const hourly = page.waitForResponse(
+      "**/api/cache-warming/health?window=24h",
+    );
+    await page.getByRole("button", { name: "24h", exact: true }).click();
+    expect((await hourly).ok()).toBe(true);
+    // A phone shows the System entries at /system, so shoot the panel on
+    // desktop.
+    await screenshot(page, "system-cache-health-24h", {
+      target: health,
+      view: "desktop",
+    });
+  });
+
   test("lets an admin re-fill cache warming savings from history", async ({
     page,
     dashboard,

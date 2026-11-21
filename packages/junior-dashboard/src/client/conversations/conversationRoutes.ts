@@ -82,6 +82,9 @@ export function readOpenEventLog(state: unknown): boolean {
   );
 }
 
+/** Match the router path of one Conversation page, with no query. */
+export const CONVERSATION_PATH = /^\/conversations\/[^/]+$/;
+
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
 export const NEW_CONVERSATION_PATH = "/";
 

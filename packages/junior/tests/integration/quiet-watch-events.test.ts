@@ -14,7 +14,7 @@ import { countAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createListWatchesTool } from "@/chat/tools/list-watches";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   CONVERSATION_ID,
   createConversationWorkQueueTestAdapter,

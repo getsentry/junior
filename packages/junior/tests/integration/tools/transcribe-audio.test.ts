@@ -14,7 +14,7 @@ import {
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
 import { juniorAttachments } from "@/db/schema";
 import { filesInfoOk } from "../../fixtures/slack/factories/api";

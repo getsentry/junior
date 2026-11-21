@@ -7,7 +7,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
   normalizeSandboxPath,
   SandboxFileNotFoundError,
-} from "@/chat/tools/sandbox/file-uploads";
+} from "@/chat/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
