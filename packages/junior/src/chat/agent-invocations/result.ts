@@ -279,22 +279,6 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
-  // The result closes the child's open To-dos of the parent before the
-  // parent reads it. A blocked or failed child did not finish that work.
-  const closedStatus =
-    invocation.status === "completed"
-      ? "done"
-      : invocation.status === "stopped"
-        ? "dropped"
-        : undefined;
-  if (closedStatus) {
-    await closeOpenTodosOfChild(getSqlExecutor(), {
-      childConversationId: invocation.childConversationId,
-      nowMs,
-      parentConversationId: invocation.parentConversationId,
-      status: closedStatus,
-    });
-  }
   const parentMessages = await readParentChildMessages(
     invocation.parentConversationId,
     options.state,
@@ -321,6 +305,8 @@ export async function enqueueAgentInvocationResult(
     }
     return;
   }
+  // A `reply` closed them when it was sent, and a quiet Turn sends no result.
+  await closeTodosForResult(invocation, invocation.status, nowMs);
   await appendAndEnqueueInboundMessage({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
@@ -332,6 +318,28 @@ export async function enqueueAgentInvocationResult(
     invocation.invocationId,
     nowMs,
   );
+}
+
+/**
+ * Close the child's open To-dos of the parent before the parent reads the
+ * child's result: done when it completed, dropped when it stopped. A
+ * blocked or failed child did not finish that work.
+ */
+async function closeTodosForResult(
+  sender: Pick<
+    ChildAgentSender,
+    "childConversationId" | "parentConversationId"
+  >,
+  status: TerminalAgentInvocation["status"],
+  nowMs: number,
+): Promise<void> {
+  if (status !== "completed" && status !== "stopped") return;
+  await closeOpenTodosOfChild(getSqlExecutor(), {
+    childConversationId: sender.childConversationId,
+    nowMs,
+    parentConversationId: sender.parentConversationId,
+    status: status === "completed" ? "done" : "dropped",
+  });
 }
 
 /**
@@ -495,6 +503,11 @@ export async function enqueueChildResultToParent(args: {
     }),
     ...childMessageSenderMetadata(sender),
   };
+  // A `reply` of an agent invocation is its result. A reply from a Turn on
+  // the Conversation loop is not, so the child's work may go on.
+  if (args.result.kind === "reply" && ownAgentInvocation(sender)) {
+    await closeTodosForResult(args.sender, "completed", nowMs);
+  }
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,

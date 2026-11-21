@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
+import {
+  enqueueAgentInvocationResult,
+  enqueueChildResultToParent,
+} from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
   isTerminalAgentInvocation,
@@ -70,6 +74,19 @@ async function createHarness() {
         state: work.state,
       });
     },
+    /** Sends the `reply` of a child's agent invocation to the parent. */
+    reply: async (
+      invocation: Awaited<ReturnType<typeof spawn>>,
+      text: string,
+    ): Promise<void> =>
+      await enqueueChildResultToParent({
+        result: { kind: "reply", reply: { text, toolCallId: "reply-1" } },
+        messageKey: "reply-1",
+        queue: work.queue,
+        sender: invocation,
+        state: work.state,
+        turnId: getAgentInvocationTurnId(invocation.invocationId),
+      }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
       await tool.execute!(tool.prepareArguments!(input) as never, {}),
@@ -323,6 +340,8 @@ describe("updateTodos", () => {
     try {
       const children = {
         completed: harness.child,
+        replied: await harness.spawn("India"),
+        quiet: await harness.spawn("Juliet"),
         stopped: await harness.spawn("Foxtrot"),
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
@@ -332,13 +351,34 @@ describe("updateTodos", () => {
           { title: "Echo open", assignee: "Echo" },
           { title: "Echo started", assignee: "Echo", status: "in_progress" },
           { title: "Echo dropped", assignee: "Echo", status: "dropped" },
+          { title: "India open", assignee: "India" },
+          { title: "Juliet open", assignee: "Juliet" },
           { title: "Foxtrot open", assignee: "Foxtrot" },
           { title: "Golf open", assignee: "Golf" },
           { title: "Hotel open", assignee: "Hotel" },
           { title: "Parent open" },
         ],
       });
+      const statusOf = async (title: string) =>
+        (await listTodos(getSqlExecutor(), parentConversationId)).find(
+          (todo) => todo.title === title,
+        )?.status;
 
+      // A `reply` closes them as it reaches the parent, before the
+      // invocation ends, so the parent Turn that reads it sees the change.
+      await harness.reply(children.replied, "Reviewed.");
+      await expect(statusOf("India open")).resolves.toBe("done");
+      await harness.finish({
+        invocationId: children.replied.invocationId,
+        result: "",
+        status: "completed",
+      });
+      // A Turn that ends with `noReply` sends no result, so nothing closes.
+      await harness.finish({
+        invocationId: children.quiet.invocationId,
+        result: "",
+        status: "completed",
+      });
       await harness.finish({
         invocationId: children.completed.invocationId,
         result: "Done.",
@@ -366,6 +406,8 @@ describe("updateTodos", () => {
         ["Echo open", "done", "Echo"],
         ["Echo started", "done", "Echo"],
         ["Echo dropped", "dropped", undefined],
+        ["India open", "done", "India"],
+        ["Juliet open", "open", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],
         ["Hotel open", "open", undefined],
