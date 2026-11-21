@@ -28,6 +28,7 @@ import {
   linkGitHub,
   NOTHING_SNOOZED,
   NOW_MS,
+  participate,
   MISSING_PULL_REQUEST_URL,
   OTHER_PULL_REQUEST,
   PRIVATE_ROOT,
@@ -241,6 +242,28 @@ describe("snoozes", () => {
       inbox: ["Review globex entry"],
       waiting: [],
     });
+  });
+
+  it("closes a shared item as dismissed once each member dismissed it", async () => {
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    // A group item's members are its assignees. An Everyone item's members
+    // are the Participants of its Conversation.
+    const shared = await addItem(ROOT, [ana, bob], "Review acme entry");
+    const everyone = await addEveryoneItem(ROOT, "Review globex entry");
+    await participate(ROOT, ana);
+    await participate(ROOT, bob);
+    for (const id of [shared, everyone]) {
+      const first = await api(fixture, ana).act(id, { action: "dismiss" });
+      expect(await first.json()).toMatchObject({ status: "open" });
+      const last = await api(fixture, bob).act(id, { action: "dismiss" });
+      expect(last.status).toBe(200);
+      expect(await last.json()).toMatchObject({ status: "dismissed" });
+      expect(await getInboxItem(getDb(), id)).toMatchObject({
+        closedBy: { userId: bob.id },
+        status: "dismissed",
+      });
+    }
   });
 
   it("dismisses an item for one person for everyone", async () => {

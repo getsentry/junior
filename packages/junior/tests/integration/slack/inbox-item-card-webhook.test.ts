@@ -793,6 +793,85 @@ describe("Slack webhook: Inbox item cards", () => {
     ]);
   });
 
+  it("dismisses a shared card for the person only, until each member has", async () => {
+    const { click, state } = harness();
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    await linkSlackUser("ben@example.com", "U456");
+    await slackThread(THREAD, "public");
+    // Ben takes part too, so the Everyone item has two members.
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "ben@example.com",
+        platform: "slack",
+        slackUserId: "U456",
+        teamId: "T123",
+      },
+      conversationId: THREAD,
+      destination: {
+        channelId: "C123",
+        platform: "slack",
+        teamId: "T123",
+        threadTs: "1712345.0001",
+      },
+      nowMs: 2,
+      source: "slack",
+      visibility: "public",
+    });
+    const { item } = await addItem(ana, {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["everyone"],
+      dedupe_key: "release:1.2.3",
+      request: SHIP_REQUEST,
+    });
+
+    // Ben's Dismiss hides the item from him only. The shared card stays,
+    // and only Ben hears about it.
+    await click({
+      actionId: "junior_review_item:dismiss",
+      actionTs: "1712345.0003",
+      itemId: item.id,
+      userId: "U456",
+    });
+    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params).toMatchObject(
+      {
+        text: "Dismissed for you. It stays open for the others.",
+        user: "U456",
+      },
+    );
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(0);
+    expect(await getInboxItem(getDb(), item.id)).toMatchObject({
+      status: "open",
+    });
+
+    // Ana is the last member, so her Dismiss closes it for everyone, and
+    // the thread records it as it records any dismiss.
+    await click({
+      actionId: "junior_review_item:dismiss",
+      actionTs: "1712345.0004",
+      itemId: item.id,
+      userId: "U123",
+    });
+    expect(await getInboxItem(getDb(), item.id)).toMatchObject({
+      status: "dismissed",
+    });
+    const closedCard = blocksOf(slackApiOutbox.calls("chat.update")[0]);
+    expect(closedCard.some((block) => block.type === "actions")).toBe(false);
+    expect(JSON.stringify(closedCard)).toContain("dismissed this");
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages ?? []).toEqual([]);
+    const saved = projectConversationMessages(
+      await getConversationEventStore().loadMessageHistory(THREAD),
+    );
+    expect(saved.map((message) => message.meta?.reviewItemChanges)).toEqual([
+      [{ kind: "dismissed", reviewItemId: item.id }],
+    ]);
+  });
+
   // Which open question a reply answers is a decision model choice, so the
   // classifier eval `inbox-item-replies.eval.ts` checks it with the real model.
   // These cases cover the rules that apply before or after that choice.

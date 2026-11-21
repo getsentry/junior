@@ -9,6 +9,7 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertInboxItem } from "@/chat/inbox-items/store";
+import { juniorConversationParticipants } from "@/db/schema";
 import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
@@ -179,6 +180,18 @@ export async function addPullRequestItem(
     visibility: "public",
   });
   return item!.id;
+}
+
+/** Make the User a Participant of a root Conversation. */
+export async function participate(
+  conversationId: string,
+  participant: User,
+): Promise<void> {
+  await getDb().insert(juniorConversationParticipants).values({
+    lastMessageAt: new Date(),
+    rootConversationId: conversationId,
+    userId: participant.id,
+  });
 }
 
 /** Add an open action item for Everyone. Anyone in the workspace can act. */

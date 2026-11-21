@@ -481,9 +481,6 @@ export function createInboxItemRoutes(services: {
         const item = await actOnInboxItem({
           action: body.action,
           delivery: services.delivery,
-          // Slack's shared card closes for everyone; the Inbox is one
-          // person's own.
-          dismissForUserOnly: true,
           id,
           user: viewer,
           ...(body.action === "submit"

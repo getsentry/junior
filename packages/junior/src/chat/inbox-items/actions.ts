@@ -3,7 +3,11 @@ import { getDb } from "@/chat/db";
 import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
-import { hideInboxItem } from "@/chat/inbox-snoozes/store";
+import type { JuniorDatabase } from "@/db/db";
+import {
+  hideInboxItem,
+  readInboxItemDismissedUserIds,
+} from "@/chat/inbox-snoozes/store";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -19,6 +23,7 @@ import {
   isPluginInboxItem,
   isSharedInboxItem,
 } from "./access";
+import { everyParticipantUserId } from "./assignees";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
@@ -112,7 +117,7 @@ function submittedAnswer(
 /**
  * Do one person action on an Inbox item and tell its linked Conversations.
  * The first submit or dismiss closes the item for every assignee, except a
- * dismiss with `dismissForUserOnly`. A retry of the same close sends any
+ * dismiss of a shared item (see below). A retry of the same close sends any
  * missing messages again and succeeds, so a client can retry after a
  * failure. With `firstCloseOnly`, only the call that closes the item
  * succeeds, and every other call gets a conflict. Use it when the caller adds its own input for the action, such
@@ -120,15 +125,15 @@ function submittedAnswer(
  * `exceptConversationId` is the Conversation where the person acted. It gets
  * the person's input from its own surface, so it gets no message here.
  * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`. With `dismissForUserOnly`, a dismiss of an item
- * that other people share (`isSharedInboxItem`) hides it from this User's
- * Inbox only. The item stays open, and no message goes out.
+ * `deliverInboxItemChange`. A dismiss of an item that other people share
+ * (`isSharedInboxItem`) hides it from this User only. The item stays open,
+ * and no message goes out, until every member has dismissed it. Then it
+ * closes as dismissed, like any other dismiss.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
   answer?: UserInputAnswer;
   delivery: InboxItemDelivery;
-  dismissForUserOnly?: boolean;
   exceptConversationId?: string;
   firstCloseOnly?: boolean;
   id: string;
@@ -142,7 +147,6 @@ export async function actOnInboxItem(args: {
 
   if (
     action === "dismiss" &&
-    args.dismissForUserOnly &&
     item.status === "open" &&
     isSharedInboxItem(item)
   ) {
@@ -153,7 +157,7 @@ export async function actOnInboxItem(args: {
       );
     }
     await hideInboxItem(db, { inboxItemId: item.id, nowMs, userId: user.id });
-    return item;
+    if (!(await everyMemberDismissed(db, item))) return item;
   }
 
   if (action === "take") {
@@ -240,6 +244,23 @@ export async function actOnInboxItem(args: {
     nowMs,
   });
   return closed;
+}
+
+/**
+ * Return whether every member of a shared item dismissed it for themselves.
+ * The members are its assignees, or, for Everyone, every Participant of its
+ * Conversations. An item with no members waits for an answer.
+ */
+async function everyMemberDismissed(
+  db: JuniorDatabase,
+  item: InboxItem,
+): Promise<boolean> {
+  const members = item.assignedToEveryone
+    ? [...(await everyParticipantUserId(db, item.conversationIds))]
+    : item.assignees.map((assignee) => assignee.userId);
+  if (members.length === 0) return false;
+  const dismissed = await readInboxItemDismissedUserIds(db, item.id, members);
+  return dismissed.size === members.length;
 }
 
 /**

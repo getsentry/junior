@@ -48,10 +48,12 @@ how the dashboard groups and acts on its rows.
   action that takes no words, such as a plugin's Resume, is one click.
 - The first answer closes the item for everyone. A dismiss is not a
   decision, so it does not continue the work.
-- In the dashboard, Dismiss on an item for Everyone or for more than one
-  User hides it for the viewer only. It stays open for everyone else, and
-  the viewer's pill and counts skip it. Dismiss on an item for one User,
-  and Dismiss on a Slack card, close it for everyone.
+- Dismiss on an item for Everyone or for more than one User hides it for
+  that person only, in the dashboard and on a Slack card. It stays open
+  for everyone else, and their pill and counts skip it. When each member
+  has dismissed it, it closes as dismissed. The members are its
+  assignees, or, for Everyone, the Participants of its Conversations.
+  Dismiss on an item for one User closes it for everyone.
 - A question card in the transcript and in the Inbox has Snooze and
   Dismiss. A card that the viewer snoozed or dismissed stays in the
   transcript with no form.

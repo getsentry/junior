@@ -67,6 +67,8 @@ export interface SlackInboxItemServices {
   state: StateAdapter;
 }
 
+const SHARED_DISMISS_TEXT = "Dismissed for you. It stays open for the others.";
+
 interface CardTarget {
   channelId: string;
   messageTs: SlackMessageTs;
@@ -115,7 +117,9 @@ async function refreshCards(
 
 /**
  * Do one person action from a Slack card. The thread of the card gets an
- * answer as Slack input from the person, like a typed reply. A dismiss, or
+ * answer as Slack input from the person, like a typed reply. A dismiss of
+ * a shared item hides it for the person only, so only they get a message.
+ * A dismiss that closes the item, or
  * the answer to a plugin item, starts no Turn, so the thread gets the same
  * recorded Message as the other linked Conversations, from
  * `actOnInboxItem`. An expected failure, such as
@@ -169,6 +173,12 @@ async function act(args: {
     if (!(error instanceof InboxItemActionError)) throw error;
     await tellPerson(target, actor.slackUserId, error.message);
     await refreshCards(services, actor.user, args.itemId);
+    return;
+  }
+  // A dismiss of a shared item hides it for this person only, and the card
+  // is the same for everyone, so only they hear about it.
+  if (args.action === "dismiss" && item.status === "open") {
+    await tellPerson(target, actor.slackUserId, SHARED_DISMISS_TEXT);
     return;
   }
   if (recordOnly || !item.conversationIds.includes(conversationId)) return;

@@ -187,8 +187,8 @@ Canonical words for Junior code and docs. One concept, one word.
   person but asks no question.
 - **Dismiss**: close an Inbox item without an answer. The one UI word for
   removing an item, on a row, a card, or many FYIs at once. On an item for
-  Everyone or more than one User, the dashboard's Dismiss hides it for the
-  viewer only. Not Clear or Done. Archive is for a Conversation.
+  Everyone or more than one User, Dismiss hides it for that person only,
+  until each member has dismissed it. Not Clear or Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Inbox items. Not
   Conversation archive.
 - **Snooze**: one User hides one Inbox item in their Inbox until a

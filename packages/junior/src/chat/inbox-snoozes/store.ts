@@ -204,6 +204,25 @@ export async function hideInboxItem(
   });
 }
 
+/** Return which of these Users dismissed the Inbox item for themselves. */
+export async function readInboxItemDismissedUserIds(
+  db: JuniorDatabase,
+  inboxItemId: string,
+  userIds: readonly string[],
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .select({ userId: juniorInboxHides.userId })
+    .from(juniorInboxHides)
+    .where(
+      and(
+        eq(juniorInboxHides.inboxItemId, inboxItemId),
+        inArray(juniorInboxHides.userId, [...userIds]),
+      ),
+    );
+  return new Set(rows.map((row) => row.userId));
+}
+
 /**
  * Return how this User hid each of these Inbox items: `snoozed` until
  * it wakes, or `dismissed` for them only. Items they did not hide are
