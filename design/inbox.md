@@ -53,15 +53,11 @@ how the dashboard groups and acts on its rows.
 - An Automation alert follows its Automation's Destination: a public
   channel makes it visible to the workspace. Only core changes or closes
   it, and a person can dismiss it.
-- A failed-run Automation alert offers Run again and Pause, and core takes
-  the step. Run again starts a run now, as a manual run does. Pause pauses
-  the Automation. The alert closes and does not open again. An event
-  Automation runs only on its events, so its alert offers only Pause.
-- A dismissed Automation alert hides every alert of that Automation, also
-  for a new failure or a new run, until the Automation recovers: it is
-  active, its last run succeeded, and its trigger is available. A pause is
-  no recovery. The next problem then adds a new alert. An alert that core closes on recovery
-  hides nothing.
+- A failed-run Automation alert offers the steps that fit its Automation,
+  and core takes the step.
+- A dismissed Automation alert hides every alert of that Automation until
+  the Automation recovers: it is active, its last run succeeded, and its
+  trigger is available. A pause is no recovery.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.
@@ -76,6 +72,10 @@ how the dashboard groups and acts on its rows.
   overwrites it. This breaks "only the Conversation or the plugin that added
   an item can change it" and lets a person reassign an item to themselves
   and answer it.
+- An alert for a blocked Automation, or for a trigger that is not
+  available, is an action that asks no question, not a notice. It counts
+  as needing the creator. This breaks "a notice tells a person about
+  something that they must fix" and "there is one way to ask a person".
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
 - The "Needs you" group of the classic Inbox also shows open actions for

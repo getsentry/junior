@@ -9,13 +9,14 @@ can act on it.
 ## Intent
 
 - One stack for each root Conversation, or for each other owner of an
-  item, such as an Automation. People start and follow root Conversations. They usually do not know which Threads and Tasks run under
-  a root, or their names. An item from a child agent shows in the stack of
-  its root, not on its own.
+  item, such as an Automation. People start and follow root
+  Conversations. They usually do not know which Threads and Tasks run
+  under a root, or their names. An item from a child agent shows in the
+  stack of its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
   always one actionable item, such as a question or a pull request. A row
-  action never applies to a group of items. A pull request review and a question are
-  different decisions, and one click must not make both.
+  action never applies to a group of items. A pull request review and a
+  question are different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
   next row in the same stack first, so the context that the reader just
   read stays useful.
@@ -47,9 +48,8 @@ can act on it.
 Grouping:
 
 - Each item has one owner: the Conversation that added it, or an
-  Automation for its alerts. The owner sets who sees the item, its tenant,
-  and its stack. An Automation's alert takes its visibility from the
-  Automation's Destination, and stacks under the Automation alone.
+  Automation for its alerts. The owner sets who sees the item and its
+  stack. An Automation's alert stacks under the Automation alone.
 - A child Conversation, at any depth, rolls up to its root. The row shows a
   quiet label that names the child, such as its Thread title, so the reader
   knows which sub-thread asked.
@@ -114,8 +114,7 @@ Snooze:
   and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row
   wakes only that item.
-- The server keeps each snooze, so every browser of the viewer agrees. A
-  new alert of an Automation is a new item, so it is not snoozed.
+- Every browser of the viewer shows the same snoozes.
 
 ## Gaps
 
