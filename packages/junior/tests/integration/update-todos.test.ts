@@ -13,7 +13,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
 import { parseTodoRef } from "@/chat/todos/tool-output";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
@@ -41,7 +41,7 @@ async function createHarness() {
       { conversationStore, queue: work.queue, state: work.state },
     );
   const child = await spawn("Echo");
-  const { findMentionedUserId } = createSlackReviewItemToolServices(
+  const { findMentionedUserId } = createSlackInboxItemToolServices(
     () => work.queue,
   );
   const tool = createUpdateTodosTool(

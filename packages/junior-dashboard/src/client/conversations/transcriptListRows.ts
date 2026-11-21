@@ -2,7 +2,7 @@ import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
-import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
@@ -215,7 +215,7 @@ export function liveActivityIndex(
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
   return entry.kind === "tool"
-    ? reviewItemIdFromToolCall(entry.part)
+    ? inboxItemIdFromToolCall(entry.part)
     : undefined;
 }
 
@@ -223,7 +223,7 @@ function isAskEntry(entry: RenderedTranscriptEntry): boolean {
   return askedItemId(entry) !== undefined;
 }
 
-/** Find the row that records the question Junior asked with a Review item. */
+/** Find the row that records the question Junior asked with an Inbox item. */
 export function askRowIndex(
   rows: readonly TranscriptListRow[],
   itemId: string,

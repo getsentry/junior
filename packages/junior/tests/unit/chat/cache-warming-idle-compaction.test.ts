@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
@@ -24,8 +25,9 @@ vi.mock("@/chat/cache-warming/queue", async (importOriginal) => ({
   sendCacheWarmup: mocks.sendCacheWarmup,
 }));
 
-const { createCacheWarmingRecorder, runCacheWarmup } =
-  await import("@/chat/cache-warming/warmup");
+const { createCacheWarmingRecorder } =
+  await import("@/chat/cache-warming/recorder");
+const { runCacheWarmup } = await import("@/chat/cache-warming/warmup");
 
 const MINUTE = 60_000;
 const GAPS_KEY = "junior:cache_warming:gaps:user:1:none";
@@ -34,6 +36,17 @@ const markTokens = getAgentBackgroundCompactionMarkTokens(model.id);
 const context: Context = {
   systemPrompt: "Answer the person.",
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
+};
+// Random text does not compress, so its snapshot is over the size limit.
+const unstorableContext: Context = {
+  ...context,
+  messages: [
+    {
+      role: "user",
+      content: randomBytes(1_200_000).toString("base64"),
+      timestamp: 1,
+    },
+  ],
 };
 const definitionsKey = { platform: "local", mode: "conversation" } as const;
 // The summary replaces this tool result, which is over the compaction
@@ -118,7 +131,7 @@ async function commitTurn(
 
 // End the Turn with a model call whose cached prefix is at the mark, like
 // one agent run does.
-async function endTurn(conversationId: string) {
+async function endTurn(conversationId: string, requestContext = context) {
   const recorder = createCacheWarmingRecorder(
     conversationId,
     {
@@ -128,7 +141,7 @@ async function endTurn(conversationId: string) {
     },
     definitionsKey,
   );
-  void recorder.wrap((() => undefined) as never)(model, context, {});
+  void recorder.wrap((() => undefined) as never)(model, requestContext, {});
   const reply: AssistantMessage = {
     role: "assistant",
     content: [{ type: "text", text: "Done." }],
@@ -173,7 +186,11 @@ const scheduledWarmups = () =>
 
 // Run the first warmup of an idle period at the end of a Turn with a ready
 // summary, and return the warmup requests that it sent.
-async function runFirstWarmup(conversationId: string, summaryText: string) {
+async function runFirstWarmup(
+  conversationId: string,
+  summaryText: string,
+  requestContext = context,
+) {
   const warmupRequests: unknown[] = [];
   mockTitleModel("", {
     cacheReadTokens: markTokens,
@@ -182,7 +199,7 @@ async function runFirstWarmup(conversationId: string, summaryText: string) {
   await commitTurn(conversationId, "ready", summaryText);
   mocks.sendCacheWarmup.mockClear();
   vi.useFakeTimers({ toFake: ["Date"] });
-  await endTurn(conversationId);
+  await endTurn(conversationId, requestContext);
   const warmup = scheduledWarmup();
   vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
   await runCacheWarmup(warmup);
@@ -239,6 +256,46 @@ describe("cache warming compaction on idle", () => {
     await recordGaps(4.5 * MINUTE);
 
     const warmupRequests = await runFirstWarmup(conversationId, LONG_SUMMARY);
+
+    expect(warmupRequests).toEqual([]);
+    expect(await historyText(conversationId)).toContain(
+      OVERSIZED_TEXT.slice(0, 100),
+    );
+    expect(scheduledWarmups()).toHaveLength(1);
+  });
+
+  it("compacts on idle when the request snapshot is too large to store", async () => {
+    const conversationId = "local:test:idle-compaction-unstored";
+    // Returns likely come before the next warmup, but no warmup can be sent.
+    await recordGaps(6 * MINUTE);
+
+    const warmupRequests = await runFirstWarmup(
+      conversationId,
+      LONG_SUMMARY,
+      unstorableContext,
+    );
+
+    expect(await historyText(conversationId)).toContain(SUMMARY);
+    expect(warmupRequests).toEqual([]);
+    expect(scheduledWarmups()).toHaveLength(1);
+  });
+
+  it("stops with no warmup when the request snapshot is too large to store and no summary is ready", async () => {
+    const conversationId = "local:test:idle-compaction-unstored-running";
+    await recordGaps(30 * MINUTE);
+    const warmupRequests: unknown[] = [];
+    mockTitleModel("", {
+      cacheReadTokens: markTokens,
+      onRequest: (request) => warmupRequests.push(request),
+    });
+    await commitTurn(conversationId, "running");
+    mocks.sendCacheWarmup.mockClear();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await endTurn(conversationId, unstorableContext);
+    const warmup = scheduledWarmup();
+
+    vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
+    await runCacheWarmup(warmup);
 
     expect(warmupRequests).toEqual([]);
     expect(await historyText(conversationId)).toContain(

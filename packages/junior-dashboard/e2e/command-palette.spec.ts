@@ -43,12 +43,12 @@ const question = {
 
 /**
  * Make the viewer a participant, so the Conversation has a reply box. With
- * `reviewItemId`, Junior added that Review item last.
+ * `inboxItemId`, Junior added that Inbox item last.
  */
 async function routeAsParticipant(
   page: Page,
   conversationId: string,
-  reviewItemId?: string,
+  inboxItemId?: string,
 ) {
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}*`,
@@ -61,7 +61,7 @@ async function routeAsParticipant(
       });
       const detail = await response.json();
       const last = detail.events.at(-1);
-      const events = reviewItemId
+      const events = inboxItemId
         ? [
             ...detail.events,
             {
@@ -69,10 +69,10 @@ async function routeAsParticipant(
               data: {
                 calls: [
                   {
-                    name: "addReviewItem",
-                    output: { item: { id: reviewItemId } },
+                    name: "addInboxItem",
+                    output: { item: { id: inboxItemId } },
                     status: "completed",
-                    toolCallId: "add-review-item",
+                    toolCallId: "add-inbox-item",
                   },
                 ],
                 type: "tool_calls",
@@ -156,7 +156,7 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   const lastPageHeld = new Promise<void>((resolve) => {
     releaseLastPage = resolve;
   });
-  await page.route(`**/api/review-items?*`, async (route) => {
+  await page.route(`**/api/inbox-items?*`, async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
       return route.fallback();

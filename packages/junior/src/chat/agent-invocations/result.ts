@@ -13,7 +13,7 @@ import {
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -713,7 +713,7 @@ async function startAgentInvocationsForChildInput(
       // invocation stores its input as parts.
       input: renderEventBatchInputs(
         messages,
-        await eventReviewItemInputs(messages),
+        await eventInboxItemInputs(messages),
       )
         .map((input) => input.text)
         .join("\n\n"),

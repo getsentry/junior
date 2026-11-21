@@ -38,7 +38,7 @@ export function buildPrimaryNavItems(input: {
   loggedIn: boolean;
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
-  /** Open Review items assigned to the viewer. */
+  /** Open Inbox items assigned to the viewer. */
   reviewCount?: number | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the Inbox

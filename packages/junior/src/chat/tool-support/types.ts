@@ -75,7 +75,7 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage | undefined;
-  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  /** Queue of the app. Without it, Inbox item tools use the Vercel queue. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;

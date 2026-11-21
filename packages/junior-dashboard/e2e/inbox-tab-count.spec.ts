@@ -4,7 +4,7 @@ import { expect, test } from "./test";
 
 // The Inbox count that the nav badge, the tab title and the tab icon share.
 async function mockInboxCount(page: Page, count: { value: number }) {
-  await page.route("**/api/review-items/count**", (route) =>
+  await page.route("**/api/inbox-items/count**", (route) =>
     route.fulfill({
       json: {
         codeChanges: 0,

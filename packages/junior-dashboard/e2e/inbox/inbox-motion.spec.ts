@@ -6,7 +6,7 @@ import {
   audit,
   expandRow,
   license,
-  mockReviewItems,
+  mockInboxItems,
   prReview,
 } from "./inbox-fixture";
 
@@ -219,7 +219,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     ];
     const open = [...asks];
-    const actions = await mockReviewItems(page, { ...options, open });
+    const actions = await mockInboxItems(page, { ...options, open });
     let nowMs = NOW_MS;
     const refocus = async () => {
       nowMs += 60_000;
@@ -227,7 +227,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       const read = page.waitForResponse(
         (response) =>
           response.request().method() === "GET" &&
-          new URL(response.url()).pathname === "/api/review-items",
+          new URL(response.url()).pathname === "/api/inbox-items",
       );
       await page.evaluate(() =>
         window.dispatchEvent(new Event("visibilitychange")),
@@ -309,7 +309,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // next one. Its own read says that it is still open.
     const reread = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === `/api/review-items/${prReview.id}`,
+        new URL(response.url()).pathname === `/api/inbox-items/${prReview.id}`,
     );
     const newer = {
       ...license,

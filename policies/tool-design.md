@@ -70,7 +70,7 @@ contradictory or unsafe requests.
   goes in `tool-support/<collection>/`. The host registry, tool creation,
   execution, and tool errors are in `packages/junior/src/chat/tool-support`.
 - Put code that other features also use in the feature module that owns it,
-  such as `chat/sandbox` or `chat/review-items`.
+  such as `chat/sandbox` or `chat/inbox-items`.
 - The `tools-dir-*` and `tools-defined-in-tools-dir` ast-grep rules enforce
   the layout.
   `tool-error-classification:check` scans `tools` and `tool-support`.

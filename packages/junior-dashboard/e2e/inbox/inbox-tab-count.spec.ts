@@ -7,7 +7,7 @@ import {
   grab,
   license,
   migration,
-  mockReviewItems,
+  mockInboxItems,
   mockViewerCodeChanges,
   prMerge,
   prReview,
@@ -22,7 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   // One ask, so its row's Done takes the count to zero.
   async function mockOneAsk(page: Page) {
-    await mockReviewItems(page, { automations: () => 0, open: [rollout] });
+    await mockInboxItems(page, { automations: () => 0, open: [rollout] });
   }
 
   function inboxTab(page: Page) {
@@ -139,11 +139,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     }) => {
       // The mock counts this list on each request.
       const open: unknown[] = [rollout];
-      await mockReviewItems(page, { automations: () => 0, open });
+      await mockInboxItems(page, { automations: () => 0, open });
       const versions = {
         conversationDetails: {},
         conversations: "mock",
-        reviewItems: "review-1",
+        inboxItems: "review-1",
         spend: "mock",
       };
       // Page clock time of each answered check.
@@ -183,7 +183,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.clock.fastForward(5_000);
       await answered(2);
       open.push(license);
-      versions.reviewItems = "review-2";
+      versions.inboxItems = "review-2";
       await page.clock.fastForward(30_000);
       await page.clock.fastForward(30_000);
       await answered(3);
@@ -224,7 +224,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
-    await mockReviewItems(page, { open: [rollout, alert] });
+    await mockInboxItems(page, { open: [rollout, alert] });
     await page.goto(`${dashboard.baseURL}/`);
     await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
@@ -252,7 +252,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // Two asks in one Conversation make a stack of two rows, and one ask
     // makes another row.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [rollout, migration, license],
     });
@@ -276,7 +276,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // A question for Everyone is a Decisions row too.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [license, grab],
     });
@@ -306,7 +306,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       subject: prMerge.subject,
       title: "Squash #42 before the merge?",
     };
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [prMerge, squash, prReview],
     });

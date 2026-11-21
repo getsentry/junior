@@ -74,7 +74,7 @@ export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 /**
- * The viewer's newest answer to a Review item that the Conversation added:
+ * The viewer's newest answer to an Inbox item that the Conversation added:
  * when it closed and the options they picked. A text answer has no choices.
  */
 export const conversationFeedViewerAnswerSchema = z

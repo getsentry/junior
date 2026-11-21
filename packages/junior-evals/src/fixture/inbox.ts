@@ -3,21 +3,21 @@
  */
 import type { Hono } from "hono";
 import type { JuniorApiEnv } from "@/api/route";
-import { actOnReviewItem } from "./dashboard-requests";
-import type { ReviewItemActionInput } from "./inputs";
-import { insertWebReviewItem } from "./insert";
+import { actOnInboxItem } from "./dashboard-requests";
+import type { InboxItemActionInput } from "./inputs";
+import { insertWebInboxItem } from "./insert";
 
 /**
  * Store the open item that an earlier Turn of the web Conversation added,
  * then submit or dismiss it through the dashboard API as `viewerEmail`.
  */
-export async function actOnWebReviewItem(
+export async function actOnWebInboxItem(
   api: Hono<JuniorApiEnv>,
-  input: ReviewItemActionInput,
+  input: InboxItemActionInput,
   conversation: { conversationId: string; viewerEmail: string },
 ): Promise<void> {
-  const { id } = await insertWebReviewItem({ ...input, ...conversation });
-  await actOnReviewItem(api, {
+  const { id } = await insertWebInboxItem({ ...input, ...conversation });
+  await actOnInboxItem(api, {
     ...input,
     id,
     viewerEmail: conversation.viewerEmail,

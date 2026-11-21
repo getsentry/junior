@@ -1,10 +1,11 @@
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
   EventInput,
@@ -176,8 +177,10 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
   /** Logins from the `trustedAuthors` plugin option. */
   trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
@@ -246,7 +249,7 @@ export function createGitHubWebhookRoute(args: {
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
-          reviewItems: args.reviewItems,
+          inboxItems: args.inboxItems,
         });
         if (
           recordedOutcome.applied &&
@@ -359,6 +362,8 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
+              responses: args.state,
+              tokens: args.tokens,
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
@@ -437,7 +442,7 @@ export function createGitHubWebhookRoute(args: {
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          reviewItems: args.reviewItems,
+          inboxItems: args.inboxItems,
         })),
       );
       for (const event of events) {
@@ -453,29 +458,28 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      const env = {
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        privateKeyEnv: args.privateKeyEnv,
+        responses: args.state,
+        tokens: args.tokens,
+      };
       await syncGitHubPullRequestActions({
         botEmail,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         eventName,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,

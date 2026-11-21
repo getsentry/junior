@@ -10,10 +10,8 @@ import {
   sendCacheWarmup,
   type CacheWarmupMessage,
 } from "@/chat/cache-warming/queue";
-import {
-  createCacheWarmingRecorder,
-  runCacheWarmup,
-} from "@/chat/cache-warming/warmup";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
+import { runCacheWarmup } from "@/chat/cache-warming/warmup";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { IDLE_HORIZON_MS, WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
