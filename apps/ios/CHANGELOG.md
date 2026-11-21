@@ -1,9 +1,16 @@
 # Changelog
 
-The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The app
-shows this file in Settings. After an update, it shows the sections for the new
-builds once. A release section must have the build number after `+`, such as
-`## [0.1.0+42] 2026-11-20`.
+The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Add
+entries under `[Unreleased]`, in categories such as `### Added` or `### Fixed`.
+Do not add version sections, and do not change an entry after it ships.
+
+Each TestFlight beta (`.github/workflows/ios-beta.yml`) changes only its own
+copy of this file. The entries that no earlier build has become the section
+`## [X.Y.Z+N] YYYY-MM-DD`, where `N` is the build number, and the "What to Test"
+notes, at most 4,000 characters. The categories set the version: `Removed` or
+`Breaking` is a major change (minor before 1.0), only `Fixed` or `Security` is a
+patch, and all others are minor. After an update, the app shows the new
+sections once. Settings shows the full file.
 
 ## [Unreleased]
 
