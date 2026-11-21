@@ -13,7 +13,10 @@ import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
@@ -163,6 +166,16 @@ describe("Lead", () => {
       delivery: "queued",
     });
     await expect(send(boWork.conversationId, "call-bo")).rejects.toThrow(
+      "is a public conversation and this conversation is private",
+    );
+
+    // Only roots: an Automation run that the person takes part in would act
+    // on the Lead's text.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: "automation" })
+      .where(eq(juniorConversations.conversationId, anaWork.conversationId));
+    await expect(send(anaWork.conversationId, "call-run")).rejects.toThrow(
       "is a public conversation and this conversation is private",
     );
   });
