@@ -9,27 +9,26 @@ import type {
   Model,
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-// The one deliberate import from chat: it keeps the model span identical to
-// main's. It moves into core when core replaces chat's agent loop.
+// Core uses chat's traced stream, so the model span stays identical to main's.
+// It moves into core when core replaces chat's agent loop.
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import {
+  toPiReasoningLevel,
+  type TurnReasoningLevel,
+} from "@/chat/reasoning-level";
 
-/** Whether a Conversation's spans may record message content. */
-type ConversationPrivacy = "public" | "private";
-
-/** Sends one model request, such as pi-ai's `streamSimple`. */
-type ModelStream = (
+/** Sends one model request and streams the reply. */
+type SendModelRequest = (
   model: Model<Api>,
   context: Context,
   options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
-/** How much the model reasons before it replies. */
-export type ReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh";
-
 /** The model that a Turn uses, and how its requests are recorded. */
 export type ModelSettings = {
   id: string;
-  reasoning: ReasoningLevel;
+  reasoning: TurnReasoningLevel;
   /** `public` records message content on spans. */
   privacy: ConversationPrivacy;
 };
@@ -56,27 +55,32 @@ export type ModelClient = {
 
 /**
  * Builds the model client. `apiKey` runs before each request, because a
- * credential can rotate between requests. `stream` sends the request, such
- * as pi-ai's `streamSimple`.
+ * credential can rotate between requests. `send` sends the request, such as
+ * pi-ai's `streamSimple`.
  */
 export function modelClient(dependencies: {
   apiKey: () => Promise<string>;
   resolveModel: (id: string) => Model<Api>;
-  stream: ModelStream;
+  send: SendModelRequest;
 }): ModelClient {
   return {
     complete: async ({ model, session, context }, signal) => {
-      const send = createTracedStreamFn({
-        base: dependencies.stream,
+      const reasoning = toPiReasoningLevel(model.reasoning);
+      const traced = createTracedStreamFn({
+        base: dependencies.send,
         conversationPrivacy: model.privacy,
       });
-      const stream = await send(dependencies.resolveModel(model.id), context, {
-        apiKey: await dependencies.apiKey(),
-        sessionId: session,
-        // Pi calls no reasoning `off`, and takes `undefined` to mean it.
-        reasoning: model.reasoning === "none" ? undefined : model.reasoning,
-        signal,
-      });
+      const stream = await traced(
+        dependencies.resolveModel(model.id),
+        context,
+        {
+          apiKey: await dependencies.apiKey(),
+          sessionId: session,
+          // Pi calls no reasoning `off`, and takes `undefined` to mean it.
+          reasoning: reasoning === "off" ? undefined : reasoning,
+          signal,
+        },
+      );
       return stream.result();
     },
   };

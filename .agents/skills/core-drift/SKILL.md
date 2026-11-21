@@ -16,7 +16,6 @@ Paths are under `packages/junior/`.
 
 | Core file | Main source | Must match |
 | --- | --- | --- |
-| `src/core/model/client.ts` | `src/chat/reasoning-level.ts` | Reasoning levels and the `none` to `off` mapping |
 | `src/core/turn/queue.ts` | `src/chat/task-execution/vercel-queue.ts`, `src/chat/task-execution/vercel-callback.ts` | `queue.publish` and `queue.process` attributes, the rejected-message log attributes |
 | `src/core/tool-execution-environment/vercel.ts`, `docker.ts` | `src/chat/sandbox/session.ts`, `src/chat/sandbox/vercel/provider.ts`, `src/chat/sandbox/docker/provider.ts`, `src/chat/sandbox/egress/` | Sandbox session, snapshot, timeout, `persistent`, egress credentials per Actor |
 | `src/core/tool-execution-environment/instrument.ts` | `src/chat/sandbox/session.ts`, `src/chat/sandbox/sandbox.ts` | `sandbox.*` span names and `app.sandbox.*` attributes |
@@ -24,7 +23,8 @@ Paths are under `packages/junior/`.
 | `src/core/telemetry.ts` and every span and log name in `src/core/` | `TELEMETRY.md` at the repo root, `src/chat/agent/index.ts` | Span, metric, log, and attribute names |
 
 The model span is imported from `src/chat/pi/traced-stream.ts`, not copied, so
-it cannot drift.
+it cannot drift. `src/core/model/client.ts` imports its reasoning levels from
+`src/chat/reasoning-level.ts`, not a copy.
 
 ## Known differences
 
