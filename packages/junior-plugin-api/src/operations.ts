@@ -16,7 +16,7 @@ import type {
   PluginConversationEventStats,
 } from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
-import type { PluginConversationReviewItems } from "./review-items";
+import type { PluginConversationInboxItems } from "./inbox-items";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -39,8 +39,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
-  /** Review items in the Inbox, as from a plugin route. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
 }
 
@@ -203,8 +203,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
-  /** Review items in the Inbox that the plugin adds and closes from its events. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items that the plugin adds and closes from its events. */
+  inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
   users: {

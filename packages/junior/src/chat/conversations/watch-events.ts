@@ -78,7 +78,7 @@ type ConversationStatus =
       outcome: "success" | "no_reply" | "cancelled" | "blocked";
     }
   | { type: "turn_failed"; turnId: string; failureCode: string }
-  | { type: "waiting"; reviewItemId: string }
+  | { type: "waiting"; inboxItemId: string }
   | { type: "stopped"; stoppedAtMs: number };
 
 function statusEvent(
@@ -113,10 +113,10 @@ function statusEvent(
     case "waiting":
       return {
         ...base,
-        eventKey: `${key}:review_item:${status.reviewItemId}`,
+        eventKey: `${key}:inbox_item:${status.inboxItemId}`,
         eventType: CONVERSATION_WAITING_EVENT,
         trustedSummary: "The Conversation waits on a person.",
-        data: { conversationId, reviewItemId: status.reviewItemId },
+        data: { conversationId, inboxItemId: status.inboxItemId },
       };
     case "stopped":
       return {
@@ -158,7 +158,7 @@ export async function publishConversationStatus(
     });
     if (watches.length === 0 || (await options.skip?.())) return;
     // Loaded on use: ingest reaches the runtime Event catalog, which imports
-    // this module, and its graph is too large for every Review item writer.
+    // this module, and its graph is too large for every Inbox item writer.
     const { ingestEvent } = await import("@/chat/events/ingest");
     await ingestEvent(event, {
       admit: async (watch) =>

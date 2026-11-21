@@ -337,7 +337,7 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
-- After it files an issue for a person, ask them with a Review item whether
+- After it files an issue for a person, ask them with an Inbox item whether
   to start a Thread that implements it. When they already asked for the fix,
   start the Thread without asking. Automation runs, events, and child agents
   do not ask
@@ -647,7 +647,7 @@ people work on it:
   the limit of 3 in a row. The ready to merge notice needs a clean merge
   state, so it comes after the fix.
 - When the head commit is the same a day after its fix, the fix did not
-  land. Then Junior adds a Review item with a **Resume** button for the
+  land. Then Junior adds an Inbox item with a **Resume** button for the
   person who asked for the pull request. It adds the item once after each
   Resume, so **Dismiss** ends these asks for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or

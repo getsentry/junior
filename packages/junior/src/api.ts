@@ -22,7 +22,7 @@ import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
-import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createInboxItemRoutes } from "./api/inbox-items/routes";
 import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
@@ -43,7 +43,7 @@ import { requireViewer } from "./api/viewer";
 import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
-import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
+import { createSlackInboxItemShow } from "./chat/slack/inbox-item-card-sync";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import type { WaitUntilFn } from "./handlers/types";
@@ -140,11 +140,11 @@ export function createJuniorApi(
     }),
   );
   app.route(
-    "/api/review-items",
-    createReviewItemRoutes({
+    "/api/inbox-items",
+    createInboxItemRoutes({
       delivery: {
         queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createSlackInboxItemShow(getProductionSlackAdapter),
       },
     }),
   );

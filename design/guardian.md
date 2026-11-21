@@ -35,7 +35,7 @@ data, does not run.
 
 ## Entry points
 
-- Slack: a Review item in which Junior names an action, its target, and its
+- Slack: an Inbox item in which Junior names an action, its target, and its
   side effects, and asks the person to confirm it.
 - Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
   a Conversation.

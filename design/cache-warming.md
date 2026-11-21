@@ -26,7 +26,7 @@ not for a new write of the full history.
   55-minute idle horizon, up to 110 minutes, while its chance of a return
   pays. The child agent's result starts a Turn, so its chance of a return
   per interval stays well above breakeven for most of that time. A wait on
-  a Review item is borderline, so it keeps the 55-minute horizon.
+  an Inbox item is borderline, so it keeps the 55-minute horizon.
 - A return after warming stopped is the expected price of the stop rule. It
   is not a cache failure. Nearly every last warmup before such a return read
   the cache.

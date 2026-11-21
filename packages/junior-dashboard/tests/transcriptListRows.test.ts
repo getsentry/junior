@@ -185,11 +185,11 @@ describe("transcriptListRows", () => {
       entries: [
         messageEntry(1, "user"),
         toolEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
         toolEntry(4),
         messageEntry(5),
         messageEntry(6, "user"),
-        toolEntry(7, "addReviewItem"),
+        toolEntry(7, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -212,7 +212,7 @@ describe("transcriptListRows", () => {
       entries: [
         messageEntry(1, "user"),
         messageEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),

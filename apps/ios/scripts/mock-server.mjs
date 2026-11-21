@@ -493,11 +493,11 @@ function inputJsonSchema(fields) {
 }
 
 function writeInstructions() {
-  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your review items and automations. createConversation and sendMessage send a message as you, and ${agentName} works on it in the background. They return a \`cursor\`. Call getConversation with \`after\` set to the newest \`cursor\` to read the new messages. Repeat until \`status\` is not \`active\` and \`hasMore\` is not set. \`authorization\` means a turn waits for you to connect an account. To answer a review item, use the dashboard link in a result.`;
+  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your inbox items and automations. createConversation and sendMessage send a message as you, and ${agentName} works on it in the background. They return a \`cursor\`. Call getConversation with \`after\` set to the newest \`cursor\` to read the new messages. Repeat until \`status\` is not \`active\` and \`hasMore\` is not set. \`authorization\` means a turn waits for you to connect an account. To answer an inbox item, use the dashboard link in a result.`;
 }
 
 function readInstructions() {
-  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your review items and automations. They cannot send a message or start agent work. To ask ${agentName} for work or to answer a review item, use the Slack or dashboard link in a result.`;
+  return `${agentName} is a Slack agent. These tools read and manage your ${agentName} conversations, and read your inbox items and automations. They cannot send a message or start agent work. To ask ${agentName} for work or to answer an inbox item, use the Slack or dashboard link in a result.`;
 }
 
 function rpcHttpError(status, code, message) {

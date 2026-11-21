@@ -48,7 +48,7 @@ Canonical words for Junior code and docs. One concept, one word.
   lease, checkpoints, activity status).
 - **Conversation status**: what one Conversation's own work needs, shared
   by everyone and derived from runtime state only. `needs_input`: it waits on
-  a person: an open action Review item it added, a sign-in, or its starter
+  a person: an open action Inbox item it added, a sign-in, or its starter
   while no Turn is queued or running (a failed latest Turn, a `partial` or
   `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
@@ -177,24 +177,24 @@ Canonical words for Junior code and docs. One concept, one word.
   latest saved facts. No live provider fetch.
 - **Unfinished work** / **Assigned work**: plugin-owned work on a
   Conversation, open / open or done.
-- **Review item**: work for a person, shown in the **Inbox**. Not an
-  Item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
+- **Inbox item**: work for a person, shown in the **Inbox**. Not an
+  Item or a Review item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
   what the item belongs to, `{ kind, id }`: the Conversation that added it,
   or an Automation. The owner sets the item's visibility, tenant, and Inbox
-  stack. **Automation alert**: a Review item that an Automation owns. Core
+  stack. **Automation alert**: an Inbox item that an Automation owns. Core
   adds it for the creator when the Automation needs them, and closes it
   when the Automation recovers.
 - **Attention**: what Junior takes from a person with a reply, a question, a
-  Slack post or DM, a Review item, a review request, a push, or an Inbox
+  Slack post or DM, an Inbox item, a review request, a push, or an Inbox
   count. A Watch Event goes to the agent and takes none. Not
-  "notification". **Notice**: a Review item that names a step for a
+  "notification". **Notice**: an Inbox item that names a step for a
   person but asks no question.
-- **Dismiss**: close a Review item without an answer. The one UI word for
+- **Dismiss**: close an Inbox item without an answer. The one UI word for
   removing an item, on a row, a card, or many FYIs at once. Not Clear or
   Done. Archive is for a Conversation.
-- **Done** (Inbox): the view of done and dismissed Review items. Not
+- **Done** (Inbox): the view of done and dismissed Inbox items. Not
   Conversation archive.
-- **Snooze**: one User hides one Review item in their Inbox until a
+- **Snooze**: one User hides one Inbox item in their Inbox until a
   trigger, such as a timer or an Event, wakes or resolves it. A later item
   in the row is not snoozed.
   Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
