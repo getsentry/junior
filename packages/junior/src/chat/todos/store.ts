@@ -21,6 +21,7 @@ import { syncTodoInboxItems } from "./inbox-items";
 import { todoRef } from "./tool-output";
 import {
   isOpenTodoStatus,
+  OPEN_TODO_STATUSES,
   type ClosedTodoStatus,
   type Todo,
   type TodoStatus,
@@ -216,11 +217,15 @@ export async function changeTodos(
 
 /**
  * Set the status of one To-do for a person, and return the To-do. Returns
- * undefined when the Conversation has no such To-do.
+ * undefined when the Conversation has no such To-do. With `assignedOnly`,
+ * the To-do must still be open and assigned to the person when the change
+ * applies under the lock, so Done on a stale Inbox item cannot close a
+ * To-do that the agent gave to someone else.
  */
 export async function setTodoStatusByUser(
   executor: JuniorSqlDatabase,
   args: {
+    assignedOnly?: boolean;
     conversationId: string;
     id: number;
     nowMs: number;
@@ -242,6 +247,12 @@ export async function setTodoStatusByUser(
         and(
           eq(juniorTodos.conversationId, args.conversationId),
           eq(juniorTodos.id, args.id),
+          args.assignedOnly
+            ? and(
+                eq(juniorTodos.assigneeUserId, args.userId),
+                inArray(juniorTodos.status, [...OPEN_TODO_STATUSES]),
+              )
+            : undefined,
         ),
       )
       .returning({ id: juniorTodos.id });
