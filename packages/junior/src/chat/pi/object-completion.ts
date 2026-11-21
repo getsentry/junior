@@ -1,5 +1,4 @@
-import type { LanguageModelUsage, NoObjectGeneratedError } from "ai";
-import { extractGenAiUsageAttributes } from "@/chat/logging";
+import type { NoObjectGeneratedError } from "ai";
 
 /**
  * Output tokens added on top of the object size that a caller asks for.
@@ -22,23 +21,11 @@ export function structuredOutputTokenLimit(
   return modelMaxTokens !== undefined ? Math.min(limit, modelMaxTokens) : limit;
 }
 
-/** Span attributes for the finish reason and usage of one object completion. */
-export function objectCompletionAttributes(
-  finishReason: string | undefined,
-  usage: LanguageModelUsage | undefined,
-): Record<string, unknown> {
-  // `extractGenAiUsageAttributes` reads the Pi usage shape, which has no
-  // nested `outputTokenDetails`.
-  const reasoningTokens = usage?.outputTokenDetails?.reasoningTokens;
-  return {
-    ...(finishReason
-      ? { "gen_ai.response.finish_reasons": [finishReason] }
-      : undefined),
-    ...extractGenAiUsageAttributes(usage),
-    ...(reasoningTokens !== undefined
-      ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }
-      : undefined),
-  };
+/** Error for a structured output that spent its output token budget. */
+export function structuredOutputLengthError(): Error {
+  const error = new Error("Structured output hit the output token limit");
+  error.name = "StructuredOutputLengthError";
+  return error;
 }
 
 /**
@@ -51,12 +38,10 @@ export function structuredOutputErrorCause(
   error: NoObjectGeneratedError,
 ): Error {
   const spentBudget = error.finishReason === "length";
-  const cause = new Error(
-    spentBudget
-      ? "Structured output hit the output token limit"
-      : error.message,
-  );
-  cause.name = spentBudget ? "StructuredOutputLengthError" : error.name;
+  const cause = spentBudget
+    ? structuredOutputLengthError()
+    : new Error(error.message);
+  if (!spentBudget) cause.name = error.name;
   cause.stack = error.stack;
   return cause;
 }
