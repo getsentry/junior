@@ -40,6 +40,9 @@ function savedResponseKey(url: string): string {
  * Send one GitHub GET with the ETag of its saved response. On 304, return
  * the saved body as a 200 response. On a 200 with an ETag, save the body.
  * Without `responses`, send the request as it is.
+ *
+ * Saved responses only save rate limit. A read or write failure of plugin
+ * state is a cache miss, so it never fails the GitHub read.
  */
 export async function sendConditionalRequest(
   responses: PluginState | undefined,
@@ -48,7 +51,9 @@ export async function sendConditionalRequest(
 ): Promise<Response> {
   if (!responses) return await send({});
   const key = savedResponseKey(url);
-  const saved = savedResponseSchema.safeParse(await responses.get(key));
+  const saved = savedResponseSchema.safeParse(
+    await responses.get(key).catch(() => undefined),
+  );
   const response = await send(
     saved.success ? { "If-None-Match": saved.data.etag } : {},
   );
@@ -63,7 +68,9 @@ export async function sendConditionalRequest(
   if (!response.ok || !etag) return response;
   const body = await response.text();
   if (body.length <= MAX_SAVED_BODY_LENGTH) {
-    await responses.set(key, { body, etag }, SAVED_RESPONSE_TTL_MS);
+    await responses
+      .set(key, { body, etag }, SAVED_RESPONSE_TTL_MS)
+      .catch(() => undefined);
   }
   return new Response(body, {
     headers: response.headers,
