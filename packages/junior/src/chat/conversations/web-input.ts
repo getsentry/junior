@@ -17,6 +17,7 @@ import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type {
   Conversation,
   ConversationStore,
+  TopLevelConversationKind,
 } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -240,6 +241,8 @@ export async function recordWebConversationActivity(args: {
   rootTitle?: string;
   /** Applied only when this call creates the Conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the Conversation root. */
+  rootKind?: TopLevelConversationKind;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -267,6 +270,7 @@ export async function recordWebConversationActivity(args: {
     ...(source ? { sessionSource: source } : undefined),
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
+    ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
   });
   return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }

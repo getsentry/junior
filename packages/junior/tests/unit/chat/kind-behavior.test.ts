@@ -125,10 +125,14 @@ describe("turnBehavior", () => {
     );
   });
 
-  it("runs no Turn on a lead before its behavior exists", () => {
-    expect(() => turnBehavior({ kind: "lead", personInput: true })).toThrow(
-      "A lead Conversation has no Turn behavior yet",
+  // A Lead keeps one system prompt and one tool list on every Turn.
+  it("gives every Turn of a Lead the same behavior", () => {
+    const personTurn = turnBehavior({ kind: "lead", personInput: true });
+    expect(turnBehavior({ kind: "lead", personInput: false })).toEqual(
+      personTurn,
     );
+    expect(personTurn.promptMode).toBe("lead");
+    expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
   });
 
   it("counts only Slack and web input as a person's", () => {
