@@ -1,4 +1,4 @@
-import { license, mockReviewItems } from "./inbox-fixture";
+import { license, mockInboxItems } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -7,7 +7,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, { open: [license] });
+    const actions = await mockInboxItems(page, { open: [license] });
     await page.goto(`${dashboard.baseURL}/`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const question = asks.getByRole("region", { name: license.title });
@@ -42,7 +42,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The row drops the item at once. The draft clears when the server
     // accepts the answer.
     const accepted = page.waitForResponse((response) =>
-      response.url().includes(`/api/review-items/${license.id}/actions`),
+      response.url().includes(`/api/inbox-items/${license.id}/actions`),
     );
     await question.getByRole("button", { name: "Send" }).click();
     await accepted;
@@ -61,7 +61,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await expect(question).toHaveCount(0);
     // Served open again, the item shows an empty form.
-    await mockReviewItems(page, { open: [license] });
+    await mockInboxItems(page, { open: [license] });
     await page.reload();
     await expand();
     await expect(

@@ -30,7 +30,7 @@ export const dashboardDisclosureChevronClass =
 /** Round a card, row, or panel. Buttons, tabs, inputs, and icon tiles use `rounded-md`. */
 export const dashboardSurfaceRadiusClass = "rounded-lg";
 
-/** Frame one message-like record in a transcript, such as an object preview or a review item. */
+/** Frame one message-like record in a transcript, such as an object preview or an inbox item. */
 export const dashboardMessageCardClass =
   "rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel";
 

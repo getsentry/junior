@@ -18,7 +18,7 @@ import {
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   appendVisibleHistory,
@@ -201,7 +201,7 @@ describe("versions API", () => {
     expect(feedMoved(withInput, withPin)).toEqual(["pin"]);
     expect(await detailVersion()).toBe(withPin.conversation);
 
-    const item = await insertReviewItem(getDb(), {
+    const item = await insertInboxItem(getDb(), {
       owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
@@ -230,9 +230,9 @@ describe("versions API", () => {
     expect(changed(withPin, withItem)).toEqual([
       "conversation",
       "conversations",
-      "reviewItems",
+      "inboxItems",
     ]);
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
@@ -241,7 +241,7 @@ describe("versions API", () => {
     expect(changed(withItem, closed)).toEqual([
       "conversation",
       "conversations",
-      "reviewItems",
+      "inboxItems",
     ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole

@@ -12,7 +12,7 @@
  * - the root and every child conversation are idle
  * - nothing in the tree needs a person: no conversation in it has
  *   `needs_input` status, no open To-do in it is assigned to a person,
- *   and no open Review item linked to it waits on a person
+ *   and no open Inbox item linked to it waits on a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
  *   period
@@ -52,13 +52,13 @@ import {
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
-import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
+import { inboxItemNeedsSomeone } from "@/chat/inbox-items/access";
 import { OPEN_TODO_STATUSES } from "@/chat/todos/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorReviewItemConversations,
-  juniorReviewItems,
+  juniorInboxItemConversations,
+  juniorInboxItems,
   juniorTodos,
   juniorUsers,
 } from "@/db/schema";
@@ -127,7 +127,7 @@ function treeIsQuiet(run: ArchiveRun) {
 
 /**
  * True when nothing in the participant row's tree needs a person. No
- * conversation in it has `needs_input` status: an open action Review item
+ * conversation in it has `needs_input` status: an open action Inbox item
  * that it added, a sign-in wait, or work that waits on its starter, such
  * as an answer that the starter has not read. No open To-do in it is
  * assigned to a person. Archive applies to everyone, so input that waits
@@ -173,26 +173,26 @@ function treeNeedsNoOne() {
 }
 
 /**
- * True when no open Review item on the participant row's root or a child
+ * True when no open Inbox item on the participant row's root or a child
  * conversation needs a person. Archive applies to everyone, so a
  * conversation that waits on anyone must stay in the feed.
  */
 function notWaitingOnAnyone() {
   const linked = alias(juniorConversations, "linked_conversation");
   const waiting = getDb()
-    .select({ itemId: juniorReviewItemConversations.itemId })
-    .from(juniorReviewItemConversations)
+    .select({ itemId: juniorInboxItemConversations.itemId })
+    .from(juniorInboxItemConversations)
     .innerJoin(
-      juniorReviewItems,
-      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+      juniorInboxItems,
+      eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
     )
     .innerJoin(
       linked,
-      eq(linked.conversationId, juniorReviewItemConversations.conversationId),
+      eq(linked.conversationId, juniorInboxItemConversations.conversationId),
     )
     .where(
       and(
-        reviewItemNeedsSomeone(),
+        inboxItemNeedsSomeone(),
         or(
           eq(
             linked.conversationId,
@@ -252,7 +252,7 @@ function rootIsUnarchived() {
 
 /**
  * Conditions that a participant row must meet when it is selected and again
- * when it is archived, so new activity, a new run, a new Review item, or a
+ * when it is archived, so new activity, a new run, a new Inbox item, or a
  * changed setting wins over a stale read.
  */
 function archivableRow(run: ArchiveRun) {

@@ -2,7 +2,7 @@
 
 A person's attention is the scarcest thing Junior spends. Junior asks for it
 only when the person gets an answer, a result, or a step that only they can
-take. All other work happens with no message, Review item, push, or count.
+take. All other work happens with no message, Inbox item, push, or count.
 This is a core principle of how the agent works, and every system follows
 it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
@@ -30,7 +30,7 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 ## Entry points
 
 - Every Conversation: the agent's reply and its questions.
-- Slack: a reply in the thread of the request, and a Review item card.
+- Slack: a reply in the thread of the request, and an Inbox item card.
 - Dashboard: Inbox, the Inbox count in the tab, "Needs you", and a push.
 - GitHub: a review request on a pull request that Junior opened.
 
@@ -41,7 +41,7 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   no reply. An Automation posts what its instruction asks for.
 - When Junior stops upkeep that it owns, such as fixes on a pull request
   that nobody works on, it tells nobody.
-- Junior asks a person only with a Review item
+- Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
 
 ## Gaps
@@ -51,7 +51,7 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   what the person gets or must do".
 - Some asks are only a Slack message: a draft pull request that waits for
   the requester's review, and a decision on a watched issue. They add no
-  Review item. This breaks "Junior asks a person only with a Review item"
+  Inbox item. This breaks "Junior asks a person only with an Inbox item"
   and "Slack and the dashboard ask for attention for the same things".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no
   card for it. For a blocked Automation, Slack gets a DM with no card. For a

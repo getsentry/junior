@@ -739,7 +739,7 @@ describe("Automations API", () => {
       // same two as the Automations entry. The failed run's alert asks Run
       // again or Pause, so it is also a decision.
       const count = await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/review-items/count?include=automations",
+        "http://localhost/api/inbox-items/count?include=automations",
       );
       expect(await count.json()).toEqual({
         automations: 2,

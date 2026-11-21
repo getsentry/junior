@@ -61,7 +61,7 @@ export async function routeConversationVersion(
           ]),
         ),
         conversations: "mock",
-        reviewItems: "mock",
+        inboxItems: "mock",
         spend: "mock",
       },
     }),

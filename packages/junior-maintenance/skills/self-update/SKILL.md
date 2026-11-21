@@ -102,7 +102,7 @@ For `vercel.json`, do not normalize the whole file against the example. Use upst
 git -C <upstream> diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
-Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
+Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual inbox item when needed.
 
 ### 8. Verify
 

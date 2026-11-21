@@ -1,7 +1,7 @@
 import { Navigate, useSearchParams } from "react-router";
 
 import { inboxViewPath } from "./inboxModel";
-import { useReviewItemData } from "./queries";
+import { useInboxItemData } from "./queries";
 
 /**
  * Old Inbox links and the classic UI's `/inbox` and `/review` links open the list:
@@ -13,7 +13,7 @@ export function InboxRedirect() {
   const bundle = params.get("bundle");
   const itemId = params.get("item") ?? undefined;
   // Only a link with no entry needs the item's status.
-  const item = useReviewItemData(bundle ? undefined : itemId);
+  const item = useInboxItemData(bundle ? undefined : itemId);
   if (bundle === "automations") return <Navigate replace to="/automations" />;
   if (!bundle && itemId && item.isPending) return null;
   const view =

@@ -1065,7 +1065,7 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
-      // A person started the Turn, so the result names the Review item that
+      // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
         '"github-issue-implement:getsentry/junior#660"',
@@ -1275,7 +1275,7 @@ describe("github plugin", () => {
     );
 
     // No person started the run, so the issue gets no Watch, and no one
-    // could answer a Review item about implementing it.
+    // could answer an Inbox item about implementing it.
     expect(subscribe).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("subscription");
     expect(result).not.toHaveProperty("note");

@@ -2,9 +2,9 @@ import { and, desc, eq, gt, gte, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
-  reviewItemNeedsInput,
-  reviewItemOwnedByConversation,
-} from "@/chat/review-items/access";
+  inboxItemNeedsInput,
+  inboxItemOwnedByConversation,
+} from "@/chat/inbox-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -13,7 +13,7 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorIdentities,
-  juniorReviewItems,
+  juniorInboxItems,
 } from "@/db/schema";
 
 /** The `junior_conversations` columns, or an alias's, that status reads. */
@@ -188,7 +188,7 @@ function conversationWaitsOnStarterSql(
  * This is the only place that derives it; readers, counts, and feed tokens
  * select it. When more than one applies: `needs_input` > `working` > `done`.
  *
- * - `needs_input`: an open action Review item that this Conversation added
+ * - `needs_input`: an open action Inbox item that this Conversation added
  *   waits on its assignees or Everyone, a Turn waits on a person to sign in
  *   (`awaitsAuthorization`), or the work waits on its starter
  *   (`conversationWaitsOnStarterSql`).
@@ -199,9 +199,9 @@ function conversationWaitsOnStarterSql(
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
-  const needsInput = sql`exists (select 1 from ${juniorReviewItems} where ${and(
-    reviewItemOwnedByConversation(conversation.conversationId),
-    reviewItemNeedsInput(),
+  const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
+    inboxItemOwnedByConversation(conversation.conversationId),
+    inboxItemNeedsInput(),
   )})`;
   return sql<ConversationReportStatus>`case
     when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'

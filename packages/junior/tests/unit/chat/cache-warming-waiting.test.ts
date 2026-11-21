@@ -119,7 +119,7 @@ describe("cache warming of idle periods that wait on other work", () => {
     }
   });
 
-  it("records the gap of an idle period that waits on a child agent or a Review item in the segment's child", async () => {
+  it("records the gap of an idle period that waits on a child agent or an Inbox item in the segment's child", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const state = getStateAdapter();
     // People reply after 8 minutes in the segment. Its children have no gaps
@@ -146,10 +146,10 @@ describe("cache warming of idle periods that wait on other work", () => {
       vi.setSystemTime(Date.now() + 2 * MINUTE);
       await endTurn(true, parentConversationId);
 
-      // Another Turn asked a Review item.
+      // Another Turn asked an Inbox item.
       await endTurn(true, conversationId, {
         ...context,
-        messages: [...context.messages, toolCall("addReviewItem")],
+        messages: [...context.messages, toolCall("addInboxItem")],
       });
       vi.setSystemTime(Date.now() + 3 * MINUTE);
       await endTurn(true, conversationId);

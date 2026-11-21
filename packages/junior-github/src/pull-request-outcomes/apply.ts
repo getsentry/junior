@@ -7,7 +7,7 @@ import type {
   CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import { updateGitHubAnnotations } from "../annotations.js";
@@ -47,7 +47,7 @@ export function githubCodeChange(
 /**
  * Record one pull request outcome. When the stored row changes, update the
  * code index, and mark the chip of each linked conversation merged or closed.
- * A merged or closed pull request closes its Review items first, so no
+ * A merged or closed pull request closes its Inbox items first, so no
  * reader sees a merged chip next to an open item. A failed chip or item is
  * logged, so it does not stop the work after it.
  */
@@ -57,7 +57,7 @@ export async function applyGitHubPullRequestOutcome(args: {
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   outcome: GitHubPullRequestOutcomeInput;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<Awaited<ReturnType<typeof recordGitHubPullRequestOutcome>>> {
   const { outcome } = args;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
@@ -70,7 +70,7 @@ export async function applyGitHubPullRequestOutcome(args: {
     await closeEndedGitHubPullRequestItems({
       db: args.db,
       log: args.log,
-      reviewItems: args.reviewItems,
+      inboxItems: args.inboxItems,
       state,
       target: outcome,
     });

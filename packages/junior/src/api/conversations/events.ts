@@ -6,7 +6,7 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
 import {
@@ -314,17 +314,17 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-const storedReviewItemChangesSchema = z
-  .array(reviewItemChangeRecordSchema)
+const storedInboxItemChangesSchema = z
+  .array(inboxItemChangeRecordSchema)
   .min(1);
 
-/** Read the Review item changes that a message records. */
-function reportReviewItemChanges(
+/** Read the Inbox item changes that a message records. */
+function reportInboxItemChanges(
   meta: Record<string, unknown> | undefined,
 ):
-  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | { reviewItemChanges: z.output<typeof storedInboxItemChangesSchema> }
   | undefined {
-  const parsed = storedReviewItemChangesSchema.safeParse(
+  const parsed = storedInboxItemChangesSchema.safeParse(
     meta?.["reviewItemChanges"],
   );
   return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
@@ -385,7 +385,7 @@ function reportEventData(args: {
           ? { agentInvocationId: data.meta["agentInvocationId"] }
           : undefined),
         ...(args.canExposePayload
-          ? reportReviewItemChanges(data.meta)
+          ? reportInboxItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(
           data.meta?.["eventObjectType"],

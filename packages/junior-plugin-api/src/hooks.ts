@@ -39,7 +39,7 @@ import type {
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
 } from "./tools";
-import type { ReviewItemAnsweredHookContext } from "./review-items";
+import type { InboxItemAnsweredHookContext } from "./inbox-items";
 import type {
   PromptMessage,
   SystemPromptContext,
@@ -156,7 +156,7 @@ export interface PluginHooks {
    * plugin added. Junior calls it again when the person retries after a
    * failure, so it must be safe to repeat.
    */
-  reviewItemAnswered?(ctx: ReviewItemAnsweredHookContext): Promise<void> | void;
+  inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;

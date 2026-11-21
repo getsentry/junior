@@ -1,6 +1,6 @@
 import { mockAutomationEditor } from "../automation-editor-fixture";
 import { LIST_NOW, automationReport } from "./automation-fixture";
-import { automationAlert, mockReviewItems } from "./inbox-fixture";
+import { automationAlert, mockInboxItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "../harness";
@@ -900,7 +900,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     // A failed last run gives the viewer's Automation an alert, so To do
     // lists it.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [automationAlert("scheduled-1", "Weekly project summary")],
     });
     await page.goto(`${dashboard.baseURL}/automations`);
