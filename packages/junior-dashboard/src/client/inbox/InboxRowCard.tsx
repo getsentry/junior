@@ -70,12 +70,14 @@ export function InboxRowCard(props: {
       onAction={onAction ? (body) => onAction(notice, body) : undefined}
     />
   ));
-  // The card's own Snooze and Dismiss: they act on this item only.
+  // The card's own Snooze and Dismiss act on this item only. The main
+  // action goes last, at the right end of the line.
   const cardActions =
     actions || props.rowActions ? (
       <>
-        {props.primaryAction}
-        {props.rowActions}
+        {actions?.onDismiss ? (
+          <RowDismissButton look={look} onClick={actions.onDismiss} />
+        ) : null}
         {actions?.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={actions.eventSnooze}
@@ -85,9 +87,8 @@ export function InboxRowCard(props: {
             open={actions.snoozeMenuOpen}
           />
         ) : null}
-        {actions?.onDismiss ? (
-          <RowDismissButton look={look} onClick={actions.onDismiss} />
-        ) : null}
+        {props.rowActions}
+        {props.primaryAction}
       </>
     ) : undefined;
   return (

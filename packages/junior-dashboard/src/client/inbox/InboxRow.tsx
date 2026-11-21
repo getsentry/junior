@@ -2,9 +2,10 @@ import {
   AlarmClockOff,
   Archive,
   ArchiveRestore,
-  ArrowUpRight,
+  MessagesSquare,
   Pin,
   PinOff,
+  Zap,
 } from "lucide-react";
 import {
   useMemo,
@@ -137,15 +138,23 @@ function rowSummary(conversation: Conversation | undefined) {
  * What the row's Open action opens: an item row's owner, such as its
  * Automation, or the row's Conversation.
  */
-function rowOpenTarget(props: InboxRowProps): { label: string; path: string } {
+type RowOpenTarget = {
+  automation: boolean;
+  label: string;
+  path: string;
+};
+
+function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
   const newest = props.bundle?.newest;
   const id = props.conversationId;
   if (newest && (props.itemTitle !== undefined || id === undefined))
     return {
+      automation: newest.owner.kind === "automation",
       label: itemOwnerLinkLabel(newest),
       path: itemOwnerPath(newest, { askItemId: newest.id }),
     };
   return {
+    automation: false,
     label: "Open conversation",
     path: conversationPath(id!, {
       askItemId:
@@ -227,12 +236,12 @@ export function InboxRow(props: InboxRowProps) {
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
-        lead={
+        main={
           props.itemHead ? (
             <CodeChangeOpenLink head={props.itemHead} />
           ) : undefined
         }
-        open={rowOpenTarget(props)}
+        onExpand={props.onToggle}
       />
     ) : undefined;
   return props.conversation ? (
@@ -829,8 +838,8 @@ function rowActions(props: InboxRowProps, inline = false) {
     <ExpandedActions
       conversation={props.conversation}
       inline={inline}
-      // A code change card leads with its own main action.
-      look={inline && props.itemHead ? "narrow" : undefined}
+      // Next to a code change card's main action: as tall as it.
+      look={inline && props.itemHead ? "tall" : undefined}
       // A stack of one card snoozes on the card.
       {...((props.bundle?.items.length ?? 0) > 1
         ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
@@ -848,26 +857,27 @@ function ExpandedActions(props: {
   inline: boolean;
   eventSnooze?: EventSnooze | undefined;
   look?: ButtonLook | undefined;
-  open: { label: string; path: string };
+  open: RowOpenTarget;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   onWake?(): void;
   snoozeMenuOpen: boolean;
 }) {
+  // The owner's link goes last, next to a card's main action. It names
+  // where it goes, and its icon is the one the Conversations or
+  // Automations page uses, so it does not read as a link that leaves the
+  // dashboard, like the main action.
+  const OwnerIcon = props.open.automation ? Zap : MessagesSquare;
   const actions = (
     <>
-      <Link
-        className={cn(
-          buttonVariants({ variant: "ghost" }),
-          props.look && LOOK_CLASSES[props.look],
-        )}
-        to={props.open.path}
-      >
-        <ArrowUpRight aria-hidden="true" size={15} />
-        <ButtonLabel look={props.look}>{props.open.label}</ButtonLabel>
-      </Link>
-      {props.conversation?.isParticipant ? (
-        <ExpandedPin conversation={props.conversation} look={props.look} />
+      {props.onSnooze ? (
+        <RowSnoozeButton
+          eventSnooze={props.eventSnooze}
+          label="Snooze all"
+          onOpenChange={props.onSnoozeMenu}
+          onSnooze={props.onSnooze}
+          open={props.snoozeMenuOpen}
+        />
       ) : null}
       {props.onWake ? (
         <Button
@@ -879,15 +889,20 @@ function ExpandedActions(props: {
           <ButtonLabel look={props.look}>Wake</ButtonLabel>
         </Button>
       ) : null}
-      {props.onSnooze ? (
-        <RowSnoozeButton
-          eventSnooze={props.eventSnooze}
-          label="Snooze all"
-          onOpenChange={props.onSnoozeMenu}
-          onSnooze={props.onSnooze}
-          open={props.snoozeMenuOpen}
-        />
+      {props.conversation?.isParticipant ? (
+        <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
+      <Link
+        aria-label={props.open.label}
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          props.look && LOOK_CLASSES[props.look],
+        )}
+        to={props.open.path}
+      >
+        <OwnerIcon aria-hidden="true" size={15} />
+        {props.open.automation ? "Automation" : "Conversation"}
+      </Link>
     </>
   );
   if (props.inline) return actions;

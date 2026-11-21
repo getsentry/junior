@@ -33,10 +33,12 @@ can act on it.
 - A right-click anywhere on a stack, which opens the root Conversation's
   menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
-- On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A code change row first opens the change on its
-  provider, such as "Review on GitHub". A touch screen has no hover, so there a row shows its
-  actions only once it is open. Rows do not repeat them.
+- On each row, on hover: Dismiss, Snooze, and the row's main step, as
+  icons with their names as tooltips. The main step comes last. On a code
+  change row it opens the change on its provider, such as "Review on
+  GitHub". A row with no main step, such as a question, shows Expand. A
+  touch screen has no hover, so there a row shows its actions only once it
+  is open. Rows do not repeat them.
 - On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
   count once, right-most. The buttons do not repeat the count. Their names
   say what they cover, such as "Snooze 3 items in this stack". Snooze
@@ -75,9 +77,11 @@ Grouping:
   edge. The plugin that owns the change parses the title. A title with no
   known type shows as it is, with no tag. The number and the size go to
   the second line.
-- A click on a code change row opens it, as on other rows. The open row's
-  first action opens the change on its provider. On a phone, the other
-  actions next to it show only their icons.
+- A click on a code change row opens it, as on other rows.
+- An open row's actions are Dismiss, Snooze, Conversation, then the main
+  action, last. On a code change row, the main action opens the change on
+  its provider. Conversation opens the row's Conversation in the
+  dashboard. On a phone, Dismiss and Snooze show only their icons.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
