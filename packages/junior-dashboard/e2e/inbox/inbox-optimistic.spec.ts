@@ -74,9 +74,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
-    // A button answer.
+    // A button answer: a click picks, and Send sends.
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Roll out" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, form!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, buttons!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 3 waiting");
@@ -162,6 +165,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Hold" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, buttons!)).toHaveCount(0);
     await open(page, plain!);
     fail();

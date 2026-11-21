@@ -29,7 +29,14 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import { TranscriptEvents } from "../inbox/InboxItemTurnMessage";
 import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
+import {
+  QuestionsInView,
+  createQuestionsInViewStore,
+  useWaitingQuestions,
+  WaitingQuestionsPill,
+} from "../inbox/WaitingQuestions";
 import type { TranscriptHistory } from "./transcriptAroundHistory";
 import { useMessageLinkJump } from "./useMessageLinkJump";
 import {
@@ -59,15 +66,18 @@ export function Transcript(props: {
   onLoadPreviousPage?: () => void;
   /** Receive the last event sequence the reader saw in the transcript. */
   onRead?: ((seq: number) => void) | undefined;
-  /** Show the row of a question that an answer row quotes. */
-  onShowQuestion?(item: InboxItemPayload, arrived: boolean): void;
+  /**
+   * Show the card of a question, such as one that an answer row quotes or
+   * one that the questions pill names.
+   */
+  onShowQuestion?(item: InboxItemPayload): void;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[] | undefined;
   responding?: boolean;
-  /** Show the row of the question that docks above the message box. */
+  /** Show the card of this question. */
   revealAsk?: TranscriptAskReveal | undefined;
   /** Keep the rows around this event seq mounted, so the page can show it. */
   revealSeq?: number | undefined;
@@ -132,13 +142,14 @@ export function Transcript(props: {
     () => (revealAsk ? { ...revealAsk, showRow } : undefined),
     [revealAsk, showRow],
   );
-  const { onShowQuestion } = props;
-  const showQuestion = useMemo(
-    () =>
-      onShowQuestion &&
-      ((item: InboxItemPayload) => onShowQuestion(item, false)),
-    [onShowQuestion],
+  const showQuestion = props.onShowQuestion;
+  // Only the page's own transcript can show a card, so only it has a pill.
+  const waitingQuestions = useWaitingQuestions(
+    showQuestion && view === "rich"
+      ? props.transcript?.conversationId
+      : undefined,
   );
+  const [questionsInView] = useState(createQuestionsInViewStore);
 
   // Read positions follow the transcript rows, not the event log. Search
   // results skip rows, so they do not move the read position.
@@ -233,15 +244,21 @@ export function Transcript(props: {
             <TranscriptJumpToLatestContext value={jumpToLatest}>
               <TranscriptAskRevealContext value={askReveal}>
                 <TranscriptShowQuestion value={showQuestion}>
-                  <ConversationTranscriptView
-                    onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                    conversation={props.transcript}
-                    pendingMessages={props.pendingMessages}
-                    responding={props.responding ?? props.live ?? false}
-                    revealSeq={props.revealSeq ?? linkSeq}
-                    scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                    unread={props.unread}
-                  />
+                  <QuestionsInView value={questionsInView}>
+                    <TranscriptEvents value={props.transcript.events}>
+                      <ConversationTranscriptView
+                        onOpenSubagentTranscript={
+                          props.onOpenSubagentTranscript
+                        }
+                        conversation={props.transcript}
+                        pendingMessages={props.pendingMessages}
+                        responding={props.responding ?? props.live ?? false}
+                        revealSeq={props.revealSeq ?? linkSeq}
+                        scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                        unread={props.unread}
+                      />
+                    </TranscriptEvents>
+                  </QuestionsInView>
                 </TranscriptShowQuestion>
               </TranscriptAskRevealContext>
             </TranscriptJumpToLatestContext>
@@ -276,11 +293,24 @@ export function Transcript(props: {
           className="h-px"
           ref={bottomPinning.anchorRef}
         />
-        <JumpToLatestButton
-          hasPendingUpdate={bottomPinning.hasPendingUpdate}
-          onClick={jumpToLatest}
-          visible={bottomPinning.showJumpToLatest}
-        />
+        {/* Sticky offsets count from inside the scroll region's bottom
+            padding (pb-4 / md:pb-6). The negative offsets cancel most of it,
+            so the pills sit 12px (16px on md) above the composer, centered
+            on the transcript. */}
+        <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center gap-2 md:-bottom-5">
+          {showQuestion && view === "rich" ? (
+            <WaitingQuestionsPill
+              onShow={showQuestion}
+              questions={waitingQuestions}
+              store={questionsInView}
+            />
+          ) : null}
+          <JumpToLatestButton
+            hasPendingUpdate={bottomPinning.hasPendingUpdate}
+            onClick={jumpToLatest}
+            visible={bottomPinning.showJumpToLatest}
+          />
+        </div>
       </div>
     </TranscriptSearchProvider>
   );
@@ -324,21 +354,16 @@ function JumpToLatestButton(props: {
   if (!props.visible) return null;
 
   return (
-    // Sticky offsets count from inside the scroll region's bottom padding
-    // (pb-4 / md:pb-6). The negative offsets cancel most of it, so the pill
-    // sits 12px (16px on md) above the composer, centered on the transcript.
-    <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center md:-bottom-5">
-      <Button
-        variant="outline"
-        aria-label={
-          props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
-        }
-        className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
-        onClick={props.onClick}
-      >
-        <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
-        Jump to latest
-      </Button>
-    </div>
+    <Button
+      variant="outline"
+      aria-label={
+        props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
+      }
+      className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+      onClick={props.onClick}
+    >
+      <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
+      Jump to latest
+    </Button>
   );
 }

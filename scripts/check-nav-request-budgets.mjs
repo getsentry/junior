@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { navRequestBudgetExceptions } from "./nav-request-budget-exceptions.mjs";
 
 const DASHBOARD = "packages/junior-dashboard";
@@ -88,36 +87,15 @@ export function checkNavRequestBudgets(routes, paths, exceptions) {
   return errors;
 }
 
-function specFiles(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return specFiles(entryPath);
-    return entry.name.endsWith(".spec.ts") ? [entryPath] : [];
-  });
-}
-
-function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Check that each primary nav route has a request budget or an exception. */
+export function run({ root, files }) {
   const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
   const routes = NAV_FILES.flatMap((file) => navRoutes(read(file)));
-  const paths = specFiles(path.join(root, E2E_DIRECTORY)).flatMap((file) =>
-    budgetedPaths(fs.readFileSync(file, "utf8")),
-  );
-  const errors = checkNavRequestBudgets(
-    routes,
-    paths,
-    navRequestBudgetExceptions,
-  );
-  if (errors.length === 0) {
-    console.log(
-      "Every primary nav route has a request budget or an exception.",
-    );
-    return;
-  }
-  console.error(["Nav request budget check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  const paths = files
+    .filter(
+      (file) =>
+        file.startsWith(`${E2E_DIRECTORY}/`) && file.endsWith(".spec.ts"),
+    )
+    .flatMap((file) => budgetedPaths(read(file)));
+  return checkNavRequestBudgets(routes, paths, navRequestBudgetExceptions);
 }

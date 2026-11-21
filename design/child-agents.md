@@ -51,6 +51,11 @@ child chooses to report reaches the parent.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A
   Thread keeps its failure.
+- A child can set the parent's To-dos assigned to it to done or dropped,
+  and no other To-do of the parent. The result that reaches the parent
+  closes the rest of them: done when the child completes, dropped when it
+  stops. A blocked or failed child leaves them open. The parent sees each
+  change in its next `<todo-delta>`.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
   levels of child agents can start their own. The default is 1, so a
   root's child can start children. With 0, only a root can.

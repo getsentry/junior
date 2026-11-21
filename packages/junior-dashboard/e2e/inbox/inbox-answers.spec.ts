@@ -11,10 +11,12 @@ function rollout(page: Page) {
 async function answerHold(page: Page) {
   const todo = page.getByRole("region", { name: "To do" });
   await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
-  await todo
-    .getByRole("region", { name: "Approve the payments-v42 rollout" })
-    .getByRole("button", { exact: true, name: "Hold" })
-    .click();
+  const card = todo.getByRole("region", {
+    name: "Approve the payments-v42 rollout",
+  });
+  // A click picks the choice, and Send answers.
+  await card.getByRole("button", { exact: true, name: "Hold" }).click();
+  await card.getByRole("button", { exact: true, name: "Send" }).click();
 }
 
 function toasts(page: Page) {

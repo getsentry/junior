@@ -1,6 +1,5 @@
 import { useMemo, useRef, type Ref } from "react";
 import { Lock } from "lucide-react";
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
@@ -22,7 +21,6 @@ export function ConversationPageDock(props: {
   live: boolean;
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
-  onShowQuestion(item: InboxItemPayload, arrived: boolean): void;
   ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
 }) {
   const { detail } = props;
@@ -63,7 +61,6 @@ export function ConversationPageDock(props: {
       conversation={composerConversation}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
-      onShowQuestion={props.onShowQuestion}
       pendingAuthorization={detail.pendingAuthorization}
       // Keep the cancel watermark off props. Live polls refresh generatedAt
       // every 2s; a prop would bust footer memo while the reader types.

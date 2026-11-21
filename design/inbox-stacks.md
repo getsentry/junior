@@ -33,14 +33,18 @@ can act on it.
 - A right-click anywhere on a stack, which opens the root Conversation's
   menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
-- On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A touch screen has no hover, so there a row shows its
-  actions only once it is open. Rows do not repeat them.
-- On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
-  count once, right-most. The buttons do not repeat the count. Their names
-  say what they cover, such as "Snooze 3 items in this stack". Snooze
-  covers every row. Dismiss covers the open asks that the viewer can act
-  on. Dismiss is the main action, so it comes last.
+- On each row, on hover: Dismiss, Snooze, and the row's main step, as
+  icons with their names as tooltips. The main step comes last. On a code
+  change row it opens the change on its provider, such as "Review on
+  GitHub". A row with no main step, such as a question, shows Expand. A
+  touch screen has no hover, so there a row shows its actions only once it
+  is open. Rows do not repeat them.
+- On a stack: Dismiss and Snooze, as quiet buttons in the order of a
+  row's actions, and the stack's item count once, right-most. The buttons
+  do not repeat the count. Their names say what they cover, such as
+  "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
+  the open asks that the viewer can act on.
+- On a Conversation row, on hover: Archive, Pin, then Open, last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules
@@ -64,7 +68,21 @@ Grouping:
   the rest when its open row is past the first four.
 - An open row says each fact once. The row's head names the kind, the
   number, the title, and the sub-thread. The open card and the subject's
-  preview do not say them again.
+  preview do not say them again. A question's card has no subject preview
+  ([Inbox](./inbox.md)).
+- A code change row leads with the change's title. Its state comes first
+  as one short word, such as "Review". The type and the scope from the
+  title's Conventional Commits prefix come after the title as one muted
+  tag, such as "fix/slack", with a red "breaking" for a breaking change.
+  All of it is one line of text, so a wrapped title starts at the left
+  edge. The plugin that owns the change parses the title. A title with no
+  known type shows as it is, with no tag. The number and the size go to
+  the second line.
+- A click on a code change row opens it, as on other rows.
+- An open row's actions are Dismiss, Snooze, Conversation, then the main
+  action, last. On a code change row, the main action opens the change on
+  its provider. Conversation opens the row's Conversation in the
+  dashboard. On a phone, Dismiss and Snooze show only their icons.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 

@@ -85,9 +85,16 @@ export function InboxStack(props: {
             {props.title}
           </span>
         </Link>
-        {/* The row bar's own buttons. Dismiss is the main action, so it comes
-            last. The count shows once, right-most, so a scan reads it. The
-            names say what each button covers. */}
+        {/* The stack's own buttons: Dismiss, then Snooze, in the order of
+            a row's actions. The count shows once, right-most, so a scan
+            reads it. The names say what each button covers. */}
+        {props.onDismiss ? (
+          <RowDismissButton
+            look="quiet"
+            name={`Dismiss ${itemCount(props.dismissCount ?? props.keys.length)} in this stack`}
+            onClick={props.onDismiss}
+          />
+        ) : null}
         {props.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={props.eventSnooze}
@@ -96,13 +103,6 @@ export function InboxStack(props: {
             onOpenChange={props.onSnoozeMenu}
             onSnooze={props.onSnooze}
             open={props.snoozeMenuOpen}
-          />
-        ) : null}
-        {props.onDismiss ? (
-          <RowDismissButton
-            look="quiet"
-            name={`Dismiss ${itemCount(props.dismissCount ?? props.keys.length)} in this stack`}
-            onClick={props.onDismiss}
           />
         ) : null}
         <span className="px-1 text-xs text-dashboard-text-muted tabular-nums">

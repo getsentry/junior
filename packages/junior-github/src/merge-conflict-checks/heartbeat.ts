@@ -13,6 +13,7 @@ import type {
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   gitHubMergeConflictEvents,
@@ -104,6 +105,7 @@ async function checkConflict(
     draft: input.draft,
     events,
     loadHistory: args.loadHistory,
+    loadTitleParts: args.loadTitleParts,
     log: args.log,
     now: args.now,
     ref: input.ref,
@@ -166,6 +168,7 @@ interface CheckArgs {
   db: GitHubDb;
   events: EventPublisher;
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  loadTitleParts?: LoadGitHubTitleParts;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
   inboxItems: PluginConversationInboxItems;

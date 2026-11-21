@@ -66,12 +66,15 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Inbox item, or how it
- * closed. The Inbox and the side panel use it. A caller that shows
+ * closed. The Inbox, the transcript, and the side panel use it, so a
+ * question reads the same on each. A caller that shows
  * its own Dismiss turns this one off. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
 export function InboxItemActions(props: {
+  /** What Junior said around the question, after the question. */
+  context?: ReactNode;
   dismiss?: boolean;
   /** More actions after Take and Dismiss, such as an Inbox card's Snooze. */
   extra?: ReactNode;
@@ -101,7 +104,9 @@ export function InboxItemActions(props: {
           Only an assignee can act on this item.
         </p>
         {props.extra ? (
-          <div className="flex flex-wrap gap-1 sm:ml-auto">{props.extra}</div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+            {props.extra}
+          </div>
         ) : null}
       </div>
     );
@@ -155,13 +160,19 @@ export function InboxItemActions(props: {
   return (
     <div className="grid gap-3">
       {item.kind === "action" && item.request ? (
-        <div className="text-sm">
-          <div className="font-medium">
-            <DisplayText
-              mentions={item.mentions}
-              text={item.request.question}
-            />
-          </div>
+        <div className="grid gap-3 text-sm">
+          {/* The question comes first and in full, then what Junior said
+              around it. */}
+          <section aria-label="Question" className="grid gap-1">
+            <span className="text-xs text-dashboard-text-muted">Question</span>
+            <div className="font-medium [&_p]:my-0">
+              <DisplayText
+                mentions={item.mentions}
+                text={item.request.question}
+              />
+            </div>
+          </section>
+          {props.context}
           <InboxItemEvidence item={item} />
           <UserInputForm
             draft={draft}
@@ -184,7 +195,8 @@ export function InboxItemActions(props: {
         </div>
       ) : take || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1 sm:ml-auto">
+          {/* The actions sit at the right edge, as on a desktop. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}
           </div>
         </div>
