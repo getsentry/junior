@@ -2,8 +2,8 @@
 // already with its Turn, under the Conversation lock, and publishes a Turn
 // only after that transaction commits. A message published before the commit
 // can reach a worker that does not see the Turn yet: the claim finds nothing,
-// the message is acknowledged, and the Turn never runs. The caller decides
-// which Turn takes the input.
+// the message is acknowledged, and the Turn never runs. The caller's
+// `assignTurn` picks which Turn takes the input.
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { addInput, findInputTurn, type Input } from "@/core/turn/inbox";
@@ -22,8 +22,9 @@ type ScheduleOptions = {
    * Chooses the Turn of an input that is not a duplicate: join the open
    * Turn of the Conversation, or create a Turn with a priority. It runs
    * under the Conversation lock, so `open` cannot change before the write.
+   * It only picks the Turn; core writes the input.
    */
-  decide: (
+  assignTurn: (
     open: Turn | undefined,
     input: ArrivingInput,
   ) => { join: string } | { create: { priority: number } };
@@ -34,7 +35,7 @@ type Placement = ScheduledInput & { publish: boolean };
 async function placeInput(
   executor: JuniorSqlDatabase,
   input: ArrivingInput,
-  { decide }: ScheduleOptions,
+  { assignTurn }: ScheduleOptions,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
   const existing = await findInputTurn(executor, input);
@@ -49,11 +50,11 @@ async function placeInput(
     };
   }
   const open = await findOpenTurn(executor, input.conversationId);
-  const choice = decide(open, input);
+  const choice = assignTurn(open, input);
   if ("join" in choice) {
     if (choice.join !== open?.turnId) {
       throw new Error(
-        `decide joined Turn ${choice.join}, but the open Turn is ${open?.turnId ?? "none"}`,
+        `assignTurn joined Turn ${choice.join}, but the open Turn is ${open?.turnId ?? "none"}`,
       );
     }
     await addInput(executor, { ...inboxInput, turnId: open.turnId });
@@ -70,7 +71,7 @@ async function placeInput(
 }
 
 /**
- * Puts an input into the Turn that `decide` chooses, and publishes a Turn
+ * Puts an input into the Turn that `assignTurn` picks, and publishes a Turn
  * that the input created. An input with a known idempotency key writes
  * nothing. Call it outside a transaction: it publishes after its own commit,
  * and a publish error reaches the caller with the input already stored.
