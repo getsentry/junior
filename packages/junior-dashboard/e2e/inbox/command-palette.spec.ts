@@ -5,6 +5,7 @@ import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -314,7 +315,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize(mobile);
     await page.keyboard.press("ControlOrMeta+k");
     await palette.getByRole("combobox").fill("feedback");
-    await palette.getByRole("option", { name: "Send feedback" }).click();
+    await pickOption(palette.getByRole("option", { name: "Send feedback" }));
     await expect(dialog).toBeVisible();
   });
 
@@ -355,7 +356,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const inbox = palette.getByRole("group", { exact: true, name: "Inbox" });
     const match = inbox.getByRole("option").first();
     await expect(match).toHaveAccessibleName(new RegExp(rollout.title));
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
       // In its stack, the item's own row opens, under its question.
@@ -384,10 +385,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await page.keyboard.press("ControlOrMeta+k");
     await palette.getByRole("combobox").fill("canary error");
-    await palette
-      .getByRole("group", { exact: true, name: "Inbox" })
-      .getByRole("option", { name: new RegExp(rollout.title) })
-      .click();
+    await pickOption(
+      palette
+        .getByRole("group", { exact: true, name: "Inbox" })
+        .getByRole("option", { name: new RegExp(rollout.title) }),
+    );
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(
@@ -483,7 +485,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(groups.nth(1)).toHaveAccessibleName("Done");
     const closed = groups.nth(1).getByRole("option").first();
     await expect(closed).toHaveAccessibleName(/initech license entry/);
-    await closed.click();
+    await pickOption(closed);
     // Done opens with the item's row expanded.
     await expect(page).toHaveURL(/\/\?view=done$/);
     await expect(
@@ -608,7 +610,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(match).toHaveAccessibleName(/Deploy the payments service/);
     expect(queries).toContain("deploy");
 
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/plugins/fixture/checklists#record-checklist-21`,
     );

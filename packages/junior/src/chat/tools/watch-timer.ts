@@ -2,7 +2,7 @@ import * as z from "zod";
 import { createTimerWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_MAX_TTL_MS } from "@/chat/events/tool-support";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 export const watchTimerToolDefinition = zodToolDefinition({
   annotations: {

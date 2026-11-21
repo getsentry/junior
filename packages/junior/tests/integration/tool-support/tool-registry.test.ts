@@ -22,12 +22,12 @@ import { readSlackActionToken } from "@/chat/slack/action-token";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { createTools } from "@/chat/tools";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import {
   RUN_BUILT_TOOL_NAMES,
   staticToolDefinitions,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 
 type ToolContext = Parameters<typeof createTools>[2];
 

@@ -9,8 +9,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { sanitizeScheduledAutomationPrincipal } from "@/chat/scheduled-automations/identity";
 import type { ScheduledAutomationPrincipal } from "@/chat/scheduled-automations/types";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   destinationFilterValue,
   type AutomationDestination,

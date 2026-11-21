@@ -25,12 +25,14 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 - At or above the background compaction mark, an idle Conversation compacts
   instead of warming when that costs less. A returning Turn at that size is
   close to the compaction threshold, so it can compact in the Turn, and
-  then pays for the full prefix and the compacted one. A compacted prefix of 120K tokens, against 360K, also
-  makes each model call of the returning Turn about $0.05 cheaper to read.
+  then pays for the full prefix and the compacted one. A compacted prefix
+  of 120K tokens, against 360K, also makes each model call of the returning
+  Turn about $0.05 cheaper to read.
 - Junior accepts a quality cost for that saving. A Conversation that
   compacts on idle may not have compacted in its returning Turn. It then
   gets a summary in place of history that it would have kept, which can
-  make an answer worse.
+  make an answer worse. This is a good trade: the mark is 306K tokens for
+  a 400K context window, and the Turn compacts at 360K anyway.
 
 ## Entry points
 
@@ -41,6 +43,9 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 
 ## Rules
 
+- Compaction on idle starts at the background compaction mark,
+  0.85 × the compaction threshold (`getAgentBackgroundCompactionMarkTokens`).
+  The background summary uses the same mark, so the two cannot diverge.
 - Compaction on idle uses only a background summary that is ready. It
   makes no summary call. When no summary is ready, Junior warms as it does
   below the mark, and the next warmup checks again.
@@ -57,8 +62,9 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
     writes P.
 - For P = 360K and C = 120K tokens, a compacted return costs
   5 × 0.12 = $0.60, a warmup 0.22 × 0.36 ≈ $0.08, a warm return
-  0.2 × 0.36 = $0.072, and a cold return of P $1.80. So warming wins only while a return is likely
-  before the warmups cost more than the write of C. A Conversation with a
+  0.2 × 0.36 = $0.072, and a cold return of P $1.80. So warming wins only
+  while a return is likely before the warmups cost more than the write of
+  C. A Conversation with a
   likely quick return, such as one that waits for a child agent, warms
   first and compacts at a later slot. Stop wins only when the return
   likely comes before the current cache expires. On a tie, compaction
@@ -79,9 +85,3 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   Run holds the Conversation, Junior warms instead.
 - Compaction on idle runs only while cache warming is on.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns off only compaction on idle.
-
-## Gaps
-
-- The quality cost of compaction on idle is not measured, so nothing shows
-  when it outweighs the saving. This breaks "Junior accepts a quality cost
-  for that saving", which needs that cost to be known.

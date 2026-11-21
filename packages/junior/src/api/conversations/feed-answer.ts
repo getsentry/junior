@@ -5,7 +5,7 @@ import type { ReviewItemRequest } from "@/chat/review-items/evidence";
 import {
   answeredChoices,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations, juniorReviewItems } from "@/db/schema";
 

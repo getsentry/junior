@@ -51,12 +51,15 @@ export interface PluginReviewNotice {
 export interface PluginReviewItems {
   /** Add an open item, or replace the content of the open one with the key. */
   upsert(notice: PluginReviewNotice): Promise<void>;
-  /** Close the open item with the key. Do nothing when no item is open. */
+  /**
+   * Close the open item with the key. Do nothing when no item is open, such
+   * as after a person dismissed it. Return whether an open item closed.
+   */
   close(input: {
     dedupeKey: string;
     reason: string;
     status: "done" | "dismissed";
-  }): Promise<void>;
+  }): Promise<boolean>;
 }
 
 /** Review items of a plugin, for the Conversation that each item belongs to. */

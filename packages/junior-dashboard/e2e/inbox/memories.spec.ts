@@ -1,5 +1,6 @@
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -300,7 +301,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(memories).toHaveAccessibleName("Memories");
     const match = memories.getByRole("option").first();
     await expect(match).toHaveAccessibleName(/Deploy runbooks live in Notion/);
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(/\/memories\/memory-search$/);
 
     await page

@@ -42,10 +42,10 @@ import {
   getMcpProviderErrorAttributes,
   McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
-import { createTools } from "@/chat/tools";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type { DisabledToolPromptContext } from "@/chat/prompt";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import {
   toActiveMcpCatalogSummaries,
@@ -53,7 +53,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { renderScriptTools } from "@/chat/codemode/tool";
+import { renderScriptTools } from "@/chat/codemode/script-tools";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
