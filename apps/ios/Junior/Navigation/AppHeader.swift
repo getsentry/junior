@@ -8,7 +8,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
     case back
   }
 
-  @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
   var title: String
@@ -42,7 +42,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
         } else {
           Button {
             switch leading {
-            case .menu: withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = true }
+            case .menu: withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
             case .back: dismiss()
             }
           } label: {
