@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// CI runs this check in its own job, because it packs every package.
+export const lint = false;
+
 function shipsTypes(packageJson) {
   return (
     typeof packageJson.types === "string" ||

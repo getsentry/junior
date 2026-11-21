@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// CI runs this check in its own job, on release changes.
+export const lint = false;
+
 function readFile(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
