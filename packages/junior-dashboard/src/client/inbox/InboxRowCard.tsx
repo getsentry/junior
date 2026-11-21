@@ -44,6 +44,8 @@ export function InboxRowCard(props: {
   /** Notices about the item's subject (`foldNotices`). */
   notices: readonly InboxItemPayload[];
   onAction?(item: InboxItemPayload, body: InboxItemActionBody): Promise<void>;
+  /** The card's main action, first on its action line. */
+  primaryAction?: ReactNode;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
   /** The row's head shows the subject's size. */
@@ -58,6 +60,9 @@ export function InboxRowCard(props: {
     (item.kind === "notice" || !item.request) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
+  // Next to a main action, the others show only their icons on a phone, so
+  // the line fits.
+  const look = props.primaryAction ? "narrow" : undefined;
   const notices = props.notices.map((notice) => (
     <FoldedNotice
       key={notice.id}
@@ -69,17 +74,19 @@ export function InboxRowCard(props: {
   const cardActions =
     actions || props.rowActions ? (
       <>
+        {props.primaryAction}
         {props.rowActions}
         {actions?.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={actions.eventSnooze}
+            look={look}
             onOpenChange={actions.onSnoozeMenu}
             onSnooze={actions.onSnooze}
             open={actions.snoozeMenuOpen}
           />
         ) : null}
         {actions?.onDismiss ? (
-          <RowDismissButton onClick={actions.onDismiss} />
+          <RowDismissButton look={look} onClick={actions.onDismiss} />
         ) : null}
       </>
     ) : undefined;

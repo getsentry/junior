@@ -303,6 +303,10 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+          () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
             variables: { number?: number; query?: string };
@@ -338,7 +342,7 @@ describe("merge conflict check on webhook events", () => {
                   mergeable: mergeability[number],
                   number,
                   state: "OPEN",
-                  title: `Pull request ${number}`,
+                  title: `fix(conflicts): Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
                 })),
                 pageInfo: { endCursor: null, hasNextPage: false },
@@ -658,7 +662,12 @@ describe("merge conflict check on webhook events", () => {
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",
-              title: "Pull request 946 (#946)",
+              title: "fix(conflicts): Pull request 946 (#946)",
+              titleParts: {
+                scope: "conflicts",
+                text: "Pull request 946",
+                type: "Fix",
+              },
               url: "https://github.com/getsentry/junior/pull/946",
             },
             title: "Merge conflict · #946",
