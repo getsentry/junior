@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { scheduleInput } from "@/chat/ingress/scheduler";
 import { getQueueProvider } from "@/chat/queue/provider";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
-import { cancelTurn, claimTurn } from "@/core/turn/state";
+import { scheduleInput } from "@/core/turn/schedule";
+import { cancelTurn, claimTurn, type Turn } from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
@@ -16,10 +17,15 @@ import {
   createJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
   type LocalJuniorSqlFixture,
-} from "../../fixtures/sql";
+} from "../../../fixtures/sql";
 
 const CONVERSATION_ID = "local:conversation-1";
 const LEASE_MS = 60_000;
+
+// The v1 rule: one Actor, so an input joins the open Turn or starts one.
+function joinOrCreate(open: Turn | undefined) {
+  return open ? { join: open.turnId } : { create: { priority: 0 } };
+}
 
 const stepMessageSchema = z.looseObject({ turnId: z.string() });
 
@@ -97,6 +103,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     };
   }
 
+  function schedule(idempotencyKey: string) {
+    return scheduleInput(fixture.sql, input(idempotencyKey), {
+      decide: joinOrCreate,
+    });
+  }
+
   async function readTurns() {
     return fixture.sql
       .db()
@@ -122,7 +134,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   }
 
   it("starts a Turn with the first input and publishes it after the commit", async () => {
-    const scheduled = await scheduleInput(fixture.sql, input("event-1"));
+    const scheduled = await schedule("event-1");
 
     expect(scheduled).toEqual({ turnId: expect.any(String), created: true });
     await expect(readTurns()).resolves.toEqual([
@@ -141,11 +153,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   });
 
   it("adds a second input to the open Turn without a publish", async () => {
-    const first = await scheduleInput(fixture.sql, input("event-1"));
+    const first = await schedule("event-1");
 
-    await expect(scheduleInput(fixture.sql, input("event-2"))).resolves.toEqual(
-      { turnId: first.turnId, created: false },
-    );
+    await expect(schedule("event-2")).resolves.toEqual({
+      turnId: first.turnId,
+      created: false,
+    });
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toEqual([
       { turnId: first.turnId, idempotencyKey: "event-1" },
@@ -155,12 +168,10 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   });
 
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
-    const first = await scheduleInput(fixture.sql, input("event-1"));
+    const first = await schedule("event-1");
     const duplicate = { turnId: first.turnId, created: false };
 
-    await expect(scheduleInput(fixture.sql, input("event-1"))).resolves.toEqual(
-      duplicate,
-    );
+    await expect(schedule("event-1")).resolves.toEqual(duplicate);
     expect(publishes).toHaveLength(2);
 
     await claimTurn(fixture.sql, {
@@ -168,18 +179,29 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       owner: "worker-a",
       leaseMs: LEASE_MS,
     });
-    await expect(scheduleInput(fixture.sql, input("event-1"))).resolves.toEqual(
-      duplicate,
-    );
+    await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
     await cancelTurn(fixture.sql, first.turnId);
-    await expect(scheduleInput(fixture.sql, input("event-1"))).resolves.toEqual(
-      duplicate,
-    );
+    await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
     expect(publishes).toHaveLength(2);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toHaveLength(1);
+  });
+
+  it("rejects a join of a Turn that is not the open Turn, and writes nothing", async () => {
+    const first = await schedule("event-1");
+
+    await expect(
+      scheduleInput(fixture.sql, input("event-2"), {
+        decide: () => ({ join: randomUUID() }),
+      }),
+    ).rejects.toThrow(`but the open Turn is ${first.turnId}`);
+    await expect(readTurns()).resolves.toHaveLength(1);
+    await expect(readInputs()).resolves.toEqual([
+      { turnId: first.turnId, idempotencyKey: "event-1" },
+    ]);
+    expect(publishes).toHaveLength(1);
   });
 
   it("keeps the Turn and its input when the publish fails, and the retry publishes it", async () => {
@@ -188,9 +210,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       new Error("Queue unavailable"),
     );
 
-    await expect(scheduleInput(fixture.sql, input("event-1"))).rejects.toThrow(
-      "Queue unavailable",
-    );
+    await expect(schedule("event-1")).rejects.toThrow("Queue unavailable");
     const [turn] = await readTurns();
     expect(turn).toMatchObject({ state: "queued" });
     await expect(readInputs()).resolves.toEqual([
@@ -198,9 +218,10 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     ]);
 
     // The source retries the same input.
-    await expect(scheduleInput(fixture.sql, input("event-1"))).resolves.toEqual(
-      { turnId: turn!.id, created: false },
-    );
+    await expect(schedule("event-1")).resolves.toEqual({
+      turnId: turn!.id,
+      created: false,
+    });
     expect(publishes).toEqual([{ turnId: turn!.id, committed: true }]);
   });
 });
