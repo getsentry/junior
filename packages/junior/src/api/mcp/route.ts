@@ -3,6 +3,11 @@
  * Streamable HTTP route at `/api/mcp`.
  */
 import { Hono } from "hono";
+import type { User } from "@sentry/junior-plugin-api";
+import { imageResponse } from "@/api/images/response";
+import { avatarParamsSchema } from "@/api/schema/person";
+import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { readImage } from "@/chat/images/read";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -12,6 +17,7 @@ import { authenticateMcpAccessToken } from "./oauth/grants";
 import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
+  MCP_AVATAR_PATH,
   MCP_PATH,
   MCP_TOKEN_PATH,
   MCP_RESOURCE_METADATA_PATH,
@@ -20,7 +26,7 @@ import {
   resolveMcpUrls,
   type McpUrls,
 } from "./oauth/metadata";
-import { MCP_ALL_SCOPES } from "./oauth/scopes";
+import { MCP_ALL_SCOPES, type McpScope } from "./oauth/scopes";
 import { handleMcpServerRequest } from "./server";
 import type { McpState } from "./oauth/state";
 import { handleMcpToken, mcpTokenBodyLimit } from "./oauth/token";
@@ -32,6 +38,7 @@ export const MCP_ROUTE_PATHS = [
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
   MCP_TOKEN_PATH,
+  MCP_AVATAR_PATH,
 ];
 
 type McpHttpHandlerOptions = {
@@ -93,9 +100,11 @@ export function createMcpHttpHandler(
   );
   // Personal tokens and dashboard sessions do not pass, because an MCP grant
   // is a separate consent.
-  app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
-    const requestUrls = urls(c.req.raw);
-    const token = bearerToken(c.req.raw);
+  async function authenticate(
+    request: Request,
+  ): Promise<{ scopes: McpScope[]; user: User } | Response> {
+    const requestUrls = urls(request);
+    const token = bearerToken(request);
     const grant = token
       ? await authenticateMcpAccessToken({
           resource: requestUrls.resource,
@@ -114,6 +123,12 @@ export function createMcpHttpHandler(
         ? await resolveViewerUser(grant.email)
         : undefined;
     if (!grant || !user) return unauthorized(requestUrls, token !== undefined);
+    return { scopes: grant.scopes, user };
+  }
+
+  app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
+    const viewer = await authenticate(c.req.raw);
+    if (viewer instanceof Response) return viewer;
     // The stateless transport has no session to stream or delete.
     if (c.req.method !== "POST") {
       return new Response(null, { status: 405, headers: { allow: "POST" } });
@@ -121,9 +136,26 @@ export function createMcpHttpHandler(
     return await handleMcpServerRequest(c.req.raw, {
       attachmentStorage: options.attachmentStorage,
       queue: options.queue,
-      scopes: grant.scopes,
-      user,
+      scopes: viewer.scopes,
+      user: viewer.user,
     });
+  });
+  // Tool results name photos by this path. Every MCP grant sees them, as
+  // every signed-in dashboard viewer does.
+  app.get(MCP_AVATAR_PATH, async (c) => {
+    const viewer = await authenticate(c.req.raw);
+    if (viewer instanceof Response) return viewer;
+    // oxlint-disable-next-line junior/no-response-schema-parse -- Request input: the path params.
+    const params = avatarParamsSchema.safeParse(c.req.param());
+    const served = params.success
+      ? await readImage(
+          viewer.user,
+          { ref: params.data.identityId, source: "avatar" },
+          AVATAR_WIDTH,
+        )
+      : undefined;
+    if (!served) return new Response(null, { status: 404 });
+    return imageResponse(served, c.req.query("v") !== undefined);
   });
 
   return app.fetch;

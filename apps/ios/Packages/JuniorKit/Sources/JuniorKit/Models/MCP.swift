@@ -109,6 +109,8 @@ public struct MCPMessage: Decodable, Sendable, Hashable, Identifiable {
   /// `user` or `assistant`.
   public var role: String
   public var author: String?
+  /// The author's profile photo: a path on the server that takes the bearer token.
+  public var authorAvatarUrl: String?
   public var text: String
   public var attachments: [Attachment]?
 
@@ -121,6 +123,7 @@ public struct PendingMessage: Decodable, Sendable, Hashable, Identifiable {
   public var messageId: String
   public var createdAt: Timestamp
   public var author: String?
+  public var authorAvatarUrl: String?
   public var text: String
   public var attachments: [Attachment]?
   /// `defer` waits for the running Turn; `interrupt` joins it.

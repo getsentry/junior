@@ -1923,11 +1923,10 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
     ],
     // Two people ask, so the outline previews show who asked each question.
     authors: {
-      "many-turns-jordan": actor(
-        "jordan@example.com",
-        "Jordan Blake",
-        "jordan",
-      ),
+      "many-turns-jordan": {
+        ...actor("jordan@example.com", "Jordan Blake", "jordan"),
+        avatarUrl: "/api/people/avatars/mock-jordan",
+      },
       "many-turns-riley": actor("riley@sentry.io", "Riley Park", "riley"),
     },
     events: Array.from({ length: 24 }, (_, turn) => [

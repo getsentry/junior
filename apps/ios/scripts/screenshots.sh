@@ -19,12 +19,15 @@ out="$1"
 orientation="${2:-portrait}"
 scripts="$(dirname "$0")"
 conversation="/conversations/slack:CQA123:1770003600.000200"
+# Two people ask here; one has a profile photo.
+people="/conversations/slack:CQA456:1770025200.000700"
 
 set -- \
   "conversations__dark|/|dark" \
   "conversations__light|/|light" \
   "conversation__dark|$conversation|dark" \
   "conversation-details__dark|$conversation?details=1|dark" \
+  "conversation-people__dark|$people|dark" \
   "inbox__dark|/inbox|dark" \
   "review-item__dark|/inbox?item=qa-rollout|dark" \
   "automations__dark|/automations|dark" \

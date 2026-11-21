@@ -4,7 +4,12 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
-import { MCP_SCOPES, createMockMcpTools } from "./mock-mcp-tools.mjs";
+import { crc32, deflateSync } from "node:zlib";
+import {
+  MCP_AVATAR_PREFIX,
+  MCP_SCOPES,
+  createMockMcpTools,
+} from "./mock-mcp-tools.mjs";
 
 process.env["DATABASE_URL"] ??= "postgres://localhost/junior-ios-mock";
 process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
@@ -674,6 +679,52 @@ function unauthorized(sentToken) {
   });
 }
 
+// Every mock profile photo: a 64px PNG with a blue to violet gradient, so a
+// screenshot tells it apart from the initials circle.
+function mockPhotoPng() {
+  const size = 64;
+  const rows = Buffer.alloc(size * (1 + size * 3));
+  for (let y = 0; y < size; y += 1) {
+    const row = y * (1 + size * 3);
+    for (let x = 0; x < size; x += 1) {
+      const t = y / (size - 1);
+      rows.set([37 + 87 * t, 99 - 41 * t, 235 + 2 * t], row + 1 + x * 3);
+    }
+  }
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+const MOCK_PHOTO = mockPhotoPng();
+
+function handleAvatar(request) {
+  const token = request.headers
+    .get("authorization")
+    ?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!(token && authenticate(token))) return unauthorized(token !== undefined);
+  return new Response(MOCK_PHOTO, {
+    headers: {
+      "cache-control": "private, max-age=31536000, immutable",
+      "content-type": "image/png",
+    },
+  });
+}
+
 async function handleMcp(request) {
   const token = request.headers
     .get("authorization")
@@ -709,7 +760,9 @@ function routeMcp(request) {
         ? handleMcp(request)
         : notFound();
     default:
-      return undefined;
+      return pathname.startsWith(MCP_AVATAR_PREFIX) && request.method === "GET"
+        ? handleAvatar(request)
+        : undefined;
   }
 }
 

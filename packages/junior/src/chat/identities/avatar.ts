@@ -57,9 +57,12 @@ function avatarVersion(url: string): string {
   return createHash("sha256").update(url).digest("hex").slice(0, 16);
 }
 
+/** The dashboard path prefix that serves the photo of one Identity. */
+export const AVATAR_PATH_PREFIX = "/api/people/avatars/";
+
 // The Junior path that serves the photo of one Identity.
 function avatarPath(identityId: string, avatarUrl: string): string {
-  return `/api/people/avatars/${encodeURIComponent(identityId)}?v=${avatarVersion(avatarUrl)}`;
+  return `${AVATAR_PATH_PREFIX}${encodeURIComponent(identityId)}?v=${avatarVersion(avatarUrl)}`;
 }
 
 /**

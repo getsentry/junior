@@ -73,6 +73,8 @@ final class AppModel {
   let agentName = "Junior"
 
   private let store = KeychainCredentialStore()
+  /// Profile photos by path. A path names one photo version.
+  @ObservationIgnored private var photos: [String: UIImage] = [:]
   private var ticking: Task<Void, Never>?
   private var lastInput = Date()
 
@@ -115,6 +117,15 @@ final class AppModel {
     }
   }
 
+  /// The profile photo at a path from a tool result, or nil when it does not
+  /// load, such as in the demo.
+  func photo(_ path: String) async -> UIImage? {
+    if let photo = photos[path] { return photo }
+    guard let data = try? await client.photo(path), let photo = UIImage(data: data) else { return nil }
+    photos[path] = photo
+    return photo
+  }
+
   /// Sign in to `baseURL` in the system browser sheet, then load the shell.
   func signIn(to baseURL: URL) async throws {
     let server = JuniorServer(baseURL: baseURL)
@@ -138,6 +149,7 @@ final class AppModel {
     UserDefaults.standard.set(server.baseURL.absoluteString, forKey: "serverURL")
     self.server = server
     client = Self.client(for: server, store: store)
+    photos = [:]
     await client.signIn(credentials)
     signedIn = true
     didWrite()

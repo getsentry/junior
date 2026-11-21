@@ -119,6 +119,20 @@ let tokens = #"{"access_token":"a2","token_type":"Bearer","expires_in":3600,"ref
     }
   }
 
+  @Test func sendsTheTokenOnlyForAPhotoOnThisServer() async throws {
+    let session = StubServer.serve { _ in (200, "photo") }
+    let client = MCPClient(server: server, store: MemoryStore(credentials()), session: session)
+    let photo = try await client.photo("/api/mcp/avatars/U1?v=abc")
+    #expect(photo == Data("photo".utf8))
+    let request = try #require(StubServer.requests.first)
+    #expect(request.url.absoluteString == "https://junior.example.com/api/mcp/avatars/U1?v=abc")
+    #expect(request.headers["Authorization"] == "Bearer a1")
+    for path in ["https://evil.example.com/api/mcp/avatars/U1", "/api/people/avatars/U1"] {
+      await #expect(throws: JuniorAPIError.self) { try await client.photo(path) }
+    }
+    #expect(StubServer.requests.count == 1)
+  }
+
   @Test func refreshesOnceAfter401() async throws {
     let session = StubServer.serve { request in
       if request.url.path == "/api/mcp/oauth/token" { return (200, tokens) }

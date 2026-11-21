@@ -14,6 +14,9 @@ export const MCP_AUTHORIZATION_SERVER_METADATA_PATH =
   "/.well-known/oauth-authorization-server";
 export const MCP_AUTHORIZE_PATH = "/api/mcp/oauth/authorize";
 export const MCP_TOKEN_PATH = "/api/mcp/oauth/token";
+/** Profile photos for MCP clients, which send the MCP bearer token. */
+export const MCP_AVATAR_PATH_PREFIX = "/api/mcp/avatars/";
+export const MCP_AVATAR_PATH = `${MCP_AVATAR_PATH_PREFIX}:identityId`;
 /** Dashboard-authenticated consent page for one pending authorization. */
 export const MCP_CONSENT_PATH = "/_junior/mcp/authorize/:authorizationId";
 
