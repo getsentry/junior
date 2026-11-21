@@ -44,7 +44,7 @@ const LEASE_CHECK_INTERVAL_MS = 1_000;
 /** The parts of a step's input that do not come from the Turn's history. */
 export type PreparedStep = Omit<
   StepInput,
-  "client" | "messages" | "replay" | "session" | "signal"
+  "abandonToolCalls" | "client" | "messages" | "replay" | "session" | "signal"
 >;
 
 type AdvanceTurnOptions = {
@@ -94,13 +94,21 @@ export async function advanceTurn(
     // Inside the try, so a failed write here also releases the lease. After
     // the Turn ends, the release matches nothing, so an error in the end
     // work only makes the queue retry, and that retry runs it again.
+    // An attempt takes the inputs that are unread when it claims the Turn. A
+    // failed Turn drops them, and moves only inputs that came after its last
+    // claim.
+    const unread = await findUnreadInputs(executor, claim.turnId);
+    await markInputsAttempted(
+      executor,
+      unread.map((input) => input.inputId),
+    );
     if (claim.attempts > options.maxAttempts) {
       if (await failTurn(executor, claim, "attempts_exhausted")) {
         await turnEnded(executor, claim.turnId);
       }
       return;
     }
-    await runClaimedStep(executor, claim, options);
+    await runClaimedStep(executor, claim, unread, options);
   } catch (error) {
     // The queue retries the message. With a live lease, the retry would claim
     // nothing and the Turn would stay running.
@@ -120,6 +128,7 @@ export async function advanceTurn(
 async function runClaimedStep(
   executor: JuniorSqlDatabase,
   claim: ClaimedTurn,
+  unread: UnreadInput[],
   { client, prepare }: Pick<AdvanceTurnOptions, "client" | "prepare">,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
@@ -132,15 +141,9 @@ async function runClaimedStep(
   const history = projectConversationEvents(events).messages;
   // A tool batch must follow its tool calls, so only a model request reads
   // inputs. The inputs wait for the model request after the batch.
-  const unread = hasPendingToolCalls(history)
-    ? []
-    : await findUnreadInputs(executor, claim.turnId);
-  const { inputs, ...prepared } = await prepare(claim, unread);
-  checkPreparedInputs(unread, inputs);
-  await markInputsAttempted(
-    executor,
-    unread.map((input) => input.inputId),
-  );
+  const stepInputs = hasPendingToolCalls(history) ? [] : unread;
+  const { inputs, ...prepared } = await prepare(claim, stepInputs);
+  checkPreparedInputs(stepInputs, inputs);
   const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
     client,
@@ -148,6 +151,8 @@ async function runClaimedStep(
     messages: [...history, ...inputs.map((input) => input.message)],
     // A later claim of the same step means an earlier attempt did not commit.
     replay: claim.attempts > 1,
+    // Tool calls pending at a Turn's first step belong to an earlier Turn.
+    abandonToolCalls: claim.stepSeq === 0,
   });
   if (!result) {
     return;
