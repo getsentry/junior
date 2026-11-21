@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverReviewItemChange } from "@/chat/review-items/changes";
@@ -397,6 +398,7 @@ export function createAddReviewItemTool(
           item,
           nowMs: Date.now(),
         });
+        await publishWaiting(context, services, item);
         return { created: false, item: itemResult(item) };
       }
       const item = await insertReviewItem(db, {
@@ -420,7 +422,26 @@ export function createAddReviewItemTool(
         item,
         nowMs: Date.now(),
       });
+      await publishWaiting(context, services, item);
       return { created: true, item: itemResult(item) };
     },
   });
+}
+
+/**
+ * Report that the Conversation waits on a person when the item is an action,
+ * also when an update makes a notice an action. The Event key is the item, so
+ * a later update of the same action does not report it again.
+ */
+async function publishWaiting(
+  context: ReviewItemToolContext,
+  services: ReviewItemToolServices,
+  item: { id: string; kind: string },
+): Promise<void> {
+  if (item.kind !== "action") return;
+  await publishConversationStatus(
+    context.conversationId,
+    { type: "waiting", reviewItemId: item.id },
+    { queue: services.queue() },
+  );
 }

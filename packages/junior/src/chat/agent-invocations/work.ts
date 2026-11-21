@@ -15,8 +15,8 @@ import {
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -743,9 +743,7 @@ export function createAgentInvocationWorker(
     };
 
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
+    const lifecycle = getTurnLifecycle();
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;

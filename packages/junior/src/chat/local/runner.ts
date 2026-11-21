@@ -48,9 +48,9 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type {
   ConversationTurnFailureCode,
@@ -189,9 +189,7 @@ async function runLocalAgentTurnInContext(
   }
   const destination = localDestination(input.conversationId);
   const source = createLocalSource(destination.conversationId);
-  const lifecycle = new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  );
+  const lifecycle = getTurnLifecycle();
 
   await getConversationStore().recordActivity({
     conversationId: input.conversationId,

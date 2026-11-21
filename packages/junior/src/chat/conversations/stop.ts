@@ -82,12 +82,14 @@ export async function stopConversation(args: {
     const stoppedAtMs = args.message?.createdAtMs ?? nowMs;
     await stopChildAgentsBelow(args.conversationId, {
       nowMs,
+      queue: args.queue,
       stoppedAtMs,
       state: args.state,
     });
     await markConversationsStopped([args.conversationId], {
       cancelWatches: false,
       nowMs: stoppedAtMs,
+      queue: args.queue,
       state: args.state,
     });
     await dropOwnUnreadLoopReplies(args.conversationId, args.state);

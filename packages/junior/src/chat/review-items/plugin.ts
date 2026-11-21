@@ -1,3 +1,5 @@
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
 import type {
   PluginReviewItems,
@@ -122,25 +124,39 @@ export function createPluginReviewItems(args: {
         ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
         ...(notice.subject ? { subject: notice.subject } : undefined),
       };
+      let itemId: string;
+      // False when the item closed after the read above. A closed item does
+      // not make the Conversation wait.
+      let open = true;
       if (existing) {
-        await updateReviewItemContent(db, {
+        open = await updateReviewItemContent(db, {
           ...content,
           id: existing.id,
           nowMs: Date.now(),
         });
-        await show(existing.id);
-        return;
+        itemId = existing.id;
+      } else {
+        const item = await insertReviewItem(db, {
+          ...content,
+          dedupeKey: scopedKey(notice.dedupeKey),
+          owner: { id: conversationId, kind: "conversation" },
+          nowMs: Date.now(),
+          ...(access.tenant ? { tenant: access.tenant } : undefined),
+        });
+        // Undefined means a concurrent upsert added the item first.
+        if (!item) return;
+        itemId = item.id;
       }
-      const item = await insertReviewItem(db, {
-        ...content,
-        dedupeKey: scopedKey(notice.dedupeKey),
-        owner: { id: conversationId, kind: "conversation" },
-        nowMs: Date.now(),
-        ...(access.tenant ? { tenant: access.tenant } : undefined),
-      });
-      // Undefined means a concurrent upsert added the item first.
-      if (item) {
-        await show(item.id);
+      await show(itemId);
+      // An action item means the Conversation waits on a person, also when
+      // an update makes a notice an action. The Event key is the item, so a
+      // later update of the same action does not report it again.
+      if (open && content.kind === "action") {
+        await publishConversationStatus(
+          conversationId,
+          { type: "waiting", reviewItemId: itemId },
+          { queue: getVercelConversationWorkQueue() },
+        );
       }
     },
     async close(input) {

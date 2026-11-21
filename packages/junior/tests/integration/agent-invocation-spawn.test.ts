@@ -488,7 +488,9 @@ describe("agent invocation spawn and result delivery", () => {
     const state = getStateAdapter();
     await state.connect();
     const events = getConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(events);
+    const lifecycle = new ConversationTurnLifecycleService(events, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const change: ObjectAnnotation = {
       kind: "object",
       objectType: "code_change",
@@ -576,7 +578,9 @@ describe("agent invocation spawn and result delivery", () => {
     const state = getStateAdapter();
     await state.connect();
     const events = getConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(events);
+    const lifecycle = new ConversationTurnLifecycleService(events, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const change = (key: string): ObjectAnnotation => ({
       kind: "object",
       objectType: "code_change",

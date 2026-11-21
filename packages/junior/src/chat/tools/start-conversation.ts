@@ -1,4 +1,6 @@
+import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { conversationWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { startLeadConversation } from "@/chat/lead/start-conversation";
 import { SHORT_TITLE_MAX_LENGTH } from "@/chat/services/short-title";
@@ -54,6 +56,9 @@ export const startConversationToolDefinition = zodToolDefinition({
       .url()
       .optional()
       .describe("Dashboard link of the new conversation."),
+    subscribable: subscribableResourceSchema.describe(
+      "Watch it with watchEvents only when the person asks to hear back.",
+    ),
   }),
 });
 
@@ -84,6 +89,7 @@ export function createStartConversationTool(
       return {
         conversation_id: conversationId,
         ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+        subscribable: conversationWatch({ conversationId, title: input.title }),
       };
     },
   });
