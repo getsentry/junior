@@ -9,13 +9,14 @@ can act on it.
 ## Intent
 
 - One stack for each root Conversation, or for each other owner of an
-  item, such as an Automation. People start and follow root Conversations. They usually do not know which Threads and Tasks run under
-  a root, or their names. An item from a child agent shows in the stack of
-  its root, not on its own.
+  item, such as an Automation. People start and follow root
+  Conversations. They usually do not know which Threads and Tasks run
+  under a root, or their names. An item from a child agent shows in the
+  stack of its root, not on its own.
 - Each Inbox item is its own row, with its own actions. An item row is
   always one actionable item, such as a question or a pull request. A row
-  action never applies to a group of items. A pull request review and a question are
-  different decisions, and one click must not make both.
+  action never applies to a group of items. A pull request review and a
+  question are different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the
   next row in the same stack first, so the context that the reader just
   read stays useful.
@@ -48,9 +49,8 @@ can act on it.
 Grouping:
 
 - Each item has one owner: the Conversation that added it, or an
-  Automation for its alerts. The owner sets who sees the item, its tenant,
-  and its stack. An Automation's alert takes its visibility from the
-  Automation's Destination, and stacks under the Automation alone.
+  Automation for its alerts. The owner sets who sees the item and its
+  stack. An Automation's alert stacks under the Automation alone.
 - A child Conversation, at any depth, rolls up to its root. The row shows a
   quiet label that names the child, such as its Thread title, so the reader
   knows which sub-thread asked.
@@ -65,16 +65,19 @@ Grouping:
   the rest when its open row is past the first four.
 - An open row says each fact once. The row's head names the kind, the
   number, the title, and the sub-thread. The open card and the subject's
-  preview do not say them again.
+  preview do not say them again. A question's card has no subject preview
+  ([Inbox](./inbox.md)).
 - A code change row leads with the change's title. Its state comes first
-  as one short word, such as "Review". The type, the scope, and a breaking
-  mark from the title's Conventional Commits prefix come after the title,
-  in the same line of text, so a wrapped title starts at the left edge.
-  The plugin that owns the change parses the title. A title with no known
-  type shows as it is, with no type. The number and the size go to the
-  second line.
+  as one short word, such as "Review". The type and the scope from the
+  title's Conventional Commits prefix come after the title as one muted
+  tag, such as "fix/slack", with a red "breaking" for a breaking change.
+  All of it is one line of text, so a wrapped title starts at the left
+  edge. The plugin that owns the change parses the title. A title with no
+  known type shows as it is, with no tag. The number and the size go to
+  the second line.
 - A click on a code change row opens it, as on other rows. The open row's
-  first action opens the change on its provider.
+  first action opens the change on its provider. On a phone, the other
+  actions next to it show only their icons.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
@@ -124,8 +127,7 @@ Snooze:
   and the rest stay in Snoozed.
 - Snoozed shows each snoozed row in the stack of its root. Wake on a row
   wakes only that item.
-- The server keeps each snooze, so every browser of the viewer agrees. A
-  new alert of an Automation is a new item, so it is not snoozed.
+- Every browser of the viewer shows the same snoozes.
 
 ## Gaps
 

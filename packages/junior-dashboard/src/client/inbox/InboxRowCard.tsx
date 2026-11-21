@@ -32,8 +32,9 @@ import {
 } from "./inboxItemFormat";
 
 /**
- * The card of one ask in an open row: its message, form, subject, and
- * notices, with its own Snooze and Dismiss.
+ * The card of one ask in an open row: its question, the message of the
+ * Turn that asked it, its form, subject, and notices, with its own Snooze
+ * and Dismiss.
  */
 export function InboxRowCard(props: {
   actions?: InboxCardActions;
@@ -62,6 +63,13 @@ export function InboxRowCard(props: {
   // Next to a main action, the others show only their icons on a phone, so
   // the line fits.
   const look = props.primaryAction ? "narrow" : undefined;
+  const notices = props.notices.map((notice) => (
+    <FoldedNotice
+      key={notice.id}
+      notice={notice}
+      onAction={onAction ? (body) => onAction(notice, body) : undefined}
+    />
+  ));
   // The card's own Snooze and Dismiss: they act on this item only.
   const cardActions =
     actions || props.rowActions ? (
@@ -143,8 +151,6 @@ export function InboxRowCard(props: {
           ) : null}
         </>
       )}
-      {/* What Junior said comes first, then its question and the form. */}
-      {item.request ? <InboxItemTurnMessage item={item} /> : null}
       <InboxItemObjects conversationId={itemConversationId(item)}>
         {showBody ? (
           <ClampedDisplayText
@@ -155,7 +161,8 @@ export function InboxRowCard(props: {
             text={text}
           />
         ) : null}
-        {item.subject ? (
+        {/* A question's row head and Related already link its subject. */}
+        {item.subject && !item.request ? (
           <InboxItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
             conversationId={itemConversationId(item)}
@@ -170,23 +177,21 @@ export function InboxRowCard(props: {
         <AutomationAlertDetails automationId={item.owner.id} />
       ) : null}
       {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
-      {props.notices.map((notice) => (
-        <FoldedNotice
-          key={notice.id}
-          notice={notice}
-          onAction={onAction ? (body) => onAction(notice, body) : undefined}
-        />
-      ))}
+      {item.request ? null : notices}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
       <InboxItemActions
+        context={<InboxItemTurnMessage item={item} />}
         dismiss={!cardActions}
         extra={cardActions}
         item={item}
         onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
+      {/* A question comes right under the row's head, so its notices
+          follow its form. */}
+      {item.request ? notices : null}
     </section>
   );
 }

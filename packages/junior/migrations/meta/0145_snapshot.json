@@ -1,5 +1,5 @@
 {
-  "id": "887c00d7-bc95-4421-818a-90be3abd76f3",
+  "id": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "prevId": "a9c89fe6-259a-465c-a8e0-0815e4aeab77",
   "version": "7",
   "dialect": "postgresql",
@@ -4449,12 +4449,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "subject_title_parts": {
-          "name": "subject_title_parts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "owner_kind": {
           "name": "owner_kind",
           "type": "text",
@@ -6101,6 +6095,12 @@
         },
         "changed_by_user_id": {
           "name": "changed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_by_conversation_id": {
+          "name": "changed_by_conversation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
