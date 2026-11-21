@@ -117,14 +117,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await expect(stack).toContainText("Woke: snooze time reached");
 
-    // The root opens in a new tab, so the stack stays in view.
+    // A middle click opens the root in a new tab, so the stack stays in
+    // view.
     const cleared = wakesCleared(page);
     const tab = page.context().waitForEvent("page");
     await stack
       .locator("[data-inbox-stack-head]")
       .getByRole("link")
       .first()
-      .click({ modifiers: ["ControlOrMeta"] });
+      .click({ button: "middle" });
     expect((await cleared).postDataJSON()).toEqual({
       inboxItemIds: [timed.id],
     });

@@ -9,6 +9,7 @@ import {
 } from "../components/ui/tooltip";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
+import { onLinkOpen } from "./rowClick";
 
 /** What one card does by itself: its Dismiss and Snooze. */
 export type InboxCardActions = {
@@ -114,7 +115,7 @@ export function RowOpenLink(props: {
           <Link
             aria-label={props.label}
             className={ROW_ACTION_BUTTON_CLASS}
-            onClick={props.onClick}
+            {...onLinkOpen(props.onClick)}
             to={props.path}
           >
             <ArrowUpRight aria-hidden="true" size={14} />

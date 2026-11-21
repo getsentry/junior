@@ -66,7 +66,7 @@ import {
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
-import { openOnClick, useOpenPath } from "./rowClick";
+import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
 import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
@@ -626,6 +626,10 @@ function InboxRowBody(
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
+                // A middle click opens the link in a new tab.
+                onAuxClick={(event) => {
+                  if (event.button === 1) props.onOpen?.();
+                }}
                 // On a row for one item, a plain click or Enter expands it in
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
@@ -927,7 +931,7 @@ function ExpandedActions(props: {
           buttonVariants({ variant: "ghost" }),
           props.look && LOOK_CLASSES[props.look],
         )}
-        onClick={props.open.onClick}
+        {...onLinkOpen(props.open.onClick)}
         to={props.open.path}
       >
         <OwnerIcon aria-hidden="true" size={15} />

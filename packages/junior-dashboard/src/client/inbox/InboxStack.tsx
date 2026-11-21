@@ -8,7 +8,7 @@ import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
-import { openOnClick, useOpenPath } from "./rowClick";
+import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./inboxItemFormat";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
@@ -85,7 +85,7 @@ export function InboxStack(props: {
       >
         <Link
           className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-          onClick={props.onOpen}
+          {...onLinkOpen(props.onOpen)}
           to={props.path}
         >
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
