@@ -42,7 +42,8 @@ how the dashboard groups and acts on its rows.
 - A question card has one layout in the Inbox and the transcript: the
   question under its "Question" label, then the last message of the Turn
   that asked it (about 12 lines, then Show more), then the form. The card
-  has no subject preview: the row head and Related link the subject.
+  has no subject preview: the row head and Related link the subject. In
+  the transcript, a waiting card spans the transcript width.
 - A click on a choice picks it. Send answers, with the note line. An
   action that takes no words, such as a plugin's Resume, is one click.
 - The first answer or dismiss closes the item for everyone. A dismiss is

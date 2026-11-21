@@ -327,7 +327,10 @@ export function ReviewItemAskRow(props: {
     <section
       aria-label={`${verb} ${reviewItemTitleText(item)}`}
       className={cn(
-        "grid w-full min-w-0 max-w-[37.5rem] gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
+        "grid w-full min-w-0 gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
+        // A card with a form spans the transcript. A closed record is as
+        // narrow as the other object rows.
+        !waiting && "max-w-[37.5rem]",
         status.waitingOnYou
           ? "border-violet-400/40 bg-violet-500/[0.07]"
           : "border-dashboard-border-subtle bg-dashboard-surface-panel",
