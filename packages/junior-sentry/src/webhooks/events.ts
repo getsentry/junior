@@ -20,7 +20,7 @@ import { sentrySlugDataSchema } from "../events/scope.js";
 const METRIC_ISSUE_TYPE_ID = 8001;
 // Sentry offsets a detector id by this to give a monitor with no legacy alert
 // rule an alert rule id. `metric_alert` webhooks send the same id.
-const DETECTOR_ALERT_RULE_ID_OFFSET = 1_000_000_000;
+const DETECTOR_ALERT_RULE_ID_OFFSET = 10_000_000_000;
 
 /** Map a metric issue occurrence priority (Sentry `DetectorPriorityLevel`) to its alert state. */
 function metricIssueAction(

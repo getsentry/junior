@@ -339,16 +339,16 @@ describe("Sentry webhook events", () => {
       {
         data: {
           projects: ["backend"],
-          alertRuleId: "1000000123",
+          alertRuleId: "10000000123",
           url: "https://sentry.sentry.io/issues/7513266780/events/0b7f2c4e0e9f4c6b9f8f1c2d3e4a5b6c/",
         },
         eventKey:
-          "sentry:metric-alert:sentry/1000000123:occurrence:5d1f0ab4c6e34a6e8f0c2b1a9d8e7f60:metric_alert.critical",
+          "sentry:metric-alert:sentry/10000000123:occurrence:5d1f0ab4c6e34a6e8f0c2b1a9d8e7f60:metric_alert.critical",
         eventType: "metric_alert.critical",
-        identifier: "metric-alert:sentry/1000000123",
+        identifier: "metric-alert:sentry/10000000123",
         objectType: "item",
         occurredAtMs: 1_785_976_800_000,
-        trustedSummary: "Sentry metric alert sentry/1000000123 is critical.",
+        trustedSummary: "Sentry metric alert sentry/10000000123 is critical.",
         untrustedText: [
           "API error volume",
           "Critical: count() of errors in the last 15 minutes above 400",
