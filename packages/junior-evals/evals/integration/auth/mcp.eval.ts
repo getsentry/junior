@@ -56,10 +56,12 @@ async function connectAlice(run: RunAgent) {
   expect(turnStates(paused)).toEqual(["started"]);
 
   // The agent says why it connects the provider, and the notice shows it.
+  // A call that failed input validation connected nothing, so skip it.
   const connect = toolCallsOf("searchMcpTools", paused).find(
     (call) =>
+      call.status !== "error" &&
       (call.input as { provider?: unknown } | undefined)?.provider ===
-      "eval-auth",
+        "eval-auth",
   );
   const intent = (connect?.input as { intent?: unknown } | undefined)?.intent;
   expect(intent).toEqual(expect.any(String));
