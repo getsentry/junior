@@ -193,6 +193,84 @@ describe("nested agent invocations", () => {
     }
   });
 
+  it("sends a child's reply as a message while its own child agent works", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const { queue, state } = await createConversationWorkHarness({
+      run: async () => {
+        throw new Error("The agent does not run in this test.");
+      },
+    });
+    const sendReply = async (
+      sender: Awaited<ReturnType<typeof createAgentInvocation>>,
+      text: string,
+    ) =>
+      await enqueueChildResultToParent({
+        result: { kind: "reply", reply: { text, toolCallId: text } },
+        messageKey: text,
+        queue,
+        sender,
+        turnId: getAgentInvocationTurnId(sender.invocationId),
+        state,
+      });
+    const lastText = async (conversationId: string) =>
+      (await getConversationWorkState({ conversationId, state }))?.messages.at(
+        -1,
+      )?.input.text;
+    try {
+      const child = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "talking-child",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "talking-helper",
+        parentConversationId: child.childConversationId,
+      });
+
+      // A reply while the helper runs is a message: the parent can tell
+      // that the child still works.
+      await sendReply(child, "Started a helper.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message [^>]*source="child_agent"/,
+      );
+
+      // A helper reply that waits in the child's mailbox starts another
+      // child Turn, so the child still works.
+      await sendReply(helper, "CEDAR-9");
+      await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "CEDAR-9",
+        status: "completed",
+      });
+      await sendReply(child, "Still waiting.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message /,
+      );
+
+      // With no open work left, the reply is the child's result.
+      const done = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "done-child",
+      });
+      const doneHelper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "done-helper",
+        parentConversationId: done.childConversationId,
+      });
+      await completeAgentInvocation({
+        invocationId: doneHelper.invocationId,
+        result: "",
+        status: "completed",
+      });
+      await sendReply(done, "Final answer.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-result [^>]*status="completed"/,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("sends a child's report when its helper ends without a reply", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const harness = await createConversationWorkHarness({

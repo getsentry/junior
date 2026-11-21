@@ -253,14 +253,40 @@ export function sendsResultToParent(
  * agent that no Agent invocation names is open as `listAgents` shows it,
  * and its unread result or reply also waits.
  */
-async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
-  const conversationId = invocation.childConversationId;
+async function hasOpenAgentWork(
+  conversationId: string,
+  exceptInvocationId: string | undefined,
+): Promise<boolean> {
   const open = await listOpenAgentInvocations(conversationId);
-  if (
-    open.some((row) => row.invocationId !== invocation.invocationId) ||
+  return (
+    open.some((row) => row.invocationId !== exceptInvocationId) ||
     (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
       0
-  ) {
+  );
+}
+
+/**
+ * Return whether a child agent still works after the Turn that sends its
+ * `reply`: another of its agent invocations is open, one of its own child
+ * agents is open, or a message from one of them waits in its mailbox. Its
+ * parent then gets the reply as a message, not as the child's result.
+ */
+export async function childAgentStillWorks(
+  conversationId: string,
+  exceptInvocationId: string | undefined,
+): Promise<boolean> {
+  if (await hasOpenAgentWork(conversationId, exceptInvocationId)) {
+    return true;
+  }
+  const work = await getConversationWorkState({ conversationId });
+  return (await readChildMessageSenders(work?.messages ?? [])).some(
+    (sender) => sender !== undefined,
+  );
+}
+
+async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
+  const conversationId = invocation.childConversationId;
+  if (await hasOpenAgentWork(conversationId, invocation.invocationId)) {
     return true;
   }
   // An unread reply or result from a child that no Agent invocation names
