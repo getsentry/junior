@@ -187,19 +187,13 @@ export function RowDismissButton(props: {
  * Mark a To-do for the viewer done. It takes the place of Dismiss, so the
  * person closes their own work, not hides it.
  */
-export function RowDoneButton(props: {
-  disabled?: boolean;
-  /** The main action of the card by default (`ButtonLook`). */
-  look?: ButtonLook;
-  onClick(): void;
-}) {
+export function RowDoneButton(props: { look: ButtonLook; onClick(): void }) {
   return (
     <Button
-      className={props.look && LOOK_CLASSES[props.look]}
-      disabled={props.disabled}
+      className={LOOK_CLASSES[props.look]}
       onClick={props.onClick}
       title={props.look === "icon" ? "Done" : undefined}
-      variant={props.look ? "ghost" : "default"}
+      variant="ghost"
     >
       <Check aria-hidden="true" size={15} />
       <ButtonLabel look={props.look}>Done</ButtonLabel>

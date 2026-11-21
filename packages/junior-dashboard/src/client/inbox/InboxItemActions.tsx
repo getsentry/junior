@@ -13,7 +13,6 @@ import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
 import { InboxItemEvidence } from "./InboxItemEvidence";
 import { answerRows } from "./inboxItemFormat";
-import { RowDoneButton } from "./RowSnoozeDismiss";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
@@ -159,10 +158,12 @@ export function InboxItemActions(props: {
       ) : null}
       {props.extra}
       {todo ? (
-        <RowDoneButton
+        <Button
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "done" }).catch(() => {})}
-        />
+        >
+          Done
+        </Button>
       ) : null}
     </>
   );
