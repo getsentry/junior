@@ -24,7 +24,13 @@ type LinkedIdentity = { provider: string; handle: string };
 type UserLookupProfile =
   | SlackUserProfile
   | Pick<SlackUserProfile, "id" | "name">;
+/**
+ * One person, as their Slack profile. `has_user` is true when Junior knows
+ * them as a User, so their linked accounts are verified.
+ */
 type UserLookupMatch = UserLookupProfile & {
+  provider: "slack";
+  has_user: boolean;
   mention: string;
   matched_providers: string[];
   linked_identities?: LinkedIdentity[];
@@ -51,6 +57,8 @@ export type UserLookupResult = {
 /** A provider account that matched, which no known person has linked. */
 type UnlinkedAccount = {
   provider: string;
+  has_user: false;
+  id: string;
   handle?: string | undefined;
   display_name?: string | undefined;
   url?: string | undefined;
@@ -171,6 +179,28 @@ async function linkedIdentitiesBySlackUser(
     linked.set(row.slackUserId, entries);
   }
   return linked;
+}
+
+/** Return the Slack user IDs in a workspace that belong to a Junior User. */
+async function slackUserIdsWithUser(
+  teamId: SlackTeamId,
+  slackUserIds: string[],
+): Promise<Set<string>> {
+  if (slackUserIds.length === 0) return new Set();
+  const rows = await getSqlExecutor()
+    .db()
+    .select({ slackUserId: juniorIdentities.providerSubjectId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, teamId),
+        inArray(juniorIdentities.providerSubjectId, slackUserIds),
+        isNotNull(juniorIdentities.userId),
+      ),
+    );
+  return new Set(rows.map((row) => row.slackUserId));
 }
 
 /** Return true when a query is an email address. */
@@ -339,6 +369,8 @@ async function findPluginUsers(
         )
         .map((account) => ({
           provider: result.provider,
+          has_user: false as const,
+          id: account.id,
           handle: account.handle,
           display_name: account.displayName,
           url: account.url,
@@ -376,6 +408,8 @@ async function lookupResult(args: {
       }
       byUserId.set(user.id, {
         ...user,
+        provider: "slack",
+        has_user: false,
         mention: slackMention(user.id),
         matched_providers: [provider],
       });
@@ -387,16 +421,16 @@ async function lookupResult(args: {
         Number(exactUserIds.has(right.id)) - Number(exactUserIds.has(left.id)),
     )
     .slice(0, MAX_LOOKUP_USERS);
-  const linked = await linkedIdentitiesBySlackUser(
-    args.teamId,
-    candidates.map((user) => user.id),
-    args.providers,
-  );
+  const candidateIds = candidates.map((user) => user.id);
+  const [linked, withUser] = await Promise.all([
+    linkedIdentitiesBySlackUser(args.teamId, candidateIds, args.providers),
+    slackUserIdsWithUser(args.teamId, candidateIds),
+  ]);
   const users = candidates.map((user) => {
+    const match: UserLookupMatch = { ...user, has_user: withUser.has(user.id) };
     const linkedIdentities = linked.get(user.id);
-    return linkedIdentities
-      ? { ...user, linked_identities: linkedIdentities }
-      : user;
+    if (linkedIdentities) match.linked_identities = linkedIdentities;
+    return match;
   });
   const search = args.matches.find((match) => match.search)?.search;
   return {

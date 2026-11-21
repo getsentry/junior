@@ -33,7 +33,7 @@ function explicitUserLookupError(error: SlackActionError): string | undefined {
 export function userLookupToolDefinition(providers: [string, ...string[]]) {
   return zodToolDefinition({
     description:
-      "Look up people across identity providers, or in one. Name search can miss people in large workspaces. Each match has a Slack `mention` (`<@U…>`), the providers that matched (`matched_providers`), and the verified handles of accounts the person linked to you (`linked_identities`), such as `github`. `accounts` lists provider accounts that no known person linked. When `ambiguous` is true, ask which person the user means.",
+      "Look up people across identity providers, or in one. Name search can miss people in large workspaces. Each match is a Slack person with a `mention` (`<@U…>`), the providers that matched (`matched_providers`), `has_user` when you know them as a User, and the verified handles they linked (`linked_identities`), such as `github`. `accounts` lists provider accounts that no known person linked. When `ambiguous` is true, ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

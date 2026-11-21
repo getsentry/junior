@@ -34,6 +34,8 @@ describe("userLookup without a provider", () => {
       ambiguous: false,
       mention: "<@U039RR91S>",
       user: {
+        provider: "slack",
+        has_user: true,
         matched_providers: ["slack", "github"],
         linked_identities: [{ provider: "github", handle: "dcramer" }],
       },
@@ -61,7 +63,14 @@ describe("userLookup without a provider", () => {
     expect(result).toMatchObject({ count: 10, ambiguous: true });
     expect(result.users[0]).toMatchObject({
       id: "U039RR91S",
+      has_user: true,
       matched_providers: ["github"],
+    });
+    // A Slack name hit that Junior has no User for.
+    expect(result.users[1]).toMatchObject({
+      provider: "slack",
+      has_user: false,
+      matched_providers: ["slack"],
     });
   });
 
@@ -146,7 +155,13 @@ describe("userLookup without a provider", () => {
       ambiguous: true,
       user: { id: "U039RR91S", matched_providers: ["github"] },
       accounts: [
-        { provider: "github", handle: "dcramer-alt", display_name: "Alt" },
+        {
+          provider: "github",
+          has_user: false,
+          id: "67890",
+          handle: "dcramer-alt",
+          display_name: "Alt",
+        },
       ],
     });
   });
