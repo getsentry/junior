@@ -11,7 +11,7 @@
  *   message arrived after it finished
  * - the root and every child conversation are idle
  * - nothing in the tree needs a person: no conversation in it has
- *   `needs_input` status, no open Plan item in it is assigned to a person,
+ *   `needs_input` status, no open To-do in it is assigned to a person,
  *   and no open Review item linked to it waits on a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
@@ -52,14 +52,14 @@ import {
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
-import { isOpenPlanItemStatus, PLAN_ITEM_STATUSES } from "@/chat/plan/types";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
+import { OPEN_TODO_STATUSES } from "@/chat/todos/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorPlanItems,
   juniorReviewItemConversations,
   juniorReviewItems,
+  juniorTodos,
   juniorUsers,
 } from "@/db/schema";
 import { AUTO_ARCHIVE_DEFAULT_GRACE_HOURS } from "@/db/schema/users";
@@ -125,26 +125,24 @@ function treeIsQuiet(run: ArchiveRun) {
   return sql`not exists (${active})`;
 }
 
-const OPEN_PLAN_ITEM_STATUSES = PLAN_ITEM_STATUSES.filter(isOpenPlanItemStatus);
-
 /**
  * True when nothing in the participant row's tree needs a person. No
  * conversation in it has `needs_input` status: an open action Review item
  * that it added, a sign-in wait, or work that waits on its starter, such
- * as an answer that the starter has not read. No open Plan item in it is
+ * as an answer that the starter has not read. No open To-do in it is
  * assigned to a person. Archive applies to everyone, so input that waits
  * on anyone keeps the tree. An archived child counts for nothing, as in
  * the tree state.
  */
 function treeNeedsNoOne() {
   const assignedToPerson = getDb()
-    .select({ id: juniorPlanItems.id })
-    .from(juniorPlanItems)
+    .select({ id: juniorTodos.id })
+    .from(juniorTodos)
     .where(
       and(
-        eq(juniorPlanItems.conversationId, juniorConversations.conversationId),
-        isNotNull(juniorPlanItems.assigneeUserId),
-        inArray(juniorPlanItems.status, OPEN_PLAN_ITEM_STATUSES),
+        eq(juniorTodos.conversationId, juniorConversations.conversationId),
+        isNotNull(juniorTodos.assigneeUserId),
+        inArray(juniorTodos.status, OPEN_TODO_STATUSES),
       ),
     );
   const needing = getDb()

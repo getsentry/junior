@@ -63,7 +63,7 @@ how the dashboard groups and acts on its rows.
   no recovery. The next problem then adds a new alert. An alert that core closes on recovery
   hides nothing.
 - Auto-archive never hides work that waits for a person. It skips a
-  Conversation while it or a child has an open action, an open Plan item
+  Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.
 
 ## Gaps

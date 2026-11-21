@@ -533,6 +533,11 @@ export interface IdleCompactionChoiceInput extends WarmupDecisionInput {
   compactedTokens: number;
   /** False when this slot cannot send a warmup, such as a late one. */
   canWarm: boolean;
+  /**
+   * True when the system prompt or the tools changed. The next request then
+   * writes a new prefix, so no return reads the cached P.
+   */
+  prefixChanged: boolean;
 }
 
 /** What a warmup slot does with a ready summary. */
@@ -556,6 +561,7 @@ export interface IdleCompactionChoiceResult {
  *   At the next slot, the choice runs again with the same three options.
  * - `compact`: a return writes C. No more warmups.
  * - `stop`: a return before the cache expires reads P, a later one writes P.
+ *   After a prompt change (`prefixChanged`), each return writes P.
  *
  * The cheapest option wins. On a tie, compact wins, because a return after
  * the horizon also writes less. So a likely quick return, such as a child
@@ -600,7 +606,9 @@ export function chooseIdleCompaction(
             : 0);
     return {
       compact: (left - end) * writeCompacted,
-      stop: (left - S(expiryMs)) * readFull + (S(expiryMs) - end) * writeFull,
+      stop:
+        (left - S(expiryMs)) * (input.prefixChanged ? writeFull : readFull) +
+        (S(expiryMs) - end) * writeFull,
       warm,
     };
   };
