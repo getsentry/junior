@@ -21,6 +21,14 @@ describe("inboxItemIdFromToolCall", () => {
         status: "completed",
       }),
     ).toBe("item-1");
+    // Transcripts from before the rename have the old tool name.
+    expect(
+      inboxItemIdFromToolCall({
+        name: "addReviewItem",
+        output,
+        status: "completed",
+      }),
+    ).toBe("item-1");
   });
 
   it("ignores other tools, unfinished calls, and hidden results", () => {

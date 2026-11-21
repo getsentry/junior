@@ -68,7 +68,9 @@ export function inboxItemTitleText(item: InboxItemPayload): string {
   return displayPlainText(item.title, item.mentions);
 }
 
-const ADD_INBOX_ITEM_TOOL_NAME = "addInboxItem";
+// Transcripts from before Review items became Inbox items have the old tool
+// name.
+const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
 const executeToolInputSchema = z.object({ tool_name: z.string() });
 const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
 
@@ -101,7 +103,7 @@ export function inboxItemIdFromToolCall(call: {
     call.name === "executeTool"
       ? executeToolInputSchema.safeParse(call.input).data?.tool_name
       : call.name;
-  if (toolName !== ADD_INBOX_ITEM_TOOL_NAME) return undefined;
+  if (!toolName || !ADD_INBOX_ITEM_TOOL_NAMES.has(toolName)) return undefined;
   return addedItemId(call.output);
 }
 

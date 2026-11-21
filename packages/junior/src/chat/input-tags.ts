@@ -25,10 +25,12 @@ const RUNTIME_INPUT_TAGS = [
   "agent-message",
   "parent-agent-task",
   "inbox-item-answer",
-  // Saved Turns from before a dismiss stopped starting a Turn have it.
-  "inbox-item-dismissed",
-  "relayed-inbox-item-answer",
-  "relayed-inbox-item-dismissed",
+  // Only saved Turns have these. Junior no longer writes them, and they keep
+  // the names from before Review items became Inbox items.
+  "review-item-answer",
+  "review-item-dismissed",
+  "relayed-review-item-answer",
+  "relayed-review-item-dismissed",
 ] as const;
 
 /** Who wrote a block: a usable ID when there is one, and a display name. */
