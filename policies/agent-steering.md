@@ -11,6 +11,9 @@ prose.
 
 - Prefer structured tool contracts, schemas, runtime gates, and code invariants
   over additive natural-language prompt lines.
+- Generate deterministic output, such as links, IDs, and formats, in code from
+  data the system already has. Do not fix it with prompt or tool text: the
+  model does not follow text every time.
 - Give each steering rule one home. Prefer the tool schema or description when
   the rule is about when or how to call that tool. Prefer the system prompt only
   for cross-tool delivery or protocol rules. Prefer a skill only for workflow
