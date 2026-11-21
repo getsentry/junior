@@ -19,7 +19,8 @@ import {
 
 /**
  * Return the open questions that a Conversation's own Turns asked and that
- * the viewer can answer, oldest first. Each has a card in the transcript.
+ * wait on the viewer, oldest first. Each has a card in the transcript. An
+ * Everyone question that the viewer has not taken does not count.
  */
 export function useWaitingQuestions(conversationId: string | undefined) {
   // Every page reads which Conversations wait on the viewer, so a
@@ -52,6 +53,7 @@ export function useWaitingQuestions(conversationId: string | undefined) {
         : items.filter(
             (item) =>
               reviewItemWaitsForAnswer(item) &&
+              !item.assignedToEveryone &&
               item.addedByTurnId !== undefined &&
               itemConversationId(item) === conversationId,
           ),

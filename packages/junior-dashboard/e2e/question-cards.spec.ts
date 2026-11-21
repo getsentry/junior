@@ -162,6 +162,38 @@ for (const view of [desktop, mobile]) {
   });
 }
 
+test("the questions pill skips an Everyone question the viewer has not taken", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The list marks one of the three questions as asked of everyone.
+  await page.route("**/api/review-items?*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("conversationId") !== THREE_QUESTIONS_ID) {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      items: Array<{ assignedToEveryone?: boolean; title: string }>;
+    };
+    for (const item of body.items) {
+      if (item.title === "Pick the billing migration window") {
+        item.assignedToEveryone = true;
+      }
+    }
+    await route.fulfill({ json: body, response });
+  });
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  await expect(
+    page.getByRole("button", { name: "2 questions waiting" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "3 questions waiting" }),
+  ).toHaveCount(0);
+});
+
 test("a typed message still answers the question", async ({
   dashboard,
   page,
