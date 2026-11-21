@@ -89,10 +89,6 @@ Actions:
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
   that row comes back, and a toast offers Retry.
-- A toast shows only with an action, such as Undo or Retry, for an error,
-  or for a result that the screen does not show. An answer gets no toast.
-  On a phone, toasts sit at the top, away from the composer and the
-  keyboard, and swipe up to dismiss.
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.
