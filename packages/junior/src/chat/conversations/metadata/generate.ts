@@ -1,6 +1,6 @@
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
-import { renderTag } from "@sentry/junior-plugin-api";
+import { renderTag, tagJson } from "@sentry/junior-plugin-api";
 import type { TranscriptEntry } from "@/chat/conversations/transcript-entries";
 import type { ConversationMetadataInput } from "./input";
 
@@ -93,7 +93,8 @@ function promptInput(args: {
   };
   const serialize = (): string => {
     const kept = new Set([...keptMessages, ...keptTools]);
-    return JSON.stringify({
+    // Transcript text is untrusted, so it must not close the input tag.
+    return tagJson({
       ...base,
       omitted: {
         messages: messages.length - keptMessages.length,
