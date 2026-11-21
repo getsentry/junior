@@ -1,12 +1,11 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { parseAllDocuments } from "yaml";
 
 const RULES_DIRECTORY = "ast-grep/rules";
-const run = promisify(execFile);
+const execFileAsync = promisify(execFile);
 
 // ast-grep reports unused inline `ast-grep-ignore` comments, but not a
 // rule-level `ignores` glob that exempts nothing. Without this check, a stale
@@ -28,7 +27,7 @@ function readRulesWithIgnores(root) {
 // Scanning through ast-grep keeps its glob semantics: `*` also matches `/`.
 async function scanFindingFiles(root, rule, paths = []) {
   // Hint severity keeps the exit code 0 when the scan finds matches.
-  const { stdout } = await run(
+  const { stdout } = await execFileAsync(
     "ast-grep",
     [
       "scan",
@@ -86,23 +85,12 @@ export async function checkAstGrepIgnores(root) {
   return results.flat();
 }
 
-async function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Check that every ast-grep rule-level ignore still exempts a finding. */
+export async function run({ root }) {
   const errors = await checkAstGrepIgnores(root);
-  if (errors.length === 0) {
-    console.log("Every ast-grep rule-level ignore exempts a finding.");
-    return;
-  }
-  console.error(
-    [
-      "ast-grep ignores check failed:",
-      ...errors,
-      "Delete each stale entry. Rule-level ignores exempt only the module that owns the boundary. For a one-off exception, put `// ast-grep-ignore: <rule-id> -- <reason>` on the line before the match.",
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await main();
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    "Delete each stale entry. Rule-level ignores exempt only the module that owns the boundary. For a one-off exception, put `// ast-grep-ignore: <rule-id> -- <reason>` on the line before the match.",
+  ];
 }

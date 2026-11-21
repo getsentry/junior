@@ -1,9 +1,9 @@
-#!/usr/bin/env node
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = process.cwd();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function readFile(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -101,90 +101,74 @@ function describeMismatch(expected, actual) {
   return { missing, extra };
 }
 
-// Craft must create the approved tag before npm. Only the tag workflow publishes assets.
-// The npm target publishes every public workspace package, so it has no list to check.
-const craftConfig = readFile(".craft.yml");
-assert.match(
-  craftConfig,
-  /^targets:\n  - name: github\n    tagOnly: true\n  - name: npm\n    workspaces: true$/m,
-  "Craft must create the release tag before publishing every workspace package to npm.",
-);
-assert.equal(
-  [...craftConfig.matchAll(/^  - name: github$/gm)].length,
-  1,
-  "The tag workflow must be the only GitHub Release publisher.",
-);
-
-const sources = [
-  {
-    label: "packages/*/package.json",
-    packages: collectPublishablePackages(),
-  },
-  {
-    label: "scripts/bump-release-versions.mjs",
-    packages: collectBumpPackages(),
-  },
-  {
-    label: "package.json package:lint",
-    packages: collectPackageLintPackages(),
-  },
-  {
-    label: "README.md",
-    packages: collectSectionPackages("README.md", "## Packages"),
-  },
-  {
-    label: "CONTRIBUTING.md",
-    packages: collectSectionPackages(
-      "CONTRIBUTING.md",
-      "This repo uses Craft for manual lockstep npm releases of:",
-    ),
-  },
-  {
-    label: "packages/docs/src/content/docs/contribute/releasing.md",
-    packages: collectSectionPackages(
-      "packages/docs/src/content/docs/contribute/releasing.md",
-      "Junior uses lockstep package releases for:",
-    ),
-  },
-];
-
-const [expectedSource, ...otherSources] = sources;
-
-if (expectedSource.packages.length === 0) {
-  console.error(
-    "Release config check failed: no publishable packages found in packages/*/package.json.",
+/** Check that every release package list matches the publishable packages. */
+export function run() {
+  // Craft must create the approved tag before npm. Only the tag workflow publishes assets.
+  // The npm target publishes every public workspace package, so it has no list to check.
+  const craftConfig = readFile(".craft.yml");
+  assert.match(
+    craftConfig,
+    /^targets:\n  - name: github\n    tagOnly: true\n  - name: npm\n    workspaces: true$/m,
+    "Craft must create the release tag before publishing every workspace package to npm.",
   );
-  process.exit(1);
-}
-
-let hasMismatch = false;
-
-for (const source of otherSources) {
-  const mismatch = describeMismatch(expectedSource.packages, source.packages);
-
-  if (!mismatch) {
-    continue;
-  }
-
-  hasMismatch = true;
-  console.error(`Release config mismatch in ${source.label}:`);
-
-  if (mismatch.missing.length > 0) {
-    console.error(`  Missing: ${mismatch.missing.join(", ")}`);
-  }
-
-  if (mismatch.extra.length > 0) {
-    console.error(`  Extra: ${mismatch.extra.join(", ")}`);
-  }
-}
-
-if (hasMismatch) {
-  console.error(
-    "Release config check failed. Align release package lists with packages/*/package.json.",
+  assert.equal(
+    [...craftConfig.matchAll(/^  - name: github$/gm)].length,
+    1,
+    "The tag workflow must be the only GitHub Release publisher.",
   );
-  process.exit(1);
-}
 
-console.log(
-  `Release config OK: ${expectedSource.packages.length} publishable packages aligned across ${sources.length} sources.`,
-);
+  const sources = [
+    {
+      label: "packages/*/package.json",
+      packages: collectPublishablePackages(),
+    },
+    {
+      label: "scripts/bump-release-versions.mjs",
+      packages: collectBumpPackages(),
+    },
+    {
+      label: "package.json package:lint",
+      packages: collectPackageLintPackages(),
+    },
+    {
+      label: "README.md",
+      packages: collectSectionPackages("README.md", "## Packages"),
+    },
+    {
+      label: "CONTRIBUTING.md",
+      packages: collectSectionPackages(
+        "CONTRIBUTING.md",
+        "This repo uses Craft for manual lockstep npm releases of:",
+      ),
+    },
+    {
+      label: "packages/docs/src/content/docs/contribute/releasing.md",
+      packages: collectSectionPackages(
+        "packages/docs/src/content/docs/contribute/releasing.md",
+        "Junior uses lockstep package releases for:",
+      ),
+    },
+  ];
+
+  const [expectedSource, ...otherSources] = sources;
+  if (expectedSource.packages.length === 0) {
+    return ["No publishable packages found in packages/*/package.json."];
+  }
+  const errors = [];
+  for (const source of otherSources) {
+    const mismatch = describeMismatch(expectedSource.packages, source.packages);
+    if (!mismatch) continue;
+    errors.push(`Release config mismatch in ${source.label}:`);
+    if (mismatch.missing.length > 0) {
+      errors.push(`  Missing: ${mismatch.missing.join(", ")}`);
+    }
+    if (mismatch.extra.length > 0) {
+      errors.push(`  Extra: ${mismatch.extra.join(", ")}`);
+    }
+  }
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    "Align release package lists with packages/*/package.json.",
+  ];
+}
