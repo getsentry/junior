@@ -105,7 +105,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   function schedule(idempotencyKey: string) {
     return scheduleInput(fixture.sql, input(idempotencyKey), {
-      decide: joinOrCreate,
+      assignTurn: joinOrCreate,
     });
   }
 
@@ -194,7 +194,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
     await expect(
       scheduleInput(fixture.sql, input("event-2"), {
-        decide: () => ({ join: randomUUID() }),
+        assignTurn: () => ({ join: randomUUID() }),
       }),
     ).rejects.toThrow(`but the open Turn is ${first.turnId}`);
     await expect(readTurns()).resolves.toHaveLength(1);
