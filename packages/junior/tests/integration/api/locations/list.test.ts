@@ -51,6 +51,17 @@ describe("locations API", () => {
         .select()
         .from(juniorDestinations);
       expect(destination).toBeDefined();
+      // A public dashboard Conversation has a local destination, not a Location.
+      await store.recordActivity({
+        conversationId: "local:web:public",
+        destination: {
+          platform: "local",
+          conversationId: "local:web:public",
+        },
+        source: "web",
+        visibility: "public",
+        nowMs,
+      });
 
       const now = new Date(nowMs);
       const aggregateNow = new Date(nowMs - 1_000);

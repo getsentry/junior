@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
@@ -116,8 +116,19 @@ function emptyActor(actor: ActorIdentity): LocationActorSummaryReport {
   };
 }
 
+/**
+ * Match top-level Conversations outside dashboard and CLI destinations. A
+ * `local` destination is Junior's own record, not an outside Location, so the
+ * Locations report leaves it out.
+ */
 function topLevelWhere() {
-  return isNull(juniorConversations.parentConversationId);
+  return and(
+    isNull(juniorConversations.parentConversationId),
+    or(
+      isNull(juniorDestinations.provider),
+      ne(juniorDestinations.provider, "local"),
+    ),
+  );
 }
 
 function publicLocationWhere(destinationId: string) {
