@@ -1,0 +1,11 @@
+id: no-google-new-editable-file-outside-create-tools
+language: TypeScript
+severity: error
+message: newEditableFile skips the requester edit check. Only createGoogleDoc and createGoogleSlides may call it, for the file they just created. Use requireEditableFile for an existing file.
+files:
+  - packages/junior-google/src/**/*.ts
+ignores:
+  - packages/junior-google/src/tools/create-doc.ts
+  - packages/junior-google/src/tools/create-slides.ts
+rule:
+  pattern: newEditableFile($$$ARGS)

@@ -12,7 +12,6 @@
   "packages/junior-dashboard/src/client/conversations/conversationOutbox.ts": 6,
   "packages/junior-dashboard/src/client/conversations/queries.ts": 4,
   "packages/junior-dashboard/src/client/conversations/textPreview.ts": 1,
-  "packages/junior-dashboard/src/client/conversations/transcriptAroundHistory.ts": 1,
   "packages/junior-dashboard/src/client/conversations/transcriptBottomPinning.ts": 1,
   "packages/junior-dashboard/src/client/conversations/transcriptReadPosition.ts": 4,
   "packages/junior-dashboard/src/client/conversations/transcriptRenderModel.ts": 1,
