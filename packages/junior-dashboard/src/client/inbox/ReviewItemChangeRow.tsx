@@ -29,6 +29,7 @@ import {
   ReviewItemCloser,
   ReviewItemTitle,
 } from "./ReviewItemPeople";
+import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { useQuestionInViewRef } from "./WaitingQuestions";
 import {
   answerLine,
@@ -391,7 +392,12 @@ export function ReviewItemAskRow(props: {
           </p>
         </div>
       </div>
-      {waiting ? <ReviewItemActions item={item} /> : null}
+      {waiting ? (
+        <ReviewItemActions
+          context={<ReviewItemTurnMessage item={item} />}
+          item={item}
+        />
+      ) : null}
     </section>
   );
 }

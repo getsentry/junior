@@ -11,7 +11,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { scrollRootFor } from "../conversations/transcriptBottomPinning";
-import { useReviewItemsData } from "./queries";
+import { useReviewItemsData, useWaitingConversations } from "./queries";
 import {
   itemConversationId,
   reviewItemWaitsForAnswer,
@@ -22,9 +22,12 @@ import {
  * the viewer can answer, oldest first. Each has a card in the transcript.
  */
 export function useWaitingQuestions(conversationId: string | undefined) {
+  // Every page reads which Conversations wait on the viewer, so a
+  // Conversation that waits on no one sends no list read of its own.
+  const waiting = useWaitingConversations();
   const { items, query } = useReviewItemsData({
     conversationId,
-    enabled: Boolean(conversationId),
+    enabled: Boolean(conversationId && waiting.has(conversationId)),
   });
   // The list keeps the items of the last Conversation while the new one
   // loads. Those questions are not for this Conversation.

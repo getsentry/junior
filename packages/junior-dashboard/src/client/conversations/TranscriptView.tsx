@@ -29,6 +29,7 @@ import {
   type TranscriptUnreadRange,
 } from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import { TranscriptEvents } from "../inbox/ReviewItemTurnMessage";
 import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
 import {
   QuestionsInView,
@@ -235,15 +236,19 @@ export function Transcript(props: {
               <TranscriptAskRevealContext value={askReveal}>
                 <TranscriptShowQuestion value={showQuestion}>
                   <QuestionsInView value={questionsInView}>
-                    <ConversationTranscriptView
-                      onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                      conversation={props.transcript}
-                      pendingMessages={props.pendingMessages}
-                      responding={props.responding ?? props.live ?? false}
-                      revealSeq={props.revealSeq ?? linkSeq}
-                      scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                      unread={props.unread}
-                    />
+                    <TranscriptEvents value={props.transcript.events}>
+                      <ConversationTranscriptView
+                        onOpenSubagentTranscript={
+                          props.onOpenSubagentTranscript
+                        }
+                        conversation={props.transcript}
+                        pendingMessages={props.pendingMessages}
+                        responding={props.responding ?? props.live ?? false}
+                        revealSeq={props.revealSeq ?? linkSeq}
+                        scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                        unread={props.unread}
+                      />
+                    </TranscriptEvents>
                   </QuestionsInView>
                 </TranscriptShowQuestion>
               </TranscriptAskRevealContext>

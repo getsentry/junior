@@ -4,6 +4,7 @@ import {
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 import { useQuery } from "@tanstack/react-query";
+import { createContext, use } from "react";
 
 import { agentNamePossessive } from "../agentName";
 import { ClampedDisplayText } from "../display-text/DisplayText";
@@ -35,16 +36,26 @@ function turnLastMessage(
 }
 
 /**
- * The last message of the Turn that asked a question, under the question in
- * an expanded Inbox row. It shows about 12 lines, then Show more. It reads
- * the page of events around that Turn when the row expands, and shows
- * nothing until then or when the read fails.
+ * The Events that the transcript has loaded. A card in the transcript takes
+ * its Turn's message from them, so it reads nothing and does not grow late.
+ */
+export const TranscriptEvents = createContext<
+  readonly ConversationReportEvent[] | undefined
+>(undefined);
+
+/**
+ * The last message of the Turn that asked a question, under the question on
+ * its card in the Inbox and in the transcript. It shows about 12 lines, then
+ * Show more. Out of the transcript, it reads the page of events around that
+ * Turn when the card shows, and shows nothing until then or when the read
+ * fails.
  */
 export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
   const conversationId = itemConversationId(props.item);
   const turnId = props.item.addedByTurnId;
-  const { data: message } = useQuery({
-    enabled: Boolean(conversationId && turnId),
+  const transcriptEvents = use(TranscriptEvents);
+  const { data: read } = useQuery({
+    enabled: Boolean(!transcriptEvents && conversationId && turnId),
     // Not under ["dashboard", "conversations"]: every key there is a feed,
     // and the feed updates read each one as a feed.
     queryKey: ["dashboard", "conversation-turn", conversationId, turnId],
@@ -58,6 +69,10 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
     select: (page) => turnLastMessage(page.events, turnId!),
     staleTime: 60_000,
   });
+  const message =
+    transcriptEvents && turnId
+      ? turnLastMessage(transcriptEvents, turnId)
+      : read;
   if (!message) return null;
   const label = `${agentNamePossessive()} message`;
   return (

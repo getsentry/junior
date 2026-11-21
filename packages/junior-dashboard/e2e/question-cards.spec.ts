@@ -38,6 +38,10 @@ for (const view of [desktop, mobile]) {
     await expect(question).toContainText(
       "Roll out payments-v42 to every region?",
     );
+    // As on the Inbox card, Junior's message of that Turn follows.
+    await expect(
+      card.getByRole("region", { name: "Junior's message" }),
+    ).toContainText("I need your go-ahead before I roll out to every region.");
     // Nothing docks over the message box, and nothing takes the focus.
     await expect(page.getByRole("region", { name: /^Question:/ })).toHaveCount(
       0,
