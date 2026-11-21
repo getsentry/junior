@@ -59,6 +59,8 @@ final class AppModel {
   var demoWebNotice = false
   /// Focus the home search field ("Go to conversation").
   var focusSearch = false
+  /// Search the home list on arrival (`/?q=…`).
+  var searchQuery: String?
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
   /// The app is in front; refreshes stop otherwise.
@@ -190,6 +192,7 @@ final class AppModel {
     // `?drawer=1` opens the navigation drawer over the page (screenshots).
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
+    searchQuery = components.queryItems?.first { $0.name == "q" }?.value
   }
 
   func go(_ place: Place) {

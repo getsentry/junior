@@ -40,6 +40,12 @@ struct HomeScreen: View {
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
     }
+    .onChange(of: app.searchQuery, initial: true) { _, query in
+      if let query {
+        model.query = query
+        app.searchQuery = nil
+      }
+    }
     .onChange(of: app.focusSearch, initial: true) { _, focus in
       if focus {
         searchFocused = true
