@@ -145,7 +145,8 @@ function readAtBase(base, filePath) {
   }
 }
 
-async function main() {
+/** Check that no baseline allows more violations than on the base branch. */
+export async function run() {
   const base = mergeBase();
   const errors = [];
   const baselines = fs
@@ -165,20 +166,10 @@ async function main() {
       );
     }
   }
-  if (errors.length === 0) {
-    console.log(`No baseline grew since ${BASE_BRANCH}.`);
-    return;
-  }
-  console.error(
-    [
-      `baseline-growth check failed. These baselines allow more violations than on ${BASE_BRANCH}:`,
-      ...errors,
-      "Revert the baseline entry and fix the code that the owning check reports. A baseline may only shrink.",
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await main();
+  if (errors.length === 0) return [];
+  return [
+    `These baselines allow more violations than on ${BASE_BRANCH}:`,
+    ...errors,
+    "Revert the baseline entry and fix the code that the owning check reports. A baseline may only shrink.",
+  ];
 }

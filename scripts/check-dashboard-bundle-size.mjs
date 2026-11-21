@@ -23,7 +23,7 @@ import zlib from "node:zlib";
  *
  * Update the baseline in the change that grows or shrinks the first load:
  *
- *   node scripts/check-dashboard-bundle-size.mjs --update
+ *   pnpm dashboard-bundle-size:check --update
  *
  * When two open changes both grow it, the second to merge must merge `main`
  * and run `--update` again.
@@ -37,7 +37,7 @@ const DASHBOARD_DIST = "packages/junior-dashboard/dist";
 const MANIFEST_PATH = `${DASHBOARD_DIST}/client-manifest.json`;
 const BASELINE_PATH = "scripts/dashboard-bundle-size-baseline.json";
 const BASE_BRANCH = "origin/main";
-const UPDATE_COMMAND = "node scripts/check-dashboard-bundle-size.mjs --update";
+const UPDATE_COMMAND = "pnpm dashboard-bundle-size:check --update";
 const GROWTH_LIMIT = 0.02;
 // Two clean builds of one commit give the same bytes, and CI prints the same
 // sizes as a local build. The tolerance covers zlib output that can differ
@@ -141,14 +141,13 @@ function readBaseBaseline() {
   }
 }
 
-function main() {
+/** Compare dashboard shell sizes to the baseline, or rewrite it with `--update`. */
+export function run({ args }) {
   const manifestPath = path.join(REPO_ROOT, MANIFEST_PATH);
   if (!fs.existsSync(manifestPath)) {
-    console.error(
+    return [
       `${MANIFEST_PATH} is missing. Build the dashboard first: pnpm --filter "@sentry/junior-dashboard..." run build`,
-    );
-    process.exitCode = 1;
-    return;
+    ];
   }
   const sizes = measureShells(
     JSON.parse(fs.readFileSync(manifestPath, "utf8")),
@@ -156,13 +155,13 @@ function main() {
       fs.readFileSync(path.join(REPO_ROOT, DASHBOARD_DIST, "public", file)),
   );
   const baselinePath = path.join(REPO_ROOT, BASELINE_PATH);
-  if (process.argv.includes("--update")) {
+  if (args.includes("--update")) {
     fs.writeFileSync(baselinePath, `${JSON.stringify(sizes, null, 2)}\n`);
     console.log(`Wrote ${BASELINE_PATH}:`);
     for (const [shell, bytes] of Object.entries(sizes)) {
       console.log(`${shell}: ${kb(bytes)} gzip`);
     }
-    return;
+    return [];
   }
   const { lines, hints, errors } = compareBundleSizes({
     base: readBaseBaseline(),
@@ -170,14 +169,5 @@ function main() {
     sizes,
   });
   console.log([...lines, ...hints].join("\n"));
-  if (errors.length > 0) {
-    console.error(
-      ["Dashboard bundle size check failed:", ...errors].join("\n"),
-    );
-    process.exitCode = 1;
-  }
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  return errors;
 }
