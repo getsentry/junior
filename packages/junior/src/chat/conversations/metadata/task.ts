@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import { botConfig } from "@/chat/config";
@@ -36,13 +36,18 @@ export const CONVERSATION_METADATA_TASK = {
   name: "updateConversationMetadata",
 } as const;
 
-const LOCK_TTL_MS = 10 * 60 * 1_000;
+// The holder extends the lock while it works, so a crashed holder frees it
+// within this TTL, before the queue retries the crashed task.
+const LOCK_TTL_MS = 60 * 1_000;
 // The holder covers newer Turns before it releases the lock, so a task that
 // finds the lock held can skip. The wait covers only the gap between the
 // holder's last check and its release.
 const LOCK_WAIT_MS = 5_000;
 // Bounds how many updates one holder stores before it releases the lock.
 const MAX_PASSES = 3;
+// Bounds how many newer completed Turns catch-up reads to find one that
+// needs metadata.
+const CATCH_UP_TURN_LIMIT = 20;
 
 /** Return whether a user gave this Turn an instruction. */
 function hasUserInstruction(record: TurnRecord): boolean {
@@ -66,10 +71,39 @@ function logSkip(conversationId: string, reason: string): void {
   });
 }
 
-async function readLatestCompletedTurn(
+/** Return the Turn's reason to get no metadata, if it has one. */
+async function turnSkipReason(
+  conversationId: string,
+  record: TurnRecord,
+): Promise<string | undefined> {
+  // TODO(dcramer): Remove the routing Source fallback after every deployed
+  // Turn cursor stores Source.
+  const source =
+    record.source ??
+    (await resolveConversationRouting({ conversationId }))?.source;
+  if (!source) {
+    throw new Error(`Completed Turn ${record.turnId} is missing Source`);
+  }
+  if (
+    source.kind !== "slack" &&
+    source.kind !== "web" &&
+    source.kind !== "local"
+  ) {
+    return "unsupported_source";
+  }
+  if (!hasUserInstruction(record)) return "no_user_instruction";
+  return undefined;
+}
+
+/**
+ * Return the newest Turn that completed after `afterSeq` and needs metadata.
+ * Turns whose own task skips them on purpose do not count.
+ */
+async function readNewerTurnNeedingMetadata(
   db: JuniorDatabase,
   conversationId: string,
-): Promise<{ seq: number; turnId: string } | undefined> {
+  afterSeq: number,
+): Promise<{ terminalSeq: number; turnId: string } | undefined> {
   const rows = await db
     .select({
       seq: juniorConversationEvents.seq,
@@ -80,11 +114,21 @@ async function readLatestCompletedTurn(
       and(
         eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "turn_completed"),
+        gt(juniorConversationEvents.seq, afterSeq),
       ),
     )
     .orderBy(desc(juniorConversationEvents.seq))
-    .limit(1);
-  return rows[0];
+    .limit(CATCH_UP_TURN_LIMIT);
+  /* oxlint-disable no-await-in-loop -- Newest first: stop at the first Turn that needs metadata. CATCH_UP_TURN_LIMIT caps the loop. */
+  for (const row of rows) {
+    const record = await getTurnRecord(conversationId, row.turnId);
+    if (record?.state !== "completed") continue;
+    if ((await turnSkipReason(conversationId, record)) === undefined) {
+      return { terminalSeq: row.seq, turnId: row.turnId };
+    }
+  }
+  /* oxlint-enable no-await-in-loop */
+  return undefined;
 }
 
 async function readTurnCompletedSeq(
@@ -195,20 +239,9 @@ export async function updateConversationMetadata(args: {
   if (record?.state !== "completed") {
     throw new Error(`Turn ${turnId} is not completed for its metadata`);
   }
-  // TODO(dcramer): Remove the routing Source fallback after every deployed
-  // Turn cursor stores Source.
-  const source =
-    record.source ??
-    (await resolveConversationRouting({ conversationId }))?.source;
-  if (!source) {
-    throw new Error(`Completed Turn ${turnId} is missing Source`);
-  }
-  if (
-    source.kind !== "slack" &&
-    source.kind !== "web" &&
-    source.kind !== "local"
-  ) {
-    logSkip(conversationId, "unsupported_source");
+  const skipReason = await turnSkipReason(conversationId, record);
+  if (skipReason) {
+    logSkip(conversationId, skipReason);
     return;
   }
   const executor = getSqlExecutor();
@@ -223,10 +256,6 @@ export async function updateConversationMetadata(args: {
       logSkip(conversationId, "purged_private");
       return;
     }
-  }
-  if (!hasUserInstruction(record)) {
-    logSkip(conversationId, "no_user_instruction");
-    return;
   }
 
   const state = getStateAdapter();
@@ -248,8 +277,12 @@ export async function updateConversationMetadata(args: {
         });
         // A newer Turn that found this lock held skipped its update. Cover
         // it now, or a Conversation that goes quiet keeps stale metadata.
-        const latest = await readLatestCompletedTurn(db, conversationId);
-        if (!latest || latest.seq <= throughSeq) return;
+        const latest = await readNewerTurnNeedingMetadata(
+          db,
+          conversationId,
+          throughSeq,
+        );
+        if (!latest) return;
         if (pass >= MAX_PASSES) {
           // That Turn's own task already skipped. Fail so the queue retries
           // this task, which goes straight to the newest Turn.
@@ -257,11 +290,11 @@ export async function updateConversationMetadata(args: {
             `Conversation metadata catch-up stopped after ${MAX_PASSES} passes with Turn ${latest.turnId} uncovered in Conversation ${conversationId}`,
           );
         }
-        turn = { terminalSeq: latest.seq, turnId: latest.turnId };
+        turn = latest;
       }
       /* oxlint-enable no-await-in-loop */
     },
-    { ttlMs: LOCK_TTL_MS, waitMs: LOCK_WAIT_MS },
+    { keepAlive: true, ttlMs: LOCK_TTL_MS, waitMs: LOCK_WAIT_MS },
   );
   if (!locked.acquired) {
     logSkip(conversationId, "update_in_progress");
