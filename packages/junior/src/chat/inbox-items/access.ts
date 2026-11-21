@@ -3,6 +3,7 @@ import {
   and,
   eq,
   exists,
+  isNotNull,
   isNull,
   notLike,
   or,
@@ -97,22 +98,46 @@ const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
 const todoDestination = alias(juniorDestinations, "todo_destination");
 
+/** SQL: the User is a Participant of this root Conversation. */
+function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
+  return exists(
+    getDb()
+      .select({ one: sql`1` })
+      .from(juniorConversationParticipants)
+      .where(
+        and(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+          eq(juniorConversationParticipants.userId, userId),
+        ),
+      ),
+  );
+}
+
 /**
  * SQL: the User can see the private content of the Conversation that owns
- * the item: its root's Destination is public, or the User is a Participant
- * of the root. This is the rule of `conversationAccessFromRows`.
+ * the item. This is the rule of `conversationAccessFromRows`: the User is a
+ * Participant of the owner when it has no parent, even with no stored root.
+ * Otherwise the owner needs a valid stored root, whose Destination is public
+ * or whose Participants include the User.
  */
 function ownerConversationOpenTo(userId: string): SQL {
   return exists(
     getDb()
       .select({ one: sql`1` })
       .from(todoOwner)
-      .innerJoin(
+      .leftJoin(
         todoRoot,
         and(
           eq(todoRoot.conversationId, todoOwner.rootConversationId),
           eq(todoRoot.rootConversationId, todoRoot.conversationId),
           isNull(todoRoot.parentConversationId),
+          or(
+            isNotNull(todoOwner.parentConversationId),
+            eq(todoOwner.rootConversationId, todoOwner.conversationId),
+          ),
         ),
       )
       .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
@@ -120,20 +145,16 @@ function ownerConversationOpenTo(userId: string): SQL {
         and(
           eq(todoOwner.conversationId, juniorInboxItems.ownerId),
           or(
-            eq(todoDestination.visibility, "public"),
-            exists(
-              getDb()
-                .select({ one: sql`1` })
-                .from(juniorConversationParticipants)
-                .where(
-                  and(
-                    eq(
-                      juniorConversationParticipants.rootConversationId,
-                      todoRoot.conversationId,
-                    ),
-                    eq(juniorConversationParticipants.userId, userId),
-                  ),
-                ),
+            and(
+              isNull(todoOwner.parentConversationId),
+              participantOf(userId, todoOwner.conversationId),
+            ),
+            and(
+              isNotNull(todoRoot.conversationId),
+              or(
+                eq(todoDestination.visibility, "public"),
+                participantOf(userId, todoRoot.conversationId),
+              ),
             ),
           ),
         ),

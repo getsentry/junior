@@ -7,7 +7,10 @@ import { waitingConversationIdsQuery } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -286,6 +289,18 @@ describe("To-dos for a person in the Inbox", () => {
     const [item] = await inbox(ana).items();
     expect(item).toEqual(expect.objectContaining({ title: "Rotate the key" }));
     expect(await inbox(bob).items()).toEqual([]);
+
+    // A root with no stored root id is its own root, so Ana still sees it.
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: null })
+      .where(eq(juniorConversations.conversationId, PRIVATE_ROOT));
+    expect(await inbox(ana).items()).toEqual([
+      expect.objectContaining({ title: "Rotate the key" }),
+    ]);
+    expect(await inbox(ana).count()).toEqual(
+      expect.objectContaining({ needsViewer: 1 }),
+    );
 
     // When Ana leaves the Conversation, the item leaves her Inbox too.
     await getDb()
