@@ -47,12 +47,13 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
+  const reviewItemStatuses: number[] = [];
   page.on("response", (response) => {
-    if (
-      response.request().method() === "GET" &&
-      new URL(response.url()).pathname === "/api/conversations"
-    ) {
-      feedStatuses.push(response.status());
+    if (response.request().method() !== "GET") return;
+    const { pathname } = new URL(response.url());
+    if (pathname === "/api/conversations") feedStatuses.push(response.status());
+    if (pathname.startsWith("/api/review-items/")) {
+      reviewItemStatuses.push(response.status());
     }
   });
   await page.route(
@@ -119,6 +120,12 @@ test("refreshes idle reads only when their version moves", async ({
   await expect(
     page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
   ).toBeVisible();
+  // The Review item reads did not change either.
+  const reviewItemReads = reviewItemStatuses.length;
+  versions.reviewItems = "review-2";
+  await expect
+    .poll(() => reviewItemStatuses.slice(reviewItemReads), { timeout: 15_000 })
+    .toContain(304);
 });
 
 test.describe("checks less often while the reader is away", () => {
@@ -181,7 +188,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions",
       rootConversationId: releaseId,
     };
@@ -194,6 +201,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Review items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockReviewItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       const ids = requestedConversationIds(route);
       await route.fulfill({
@@ -232,7 +242,6 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, item.title).click();
     const card = page.getByRole("region", {
@@ -270,7 +279,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     const detailPath = `/api/conversations/${encodeURIComponent(releaseId)}`;
     const item = {
       ...prReview,
-      addedByConversationId: releaseId,
+      owner: { id: releaseId, kind: "conversation" },
       id: "item-pr-versions-retry",
       rootConversationId: releaseId,
     };
@@ -284,6 +293,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks).toBeGreaterThan(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
+    // The Review items mock adds its own versions route. A later route runs
+    // first, so this one comes after it to see each check.
+    await mockReviewItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       await route.fulfill({
         json: {
@@ -307,7 +319,6 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, item.title).click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);

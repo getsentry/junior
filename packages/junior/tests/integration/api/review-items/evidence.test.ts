@@ -1,3 +1,4 @@
+import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,10 +7,7 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import {
-  createAddReviewItemTool,
-  createUpdateReviewItemTool,
-} from "@/chat/tools/review-items";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
@@ -267,7 +265,7 @@ describe("review item evidence", () => {
     const start = Date.now();
     for (let index = 1; index <= 210; index += 1) {
       await insertReviewItem(getDb(), {
-        addedByConversationId: BUSY_ID,
+        owner: { id: BUSY_ID, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: "Busy release.",

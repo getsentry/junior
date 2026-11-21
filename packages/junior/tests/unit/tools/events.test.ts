@@ -3,7 +3,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eventCatalogEntry } from "@/chat/events/catalog";
 import { planToolExposure } from "@/chat/tool-exposure";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const { createSubscription } = vi.hoisted(() => ({
   createSubscription: vi.fn(),
@@ -13,7 +13,11 @@ vi.mock("@/chat/events/store", () => ({
   createWatch: createSubscription,
 }));
 
-import { createEventTools } from "@/chat/tools/events";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import { createSearchEventTypesTool } from "@/chat/tools/search-event-types";
+import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
+import { createWatchEventsTool } from "@/chat/tools/watch-events";
+import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -87,7 +91,7 @@ describe("event tools", () => {
   });
 
   it("returns the inverse action after creating a resource watch", async () => {
-    const tool = createEventTools(context, GITHUB_EVENTS)["watchEvents"]!;
+    const tool = createWatchEventsTool(context, GITHUB_EVENTS);
 
     await expect(
       tool.execute!(
@@ -124,13 +128,13 @@ describe("event tools", () => {
   });
 
   it("stores the current conversation id for agent child turns", async () => {
-    const tool = createEventTools(
+    const tool = createWatchEventsTool(
       {
         ...context,
         conversationId: "agent:deadbeefcafebabe",
       },
       GITHUB_EVENTS,
-    )["watchEvents"]!;
+    );
 
     await tool.execute!(
       {
@@ -152,8 +156,13 @@ describe("event tools", () => {
   });
 
   it("loads only watch creation up front among resource-watch tools", () => {
-    const tools = createEventTools(context, GITHUB_EVENTS);
-    const exposure = planToolExposure(tools);
+    const exposure = planToolExposure({
+      listWatches: createListWatchesTool(context),
+      searchEventTypes: createSearchEventTypesTool(GITHUB_EVENTS),
+      stopWatchingResources: createStopWatchingResourcesTool(context),
+      watchEvents: createWatchEventsTool(context, GITHUB_EVENTS),
+      watchTimer: createWatchTimerTool(context),
+    });
 
     expect(exposure.directTools).toHaveProperty("watchEvents");
     expect(exposure.directTools).not.toHaveProperty("searchEventTypes");
@@ -176,7 +185,7 @@ describe("event tools", () => {
       list: true as const,
       events: ["pull_request.checks.failed"],
     };
-    const tools = createEventTools(context, {
+    const searchEventTypes = createSearchEventTypesTool({
       ...VERCEL_EVENTS,
       github: eventCatalogEntry({
         ...GITHUB_EVENTS.github,
@@ -192,10 +201,7 @@ describe("event tools", () => {
 
     await expect(
       // "events" names nothing in the catalog; the other terms still match.
-      tools["searchEventTypes"]!.execute!(
-        { query: "review changes events" },
-        {},
-      ),
+      searchEventTypes.execute!({ query: "review changes events" }, {}),
     ).resolves.toMatchObject({
       namespace: null,
       total_matches: 1,
@@ -227,10 +233,10 @@ describe("event tools", () => {
   });
 
   it("exposes active plugin namespaces as an enum", () => {
-    const tool = createEventTools(context, {
+    const tool = createWatchEventsTool(context, {
       ...VERCEL_EVENTS,
       ...GITHUB_EVENTS,
-    })["watchEvents"]!;
+    });
 
     expect(tool.inputSchema).toMatchObject({
       properties: {
@@ -250,7 +256,7 @@ describe("event tools", () => {
   });
 
   it("rejects events unsupported by the selected resource type", async () => {
-    const tool = createEventTools(context, {
+    const tool = createWatchEventsTool(context, {
       github: eventCatalogEntry({
         resourceTypes: [
           { type: "issue", supportedEvents: ["issue.closed"] },
@@ -264,7 +270,7 @@ describe("event tools", () => {
           "pull_request.merged": { reach: "resource" },
         },
       }),
-    })["watchEvents"]!;
+    });
 
     await expect(
       tool.execute!(
@@ -285,7 +291,7 @@ describe("event tools", () => {
   });
 
   it("rejects a watch duration over 30 days instead of shortening it", async () => {
-    const tool = createEventTools(context, GITHUB_EVENTS)["watchEvents"]!;
+    const tool = createWatchEventsTool(context, GITHUB_EVENTS);
 
     await expect(
       tool.execute!(

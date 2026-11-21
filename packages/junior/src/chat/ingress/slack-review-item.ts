@@ -2,7 +2,10 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
 import { logException } from "@/chat/logging";
-import { canActOnReviewItem } from "@/chat/review-items/access";
+import {
+  canActOnReviewItem,
+  isPluginReviewItem,
+} from "@/chat/review-items/access";
 import {
   actOnReviewItem,
   readReviewItemForUser,
@@ -44,7 +47,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buttonUserInputField,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import {
   buildSlackInteractionInput,
@@ -112,9 +115,10 @@ async function refreshCards(
 
 /**
  * Do one person action from a Slack card. The thread of the card gets an
- * answer as Slack input from the person, like a typed reply. A dismiss
- * starts no Turn, so the thread gets the same recorded Message as the other
- * linked Conversations, from `actOnReviewItem`. An expected failure, such as
+ * answer as Slack input from the person, like a typed reply. A dismiss, or
+ * the answer to a plugin item, starts no Turn, so the thread gets the same
+ * recorded Message as the other linked Conversations, from
+ * `actOnReviewItem`. An expected failure, such as
  * an item that is already closed, goes to the person as an ephemeral
  * message.
  */
@@ -140,16 +144,23 @@ async function act(args: {
     queue: services.queue,
     show: createSlackReviewItemShow(() => services.adapter),
   };
-  const recordOnly = args.action === "dismiss";
+  let recordOnly = args.action === "dismiss";
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
+    // The plugin that added an item does the work of its answer, so the
+    // thread gets the recorded Message, not input that starts a Turn.
+    const pluginAnswer =
+      args.action === "submit" && isPluginReviewItem(current);
+    recordOnly ||= pluginAnswer;
     item = await actOnReviewItem({
       action: args.action,
       ...(recordOnly ? undefined : { exceptConversationId: conversationId }),
       // Two clicks can both see an open item. Only the click that closes it
-      // adds the input to this thread, so one action adds one Turn.
-      firstCloseOnly: true,
+      // adds the input to this thread, so one action adds one Turn. A plugin
+      // answer adds no input, so a retry of it after a failed plugin hook
+      // calls the plugin again.
+      firstCloseOnly: !pluginAnswer,
       delivery,
       id: current.id,
       user: actor.user,

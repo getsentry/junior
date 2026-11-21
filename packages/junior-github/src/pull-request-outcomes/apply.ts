@@ -47,7 +47,7 @@ export function githubCodeChange(
 /**
  * Record one pull request outcome. When the stored row changes, update the
  * code index, and mark the chip of each linked conversation merged or closed.
- * A merged or closed pull request closes its review desk items first, so no
+ * A merged or closed pull request closes its Review items first, so no
  * reader sees a merged chip next to an open item. A failed chip or item is
  * logged, so it does not stop the work after it.
  */

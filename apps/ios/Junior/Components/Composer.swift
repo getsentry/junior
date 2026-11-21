@@ -11,11 +11,12 @@ struct ComposerDock<Above: View, Content: View>: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      above
+      above.readableWidth()
       content
         .padding(.horizontal, 8)
         .padding(.top, hasAbove ? 0 : 6)
         .padding(.bottom, 6)
+        .readableWidth()
     }
     .background(Tokens.bg)
     .hairline(.top, hasAbove ? .clear : Tokens.borderSubtle)
@@ -107,9 +108,11 @@ extension View {
 }
 
 /// The home composer: start a new Conversation (`createConversation`).
-/// Attachments are not part of the public API.
+/// Attachments are not part of the public API. `docked` puts it at the
+/// bottom of the screen, under the list.
 struct NewConversationComposer: View {
   @Environment(AppModel.self) private var app
+  var docked = true
   @State private var text = ""
   @State private var visibility: ConversationVisibility = .private
   @State private var sending = false
@@ -122,20 +125,26 @@ struct NewConversationComposer: View {
   }
 
   var body: some View {
-    ComposerDock {
-      VStack(alignment: .leading, spacing: 6) {
-        if let error { InlineError(text: error).padding(.horizontal, 4) }
-        ComposerSurface(focused: focused) {
-          VStack(alignment: .leading, spacing: 0) {
-            ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
-            HStack(spacing: 12) {
-              VisibilityMenu(visibility: $visibility)
-              Spacer()
-              SendButton(enabled: canSend, action: send)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+    if docked {
+      ComposerDock { form }
+    } else {
+      form
+    }
+  }
+
+  private var form: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if let error { InlineError(text: error).padding(.horizontal, 4) }
+      ComposerSurface(focused: focused) {
+        VStack(alignment: .leading, spacing: 0) {
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          HStack(spacing: 12) {
+            VisibilityMenu(visibility: $visibility)
+            Spacer()
+            SendButton(enabled: canSend, action: send)
           }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 6)
         }
       }
     }
@@ -158,7 +167,7 @@ struct NewConversationComposer: View {
         idempotencyKey = UUID()
         focused = false
         app.didWrite()
-        app.path.append(.conversation(accepted.conversationId))
+        app.path = [.conversation(accepted.conversationId)]
       } catch {
         self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Message failed to send. Try again."
       }

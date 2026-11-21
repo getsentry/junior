@@ -1,4 +1,9 @@
-import type { Identity, User } from "@sentry/junior-plugin-api";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
+import {
+  defineJuniorPlugin,
+  type Identity,
+  type User,
+} from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -19,7 +24,9 @@ import {
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { setTrustConfig } from "@/chat/identities/trust";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnReviewItem } from "@/chat/review-items/actions";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import {
   closeReviewItem,
   getReviewItem,
@@ -29,7 +36,6 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 import {
@@ -489,6 +495,80 @@ describe("Slack webhook: Review item cards", () => {
     );
   });
 
+  it("gives a click on a plugin item's choice to the plugin, with no Turn", async () => {
+    const answers: string[] = [];
+    let fails = true;
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "deploys",
+            displayName: "Deploys",
+            description: "Deploy test plugin",
+          },
+          hooks: {
+            reviewItemAnswered: ({ choice, dedupeKey }) => {
+              answers.push(`${dedupeKey}: ${choice}`);
+              if (fails) throw new Error("deploy API is down");
+            },
+          },
+        }),
+      ]),
+    });
+    const { click, state } = harness();
+    await slackThread(THREAD, "public");
+    await linkSlackUser("ana@example.com", "U123");
+    await createPluginReviewItems({
+      conversationId: THREAD,
+      plugin: "deploys",
+      show: createSlackReviewItemShow(createSlackAdapterFixture),
+    }).upsert({
+      assigneeIdentityIds: ["identity:U123"],
+      body: "Deploys of `api` stopped after 3 failures.",
+      choices: [{ label: "Resume" }],
+      dedupeKey: "deploy-stopped:api",
+      title: "Deploys stopped · api",
+    });
+
+    // The card asks the body once, and has one button and no Other….
+    const [card] = slackApiOutbox.messages();
+    const text = blocksOf(card)[0]?.text ?? "";
+    expect(text.split("Deploys of `api` stopped")).toHaveLength(2);
+    expect(
+      blocksOf(card)
+        .find((block) => block.type === "actions")
+        ?.elements?.map((element) => element.action_id),
+    ).toEqual(["junior_review_item:choice:0", "junior_review_item:dismiss"]);
+
+    const [item] = await getDb().query.juniorReviewItems.findMany();
+    const resume = (actionTs: string) =>
+      click({
+        actionId: "junior_review_item:choice:0",
+        actionTs,
+        itemId: item!.id,
+        userId: "U123",
+        value: buttonValue(card, "junior_review_item:choice:0"),
+      });
+    // The plugin fails after the click closes the item. The card keeps its
+    // button, and a second click calls the plugin again.
+    await resume("1712345.0003").catch(() => undefined);
+    fails = false;
+    await resume("1712345.0004");
+    expect(answers).toEqual([
+      "deploy-stopped:api: Resume",
+      "deploy-stopped:api: Resume",
+    ]);
+    expect(await getReviewItem(getDb(), item!.id)).toMatchObject({
+      status: "done",
+    });
+    // The plugin does the work, so the thread starts no Turn.
+    const work = await getConversationWorkState({
+      conversationId: THREAD,
+      state,
+    });
+    expect(work?.messages ?? []).toEqual([]);
+  });
+
   it("posts one card in a thread that a linked child agent shares", async () => {
     const { click, state } = harness();
     await slackThread(THREAD, "public");
@@ -638,7 +718,7 @@ describe("Slack webhook: Review item cards", () => {
       );
       expect(texts).toEqual([
         expect.stringContaining("ana@example.com answered"),
-        expect.stringContaining("|Open in the review desk>"),
+        expect.stringContaining("|Open in the Inbox>"),
       ]);
       for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
     } finally {

@@ -54,7 +54,7 @@ final class InboxModel {
   }
 }
 
-/// Route `/review`: open Review items grouped as Needs you and FYI.
+/// Route `/inbox`: open Review items grouped as Needs you and FYI.
 struct InboxScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(InboxModel.self) private var model
@@ -145,7 +145,7 @@ private struct InboxRow: View {
 
   var body: some View {
     Button {
-      app.path.append(.reviewItem(item.id))
+      app.path = [.reviewItem(item.id)]
     } label: {
       HStack(alignment: .top, spacing: 8) {
         Dot(color: item.kind == "notice" ? Tokens.textFaint : Tokens.accent, size: 8)
@@ -165,12 +165,17 @@ private struct InboxRow: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
+      .background(selected ? Tokens.fillHover : .clear)
       .contentShape(Rectangle())
     }
     .buttonStyle(PressableStyle())
     .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? .isSelected : [])
     .accessibilityIdentifier("inbox-row")
   }
+
+  /// Open beside the list.
+  private var selected: Bool { app.path.first == .reviewItem(item.id) }
 
   private var subtitle: String {
     var parts = [item.kind == "notice" ? "Notice" : "Question"]

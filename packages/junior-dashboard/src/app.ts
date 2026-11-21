@@ -5,6 +5,8 @@ import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  REVALIDATED_READ_PATHS,
+  revalidateContent,
   readViewerAvatarUrl,
   DEFAULT_USER_SETTINGS,
   readUserSettings,
@@ -24,10 +26,7 @@ import {
 } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
-import {
-  revalidateConversation,
-  revalidateConversationFeed,
-} from "./conversation-cache";
+import { revalidateConversation } from "./conversation-cache";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -55,6 +54,7 @@ import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
 import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockPlan } from "./mock-reporting/plan";
+import { resetMockWatches } from "./mock-reporting/watches";
 import { resetMockReviewItems } from "./mock-reporting/review-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
@@ -103,6 +103,7 @@ export function resetMockDashboardState(): void {
   resetMockPlan();
   resetMockReviewItems();
   resetMockSends();
+  resetMockWatches();
 }
 
 export interface JuniorDashboardOptions {
@@ -128,6 +129,7 @@ interface DashboardRuntimeOptions extends JuniorDashboardOptions {
 interface DashboardPluginRoute {
   app: PluginRouteApp;
   pluginName: string;
+  prefix: string;
 }
 
 type Variables = JuniorApiVariables & { authSession: DashboardSession };
@@ -353,10 +355,6 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-function pluginRoutePrefix(pluginName: string): string {
-  return `/api/plugins/${pluginName}`;
-}
-
 /** Strip the core-owned plugin prefix before dispatching to a plugin app. */
 function pluginRouteRequest(request: Request, prefix: string): Request {
   const url = new URL(request.url);
@@ -570,9 +568,11 @@ export function createDashboardApp(
   app.use("*", requireAuth);
   // Core detail reads set a version token before they build the report. Mock
   // reporting has no stored version, so it revalidates on content instead.
-  // Mock feed pages skip the core feed route, which does the same.
+  // Mock reads skip the core routes and their `revalidateContent`.
   if (options.mockConversations) {
-    app.use("/api/conversations", revalidateConversationFeed);
+    for (const path of ["/api/conversations", ...REVALIDATED_READ_PATHS]) {
+      app.use(path, revalidateContent);
+    }
     app.use("/api/conversations/:conversationId", revalidateConversation);
   }
 
@@ -625,7 +625,7 @@ export function createDashboardApp(
     }
   }
   for (const route of options.pluginRoutes ?? []) {
-    const prefix = pluginRoutePrefix(route.pluginName);
+    const { prefix } = route;
     const handler = async (c: Context<{ Variables: Variables }>) => {
       const response = await route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),

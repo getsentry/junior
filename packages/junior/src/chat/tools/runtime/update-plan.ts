@@ -8,7 +8,13 @@ import {
   listPlanItems,
   type StoredPlanAssignee,
 } from "@/chat/plan/store";
-import { outputPlanItem, planItemOutputSchema } from "@/chat/plan/tool-output";
+import {
+  outputPlanItem,
+  parsePlanItemRef,
+  planItemOutputSchema,
+  planItemRef,
+  planItemRefSchema,
+} from "@/chat/plan/tool-output";
 import {
   isOpenPlanItemStatus,
   PLAN_ITEM_STATUSES,
@@ -21,8 +27,8 @@ import {
 } from "@/chat/review-items/assignees";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const MAX_ITEMS_PER_CALL = 50;
 
@@ -55,11 +61,9 @@ const notesSchema = z
     "What you need to do the item later, such as the brief for a child agent.",
   );
 
-const itemIdSchema = z
-  .number()
-  .int()
-  .positive()
-  .describe("Plan item id from an earlier result or a plan block.");
+const itemIdSchema = planItemRefSchema.describe(
+  "Plan item id, such as `TODO-12`, from an earlier result or a plan block.",
+);
 
 const changesSchema = <T extends z.ZodTypeAny>(item: T) =>
   z.array(item).min(1).max(MAX_ITEMS_PER_CALL).nullable().optional();
@@ -105,12 +109,12 @@ const updatePlanOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Items that this call added or changed, or every open item when it changed none.",
     ),
-  removed_ids: z.array(z.number().int()).optional(),
+  removed_ids: z.array(z.string()).optional(),
   replaced_person_changes: z
     .array(
       z
         .object({
-          id: z.number().int(),
+          id: z.string(),
           status: z.enum(PLAN_ITEM_STATUSES),
           changed_by: z.string(),
         })
@@ -188,7 +192,7 @@ export function createUpdatePlanTool(
     execute: async (input) => {
       const add = input.add ?? [];
       const update = input.update ?? [];
-      const remove = input.remove ?? [];
+      const remove = (input.remove ?? []).map(parsePlanItemRef);
       const executor = getSqlExecutor();
       if (add.length + update.length + remove.length === 0) {
         const items = await listPlanItems(executor, context.conversationId);
@@ -214,7 +218,7 @@ export function createUpdatePlanTool(
           update: await Promise.all(
             // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 items.
             update.map(async (item) => ({
-              id: item.id,
+              id: parsePlanItemRef(item.id),
               ...(item.title ? { title: item.title } : undefined),
               ...(item.notes !== undefined ? { notes: item.notes } : undefined),
               ...(item.status ? { status: item.status } : undefined),
@@ -228,11 +232,13 @@ export function createUpdatePlanTool(
       });
       return {
         items: items.map(outputItem),
-        ...(remove.length > 0 ? { removed_ids: remove } : undefined),
+        ...(remove.length > 0
+          ? { removed_ids: remove.map(planItemRef) }
+          : undefined),
         ...(replacedPersonChanges.length > 0
           ? {
               replaced_person_changes: replacedPersonChanges.map((item) => ({
-                id: item.id,
+                id: planItemRef(item.id),
                 status: item.status,
                 changed_by: item.changedBy!.email,
               })),

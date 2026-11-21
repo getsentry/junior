@@ -2,8 +2,8 @@ import { createTodoList } from "@/chat/slack/tool-support/list/api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { createOperationKey } from "@/chat/tools/idempotency";
-import type { ToolState } from "@/chat/tools/types";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 export const slackListCreateToolDefinition = zodToolDefinition({

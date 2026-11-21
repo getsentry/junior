@@ -6,7 +6,7 @@ import {
 
 import { useToastManager } from "../../components/ui/toast";
 import { fetchDashboardJson, post } from "../../http";
-import { refreshChangedAutomation } from "../../review-desk/inboxQueries";
+import { refreshChangedAutomation } from "../../inbox/inboxQueries";
 
 /**
  * Pause or resume one Automation, then refresh every Automation list. It

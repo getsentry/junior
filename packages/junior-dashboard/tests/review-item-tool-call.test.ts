@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reviewItemIdFromToolCall } from "../src/client/review-desk/reviewItemFormat";
+import { reviewItemIdFromToolCall } from "../src/client/inbox/reviewItemFormat";
 
 const output = JSON.stringify({ created: true, item: { id: "item-1" } });
 

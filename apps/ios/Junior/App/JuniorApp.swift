@@ -24,8 +24,11 @@ struct JuniorApp: App {
 }
 
 /// The current place under one navigation stack, with the drawer over it.
+/// With regular width and room for both columns (an iPad), the place's list
+/// and the open item show side by side.
 struct RootView: View {
   @Environment(AppModel.self) private var app
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   var body: some View {
     @Bindable var app = app
@@ -33,7 +36,9 @@ struct RootView: View {
       if !app.signedIn {
         ConnectScreen()
       } else {
-        shell
+        // Half-screen Split View and Stage Manager windows can be regular
+        // but too narrow for the list beside the open item.
+        GeometryReader { shell(split: sizeClass == .regular && $0.size.width >= splitMinWidth) }
       }
     }
     .background(Tokens.bg.ignoresSafeArea())
@@ -41,33 +46,42 @@ struct RootView: View {
     .sheet(item: $app.webPage) { url in
       SafariView(url: url).ignoresSafeArea()
     }
+    .alert("The demo has no web dashboard", isPresented: $app.demoWebNotice) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text("In your workspace, this opens in the \(app.agentName) dashboard.")
+    }
   }
 
-  private var shell: some View {
+  private func shell(split: Bool) -> some View {
     @Bindable var app = app
     return ZStack {
-      NavigationStack(path: $app.path) {
-        placeRoot
-          .background(SwipeBackEnabler().frame(width: 0, height: 0))
-          .navigationDestination(for: Route.self) { route in
-            Group {
-              switch route {
-              case .conversation(let id): ConversationScreen(conversationId: id)
-              case .reviewItem(let id): ReviewItemScreen(itemId: id)
-              case .automation(let id): AutomationScreen(automationId: id)
-              case .settings: SettingsScreen()
-              }
-            }
-            // A deep link opens with a pushed screen and never shows the root.
-            .background(SwipeBackEnabler().frame(width: 0, height: 0))
+      Group {
+        if split {
+          SplitShell { placeRoot }
+        } else {
+          NavigationStack(path: $app.path) {
+            placeRoot
+              .background(SwipeBackEnabler().frame(width: 0, height: 0))
+              .navigationDestination(for: Route.self) { RouteScreen(route: $0) }
           }
+        }
       }
       .tint(Tokens.accent)
 
       if app.drawerOpen {
-        Drawer()
+        if split {
+          Tokens.overlay.ignoresSafeArea()
+            .onTapGesture { withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = false } }
+            .transition(.opacity)
+            .zIndex(1)
+        }
+        // A side panel over a wide screen; the whole screen on a phone.
+        Drawer(split: split)
+          .frame(maxWidth: split ? 360 : .infinity)
+          .frame(maxWidth: .infinity, alignment: .leading)
           .transition(.move(edge: .leading))
-          .zIndex(1)
+          .zIndex(2)
       }
     }
   }
@@ -78,6 +92,26 @@ struct RootView: View {
     case .inbox: InboxScreen()
     case .automations: AutomationsScreen()
     }
+  }
+}
+
+/// The screen for a route, pushed or open beside the list.
+struct RouteScreen: View {
+  let route: Route
+  var column: SplitColumn?
+
+  var body: some View {
+    Group {
+      switch route {
+      case .conversation(let id): ConversationScreen(conversationId: id)
+      case .reviewItem(let id): ReviewItemScreen(itemId: id)
+      case .automation(let id): AutomationScreen(automationId: id)
+      case .settings: SettingsScreen()
+      }
+    }
+    .environment(\.splitColumn, column)
+    // A deep link opens with a pushed screen and never shows the root.
+    .background(SwipeBackEnabler().frame(width: 0, height: 0))
   }
 }
 

@@ -24,7 +24,11 @@ import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { latestSeenPlanVersion, renderPlanDelta } from "@/chat/plan/prompt";
+import {
+  latestSeenPlanVersion,
+  renderPlanDelta,
+  renderPlanReview,
+} from "@/chat/plan/prompt";
 import { listPlanItems } from "@/chat/plan/store";
 import type { PlanItem } from "@/chat/plan/types";
 import { readUserCustomization } from "@/chat/identities/customization";
@@ -46,7 +50,7 @@ import {
 } from "@/chat/conversation-privacy";
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -729,13 +733,14 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Only changes that others made after the plan version that history
-        // shows. The model's own changes are in its tool results.
-        planDelta: planItems
-          ? renderPlanDelta(
+        // Changes that others made after the plan version that history
+        // shows, else every open item when history has not shown the plan
+        // for a while. The model's own changes are in its tool results.
+        plan: planItems
+          ? (renderPlanDelta(
               planItems,
               latestSeenPlanVersion(promptHistoryMessages),
-            )
+            ) ?? renderPlanReview(planItems, promptHistoryMessages))
           : null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),

@@ -21,7 +21,6 @@ import {
 } from "lexical";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { MentionablePerson } from "@sentry/junior/api/schema";
 import { isPlatformShortcut } from "../../keyboard";
 import type {
   ComposerInsertion,
@@ -30,6 +29,7 @@ import type {
 } from "../ComposerMenu";
 import type { ComposerToken } from "../composerSkillToken";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
+import { $createComposerReferenceNode } from "./ComposerReferenceNode";
 
 type CaretToken = ComposerToken & {
   edited: boolean;
@@ -46,14 +46,15 @@ type Synced = { text: string; caret: string };
 const INSERT_TAG = "composer-typeahead-insert";
 
 /**
- * Follow the `$` or `@` reference at the caret of a Lexical editor, and
- * give a menu the editor side of `ComposerTypeahead`. The reference is in
- * one text node: a mention or a line break ends it.
+ * Follow the `$`, `@`, or `#` reference at the caret of a Lexical editor,
+ * and give a menu the editor side of `ComposerTypeahead`. The reference is
+ * in one text node: a chip or a line break ends it. `onChip` hears each
+ * person or reference that an insert puts in.
  */
 export function useLexicalTypeahead(
   editor: LexicalEditor,
   tokenAt: TokenFinder,
-  onMention?: (person: MentionablePerson) => void,
+  onChip?: (insertion: ComposerInsertion) => void,
 ): ComposerTypeahead {
   const [token, setToken] = useState<CaretToken>();
   const [inserted, setInserted] = useState<string>();
@@ -70,8 +71,8 @@ export function useLexicalTypeahead(
     insertedRangeRef.current = undefined;
     setInserted(undefined);
   };
-  const onMentionRef = useRef(onMention);
-  onMentionRef.current = onMention;
+  const onChipRef = useRef(onChip);
+  onChipRef.current = onChip;
 
   // A sync that reads the same text and caret changes nothing. Focus and
   // a repeat selection event must not turn an edit into a caret move.
@@ -193,11 +194,12 @@ export function useLexicalTypeahead(
           };
         } else {
           clearInserted();
+          // Before the update, so the change it reports knows the chip.
+          onChipRef.current?.(insertion);
         }
         editor.update(() => $insertAtToken(current, insertion), {
           tag: INSERT_TAG,
         });
-        if ("person" in insertion) onMentionRef.current?.(insertion.person);
       },
       registerKeys: (handler) => {
         const take = (event: KeyboardEvent | null, key: ComposerMenuKey) => {
@@ -315,15 +317,18 @@ function $insertAtToken(token: CaretToken, insertion: ComposerInsertion) {
     return;
   }
   const parts = node.splitText(token.start, token.end);
-  const reference = parts[token.start === 0 ? 0 : 1]!;
-  const mention = $createComposerMentionNode(insertion.person);
-  reference.replace(mention);
-  const next = mention.getNextSibling();
+  const typed = parts[token.start === 0 ? 0 : 1]!;
+  const chip =
+    "person" in insertion
+      ? $createComposerMentionNode(insertion.person)
+      : $createComposerReferenceNode(insertion.reference);
+  typed.replace(chip);
+  const next = chip.getNextSibling();
   if (spaced && $isTextNode(next)) {
     next.select(1, 1);
     return;
   }
   const space = $createTextNode(" ");
-  mention.insertAfter(space);
+  chip.insertAfter(space);
   space.select(1, 1);
 }

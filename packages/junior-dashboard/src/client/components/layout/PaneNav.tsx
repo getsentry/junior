@@ -29,16 +29,16 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
-import { useInboxConversationOrigin } from "../../review-desk/inboxListState";
+import { useInboxConversationOrigin } from "../../inbox/inboxListState";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
-} from "../../inbox/components/CommandPalette";
+} from "../../shell/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
-import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import {
   isInboxView,
   isOldAutomationsPath,

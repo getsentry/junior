@@ -1,18 +1,24 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { AutomationEditError } from "@/chat/automations/edit-rules";
+import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
 import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
   canUserReadReviewItem,
+  isAutomationAlertItem,
   isOnlyAssignee,
+  isPluginReviewItem,
 } from "./access";
+import { answerAutomationAlert } from "./automation-answer";
+import { answerPluginReviewItem } from "./plugin-answer";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
   closeReviewItem,
@@ -65,7 +71,7 @@ export function reviewItemChange(
 
 /**
  * Return whether a closed item is the result of this same action. An item
- * that a person's message closed never matches a card or desk action.
+ * that a person's message closed never matches a card or Inbox action.
  */
 function isSameClose(
   item: ReviewItem,
@@ -181,6 +187,30 @@ export async function actOnReviewItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new ReviewItemActionError("conflict", "Review item is closed.");
   }
+  // The plugin that added the item does the work, so its answer starts no
+  // Turn. A retry of the same answer calls the plugin again.
+  if (action === "submit" && isPluginReviewItem(closed)) {
+    await answerPluginReviewItem({
+      delivery: args.delivery,
+      item: closed,
+      nowMs,
+    });
+  }
+  // Core takes the step that a person picked on an Automation alert. A
+  // retry of the same answer takes it again.
+  if (action === "submit" && isAutomationAlertItem(closed)) {
+    try {
+      await answerAutomationAlert({ item: closed, user });
+    } catch (error) {
+      if (error instanceof ViewerTaskNotFoundError) {
+        throw new ReviewItemActionError("not_found", "Automation not found.");
+      }
+      if (error instanceof AutomationEditError) {
+        throw new ReviewItemActionError("invalid", error.message);
+      }
+      throw error;
+    }
+  }
   await deliverReviewItemChange({
     change: reviewItemChange(action, user),
     delivery: args.delivery,
@@ -227,7 +257,7 @@ function messageAnswer(
  *
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
- * - The agent added it in this Conversation (`addedByConversationId`).
+ * - The agent added it in this Conversation, its owner.
  * - The replier is an assigned User, or the item has no assignees. A Slack
  *   replier without a Junior User closes only items with no assignees.
  * - The decision model says that the reply answers this item
@@ -235,7 +265,7 @@ function messageAnswer(
  *   When the decision fails, all items stay open.
  *
  * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the review desk. Each item closes as `done` with
+ * an answer on the card or the Inbox. Each item closes as `done` with
  * `REVIEW_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.

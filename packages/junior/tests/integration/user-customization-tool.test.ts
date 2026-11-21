@@ -5,9 +5,9 @@ import { closeDb } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { createTools } from "@/chat/tools";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 

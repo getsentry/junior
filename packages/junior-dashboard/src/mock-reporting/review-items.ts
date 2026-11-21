@@ -1,24 +1,28 @@
 /**
  * Process-local Review items for mock reporting. Three Conversations ask the
  * viewer questions, so the questions above the message box, their transcript
- * rows, and the review desk can be checked without a database. GitHub
- * plugin asks and FYI notices fill the rest of the inbox.
+ * rows, and the Inbox can be checked without a database. GitHub
+ * plugin asks, FYI notices, and the alerts of the viewer's Automations that
+ * need attention fill the rest of the inbox.
  */
 import {
   answeredChoices,
   type ConversationFeed,
   type ConversationFeedViewerAnswer,
-  type ConversationReportEvent,
   type ReviewItemActionBody,
   type ReviewItemPayload,
+  type InboxSnoozeCreateBody,
+  type InboxSnoozeSubjectBody,
 } from "@sentry/junior/api/schema";
+import { PULL_REQUEST_RESOURCE } from "./snooze-resources";
 
 /** One open question, and an earlier one that the viewer answered. */
 export const MOCK_QUESTION_CONVERSATION_ID = "internal:question-qa";
 /** Three open questions, so the question shows "1 of 3". */
 export const MOCK_QUESTIONS_CONVERSATION_ID = "internal:questions-qa";
 
-const viewer = {
+/** The mock viewer, who answers and closes items. */
+export const viewer = {
   displayName: "Dashboard User",
   email: "dev@example.com",
   userId: "u-dev",
@@ -26,7 +30,7 @@ const viewer = {
 
 // The mock rollback owner. Junior names people as Slack mentions, and the
 // API resolves each mention to its person.
-const AVERY_MENTION = {
+export const AVERY_MENTION = {
   email: "avery@sentry.io",
   fullName: "Avery Chen",
   slackUserId: "U789",
@@ -50,7 +54,7 @@ const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
-type MockItemSeed = Pick<
+export type MockItemSeed = Pick<
   ReviewItemPayload,
   | "answer"
   | "body"
@@ -67,9 +71,12 @@ type MockItemSeed = Pick<
       "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
     >
   > & {
+    /** The Automation that owns an alert. An alert has no Conversation. */
+    automationId?: string;
     /** The Thread title, for an item that a child agent added. */
     childLabel?: string;
-    conversationId: string;
+    /** The Conversation that owns the item, unless an Automation does. */
+    conversationId?: string;
     createdAt: string;
     /** Linked Conversations other than the one that added the item. */
     linkedConversationIds?: string[];
@@ -77,7 +84,8 @@ type MockItemSeed = Pick<
     plugin?: string;
   };
 
-function seeds(nowMs: number): MockItemSeed[] {
+/** Every mock Review item, with its times relative to `nowMs`. */
+export function seeds(nowMs: number): MockItemSeed[] {
   const at = (minutes: number) =>
     new Date(nowMs - minutes * 60_000).toISOString();
   return [
@@ -235,10 +243,41 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
       title: "Ready to merge · #2201",
+    },
+    {
+      // The GitHub plugin's last conflict fix of this pull request did not
+      // land. Resume starts a fix and the fix count again.
+      body: "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(40),
+      id: "qa-conflict-2188",
+      plugin: "github",
+      request: {
+        question:
+          "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+        fields: [
+          {
+            id: "choice",
+            kind: "choice",
+            label: "Merge conflict · #2188",
+            options: [{ label: "Resume" }],
+          },
+        ],
+      },
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/2188",
+        objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
+        title: "Retry Slack uploads on rate limits",
+        url: "https://github.com/getsentry/junior/pull/2188",
+      },
+      title: "Merge conflict · #2188",
     },
     {
       body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
@@ -250,28 +289,11 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
       },
       title: "Review requested · #91",
-    },
-    {
-      // The merge conflict notice about the same pull request folds into
-      // its review ask.
-      body: "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
-      conversationId: RELEASE_CONVERSATION_ID,
-      createdAt: at(60),
-      id: "qa-conflict-91",
-      kind: "notice",
-      plugin: "github",
-      status: "open",
-      subject: {
-        id: "https://github.com/getsentry/payments/pull/91",
-        objectType: "code_change",
-        title: "Pin the release train to payments 4.2",
-        url: "https://github.com/getsentry/payments/pull/91",
-      },
-      title: "Merge conflict · #91",
     },
     {
       assignedToEveryone: true,
@@ -327,6 +349,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         // As the GitHub plugin names it, with its number.
         title: "Retry a canary stage once on a lost agent (#418)",
         url: "https://github.com/getsentry/sentaur/pull/418",
@@ -447,6 +470,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Tabs in the dashboard sidebar",
         url: "https://github.com/getsentry/junior/pull/3052",
       },
@@ -463,6 +487,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
         objectType: "code_change",
+        resource: PULL_REQUEST_RESOURCE,
         title: "Fix the stable list order",
         url: "https://github.com/getsentry/junior/pull/3037",
       },
@@ -531,6 +556,36 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Sandbox snapshots rebuilt",
     },
+    // The alerts of the viewer's Automations that need attention
+    // (`fixtures.ts`), as core adds them.
+    {
+      automationId: "event-1",
+      body: "Blocked: GitHub access expired. Reconnect GitHub to resume. Fix the problem, then resume it.",
+      createdAt: at(3 * 60),
+      id: "qa-alert-closed-issue-summary",
+      status: "open",
+      title: "Closed issue summary",
+    },
+    {
+      automationId: "scheduled-2",
+      body: "Last run failed.",
+      createdAt: at(DAY),
+      id: "qa-alert-operations-digest",
+      // A failed-run alert offers the steps that core takes.
+      request: {
+        question: "Last run failed.",
+        fields: [
+          {
+            id: "step",
+            kind: "choice",
+            label: "Next step",
+            options: [{ label: "Run again" }, { label: "Pause" }],
+          },
+        ],
+      },
+      status: "open",
+      title: "Daily operations digest",
+    },
   ];
 }
 
@@ -540,10 +595,64 @@ type MockItemChange = Pick<
 >;
 
 const changes = new Map<string, MockItemChange>();
+/** When each snoozed item wakes, by item id, like the server's snoozes. */
+const snoozes = new Map<string, number>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockReviewItems(): void {
   changes.clear();
+  snoozes.clear();
+}
+
+/** The items that a snooze hides now. */
+function snoozedItemIds(nowMs: number): Set<string> {
+  return new Set(
+    [...snoozes].flatMap(([itemId, wakeAtMs]) =>
+      wakeAtMs > nowMs ? [itemId] : [],
+    ),
+  );
+}
+
+/**
+ * Snooze a mock row, like `POST /api/inbox/snoozes`. It replaces the last,
+ * and returns the open items that it hides.
+ */
+export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
+  const reviewItemIds = seeds(nowMs)
+    .filter(
+      (seed) =>
+        (!("conversationId" in body) || rootOf(seed) === body.conversationId) &&
+        isOpen(seed) &&
+        (!body.reviewItemId || seed.id === body.reviewItemId),
+    )
+    .map((seed) => seed.id);
+  // A snooze with no time waits for its Event, which mock data never sends.
+  const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
+  for (const id of reviewItemIds) snoozes.set(id, wakeAtMs);
+  return { reviewItemIds };
+}
+
+/** Wake a mock row, or one item of it, like `DELETE /api/inbox/snoozes`. */
+export function wakeMockRow(
+  nowMs: number,
+  subject: InboxSnoozeSubjectBody,
+): void {
+  if (subject.reviewItemId) {
+    snoozes.delete(subject.reviewItemId);
+    return;
+  }
+  for (const seed of seeds(nowMs)) {
+    if ("conversationId" in subject && rootOf(seed) === subject.conversationId)
+      snoozes.delete(seed.id);
+  }
+}
+
+/**
+ * The root Conversation whose stack shows the seed: a child's parent. An
+ * alert has none.
+ */
+function rootOf(seed: MockItemSeed): string | undefined {
+  return seed.childLabel ? SENTAUR_CONVERSATION_ID : seed.conversationId;
 }
 
 function isOpen(seed: MockItemSeed): boolean {
@@ -563,7 +672,8 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
         other.id !== seed.id &&
         isOpen(other) &&
         ((seed.subject && other.subject?.id === seed.subject.id) ||
-          links.includes(other.conversationId)),
+          (other.conversationId !== undefined &&
+            links.includes(other.conversationId))),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(({ id, title }) => ({ id, title }));
@@ -577,27 +687,34 @@ function payload(
   all: readonly MockItemSeed[],
 ): ReviewItemPayload {
   const {
+    automationId,
     childLabel,
     conversationId,
     linkedConversationIds = [],
     plugin: _plugin,
     ...rest
   } = seed;
+  const root = rootOf(seed);
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   const relatedWork = related(seed, all);
   return {
     ...item,
-    addedByConversationId: conversationId,
     ...(childLabel ? { addedByLabel: childLabel } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [conversationId, ...linkedConversationIds],
+    conversationIds: [
+      ...(conversationId ? [conversationId] : []),
+      ...linkedConversationIds,
+    ],
     kind: seed.kind ?? "action",
-    rootConversationId: childLabel ? SENTAUR_CONVERSATION_ID : conversationId,
+    owner: automationId
+      ? { id: automationId, kind: "automation" }
+      : { id: conversationId!, kind: "conversation" },
+    ...(root ? { rootConversationId: root } : undefined),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(relatedWork ? { related: relatedWork } : undefined),
@@ -619,17 +736,25 @@ export function readMockReviewItems(
   filters: {
     closed?: boolean | undefined;
     conversationId?: string | undefined;
+    /** Leaves out snoozed rows, like the viewer's Inbox. */
+    forViewer?: boolean | undefined;
     q?: string | undefined;
+    /** Lists only snoozed rows. */
+    snoozed?: boolean | undefined;
   },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
+  const snoozed = snoozedItemIds(nowMs);
   const all = seeds(nowMs);
   const items = all
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
-        (!q || seed.title.toLowerCase().includes(q)),
+        (!q || seed.title.toLowerCase().includes(q)) &&
+        (filters.snoozed
+          ? snoozed.has(seed.id)
+          : !filters.forViewer || !snoozed.has(seed.id)),
     )
     .map((seed) => payload(seed, all));
   if (filters.closed)
@@ -680,15 +805,18 @@ export function withMockViewerAnswers(
   const answers = new Map<string, ConversationFeedViewerAnswer>();
   // Closed items come newest closed first, so the first one wins.
   for (const item of readMockReviewItems(nowMs, { closed: true })) {
+    const conversationId =
+      item.owner.kind === "conversation" ? item.owner.id : undefined;
     if (
+      !conversationId ||
       !item.answer ||
       !item.request ||
       !item.closedAt ||
       item.closedBy?.userId !== viewer.userId ||
-      answers.has(item.addedByConversationId)
+      answers.has(conversationId)
     )
       continue;
-    answers.set(item.addedByConversationId, {
+    answers.set(conversationId, {
       choices: answeredChoices(item.request, item.answer),
       closedAt: item.closedAt,
     });
@@ -737,10 +865,11 @@ export function readMockWaitingConversations(nowMs: number) {
   );
   const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
-  // Like the API, a child's items wait in its root.
+  // Like the API, a child's items wait in its root. An alert waits in no
+  // Conversation.
   for (const item of open) {
     const id = item.rootConversationId;
-    byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
+    if (id) byConversation.set(id, [...(byConversation.get(id) ?? []), item]);
   }
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
@@ -762,124 +891,26 @@ export function readMockWaitingConversations(nowMs: number) {
 
 /** The open mock action items that the viewer must answer. */
 function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
-  return readMockReviewItems(nowMs, {}).filter(
+  return readMockReviewItems(nowMs, { forViewer: true }).filter(
     (item) => item.kind === "action" && !item.assignedToEveryone,
   );
 }
 
 /** Count the mock items like `GET /api/review-items/count`, but Automations. */
-export function readMockReviewItemCounts(
-  nowMs: number,
-  snoozedIds: readonly string[],
-) {
+export function readMockReviewItemCounts(nowMs: number) {
   const needsViewer = mockItemsNeedingViewer(nowMs);
   return {
+    // Like the server: the alerts that the Automations To do lists.
+    automations: needsViewer.filter((item) => item.owner.kind === "automation")
+      .length,
     decisions: needsViewer.filter((item) => item.request).length,
     needsViewer: needsViewer.length,
     codeChanges: needsViewer.filter(
       (item) => item.subject?.objectType === "code_change",
     ).length,
-    snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
-      snoozedIds.includes(item.id),
+    // Like the server: each snoozed item that is still open.
+    snoozed: seeds(nowMs).filter(
+      (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
   };
-}
-
-function addItemCall(seq: number, createdAt: string, item: MockItemSeed) {
-  return {
-    seq,
-    createdAt,
-    data: {
-      type: "tool_calls",
-      calls: [
-        {
-          input: { kind: "action", title: item.title },
-          name: "addReviewItem",
-          output: JSON.stringify({ item: { id: item.id } }),
-          status: "completed",
-          toolCallId: `add-${item.id}`,
-        },
-      ],
-    },
-  } satisfies ConversationReportEvent;
-}
-
-function message(
-  seq: number,
-  createdAt: string,
-  role: "assistant" | "user",
-  text: string,
-): ConversationReportEvent {
-  return {
-    seq,
-    createdAt,
-    data: { type: "message", messageId: `qa-message-${seq}`, role, text },
-  };
-}
-
-/**
- * Build the two question Conversations. Junior adds each item with a tool
- * call before its final message, as a live Turn does.
- */
-export function mockQuestionConversations(nowMs: number) {
-  const [region, rollout, window, tables, negative] = seeds(nowMs);
-  const at = (minutes: number) =>
-    new Date(nowMs - minutes * 60_000).toISOString();
-  const conversation = (
-    conversationId: string,
-    displayTitle: string,
-    events: ConversationReportEvent[],
-  ) => ({
-    actorIdentity: { email: viewer.email, fullName: viewer.displayName },
-    conversationId,
-    cumulativeDurationMs: 95_000,
-    displayTitle,
-    events,
-    isParticipant: true,
-    lastProgressAt: events.at(-1)!.createdAt,
-    lastSeenAt: events.at(-1)!.createdAt,
-    startedAt: events[0]!.createdAt,
-    surface: "internal" as const,
-  });
-  return [
-    conversation(MOCK_QUESTION_CONVERSATION_ID, "Roll out payments-v42", [
-      message(0, at(60), "user", "Ship payments-v42 when the canary is clean."),
-      addItemCall(1, at(58), region!),
-      message(
-        2,
-        at(58),
-        "assistant",
-        "The build is ready. I need a region for the canary first.",
-      ),
-      message(3, at(50), "user", region!.answer!.other!),
-      {
-        ...message(
-          4,
-          at(49),
-          "assistant",
-          "The canary is running in us-east-1. I will check it in 20 minutes, and <@U789> can roll it back.",
-        ),
-        mentions: [AVERY_MENTION],
-      },
-      addItemCall(5, at(26), rollout!),
-      message(
-        6,
-        at(26),
-        "assistant",
-        "The canary error rate is flat for 30 minutes, and p95 latency did not move. I need your go-ahead before I roll out to every region.",
-      ),
-    ]),
-    conversation(MOCK_QUESTIONS_CONVERSATION_ID, "Plan the billing migration", [
-      message(0, at(45), "user", "Plan the billing migration for next week."),
-      addItemCall(1, at(42), window!),
-      addItemCall(2, at(41), tables!),
-      addItemCall(3, at(40), negative!),
-      message(
-        4,
-        at(40),
-        "assistant",
-        "The dry run passed. Three decisions are left before I schedule it.",
-      ),
-    ]),
-  ];
 }

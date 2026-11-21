@@ -7,7 +7,10 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { syncAutomationAlerts } from "@/chat/automations/alert-items";
+import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import {
   createPluginEventPublisher,
   getRegistrations,
@@ -293,6 +296,21 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "scheduled_automations.heartbeat.failed");
+  }
+  try {
+    const woke = await runInboxSnoozeTimers(getDb(), args.nowMs);
+    if (woke > 0) {
+      logInfo("inbox_snoozes.heartbeat.woken", {
+        "app.inbox_snooze.count": woke,
+      });
+    }
+  } catch (error) {
+    logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    await syncAutomationAlerts(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "automation_alerts.heartbeat.failed");
   }
   try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });

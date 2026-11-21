@@ -1,0 +1,1781 @@
+{
+  "now": "2026-08-07T12:00:00.000Z",
+  "conversations": [
+    {
+      "conversation": {
+        "conversationId": "slack:CQA123:1770003600.000200",
+        "title": "Investigate checkout latency",
+        "status": "working",
+        "turnActive": true,
+        "surface": "slack",
+        "channelName": "proj-checkout",
+        "locationUrl": "https://sentry.slack.com/archives/CQA123/p1770003600000200?thread_ts=1770003600.000200&cid=CQA123",
+        "startedAt": "2026-08-07T11:54:00.000Z",
+        "lastSeenAt": "2026-08-07T11:59:50.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA123%3A1770003600.000200"
+      },
+      "brief": {
+        "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
+        "intent": "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans.",
+        "outcome": {
+          "status": "in_progress",
+          "text": "The deployment correlation is confirmed. The span comparison is still running."
+        },
+        "decisions": [
+          {
+            "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
+            "by": "Morgan Lee",
+            "kind": "stated"
+          },
+          {
+            "text": "Use checkout.complete p95 as the primary comparison signal.",
+            "kind": "assumed"
+          }
+        ],
+        "facts": [
+          "Checkout p95 increased from 210ms to 890ms.",
+          "Error volume stayed flat during the latency increase."
+        ],
+        "links": [
+          {
+            "kind": "code_change",
+            "label": "getsentry/payments#42",
+            "url": "https://github.com/getsentry/payments/pull/42",
+            "status": "open"
+          },
+          {
+            "kind": "resource",
+            "label": "Checkout latency dashboard",
+            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
+            "status": "open"
+          }
+        ],
+        "updatedAt": "2026-08-07T11:59:00.000Z"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "active-user",
+          "createdAt": "2026-08-07T11:54:00.000Z",
+          "role": "user",
+          "text": "Find the slow checkout requests from the last deployment."
+        },
+        {
+          "seq": 6,
+          "messageId": "active-assistant",
+          "createdAt": "2026-08-07T11:54:22.000Z",
+          "role": "assistant",
+          "text": "Checkout p95 jumped after **payments-v42** landed.\n\nWhat I checked:\n- deploy marker `payments-v42` correlates with the spike\n- canary hosts show the same `checkout.latency` shape\n- error volume is flat, so this looks like slow path not hard fail\n\n| Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |\n| --- | --- | --- | ---: | ---: | ---: | ---: | --- |\n| pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |\n| post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |\n| canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |\n\nUseful query:\n```sql\nSELECT percentile(duration, 0.95) AS p95\nFROM transactions\nWHERE transaction = 'checkout.complete'\n  AND timestamp > now() - interval '2 hours'\nGROUP BY 1\nORDER BY p95 DESC;\n```\n\nNext step: compare the pre/post deploy spans, then decide whether to\nroll back or patch the slow serializer path."
+        },
+        {
+          "seq": 7,
+          "messageId": "active-user-followup",
+          "createdAt": "2026-08-07T11:54:40.000Z",
+          "role": "user",
+          "text": "> error volume is flat, so this looks like slow path not hard fail\n\nAgreed. Compare the pre/post deploy spans next:\n1. `checkout.complete` p95\n   - stable hosts\n   - canary hosts\n2. ~~error rate~~ serializer span time"
+        }
+      ],
+      "pendingMessages": [
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-interrupt",
+          "createdAt": "2026-08-07T11:59:52.000Z",
+          "author": "Morgan Lee",
+          "text": "Also check the canary traffic from the last deploy.",
+          "delivery": "interrupt"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-defer",
+          "createdAt": "2026-08-07T11:59:56.000Z",
+          "author": "Morgan Lee",
+          "text": "Keep the reply here. I will paste the dashboard link next.",
+          "attachments": [
+            {
+              "bytes": 18211,
+              "contentType": "image/png",
+              "filename": "queued-chart.png"
+            }
+          ],
+          "delivery": "defer"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-third",
+          "createdAt": "2026-08-07T11:59:57.000Z",
+          "author": "Morgan Lee",
+          "text": "Third queued message.",
+          "delivery": "defer"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-fourth",
+          "createdAt": "2026-08-07T11:59:58.000Z",
+          "author": "Morgan Lee",
+          "text": "Fourth queued message.",
+          "delivery": "defer"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-fifth",
+          "createdAt": "2026-08-07T11:59:59.000Z",
+          "author": "Morgan Lee",
+          "text": "Fifth queued message.",
+          "delivery": "defer"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-sixth",
+          "createdAt": "2026-08-07T11:59:59.200Z",
+          "author": "Morgan Lee",
+          "text": "Sixth queued message.",
+          "delivery": "defer"
+        },
+        {
+          "messageId": "slack:CQA123:1770003600.000200:pending-seventh",
+          "createdAt": "2026-08-07T11:59:59.400Z",
+          "author": "Morgan Lee",
+          "text": "Seventh queued message.",
+          "delivery": "defer"
+        }
+      ],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:DQA123:1770007200.000300",
+        "title": "Direct Message",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "startedAt": "2026-08-07T11:36:00.000Z",
+        "lastSeenAt": "2026-08-07T11:39:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ADQA123%3A1770007200.000300"
+      },
+      "messages": [],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "internal:question-qa",
+        "title": "Roll out payments-v42",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-07T11:00:00.000Z",
+        "lastSeenAt": "2026-08-07T11:34:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/internal%3Aquestion-qa"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "qa-message-0",
+          "createdAt": "2026-08-07T11:00:00.000Z",
+          "role": "user",
+          "text": "Ship payments-v42 when the canary is clean."
+        },
+        {
+          "seq": 2,
+          "messageId": "qa-message-2",
+          "createdAt": "2026-08-07T11:02:00.000Z",
+          "role": "assistant",
+          "text": "The build is ready. I need a region for the canary first."
+        },
+        {
+          "seq": 3,
+          "messageId": "qa-message-3",
+          "createdAt": "2026-08-07T11:10:00.000Z",
+          "role": "user",
+          "text": "us-east-1, it has the least traffic right now."
+        },
+        {
+          "seq": 4,
+          "messageId": "qa-message-4",
+          "createdAt": "2026-08-07T11:11:00.000Z",
+          "role": "assistant",
+          "text": "The canary is running in us-east-1. I will check it in 20 minutes, and <@U789> can roll it back."
+        },
+        {
+          "seq": 6,
+          "messageId": "qa-message-6",
+          "createdAt": "2026-08-07T11:34:00.000Z",
+          "role": "assistant",
+          "text": "The canary error rate is flat for 30 minutes, and p95 latency did not move. I need your go-ahead before I roll out to every region."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA777:1770014400.000500",
+        "title": "Deployment investigation failed",
+        "status": "needs_input",
+        "turnActive": false,
+        "surface": "slack",
+        "channelName": "proj-incidents",
+        "startedAt": "2026-08-07T11:24:00.000Z",
+        "lastSeenAt": "2026-08-07T11:25:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA777%3A1770014400.000500"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "failed-user",
+          "createdAt": "2026-08-07T11:24:00.000Z",
+          "role": "user",
+          "text": "Check the deployment failure."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "internal:questions-qa",
+        "title": "Plan the billing migration",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-07T11:15:00.000Z",
+        "lastSeenAt": "2026-08-07T11:20:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/internal%3Aquestions-qa"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "qa-message-0",
+          "createdAt": "2026-08-07T11:15:00.000Z",
+          "role": "user",
+          "text": "Plan the billing migration for next week."
+        },
+        {
+          "seq": 4,
+          "messageId": "qa-message-4",
+          "createdAt": "2026-08-07T11:20:00.000Z",
+          "role": "assistant",
+          "text": "The dry run passed. Three decisions are left before I schedule it."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA123:1770000000.000100",
+        "title": "Checkout latency triage",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "channelName": "proj-checkout",
+        "startedAt": "2026-08-07T11:16:00.000Z",
+        "lastSeenAt": "2026-08-07T11:19:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA123%3A1770000000.000100"
+      },
+      "brief": {
+        "summary": "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
+        "intent": "Draft the rollback note with the exact evidence for the checkout latency regression.",
+        "outcome": {
+          "status": "done",
+          "text": "The rollback note was completed and the rollback change was merged."
+        },
+        "decisions": [
+          {
+            "text": "Roll back payments-v42 instead of patching the serializer in place.",
+            "by": "Morgan Lee",
+            "kind": "confirmed"
+          }
+        ],
+        "facts": [
+          "PAYMENTS-42 contained 418 events.",
+          "The regression started with payments-v42."
+        ],
+        "links": [
+          {
+            "kind": "code_change",
+            "label": "getsentry/payments#77",
+            "url": "https://github.com/getsentry/payments/pull/77",
+            "status": "merged"
+          },
+          {
+            "kind": "resource",
+            "label": "Checkout latency dashboard",
+            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
+            "status": "resolved"
+          }
+        ],
+        "updatedAt": "2026-08-07T11:19:00.000Z"
+      },
+      "messages": [],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770021600.000600",
+        "title": "Package release and self-update",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "channelName": "proj-release",
+        "startedAt": "2026-08-07T10:28:00.000Z",
+        "lastSeenAt": "2026-08-07T10:39:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770021600.000600"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "slack:CQA456:1770021600.000600:earlier",
+          "createdAt": "2026-08-07T10:27:00.000Z",
+          "role": "user",
+          "text": "Prepare the release and include the complete earlier context."
+        },
+        {
+          "seq": 1,
+          "messageId": "release-user",
+          "createdAt": "2026-08-07T10:28:00.000Z",
+          "role": "user",
+          "text": "Release the package, update the example app, and open a PR."
+        },
+        {
+          "seq": 27,
+          "messageId": "release-assistant",
+          "createdAt": "2026-08-07T10:30:46.000Z",
+          "role": "assistant",
+          "text": "Released the package.\nOpened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.\n\nhttps://github.com/getsentry/payments/pull/91\n\nDeployment is ready. Next, https://junior.example.com/people/dev%40example.com picks up https://junior.example.com/conversations/slack%3ACQA123%3A1770003600.000200.\nTrack it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t\nMetrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789\nMorgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100\nThe checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/\nCheckout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h\nFirst event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/\nThe latency alert is still firing: https://acme.sentry.io/monitors/4021/\nFeedback on the new checkout pings the team: https://acme.sentry.io/monitors/alerts/6363564/\nOne slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/\nIt shipped in https://acme.sentry.io/releases/junior%404.2.0/\nThe team watches it on https://acme.sentry.io/dashboard/42/\nThe demo is at https://www.youtube.com/watch?v=MockLaunchDemo\n\n<@U123> wrote the launch steps in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3\n\nhttps://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3\n\nhttps://blog.example.com/posts/release-4-2\n\nhttps://www.youtube.com/watch?v=MockLaunchDemo\n\nhttps://acme.slack.com/archives/CQA456/p1770021700000100\n\nhttps://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h\n\nhttps://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/\n\nhttps://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/\n\nhttps://acme.sentry.io/releases/junior%404.2.0/\n\nhttps://acme.sentry.io/dashboard/42/\n\nhttps://acme.sentry.io/monitors/4021/\n\nhttps://acme.sentry.io/monitors/alerts/6363564/\n\nhttps://github.com/getsentry/payments/pull/91"
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "agent-dispatch:event-1",
+        "title": "Closed issue summary",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-07T09:00:00.000Z",
+        "lastSeenAt": "2026-08-07T09:00:14.000Z",
+        "url": "https://demo.junior.invalid/conversations/agent-dispatch%3Aevent-1"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "agent-dispatch:event-1",
+          "createdAt": "2026-08-07T09:00:00.000Z",
+          "role": "user",
+          "author": "junior",
+          "text": "<task about=\"Issue · ACME-42\" event=\"issue.closed\">\n<created-by><@U123>. This person is the Automation creator. \"The Automation creator\", \"me\", and \"my\" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>\n<instructions>Summarize the closed issue</instructions>\n<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>\nEnd with `reply`, `noReply`, or `reportBlocked`.\n</task>"
+        },
+        {
+          "seq": 2,
+          "messageId": "agent-dispatch:event-1:reply",
+          "createdAt": "2026-08-07T09:00:13.000Z",
+          "role": "assistant",
+          "text": "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "internal:dashboard-qa",
+        "title": "Dashboard QA edge cases",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-07T07:00:00.000Z",
+        "lastSeenAt": "2026-08-07T08:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/internal%3Adashboard-qa"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "qa-user",
+          "createdAt": "2026-08-07T07:00:00.000Z",
+          "role": "user",
+          "author": "Taylor Chen",
+          "text": "Review the dashboard plan before editing.",
+          "attachments": [
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "input-chart.png"
+            },
+            {
+              "bytes": 214000000,
+              "contentType": "video/mp4",
+              "filename": "standup-recording.mp4"
+            },
+            {
+              "bytes": 98000000,
+              "contentType": "video/quicktime",
+              "filename": "deleted-recording.mov"
+            }
+          ]
+        },
+        {
+          "seq": 12,
+          "messageId": "qa-assistant",
+          "createdAt": "2026-08-07T07:00:58.000Z",
+          "role": "assistant",
+          "text": "The canonical event rendering looks sound."
+        },
+        {
+          "seq": 16,
+          "messageId": "qa-unused-context",
+          "createdAt": "2026-08-07T07:01:04.000Z",
+          "role": "user",
+          "author": "Alex Rivera",
+          "text": "This ambient message must not appear in the transcript."
+        },
+        {
+          "seq": 17,
+          "messageId": "qa-used-context",
+          "createdAt": "2026-08-07T07:01:06.000Z",
+          "role": "user",
+          "author": "Alex Rivera",
+          "text": "Can you clarify which dashboard state you mean?"
+        },
+        {
+          "seq": 19,
+          "messageId": "qa-context-answer",
+          "createdAt": "2026-08-07T07:01:09.000Z",
+          "role": "assistant",
+          "text": "I mean the empty, loading, and failed transcript states."
+        },
+        {
+          "seq": 20,
+          "messageId": "qa-reviewer-result",
+          "createdAt": "2026-08-07T07:01:10.000Z",
+          "role": "user",
+          "text": "The reviewer needs access to the dashboard repository."
+        },
+        {
+          "seq": 21,
+          "messageId": "qa-github-review-comment",
+          "createdAt": "2026-08-07T07:01:20.000Z",
+          "role": "user",
+          "text": "Can the empty state reuse the loading skeleton?"
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA999:1770010800.000400",
+        "title": "Sandbox validation",
+        "status": "needs_input",
+        "turnActive": false,
+        "surface": "slack",
+        "startedAt": "2026-08-07T07:00:00.000Z",
+        "lastSeenAt": "2026-08-07T08:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA999%3A1770010800.000400"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "slack:CQA999:1770010800.000400:message",
+          "createdAt": "2026-08-07T07:00:00.000Z",
+          "role": "assistant",
+          "text": "Scheduled operation completed successfully."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "scheduler:daily-ops-digest",
+        "title": "Daily operations digest",
+        "status": "done",
+        "turnActive": false,
+        "surface": "scheduler",
+        "startedAt": "2026-08-07T07:00:00.000Z",
+        "lastSeenAt": "2026-08-07T08:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/scheduler%3Adaily-ops-digest"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "scheduler:daily-ops-digest:message",
+          "createdAt": "2026-08-07T07:00:00.000Z",
+          "role": "assistant",
+          "text": "Scheduled operation completed successfully."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770028800.000900",
+        "title": "Triage Sentaur GoCD deployment failures",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "channelName": "proj-release",
+        "startedAt": "2026-08-06T10:00:00.000Z",
+        "lastSeenAt": "2026-08-06T11:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770028800.000900"
+      },
+      "brief": {
+        "summary": "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
+        "intent": "Find why the Sentaur GoCD deploys fail and land the fixes for each stage.",
+        "outcome": {
+          "status": "in_progress",
+          "text": "The canary retry and the soak gate are in review."
+        },
+        "decisions": [
+          {
+            "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
+            "by": "Morgan Lee",
+            "kind": "stated"
+          },
+          {
+            "text": "Use checkout.complete p95 as the primary comparison signal.",
+            "kind": "assumed"
+          }
+        ],
+        "facts": [
+          "Checkout p95 increased from 210ms to 890ms.",
+          "Error volume stayed flat during the latency increase."
+        ],
+        "links": [
+          {
+            "kind": "code_change",
+            "label": "getsentry/payments#42",
+            "url": "https://github.com/getsentry/payments/pull/42",
+            "status": "open"
+          },
+          {
+            "kind": "resource",
+            "label": "Checkout latency dashboard",
+            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
+            "status": "open"
+          }
+        ],
+        "updatedAt": "2026-08-07T11:59:00.000Z"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "sentaur-user",
+          "createdAt": "2026-08-06T10:00:00.000Z",
+          "role": "user",
+          "text": "Sentaur deploys keep failing in GoCD. Can you find out why?"
+        },
+        {
+          "seq": 1,
+          "messageId": "sentaur-assistant",
+          "createdAt": "2026-08-06T10:01:00.000Z",
+          "role": "assistant",
+          "text": "Three failures overnight. I opened the fixes and the follow-ups."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770025200.000700",
+        "title": "Quarterly reliability review",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "startedAt": "2026-08-06T10:00:00.000Z",
+        "lastSeenAt": "2026-08-06T10:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770025200.000700"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "many-turns-user-0",
+          "createdAt": "2026-08-06T10:00:00.000Z",
+          "role": "user",
+          "text": "Question 1: review the checkout error budget."
+        },
+        {
+          "seq": 1,
+          "messageId": "many-turns-reply-0",
+          "createdAt": "2026-08-06T10:00:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the checkout error budget.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 2,
+          "messageId": "many-turns-user-1",
+          "createdAt": "2026-08-06T10:01:00.000Z",
+          "role": "user",
+          "text": "Question 2: review the canary rollout order. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 3,
+          "messageId": "many-turns-reply-1",
+          "createdAt": "2026-08-06T10:01:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the canary rollout order.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 4,
+          "messageId": "many-turns-user-2",
+          "createdAt": "2026-08-06T10:02:00.000Z",
+          "role": "user",
+          "text": "Question 3: review the payments retry policy."
+        },
+        {
+          "seq": 5,
+          "messageId": "many-turns-reply-2",
+          "createdAt": "2026-08-06T10:02:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 6,
+          "messageId": "many-turns-user-3",
+          "createdAt": "2026-08-06T10:03:00.000Z",
+          "role": "user",
+          "text": "Question 4: review the alert thresholds. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 7,
+          "messageId": "many-turns-reply-3",
+          "createdAt": "2026-08-06T10:03:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 8,
+          "messageId": "many-turns-user-4",
+          "createdAt": "2026-08-06T10:04:00.000Z",
+          "role": "user",
+          "text": "Question 5: review the on-call handoff notes."
+        },
+        {
+          "seq": 9,
+          "messageId": "many-turns-reply-4",
+          "createdAt": "2026-08-06T10:04:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the on-call handoff notes.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 10,
+          "messageId": "many-turns-user-5",
+          "createdAt": "2026-08-06T10:05:00.000Z",
+          "role": "user",
+          "text": "Question 6: review the checkout error budget. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 11,
+          "messageId": "many-turns-reply-5",
+          "createdAt": "2026-08-06T10:05:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the checkout error budget.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 12,
+          "messageId": "many-turns-user-6",
+          "createdAt": "2026-08-06T10:06:00.000Z",
+          "role": "user",
+          "text": "Question 7: review the canary rollout order."
+        },
+        {
+          "seq": 13,
+          "messageId": "many-turns-reply-6",
+          "createdAt": "2026-08-06T10:06:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the canary rollout order.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 14,
+          "messageId": "many-turns-user-7",
+          "createdAt": "2026-08-06T10:07:00.000Z",
+          "role": "user",
+          "text": "Question 8: review the payments retry policy. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 15,
+          "messageId": "many-turns-reply-7",
+          "createdAt": "2026-08-06T10:07:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 16,
+          "messageId": "many-turns-user-8",
+          "createdAt": "2026-08-06T10:08:00.000Z",
+          "role": "user",
+          "text": "Question 9: review the alert thresholds."
+        },
+        {
+          "seq": 17,
+          "messageId": "many-turns-reply-8",
+          "createdAt": "2026-08-06T10:08:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 18,
+          "messageId": "many-turns-user-9",
+          "createdAt": "2026-08-06T10:09:00.000Z",
+          "role": "user",
+          "text": "Question 10: review the on-call handoff notes. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 19,
+          "messageId": "many-turns-reply-9",
+          "createdAt": "2026-08-06T10:09:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the on-call handoff notes.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 20,
+          "messageId": "many-turns-user-10",
+          "createdAt": "2026-08-06T10:10:00.000Z",
+          "role": "user",
+          "text": "Question 11: review the checkout error budget."
+        },
+        {
+          "seq": 21,
+          "messageId": "many-turns-reply-10",
+          "createdAt": "2026-08-06T10:10:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the checkout error budget.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 22,
+          "messageId": "many-turns-user-11",
+          "createdAt": "2026-08-06T10:11:00.000Z",
+          "role": "user",
+          "text": "Question 12: review the canary rollout order. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 23,
+          "messageId": "many-turns-reply-11",
+          "createdAt": "2026-08-06T10:11:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the canary rollout order.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 24,
+          "messageId": "many-turns-user-12",
+          "createdAt": "2026-08-06T10:12:00.000Z",
+          "role": "user",
+          "text": "Question 13: review the payments retry policy."
+        },
+        {
+          "seq": 25,
+          "messageId": "many-turns-reply-12",
+          "createdAt": "2026-08-06T10:12:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 26,
+          "messageId": "many-turns-user-13",
+          "createdAt": "2026-08-06T10:13:00.000Z",
+          "role": "user",
+          "text": "Question 14: review the alert thresholds. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 27,
+          "messageId": "many-turns-reply-13",
+          "createdAt": "2026-08-06T10:13:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 28,
+          "messageId": "many-turns-user-14",
+          "createdAt": "2026-08-06T10:14:00.000Z",
+          "role": "user",
+          "text": "Question 15: review the on-call handoff notes."
+        },
+        {
+          "seq": 29,
+          "messageId": "many-turns-reply-14",
+          "createdAt": "2026-08-06T10:14:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the on-call handoff notes.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 30,
+          "messageId": "many-turns-user-15",
+          "createdAt": "2026-08-06T10:15:00.000Z",
+          "role": "user",
+          "text": "Question 16: review the checkout error budget. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 31,
+          "messageId": "many-turns-reply-15",
+          "createdAt": "2026-08-06T10:15:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the checkout error budget.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 32,
+          "messageId": "many-turns-user-16",
+          "createdAt": "2026-08-06T10:16:00.000Z",
+          "role": "user",
+          "text": "Question 17: review the canary rollout order."
+        },
+        {
+          "seq": 33,
+          "messageId": "many-turns-reply-16",
+          "createdAt": "2026-08-06T10:16:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the canary rollout order.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 34,
+          "messageId": "many-turns-user-17",
+          "createdAt": "2026-08-06T10:17:00.000Z",
+          "role": "user",
+          "text": "Question 18: review the payments retry policy. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 35,
+          "messageId": "many-turns-reply-17",
+          "createdAt": "2026-08-06T10:17:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 36,
+          "messageId": "many-turns-user-18",
+          "createdAt": "2026-08-06T10:18:00.000Z",
+          "role": "user",
+          "text": "Question 19: review the alert thresholds."
+        },
+        {
+          "seq": 37,
+          "messageId": "many-turns-reply-18",
+          "createdAt": "2026-08-06T10:18:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 38,
+          "messageId": "many-turns-user-19",
+          "createdAt": "2026-08-06T10:19:00.000Z",
+          "role": "user",
+          "text": "Question 20: review the on-call handoff notes. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 39,
+          "messageId": "many-turns-reply-19",
+          "createdAt": "2026-08-06T10:19:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the on-call handoff notes.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 40,
+          "messageId": "many-turns-user-20",
+          "createdAt": "2026-08-06T10:20:00.000Z",
+          "role": "user",
+          "text": "Question 21: review the checkout error budget."
+        },
+        {
+          "seq": 41,
+          "messageId": "many-turns-reply-20",
+          "createdAt": "2026-08-06T10:20:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the checkout error budget.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 42,
+          "messageId": "many-turns-user-21",
+          "createdAt": "2026-08-06T10:21:00.000Z",
+          "role": "user",
+          "text": "Question 22: review the canary rollout order. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 43,
+          "messageId": "many-turns-reply-21",
+          "createdAt": "2026-08-06T10:21:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the canary rollout order.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 44,
+          "messageId": "many-turns-user-22",
+          "createdAt": "2026-08-06T10:22:00.000Z",
+          "role": "user",
+          "text": "Question 23: review the payments retry policy."
+        },
+        {
+          "seq": 45,
+          "messageId": "many-turns-reply-22",
+          "createdAt": "2026-08-06T10:22:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the payments retry policy.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes."
+        },
+        {
+          "seq": 46,
+          "messageId": "many-turns-user-23",
+          "createdAt": "2026-08-06T10:23:00.000Z",
+          "role": "user",
+          "text": "Question 24: review the alert thresholds. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week."
+        },
+        {
+          "seq": 47,
+          "messageId": "many-turns-reply-23",
+          "createdAt": "2026-08-06T10:23:20.000Z",
+          "role": "assistant",
+          "text": "Reviewed the alert thresholds.\n\n- Last quarter's numbers stay inside the target.\n- Two follow-ups are open, and both have owners.\n- No change blocks the next release.\n\nI will flag it in the weekly summary if the trend changes.\n\nThe tax cache is https://code.example.com/acme/checkout/pull/5378, and https://news.example.com/checkout-4-2-session-tax-cache covers it."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770028800.000800",
+        "title": "Inbox comfortable rows pass",
+        "status": "done",
+        "turnActive": false,
+        "surface": "slack",
+        "channelName": "proj-release",
+        "startedAt": "2026-08-06T06:00:00.000Z",
+        "lastSeenAt": "2026-08-06T07:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770028800.000800"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "busy-user",
+          "createdAt": "2026-08-06T06:00:00.000Z",
+          "role": "user",
+          "text": "Here are the screens from the first pass.",
+          "attachments": [
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-1.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-2.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-3.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-4.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-5.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-6.png"
+            }
+          ]
+        },
+        {
+          "seq": 1,
+          "messageId": "busy-user-2",
+          "createdAt": "2026-08-06T06:01:00.000Z",
+          "role": "user",
+          "text": "And the second pass.",
+          "attachments": [
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-7.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-8.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-9.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-10.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-11.png"
+            },
+            {
+              "bytes": 6400,
+              "contentType": "image/png",
+              "filename": "screen-12.png"
+            }
+          ]
+        },
+        {
+          "seq": 2,
+          "messageId": "busy-assistant",
+          "createdAt": "2026-08-06T06:02:00.000Z",
+          "role": "assistant",
+          "text": "Both passes look right. I opened the follow-up PRs."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "internal:archived-restore-qa",
+        "title": "Archived restore target",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-07T07:00:00.000Z",
+        "lastSeenAt": "2026-08-07T08:00:00.000Z",
+        "archivedAt": "2026-08-04T12:00:00.000Z",
+        "url": "https://demo.junior.invalid/conversations/internal%3Aarchived-restore-qa"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "internal:archived-restore-qa:message",
+          "createdAt": "2026-08-07T07:00:00.000Z",
+          "role": "assistant",
+          "text": "Scheduled operation completed successfully."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": true
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770028800.000901",
+        "title": "Check the last ten Sentaur pipeline runs",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-06T10:30:00.000Z",
+        "lastSeenAt": "2026-08-06T10:30:30.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770028800.000901"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "slack:CQA456:1770028800.000901:input",
+          "createdAt": "2026-08-06T10:30:00.000Z",
+          "role": "user",
+          "text": "Check the last ten Sentaur pipeline runs for lost agents."
+        },
+        {
+          "seq": 1,
+          "messageId": "slack:CQA456:1770028800.000901:output",
+          "createdAt": "2026-08-06T10:30:12.000Z",
+          "role": "assistant",
+          "text": "Done. No differences found."
+        },
+        {
+          "seq": 2,
+          "messageId": "slack:CQA456:1770028800.000901:follow-up",
+          "createdAt": "2026-08-06T10:30:20.000Z",
+          "role": "user",
+          "author": "Taylor Chen",
+          "text": "Can you check it with a cold cache too?"
+        },
+        {
+          "seq": 3,
+          "messageId": "slack:CQA456:1770028800.000901:follow-up-output",
+          "createdAt": "2026-08-06T10:30:30.000Z",
+          "role": "assistant",
+          "text": "Checked with a cold cache. The order still holds."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": false
+    },
+    {
+      "conversation": {
+        "conversationId": "slack:CQA456:1770028800.000902",
+        "title": "Read the canary agent logs",
+        "status": "done",
+        "turnActive": false,
+        "surface": "internal",
+        "startedAt": "2026-08-06T10:36:00.000Z",
+        "lastSeenAt": "2026-08-06T10:36:30.000Z",
+        "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770028800.000902"
+      },
+      "messages": [
+        {
+          "seq": 0,
+          "messageId": "slack:CQA456:1770028800.000902:input",
+          "createdAt": "2026-08-06T10:36:00.000Z",
+          "role": "user",
+          "text": "Read the GoCD agent logs from the failed canary stages."
+        },
+        {
+          "seq": 1,
+          "messageId": "slack:CQA456:1770028800.000902:output",
+          "createdAt": "2026-08-06T10:36:12.000Z",
+          "role": "assistant",
+          "text": "Done. No differences found."
+        },
+        {
+          "seq": 2,
+          "messageId": "slack:CQA456:1770028800.000902:follow-up",
+          "createdAt": "2026-08-06T10:36:20.000Z",
+          "role": "user",
+          "author": "Taylor Chen",
+          "text": "Can you check it with a cold cache too?"
+        },
+        {
+          "seq": 3,
+          "messageId": "slack:CQA456:1770028800.000902:follow-up-output",
+          "createdAt": "2026-08-06T10:36:30.000Z",
+          "role": "assistant",
+          "text": "Checked with a cold cache. The order still holds."
+        }
+      ],
+      "pendingMessages": [],
+      "listed": false
+    }
+  ],
+  "reviewItems": [
+    {
+      "id": "qa-ready-2201",
+      "kind": "action",
+      "status": "open",
+      "title": "Ready to merge · #2201",
+      "body": "#2201 is approved, and GitHub says that it can merge.\n\nhttps://github.com/getsentry/junior/pull/2201",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770021600.000600"],
+      "subject": {
+        "id": "https://github.com/getsentry/junior/pull/2201",
+        "title": "Update the package to 0.288.0",
+        "url": "https://github.com/getsentry/junior/pull/2201"
+      },
+      "createdAt": "2026-08-07T11:48:00.000Z",
+      "updatedAt": "2026-08-07T11:48:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-ready-2201"
+    },
+    {
+      "id": "qa-hold-v42",
+      "kind": "notice",
+      "status": "open",
+      "title": "Hold the payments-v42 deploy",
+      "body": "Morgan asked to hold the payments-v42 deploy until the serializer fix lands.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA123:1770000000.000100"],
+      "subject": {
+        "id": "release:payments-v42",
+        "title": "payments-v42"
+      },
+      "createdAt": "2026-08-07T11:44:00.000Z",
+      "updatedAt": "2026-08-07T11:44:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-hold-v42"
+    },
+    {
+      "id": "qa-p95-rose",
+      "kind": "notice",
+      "status": "open",
+      "title": "Checkout p95 rose after payments-v42",
+      "body": "Checkout p95 went from 210 ms to 890 ms after payments-v42 landed.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA123:1770003600.000200"],
+      "subject": {
+        "id": "release:payments-v42",
+        "title": "payments-v42"
+      },
+      "createdAt": "2026-08-07T11:42:00.000Z",
+      "updatedAt": "2026-08-07T11:42:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-p95-rose"
+    },
+    {
+      "id": "qa-release-notes",
+      "kind": "notice",
+      "status": "open",
+      "title": "Release notes drafted",
+      "body": "Release notes for 0.288.0 are drafted in the release PR.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770021600.000600"],
+      "createdAt": "2026-08-07T11:40:00.000Z",
+      "updatedAt": "2026-08-07T11:40:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-release-notes"
+    },
+    {
+      "id": "qa-rollout",
+      "kind": "action",
+      "status": "open",
+      "title": "Approve the payments-v42 rollout",
+      "body": "The canary error rate is flat for 30 minutes.",
+      "question": "Roll out payments-v42 to every region?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": [
+        "internal:question-qa",
+        "slack:CQA123:1770000000.000100"
+      ],
+      "subject": {
+        "id": "release:payments-v42",
+        "title": "payments-v42"
+      },
+      "createdAt": "2026-08-07T11:34:00.000Z",
+      "updatedAt": "2026-08-07T11:34:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-rollout"
+    },
+    {
+      "id": "qa-deploy-paused",
+      "kind": "notice",
+      "status": "open",
+      "title": "Canary deploy paused",
+      "body": "The canary deploy paused after the error budget alert. Nothing to do unless it stays paused.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA777:1770014400.000500"],
+      "createdAt": "2026-08-07T11:30:00.000Z",
+      "updatedAt": "2026-08-07T11:30:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-deploy-paused"
+    },
+    {
+      "id": "qa-sentaur-rerun",
+      "kind": "action",
+      "status": "open",
+      "title": "Rerun the failed canary runs",
+      "body": "Three canary runs failed on a lost agent this week.",
+      "question": "Rerun the three failed canary runs?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000901"],
+      "createdAt": "2026-08-07T11:30:00.000Z",
+      "updatedAt": "2026-08-07T11:30:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-rerun"
+    },
+    {
+      "id": "qa-sentaur-agent-9",
+      "kind": "action",
+      "status": "open",
+      "title": "Put agent 9 back in the pool",
+      "body": "Agent 9 restarted by itself and holds no lease now.",
+      "question": "Put agent 9 back in the canary pool?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000902"],
+      "createdAt": "2026-08-07T11:29:00.000Z",
+      "updatedAt": "2026-08-07T11:29:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-agent-9"
+    },
+    {
+      "id": "qa-sentaur-pause",
+      "kind": "action",
+      "status": "open",
+      "title": "Pause canary rollouts",
+      "body": "The canary stage fails on a lost agent three runs out of ten.",
+      "question": "Pause canary rollouts until #418 lands?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000901"],
+      "createdAt": "2026-08-07T11:28:00.000Z",
+      "updatedAt": "2026-08-07T11:28:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-pause"
+    },
+    {
+      "id": "qa-sentaur-lost-agents",
+      "kind": "notice",
+      "status": "open",
+      "title": "Two agents lost their lease",
+      "body": "Agents 7 and 9 lost their lease during the last three canary stages.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000902"],
+      "createdAt": "2026-08-07T11:27:00.000Z",
+      "updatedAt": "2026-08-07T11:27:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-lost-agents"
+    },
+    {
+      "id": "qa-sentaur-review-418",
+      "kind": "action",
+      "status": "open",
+      "title": "Review requested · #418",
+      "body": "GitHub asks you to review #418.\n\nhttps://github.com/getsentry/sentaur/pull/418",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000901"],
+      "subject": {
+        "id": "https://github.com/getsentry/sentaur/pull/418",
+        "title": "Retry a canary stage once on a lost agent (#418)",
+        "url": "https://github.com/getsentry/sentaur/pull/418"
+      },
+      "createdAt": "2026-08-07T11:26:00.000Z",
+      "updatedAt": "2026-08-07T11:26:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-review-418"
+    },
+    {
+      "id": "qa-sentaur-restart",
+      "kind": "action",
+      "status": "open",
+      "title": "Restart the stuck canary agents",
+      "body": "Two GoCD agents hold their lease after the canary stage failed.",
+      "question": "Restart the two stuck canary agents?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770028800.000900"],
+      "createdAt": "2026-08-07T11:24:00.000Z",
+      "updatedAt": "2026-08-07T11:24:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sentaur-restart"
+    },
+    {
+      "id": "qa-migration-negative",
+      "kind": "action",
+      "status": "open",
+      "title": "Handle the negative invoices",
+      "body": "The dry run found 12 invoices with a negative total.",
+      "question": "What should happen to the 12 negative invoices?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:questions-qa"],
+      "createdAt": "2026-08-07T11:20:00.000Z",
+      "updatedAt": "2026-08-07T11:20:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-migration-negative"
+    },
+    {
+      "id": "qa-migration-tables",
+      "kind": "action",
+      "status": "open",
+      "title": "Choose the first migration batch",
+      "body": "Invoices and credits change shape. Refunds can wait.",
+      "question": "Which tables go in the first batch?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:questions-qa"],
+      "createdAt": "2026-08-07T11:19:00.000Z",
+      "updatedAt": "2026-08-07T11:19:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-migration-tables"
+    },
+    {
+      "id": "qa-migration-window",
+      "kind": "action",
+      "status": "open",
+      "title": "Pick the billing migration window",
+      "body": "Each window keeps the write lock for about 4 minutes.",
+      "question": "When should the billing migration run?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:questions-qa"],
+      "createdAt": "2026-08-07T11:18:00.000Z",
+      "updatedAt": "2026-08-07T11:18:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-migration-window"
+    },
+    {
+      "id": "qa-conflict-91",
+      "kind": "notice",
+      "status": "open",
+      "title": "Merge conflict · #91",
+      "body": "**Pin the release train to payments 4.2** has merge conflicts with `main`. Automatic fixes stopped, because nobody worked on it in the last 2 days. If they are still there, ask in this thread to fix them: https://github.com/getsentry/payments/pull/91",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770021600.000600"],
+      "subject": {
+        "id": "https://github.com/getsentry/payments/pull/91",
+        "title": "Pin the release train to payments 4.2",
+        "url": "https://github.com/getsentry/payments/pull/91"
+      },
+      "createdAt": "2026-08-07T11:00:00.000Z",
+      "updatedAt": "2026-08-07T11:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-conflict-91"
+    },
+    {
+      "id": "qa-review-91",
+      "kind": "action",
+      "status": "open",
+      "title": "Review requested · #91",
+      "body": "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770021600.000600"],
+      "subject": {
+        "id": "https://github.com/getsentry/payments/pull/91",
+        "title": "Pin the release train to payments 4.2",
+        "url": "https://github.com/getsentry/payments/pull/91"
+      },
+      "createdAt": "2026-08-07T10:31:00.000Z",
+      "updatedAt": "2026-08-07T10:31:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-review-91"
+    },
+    {
+      "id": "qa-digest-skipped",
+      "kind": "notice",
+      "status": "open",
+      "title": "Digest skipped two noisy alerts",
+      "body": "The digest skipped two alerts that fired more than 20 times today.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["scheduler:daily-ops-digest"],
+      "createdAt": "2026-08-07T07:00:00.000Z",
+      "updatedAt": "2026-08-07T07:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-digest-skipped"
+    },
+    {
+      "id": "qa-review-3052",
+      "kind": "action",
+      "status": "open",
+      "title": "Review requested · #3052",
+      "body": "GitHub asks you to review #3052.\n\nhttps://github.com/getsentry/junior/pull/3052",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA999:1770010800.000400"],
+      "subject": {
+        "id": "https://github.com/getsentry/junior/pull/3052",
+        "title": "Tabs in the dashboard sidebar",
+        "url": "https://github.com/getsentry/junior/pull/3052"
+      },
+      "createdAt": "2026-08-05T12:00:00.000Z",
+      "updatedAt": "2026-08-05T12:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-review-3052"
+    },
+    {
+      "id": "qa-merged-3037",
+      "kind": "notice",
+      "status": "open",
+      "title": "Merged · #3037",
+      "body": "**Fix the stable list order** merged into main: https://github.com/getsentry/junior/pull/3037",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA999:1770010800.000400"],
+      "subject": {
+        "id": "https://github.com/getsentry/junior/pull/3037",
+        "title": "Fix the stable list order",
+        "url": "https://github.com/getsentry/junior/pull/3037"
+      },
+      "createdAt": "2026-08-04T12:00:00.000Z",
+      "updatedAt": "2026-08-04T12:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-merged-3037"
+    },
+    {
+      "id": "qa-reliability-weekly",
+      "kind": "notice",
+      "status": "open",
+      "title": "Weekly reliability summary posted",
+      "body": "The weekly reliability summary is in #project-updates.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770025200.000700"],
+      "createdAt": "2026-08-03T12:00:00.000Z",
+      "updatedAt": "2026-08-03T12:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-reliability-weekly"
+    },
+    {
+      "id": "qa-latency-alert",
+      "kind": "action",
+      "status": "open",
+      "title": "Tighten the checkout latency alert",
+      "body": "p95 checkout latency is back under 600 ms for 9 days.",
+      "question": "Lower the checkout p95 alert from 800 ms to 650 ms?",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["slack:CQA456:1770025200.000700"],
+      "createdAt": "2026-07-29T12:00:00.000Z",
+      "updatedAt": "2026-07-29T12:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-latency-alert"
+    },
+    {
+      "id": "qa-sandbox-snapshot",
+      "kind": "notice",
+      "status": "open",
+      "title": "Sandbox snapshots rebuilt",
+      "body": "Three sandboxes rebuilt their dependency snapshot after the lockfile change.",
+      "assignees": [],
+      "canAct": true,
+      "conversationIds": ["slack:CQA999:1770010800.000400"],
+      "createdAt": "2026-07-27T12:00:00.000Z",
+      "updatedAt": "2026-07-27T12:00:00.000Z",
+      "url": "https://demo.junior.invalid/review?item=qa-sandbox-snapshot"
+    }
+  ],
+  "automations": [
+    {
+      "automation": {
+        "id": "event-2",
+        "kind": "event",
+        "title": "Incident change alerts",
+        "task": {
+          "kind": "instruction",
+          "instruction": "Notify responders when the incident changes"
+        },
+        "status": "active",
+        "trigger": "incident updated on Incident · INC-17",
+        "destination": "#incident-response",
+        "createdBy": "Avery Chen",
+        "ownedByYou": false,
+        "url": "https://demo.junior.invalid/automations/event-2"
+      },
+      "runs": []
+    },
+    {
+      "automation": {
+        "id": "event-1",
+        "kind": "event",
+        "title": "Closed issue summary",
+        "task": {
+          "kind": "instruction",
+          "instruction": "Summarize the closed issue"
+        },
+        "status": "blocked",
+        "statusReason": "GitHub access expired. Reconnect GitHub to resume.",
+        "trigger": "issue closed on Issue · ACME-42; labels includes bug; repository is api or web",
+        "destination": "#project-updates",
+        "createdBy": "Morgan",
+        "ownedByYou": true,
+        "lastRunAt": "2026-08-05T18:30:00.000Z",
+        "lastConversationId": "agent-dispatch:event-1",
+        "url": "https://demo.junior.invalid/automations/event-1"
+      },
+      "runs": [
+        {
+          "executedAt": "2026-08-07T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-06T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found.",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-05T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-04T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-03T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-02T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found."
+        },
+        {
+          "executedAt": "2026-08-01T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-07-31T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        }
+      ]
+    },
+    {
+      "automation": {
+        "id": "scheduled-1",
+        "kind": "scheduled",
+        "title": "Weekly project summary",
+        "task": {
+          "kind": "instruction",
+          "instruction": "Send the weekly project summary"
+        },
+        "status": "active",
+        "trigger": "Every Monday at 9:00 AM (America/Los_Angeles)",
+        "nextRunAt": "2026-08-10T16:00:00.000Z",
+        "destination": "#project-updates",
+        "createdBy": "Morgan",
+        "ownedByYou": true,
+        "lastRunAt": "2026-08-06T16:00:00.000Z",
+        "lastConversationId": "scheduler:daily-ops-digest",
+        "url": "https://demo.junior.invalid/automations/scheduled-1"
+      },
+      "runs": [
+        {
+          "executedAt": "2026-08-07T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-06T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found.",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-05T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-04T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-03T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-02T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found."
+        },
+        {
+          "executedAt": "2026-08-01T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-07-31T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        }
+      ]
+    },
+    {
+      "automation": {
+        "id": "scheduled-2",
+        "kind": "scheduled",
+        "title": "Daily operations digest",
+        "task": {
+          "kind": "instruction",
+          "instruction": "Post the daily operations digest: open incidents, noisy alerts, and failed deploys."
+        },
+        "status": "active",
+        "trigger": "Every day at 8:00 AM (America/Los_Angeles)",
+        "nextRunAt": "2026-08-08T15:00:00.000Z",
+        "destination": "#ops",
+        "createdBy": "Morgan",
+        "ownedByYou": true,
+        "lastRunAt": "2026-08-07T15:00:00.000Z",
+        "lastRunStatus": "failed",
+        "lastConversationId": "scheduler:daily-ops-digest",
+        "url": "https://demo.junior.invalid/automations/scheduled-2"
+      },
+      "runs": [
+        {
+          "executedAt": "2026-08-07T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-06T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found.",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-05T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-04T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-03T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-02T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found."
+        },
+        {
+          "executedAt": "2026-08-01T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-07-31T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        }
+      ]
+    },
+    {
+      "automation": {
+        "id": "scheduled-3",
+        "kind": "scheduled",
+        "title": "Release train",
+        "task": {
+          "kind": "instruction",
+          "instruction": "Cut a release if anything is pending since the last one."
+        },
+        "status": "paused",
+        "trigger": "Every Monday at 9:00 AM (America/Los_Angeles)",
+        "destination": "#releases",
+        "createdBy": "Morgan",
+        "ownedByYou": true,
+        "lastRunAt": "2026-08-03T16:00:00.000Z",
+        "lastConversationId": "slack:CQA456:1770021600.000600",
+        "url": "https://demo.junior.invalid/automations/scheduled-3"
+      },
+      "runs": [
+        {
+          "executedAt": "2026-08-07T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-06T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found.",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-05T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-04T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        },
+        {
+          "executedAt": "2026-08-03T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-08-02T11:00:00.000Z",
+          "status": "failed",
+          "error": "Slack rejected the result message: channel_not_found."
+        },
+        {
+          "executedAt": "2026-08-01T11:00:00.000Z",
+          "status": "blocked",
+          "error": "GitHub needs the creator to reconnect their account.",
+          "conversationId": "scheduler:daily-ops-digest"
+        },
+        {
+          "executedAt": "2026-07-31T11:00:00.000Z",
+          "status": "completed",
+          "conversationId": "slack:CQA123:1770003600.000200"
+        }
+      ]
+    }
+  ]
+}

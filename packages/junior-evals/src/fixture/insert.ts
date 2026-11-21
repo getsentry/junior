@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { onTestFinished } from "vitest";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -35,7 +35,7 @@ import {
 } from "@/chat/scheduled-automations/types";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { fixtureId } from "./ids";
-import type { ReviewDeskItem, SlackAuthor } from "./inputs";
+import type { InboxItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
 /** A Slack channel that automations and mentions can target. */
@@ -288,7 +288,7 @@ export async function insertReviewItem(args: {
   }
   const conversationId = await insertCreationThread(args.destination);
   const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: conversationId,
+    owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [identity.userId],
     body: args.body,
@@ -313,13 +313,13 @@ export async function insertReviewItem(args: {
  */
 export async function insertWebReviewItem(args: {
   conversationId: string;
-  item: ReviewDeskItem;
+  item: InboxItem;
   viewerEmail: string;
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
   if (!user) throw new Error(`No User for ${args.viewerEmail}`);
   const item = await insertStoredReviewItem(getDb(), {
-    addedByConversationId: args.conversationId,
+    owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [user.id],
     body: args.item.body,

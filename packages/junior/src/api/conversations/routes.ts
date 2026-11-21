@@ -1,7 +1,9 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { jsonResponse, throwApiError } from "../http";
+import { contentVersion, contentVersionHeaders } from "../content-version";
+import { emptyResponse, jsonResponse, throwApiError } from "../http";
+import { CONTENT_VERSION_HEADER } from "../schema/response";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -27,7 +29,6 @@ import {
   createAttachmentUploadBodySchema,
 } from "../schema/conversation-attachment-upload";
 import {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "../schema/conversation-feed";
@@ -84,7 +85,10 @@ import {
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
-import { conversationWatchesReportSchema } from "../schema/watch";
+import {
+  conversationWatchesReportSchema,
+  watchParamsSchema,
+} from "../schema/watch";
 import {
   conversationPlanItemSchema,
   conversationPlanReportSchema,
@@ -124,7 +128,6 @@ import { readConversationDetail } from "./detail";
 import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
-import { conversationFeedPageVersion } from "./feed-page-version";
 import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
@@ -133,7 +136,10 @@ import { steerConversationPendingMessagesForViewer } from "./steer-pending-messa
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
-import { requireConversationWatches } from "./watches";
+import {
+  cancelConversationWatchForViewer,
+  requireConversationWatches,
+} from "./watches";
 import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
 
 /** Create the HTTP routes owned by the conversations API. */
@@ -170,17 +176,12 @@ export function createConversationRoutes(
         status,
         ...(viewer ? { viewer } : undefined),
       });
-      const pageVersion = conversationFeedPageVersion(feed);
-      const headers = {
-        "cache-control": "private, no-store",
-        [CONVERSATION_FEED_PAGE_VERSION_HEADER]: pageVersion,
-      };
       // The token hashes the page itself, so it holds everything that the
-      // query and the viewer change on it.
-      if (
-        context.req.header(CONVERSATION_FEED_PAGE_VERSION_HEADER) ===
-        pageVersion
-      ) {
+      // query and the viewer change on it. Comparing it here, not in
+      // `revalidateContent`, skips the response parse and serialization.
+      const version = contentVersion(feed);
+      const headers = contentVersionHeaders(version);
+      if (context.req.header(CONTENT_VERSION_HEADER) === version) {
         return new Response(null, { status: 304, headers });
       }
       return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
@@ -715,6 +716,21 @@ export function createConversationRoutes(
         conversationWatchesReportSchema,
         await requireConversationWatches(conversationId, { viewer }),
       );
+    },
+  );
+
+  app.delete(
+    "/:conversationId/watches/:watchId",
+    requireViewer,
+    validateRequest("param", watchParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { conversationId, watchId } = context.req.valid("param");
+      await cancelConversationWatchForViewer(
+        context.get("viewer"),
+        conversationId,
+        watchId,
+      );
+      return emptyResponse();
     },
   );
 

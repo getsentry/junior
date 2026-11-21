@@ -78,7 +78,7 @@ describe("conversation status", () => {
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
     const unassigned = await insertReviewItem(getDb(), {
-      addedByConversationId: conversationId,
+      owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone in the thread can answer.",
@@ -425,7 +425,7 @@ describe("conversation status", () => {
     const [item] = await getDb()
       .select({ status: juniorReviewItems.status })
       .from(juniorReviewItems)
-      .where(eq(juniorReviewItems.addedByConversationId, conversationId));
+      .where(eq(juniorReviewItems.ownerId, conversationId));
     expect(item?.status).toBe("open");
   });
 });

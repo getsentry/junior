@@ -454,6 +454,7 @@ export function createGitHubWebhookRoute(args: {
         });
       }
       await syncGitHubPullRequestActions({
+        botEmail,
         db: args.db,
         deliveryId,
         env: {

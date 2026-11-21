@@ -2,6 +2,7 @@ import {
   type PluginEgress,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const MAX_REDIRECTS = 3;
@@ -134,28 +135,46 @@ export function parseRepo(value: string): {
   return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
 }
 
+const githubErrorBodySchema = z.object({
+  errors: z.unknown().optional(),
+  message: z.unknown().optional(),
+});
+const githubErrorEntrySchema = z.object({
+  code: z.unknown().optional(),
+  field: z.unknown().optional(),
+  message: z.unknown().optional(),
+  resource: z.unknown().optional(),
+});
+const GITHUB_ERROR_DETAIL_FIELDS: readonly (keyof z.infer<
+  typeof githubErrorEntrySchema
+>)[] = ["resource", "field", "code", "message"];
+
 /**
  * Return a readable error from a GitHub REST or GraphQL error body.
  *
  * REST validation errors list the failed fields in `errors`, and GraphQL puts
  * every message in `errors`. Both details help the model fix its input.
  */
-export function githubErrorMessage(body: unknown): string {
-  if (typeof body === "string" && body.trim()) return body.trim();
-  if (!isRecord(body)) return "GitHub request failed";
+export function githubErrorMessage(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  const parsed = githubErrorBodySchema.safeParse(value);
+  if (!parsed.success) return "GitHub request failed";
+  const body = parsed.data;
   const errors = Array.isArray(body["errors"])
-    ? body["errors"].filter(isRecord)
+    ? body["errors"].flatMap((entry) => {
+        const error = githubErrorEntrySchema.safeParse(entry);
+        return error.success ? [error.data] : [];
+      })
     : [];
   if (typeof body["message"] === "string" && body["message"].trim()) {
     const details = errors
       .map((error) =>
-        ["resource", "field", "code", "message"]
-          .map((name) => {
-            const value = error[name];
-            return typeof value === "string" && value.trim()
-              ? `${name}=${value.trim()}`
-              : undefined;
-          })
+        GITHUB_ERROR_DETAIL_FIELDS.map((name) => {
+          const value = error[name];
+          return typeof value === "string" && value.trim()
+            ? `${name}=${value.trim()}`
+            : undefined;
+        })
           .filter(Boolean)
           .join(" "),
       )
@@ -170,8 +189,4 @@ export function githubErrorMessage(body: unknown): string {
   return graphqlMessages.length
     ? graphqlMessages.join("; ")
     : "GitHub request failed";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

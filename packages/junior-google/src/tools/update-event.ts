@@ -8,16 +8,18 @@ import {
   emailListSchema,
   googleApiError,
   googleApiRequest,
+  requireAllowedEmails,
+  timeZoneSchema,
+  type GoogleToolContext,
+} from "../google-api";
+import {
   MAX_EVENT_MS,
   ownEventOutputFields,
   ownEventResult,
   ownEventIdSchema,
   ownEventSchema,
   readOwnEventForRequester,
-  requireAllowedEmails,
-  timeZoneSchema,
-  type GoogleToolContext,
-} from "./shared";
+} from "../calendar/events";
 
 const inputSchema = z
   .object({

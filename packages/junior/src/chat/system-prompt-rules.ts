@@ -88,7 +88,7 @@ const AGENT_INPUT_RULES = [
 /**
  * Block 2, `<automation-run>`: the job rules for a stored automation. No person
  * reads the run while it executes, so Junior does the work without waiting.
- * A decision that only a person can make goes on the review desk, and each
+ * A decision that only a person can make goes in the Inbox, and each
  * Turn ends with one answer tool.
  */
 const AUTOMATION_RUN_RULES = [
@@ -258,8 +258,9 @@ const SKILL_POLICY_RULES = [
 const PLANNING_RULES = [
   "- Use `updatePlan` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
   "- The plan is your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Close an item when its work ends, such as when a child agent's result arrives. After a compaction, `<plan>` lists the open items. `<plan-delta>` shows items that people changed since you last saw them.",
+  "- Close an item in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<plan>` lists the open items after a compaction, or when the plan has not changed for a few Turns. `<plan-delta>` shows items that people changed since you last saw them.",
   "- Do not repeat the plan in chat, and do not end a Turn with a plan when you can do the work now.",
+  "- Plan item ids such as `TODO-12` are only for `updatePlan`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
 ];
 
 /**

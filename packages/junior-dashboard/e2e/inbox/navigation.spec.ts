@@ -1,7 +1,7 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { mockReviewItems, openRow } from "./inbox-fixture";
+import { automationAlert, mockReviewItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -181,6 +181,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       }),
     );
     await mockReviewItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
       automations: () =>
         mockAutomationCollection(
           report,
@@ -253,7 +254,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const [path, name] of [
       ["/", "New conversation"],
-      ["/review", "New conversation"],
+      ["/inbox", "New conversation"],
       ["/automations", "New automation"],
     ] as const) {
       await page.goto(`${dashboard.baseURL}${path}`);

@@ -484,6 +484,7 @@ export async function enqueueEventNotification(args: {
         conversationId: args.subscription.conversationId,
         maxTurns,
         nowMs: args.event.occurredAtMs,
+        queue: args.queue,
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.

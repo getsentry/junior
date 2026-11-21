@@ -15,7 +15,7 @@ import {
 // Child agents of the rollout Conversation each add an ask. They roll up
 // under the root's stack, after the root's own ask.
 const childOf = (thread: string, label: string) => ({
-  addedByConversationId: `slack:CQA123:1770003600.${thread}`,
+  owner: { id: `slack:CQA123:1770003600.${thread}`, kind: "conversation" },
   addedByLabel: label,
   rootConversationId: conversationId,
 });
@@ -72,9 +72,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const stack = stackOf(page);
     await expect(stack.locator("li[data-inbox-row]")).toHaveCount(2);
     await expect(
-      page.locator(
-        `li[data-inbox-row="todo:${childReview.addedByConversationId}"]`,
-      ),
+      page.locator(`li[data-inbox-row="todo:${childReview.owner.id}"]`),
     ).toHaveCount(0);
     await expect(rowOf(page, childReview)).toContainText(
       "Check the pipeline runs",
@@ -258,7 +256,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(open).toBeVisible();
     await expect(open).toHaveAttribute(
       "href",
-      `/conversations/${encodeURIComponent(childReview.addedByConversationId)}?ask=${childReview.id}`,
+      `/conversations/${encodeURIComponent(childReview.owner.id)}?ask=${childReview.id}`,
     );
     await quick("Dismiss").click();
     await expect(row).toHaveCount(0);
@@ -538,80 +536,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     const heading = section.getByRole("button", { name: /^Up for grabs/ });
     await heading.click();
     await expect(heading).toHaveText("Up for grabs2");
-  });
-
-  test("a row snooze from before item snoozes keeps its items asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    // The old record snoozed the whole row, under its Conversation, until a
-    // newer item than its newest arrived.
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    await mockReviewItems(page, { open: [rollout, childReview, childLicense] });
-    await page.goto(`${dashboard.baseURL}/`);
-    // The newer ask shows by itself. The two it put away stay asleep.
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-  });
-
-  test("a row snooze from before item snoozes keeps its later page asleep", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.addInitScript(
-      ([key, newestItemId]) =>
-        window.localStorage.setItem(
-          "junior:inbox:snoozed",
-          JSON.stringify({
-            [key!]: { newestItemId, untilMs: Date.now() + 86_400_000 },
-          }),
-        ),
-      [conversationId, childReview.id],
-    );
-    // The row's older ask comes on the second page, after the first converts.
-    await mockReviewItems(page, {
-      open: [childReview, childLicense, rollout],
-      pageSize: 2,
-    });
-    let releaseLaterPages = () => {};
-    const laterPages = new Promise<void>((resolve) => {
-      releaseLaterPages = resolve;
-    });
-    await page.route(/\/api\/review-items\?.*cursor=/, async (route) => {
-      await laterPages;
-      await route.fallback();
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    await expect(rowOf(page, childLicense)).toBeVisible();
-    await expect(rowOf(page, childReview)).toHaveCount(0);
-    releaseLaterPages();
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Snoozed/ })).toContainText(
-      "2",
-    );
-    await expect(rowOf(page, rollout)).toHaveCount(0);
-
-    // Its newest ask wakes by itself, and leaves the Snoozed count.
-    const snoozed = nav.getByRole("link", { name: /^Snoozed/ });
-    await snoozed.click();
-    const row = page.locator(`li[data-inbox-row="${childReview.id}"]`);
-    await row.locator("[data-inbox-head]").click();
-    await row.getByRole("button", { exact: true, name: "Wake" }).click();
-    await expect(row).toHaveCount(0);
-    await expect(snoozed).toContainText("1");
   });
 });

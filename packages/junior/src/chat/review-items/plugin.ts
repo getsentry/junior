@@ -9,10 +9,12 @@ import { getDb } from "@/chat/db";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowReviewItem } from "./changes";
+import { reviewItemRequestSchema, type ReviewItemRequest } from "./evidence";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
   insertReviewItem,
+  ownerConversationId,
   updateReviewItemContent,
   type ReviewItemContent,
 } from "./store";
@@ -41,8 +43,26 @@ async function assigneeUserIds(
   return userIds.flat();
 }
 
+/** Field id of the one choice field of a plugin item with choices. */
+export const PLUGIN_CHOICE_FIELD_ID = "choice";
+
+/** The request that shows a plugin item's choices as one row of buttons. */
+function choicesRequest(notice: PluginReviewNotice): ReviewItemRequest {
+  return reviewItemRequestSchema.parse({
+    question: notice.body,
+    fields: [
+      {
+        id: PLUGIN_CHOICE_FIELD_ID,
+        kind: "choice",
+        label: notice.title,
+        options: notice.choices,
+      },
+    ],
+  });
+}
+
 /**
- * Connect a plugin to the review desk for one Conversation. Dedupe keys are
+ * Connect a plugin to the Inbox for one Conversation. Dedupe keys are
  * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
  * cannot change them. A change sends no message to the Conversation. It
  * only shows the new state through `show`. An item is private when the
@@ -78,7 +98,7 @@ export function createPluginReviewItems(args: {
       if (
         existing &&
         isPrivate &&
-        existing.addedByConversationId !== conversationId
+        ownerConversationId(existing) !== conversationId
       ) {
         throw new Error(
           "A private review item links only to the Conversation that added it",
@@ -96,9 +116,10 @@ export function createPluginReviewItems(args: {
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
         ],
         // An item that waits on its assignees is an action: it needs them.
-        kind: notice.waitsOnAssignees ? "action" : "notice",
+        kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
+        ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
         ...(notice.subject ? { subject: notice.subject } : undefined),
       };
       if (existing) {
@@ -112,8 +133,8 @@ export function createPluginReviewItems(args: {
       }
       const item = await insertReviewItem(db, {
         ...content,
-        addedByConversationId: conversationId,
         dedupeKey: scopedKey(notice.dedupeKey),
+        owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
         ...(access.tenant ? { tenant: access.tenant } : undefined),
       });
@@ -130,7 +151,7 @@ export function createPluginReviewItems(args: {
         scopedKey(input.dedupeKey),
         access.tenant,
       );
-      if (!item) return;
+      if (!item) return false;
       const closed = await closeReviewItem(db, {
         id: item.id,
         nowMs: Date.now(),
@@ -140,6 +161,7 @@ export function createPluginReviewItems(args: {
       if (closed) {
         await show(item.id);
       }
+      return closed;
     },
   };
 }

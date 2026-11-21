@@ -244,6 +244,8 @@ export function UserInputForm(props: {
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
+  /** False when the answer takes no words, so the form has no Other…. */
+  words?: boolean;
 }) {
   const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
@@ -356,19 +358,23 @@ export function UserInputForm(props: {
     </div>
   ) : null;
   // Slack cards show the same button, so both surfaces take a free-text
-  // answer when no choice fits.
-  const otherButton = props.docked ? null : (
-    <Button
-      variant="outline"
-      disabled={sending}
-      onClick={() => {
-        focusNoteRef.current = true;
-        setWriteOther(true);
-      }}
-    >
-      Other…
-    </Button>
-  );
+  // answer when no choice fits. One choice is a plugin's action, such as
+  // Resume. The plugin reads no words, so it has no Other….
+  const otherButton =
+    props.docked ||
+    props.words === false ||
+    buttonField?.options.length === 1 ? null : (
+      <Button
+        variant="outline"
+        disabled={sending}
+        onClick={() => {
+          focusNoteRef.current = true;
+          setWriteOther(true);
+        }}
+      >
+        Other…
+      </Button>
+    );
   // Number keys pick the first nine choices.
   const shortcut = (index: number) =>
     props.docked && index < 9 ? String(index + 1) : undefined;

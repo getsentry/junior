@@ -1,4 +1,9 @@
-import type { TextReplacement } from "@/chat/tools/sandbox/text-edits";
+import {
+  missingFileResult,
+  sliceFileContent,
+} from "@/chat/tool-support/text-range-result";
+import { editFile } from "@/chat/sandbox/edit-file";
+import type { TextReplacement } from "@/chat/tool-support/text-edits";
 import fs from "node:fs/promises";
 import {
   getTracePropagationHeaders,
@@ -58,17 +63,12 @@ import {
 } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { editFile } from "@/chat/tools/sandbox/edit-file";
 import {
   isMissingPathError,
   positiveInteger,
   resolveWorkspacePath,
-} from "@/chat/tools/sandbox/file-utils";
-import {
-  missingFileResult,
-  sliceFileContent,
-} from "@/chat/tools/sandbox/read-file";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 // Policies: policies/security.md and policies/observability.md.

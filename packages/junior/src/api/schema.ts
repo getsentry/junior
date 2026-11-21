@@ -18,12 +18,12 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
@@ -56,6 +56,8 @@ export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
 export type { DailyConversationActivity } from "./activity";
 export {
   codeActivityDaySchema,
+  codeChangeSearchQuerySchema,
+  codeChangeSearchReportSchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
@@ -65,14 +67,17 @@ export {
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
   IDLE_CHANGE_DAYS,
+  mentionableCodeChangeSchema,
 } from "./schema/code";
 export type {
   CodeActivityDay,
+  CodeChangeSearchReport,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
   CodeRepositoryReport,
   CodeRepositorySummary,
+  MentionableCodeChange,
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
@@ -118,7 +123,6 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
   conversationFeedQuerySchema,
   conversationFeedSchema,
 } from "./schema/conversation-feed";
@@ -256,6 +260,7 @@ export type {
 export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
 } from "./schema/watch";
 export {
   conversationPlanItemSchema,
@@ -311,8 +316,8 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema } from "./schema/common";
-export type { ApiError } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/response";
+export type { ApiError } from "./schema/response";
 export {
   connectionListSchema,
   connectionParamsSchema,
@@ -332,12 +337,15 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheHealthReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
@@ -466,5 +474,18 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
+  inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
+export type {
+  InboxSnoozeCreateBody,
+  InboxSnoozeResource,
+  InboxSnoozeSubjectBody,
+  InboxSnoozeTrigger,
+} from "./schema/inbox-snooze";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

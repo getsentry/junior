@@ -1,7 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import type { ReviewItem } from "@/chat/review-items/store";
+import {
+  ownerConversationId,
+  type ReviewItem,
+} from "@/chat/review-items/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
@@ -18,32 +21,31 @@ function kindLabel(kind: string | null): string {
 }
 
 /**
- * Read the root of each Conversation that added an item, at any depth, from
+ * Read the root of each Conversation that owns an item, at any depth, from
  * the root that each Conversation stores, with a label for a child, such as
  * its Thread title. A root needs no read. A child is left out when the
  * viewer cannot see its root's content, so the viewer learns no root,
  * title, or name of a tree they cannot see
  * (`policies/conversation-access.md`, rule for people). The payload then
- * names the Conversation that added the item as its root.
+ * names the owner Conversation as its root.
  */
 export async function readItemRoots(
   db: JuniorDatabase,
-  items: readonly Pick<
-    ReviewItem,
-    "addedByConversationId" | "addedByRootConversationId"
-  >[],
+  items: readonly Pick<ReviewItem, "owner" | "ownerRootConversationId">[],
   viewer: User,
 ): Promise<Map<string, ItemRoot>> {
-  // A search already read each adder's stored root. Most items come from
-  // roots, and then no read follows.
+  // A search already read each owner's stored root. Most items come from
+  // roots, and then no read follows. An owner of another kind has no root.
   const ids = [
     ...new Set(
-      items.flatMap((item) =>
-        item.addedByRootConversationId === null ||
-        item.addedByRootConversationId === item.addedByConversationId
+      items.flatMap((item) => {
+        const conversationId = ownerConversationId(item);
+        return !conversationId ||
+          item.ownerRootConversationId === null ||
+          item.ownerRootConversationId === conversationId
           ? []
-          : [item.addedByConversationId],
-      ),
+          : [conversationId];
+      }),
     ),
   ];
   if (ids.length === 0) return new Map();

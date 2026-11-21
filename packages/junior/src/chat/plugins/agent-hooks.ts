@@ -76,12 +76,11 @@ import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
   AnyToolDefinition,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { createWatch, turnEvents } from "@/chat/events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
+import { createPluginWatches } from "@/chat/plugins/watches";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import {
@@ -89,7 +88,7 @@ import {
   readIdentityById,
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
@@ -105,6 +104,7 @@ import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import {
+  apiRoutePrefix,
   coreRegistrations,
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
@@ -130,6 +130,8 @@ export interface PluginRouteRegistration extends PluginRoute {
 export interface PluginApiRouteRegistration {
   app: PluginRouteApp;
   pluginName: string;
+  /** Path where the dashboard mounts the app. */
+  prefix: string;
 }
 
 export interface AfterMcpToolHookInput {
@@ -183,9 +185,7 @@ const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const promptContextContentSchema = z.record(z.string(), z.unknown());
 
 /** Convert manifest names into model-facing tool namespaces. */
 function pluginToolNamespace(pluginName: string): string {
@@ -408,11 +408,11 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed: unknown = JSON.parse(serialized);
-  if (!isRecord(parsed)) {
+  const parsed = promptContextContentSchema.safeParse(JSON.parse(serialized));
+  if (!parsed.success) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
-  return parsed;
+  return parsed.data;
 }
 
 function toUserPromptContributionContext(args: {
@@ -429,22 +429,26 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
+  const { value } = args;
   if (
-    !isRecord(args.value) ||
-    typeof args.value["renderPrompt"] !== "function"
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    !("renderPrompt" in value) ||
+    typeof value.renderPrompt !== "function"
   ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value["context"]);
+  const context = promptContextSchema.safeParse(
+    "context" in value ? value.context : undefined,
+  );
   if (!context.success) {
     return undefined;
   }
-  const renderPrompt = args.value["renderPrompt"] as () => unknown;
   // Call it on its object: plugins may write renderPrompt as a method that
   // reads `this`.
-  const text = promptMessageSchema.safeParse({
-    text: renderPrompt.call(args.value),
-  });
+  const rendered: unknown = value.renderPrompt.call(value);
+  const text = promptMessageSchema.safeParse({ text: rendered });
   if (!text.success) {
     return undefined;
   }
@@ -875,53 +879,7 @@ export function getPluginTools(
       plugin: pluginName,
     });
     const mcp = pluginMcpContext(plugin, context);
-    const canSubscribe =
-      Boolean(plugin.events) && plugin.events?.isEnabled?.() !== false;
-    const events: ToolRegistrationHookContext["events"] = {
-      canSubscribe,
-      async subscribe(input) {
-        if (!canSubscribe) {
-          throw new Error("Watches are not available in this conversation.");
-        }
-        const registration = plugin.events;
-        const resourceType = registration?.resourceTypes.find(
-          (candidate) => candidate.type === input.resource.type,
-        );
-        if (
-          input.resource.namespace !== pluginName ||
-          !resourceType ||
-          input.events.length === 0 ||
-          input.events.some(
-            (eventType) => !resourceType.supportedEvents.includes(eventType),
-          )
-        ) {
-          throw new Error(
-            "Watch contains an event or resource that the plugin does not support.",
-          );
-        }
-        const subscription = await createWatch({
-          conversationId: context.conversationId,
-          events: input.events,
-          expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-          guidance: input.guidance,
-          intent: input.intent,
-          label: input.resource.label,
-          namespace: pluginName,
-          identifier: normalizeEventIdentifier(
-            registration,
-            input.resource.identifier,
-          ),
-          quietEvents: input.quietEvents,
-          resourceType: input.resource.type,
-        });
-        // Quiet Events never wake the Conversation, so the agent does not
-        // count on them. It can still watch them with watchEvents.
-        return {
-          events: turnEvents(subscription),
-          id: subscription.id,
-        };
-      },
-    };
+    const events = createPluginWatches(plugin, context.conversationId);
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     const onCost = createPluginModelCostRecorder({
@@ -1264,7 +1222,7 @@ export function getPluginRoutes(options: {
       );
     }
     for (const route of pluginRoutes) {
-      if (!isRecord(route)) {
+      if (typeof route !== "object" || route === null || Array.isArray(route)) {
         throw new Error(
           `Plugin route from plugin "${pluginName}" must be an object`,
         );
@@ -1308,11 +1266,11 @@ export function getPluginRoutes(options: {
   return routes;
 }
 
-/** Collect authenticated product API route apps exposed by plugins. */
+/** Collect authenticated product API route apps of plugins and core features. */
 export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
   const routes: PluginApiRouteRegistration[] = [];
 
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.apiRoutes;
     if (!hook) {
@@ -1327,12 +1285,17 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     if (app === undefined) {
       continue;
     }
-    if (!isRecord(app) || typeof app.fetch !== "function") {
+    if (
+      typeof app !== "object" ||
+      app === null ||
+      Array.isArray(app) ||
+      typeof app.fetch !== "function"
+    ) {
       throw new Error(
         `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
-    routes.push({ app, pluginName });
+    routes.push({ app, pluginName, prefix: apiRoutePrefix(pluginName) });
   }
 
   return routes;
@@ -1763,7 +1726,7 @@ export async function getPluginProfileReports(args: {
 }
 
 function normalizeEnv(value: unknown): Record<string, string> {
-  if (!isRecord(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
   }
   const env: Record<string, string> = {};
@@ -1996,7 +1959,11 @@ export function createPluginHookRunner(
           throw blocked;
         }
         if (replacement !== undefined) {
-          if (!isRecord(replacement)) {
+          if (
+            typeof replacement !== "object" ||
+            replacement === null ||
+            Array.isArray(replacement)
+          ) {
             throw new Error(
               `Plugin "${pluginName}" replaced tool input with a non-object value`,
             );

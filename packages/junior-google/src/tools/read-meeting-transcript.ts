@@ -9,15 +9,14 @@ import {
   FILE_ID_PATTERN,
   googleFileMimeType,
   MAX_CONTENT_CHARS,
-} from "./files";
+} from "../drive/files";
 import {
   googleApiError,
   googleApiRequest,
-  googleAttendeeSchema,
-  parseEventId,
   requesterEmail,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
+import { googleAttendeeSchema, parseEventId } from "../calendar/events";
 
 // Google Meet names the Docs it saves like
 // "Weekly triage - 2026/10/12 14:01 CEST - Transcript". The title only labels
