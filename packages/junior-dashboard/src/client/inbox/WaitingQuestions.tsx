@@ -140,7 +140,7 @@ export function WaitingQuestionsPill(props: {
   store: ReturnType<typeof createQuestionsInViewStore>;
 }) {
   const { store } = props;
-  useSyncExternalStore(store.subscribe, store.version);
+  useSyncExternalStore(store.subscribe, store.version, store.version);
   const next = props.questions.find((item) => !store.shows(item.id));
   if (!next) return null;
   const count = props.questions.length;
