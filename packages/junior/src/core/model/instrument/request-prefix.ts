@@ -2,8 +2,8 @@
 // core-drift skill.
 import { createHash, type Hash } from "node:crypto";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { estimateImageTokens } from "@/core/model/image-tokens";
-import { isRecord } from "@/core/model/record";
+import { estimateImageTokens } from "@/core/model/instrument/image-tokens";
+import { isRecord } from "@/core/model/instrument/record";
 
 // The provider caches a request prefix in the order tools, system prompt,
 // messages. These hashes show on a `gen_ai.chat` span whether that prefix

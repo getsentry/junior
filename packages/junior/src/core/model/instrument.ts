@@ -21,12 +21,12 @@ import {
   toCanonicalInputMessage,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
-} from "@/core/model/messages";
-import { providerErrorAttributes } from "@/core/model/provider-error";
-import { serializeGenAiAttribute } from "@/core/model/redact";
-import { requestPrefixAttributes } from "@/core/model/request-prefix";
-import { routingAttributes } from "@/core/model/routing";
-import { usageAttributes } from "@/core/model/usage";
+} from "@/core/model/instrument/messages";
+import { providerErrorAttributes } from "@/core/model/instrument/provider-error";
+import { serializeGenAiAttribute } from "@/core/model/instrument/redact";
+import { requestPrefixAttributes } from "@/core/model/instrument/request-prefix";
+import { routingAttributes } from "@/core/model/instrument/routing";
+import { usageAttributes } from "@/core/model/instrument/usage";
 import {
   openSpan,
   type OpenSpan,
@@ -284,11 +284,13 @@ function errorType(error: unknown): string {
 }
 
 /**
- * Wraps a pi-ai stream function so each model request records one
- * `gen_ai.chat` span. `privacy` decides whether the span records message
- * content.
+ * Adds one `gen_ai.chat` span to each request of a pi-ai stream function. The
+ * span records the request shape, usage and cost, response timing, routing,
+ * request-prefix hashes, and provider errors. It records message content only
+ * when `privacy` is `public`, and only sizes, roles, and part types otherwise.
+ * A failed reply or request sets the error status.
  */
-export function tracedStream(
+export function instrumentModelStream(
   base: ModelStream,
   privacy: ConversationPrivacy,
 ): ModelStream {

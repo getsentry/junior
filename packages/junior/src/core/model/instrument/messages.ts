@@ -10,7 +10,7 @@ import {
   type ThinkingContent,
   type ToolCall,
 } from "@earendil-works/pi-ai";
-import { isRecord } from "@/core/model/record";
+import { isRecord } from "@/core/model/instrument/record";
 
 type TraceAttributeValue = string | number | boolean | string[];
 

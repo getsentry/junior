@@ -6,26 +6,20 @@ import type {
   AssistantMessage,
   Context,
   Model,
-  ThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
-  tracedStream,
+  instrumentModelStream,
   type ConversationPrivacy,
   type ModelStream,
-} from "@/core/model/span";
+} from "@/core/model/instrument";
 
 /** How much the model reasons before it replies. */
-export type TurnReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh";
-
-// Pi calls no reasoning `off`, and takes `undefined` to mean it.
-function thinkingLevel(level: TurnReasoningLevel): ThinkingLevel | undefined {
-  return level === "none" ? undefined : level;
-}
+export type ReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh";
 
 /** The model that a Turn uses, and how its requests are recorded. */
 export type ModelSettings = {
   id: string;
-  reasoning: TurnReasoningLevel;
+  reasoning: ReasoningLevel;
   /** `public` records message content on spans. */
   privacy: ConversationPrivacy;
 };
@@ -62,16 +56,16 @@ export function modelClient(dependencies: {
 }): ModelClient {
   return {
     complete: async ({ model, session, context }, signal) => {
-      const stream = await tracedStream(dependencies.stream, model.privacy)(
-        dependencies.resolveModel(model.id),
-        context,
-        {
-          apiKey: await dependencies.apiKey(),
-          sessionId: session,
-          reasoning: thinkingLevel(model.reasoning),
-          signal,
-        },
-      );
+      const stream = await instrumentModelStream(
+        dependencies.stream,
+        model.privacy,
+      )(dependencies.resolveModel(model.id), context, {
+        apiKey: await dependencies.apiKey(),
+        sessionId: session,
+        // Pi calls no reasoning `off`, and takes `undefined` to mean it.
+        reasoning: model.reasoning === "none" ? undefined : model.reasoning,
+        signal,
+      });
       return stream.result();
     },
   };
