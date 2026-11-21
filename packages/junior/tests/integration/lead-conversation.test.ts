@@ -383,11 +383,20 @@ describe("Lead", () => {
     ]) {
       await addItem.execute(addItem.prepareArguments(input), {});
     }
-    await stopConversation({
-      conversationId: started.conversation_id,
-      queue: harness.queue,
-      state: harness.state,
-    });
+    // A concurrent stop at another time does not report it twice.
+    await Promise.all([
+      stopConversation({
+        conversationId: started.conversation_id,
+        queue: harness.queue,
+        state: harness.state,
+      }),
+      markConversationsStopped([started.conversation_id], {
+        cancelWatches: false,
+        nowMs: Date.now() + 500,
+        queue: harness.queue,
+        state: harness.state,
+      }),
+    ]);
     // A later retry of the stop does not report it again.
     await markConversationsStopped([started.conversation_id], {
       cancelWatches: false,

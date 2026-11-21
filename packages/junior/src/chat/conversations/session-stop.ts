@@ -1,6 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -60,36 +60,49 @@ export async function markConversationsStopped(
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   const ids = [...conversationIds];
   const db = getSqlExecutor().db();
-  // Report a stop before it is written. A stop whose report fails stays
-  // unwritten, so a retry reports it. A retried or cascaded stop of a
-  // stopped Conversation moves `stoppedAt` later but does not report again.
-  const unstopped = await db
-    .select({ conversationId: juniorConversations.conversationId })
-    .from(juniorConversations)
+  // One statement claims each unstopped Conversation, so of concurrent stops
+  // only the first reports it.
+  const claimed = await db
+    .update(juniorConversations)
+    .set({ stoppedAt, detailVersion: nextDetailVersion })
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
         isNull(juniorConversations.stoppedAt),
       ),
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  // A retry of a stop that failed before its report finds its own claim, and
+  // reports it again. The Event key holds the stop time, so it delivers once.
+  const retried = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        eq(juniorConversations.stoppedAt, stoppedAt),
+      ),
     );
+  const reported = new Set(
+    [...claimed, ...retried].map(({ conversationId }) => conversationId),
+  );
   const queue = options.queue ?? getVercelConversationWorkQueue();
-  await mapBounded(unstopped, ({ conversationId }) =>
+  await mapBounded([...reported], (conversationId) =>
     publishConversationStatus(
       conversationId,
       { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
       { nowMs: stoppedAt.getTime(), queue, state: options.state },
     ),
   );
+  // A retried or cascaded stop of a stopped Conversation moves `stoppedAt`
+  // later. It reported nothing above, because the stop time differs.
   await db
     .update(juniorConversations)
     .set({ stoppedAt, detailVersion: nextDetailVersion })
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
-        or(
-          isNull(juniorConversations.stoppedAt),
-          lt(juniorConversations.stoppedAt, stoppedAt),
-        ),
+        lt(juniorConversations.stoppedAt, stoppedAt),
       ),
     );
 }
