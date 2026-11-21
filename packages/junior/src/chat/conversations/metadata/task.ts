@@ -37,6 +37,10 @@ export const CONVERSATION_METADATA_TASK = {
 } as const;
 
 const LOCK_TTL_MS = 10 * 60 * 1_000;
+// Turns that end close together, such as follow-up Turns for several people,
+// queue their tasks at once. Waiting about one generation lets the next task
+// run after the holder instead of failing and waiting for a queue retry.
+const LOCK_WAIT_MS = 30_000;
 
 /** Return whether a user gave this Turn an instruction. */
 function hasUserInstruction(record: TurnRecord): boolean {
@@ -202,7 +206,7 @@ export async function updateConversationMetadata(args: {
         },
       });
     },
-    { ttlMs: LOCK_TTL_MS },
+    { ttlMs: LOCK_TTL_MS, waitMs: LOCK_WAIT_MS },
   );
   if (!locked.acquired) {
     // The queue retries the task after the current owner finishes.
