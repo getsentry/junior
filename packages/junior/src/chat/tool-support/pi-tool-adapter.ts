@@ -332,10 +332,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
           ...(error.riskLevel
             ? { "app.guardian.risk_level": error.riskLevel }
             : undefined),
+          "app.guardian.rule": error.rule,
           ...(error.userAuthorization
-            ? {
-                "app.guardian.user_authorization": error.userAuthorization,
-              }
+            ? { "app.guardian.user_consent": error.userAuthorization }
             : undefined),
         });
       }
@@ -345,7 +344,8 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       setSpanAttributes({
         "app.guardian.decision": review.decision.decision,
         "app.guardian.risk_level": review.decision.riskLevel,
-        "app.guardian.user_authorization": review.decision.userAuthorization,
+        "app.guardian.rule": review.decision.rule,
+        "app.guardian.user_consent": review.decision.userAuthorization,
       });
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);

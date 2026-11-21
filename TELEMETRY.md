@@ -67,7 +67,7 @@ attributes. Nested logs and spans inherit them.
 | No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`        | `chat/providers/slack/`                                         |
 | Timeout, empty answer, bad reasoning | `agent.turn.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare`                     | `chat/agent/`                                                   |
 | Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
-| Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
+| Slow or wrong action review          | `guardian.action_review.*`, `app.guardian.*` on span `guardian.action_review` and on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
