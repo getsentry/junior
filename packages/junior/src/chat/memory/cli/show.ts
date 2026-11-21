@@ -5,14 +5,15 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { juniorMemoryMemories } from "@/db/schema/memory";
-import type { MemoryDb } from "../store";
+import * as z from "zod";
+import { memoryDb } from "../store";
 import { formatMemory } from "./format";
 
 async function runShow(
   ctx: PluginCliActionContext,
   id: string,
 ): Promise<number> {
-  const db = ctx.db as MemoryDb;
+  const db = memoryDb(ctx.db);
   const rows = await db
     .select()
     .from(juniorMemoryMemories)
@@ -38,7 +39,7 @@ export function configureMemoryShowCommand(
     .argument("<id>", "Memory id")
     .action(
       junior.action(async (ctx, id) => {
-        return await runShow(ctx, id as string);
+        return await runShow(ctx, z.string().parse(id));
       }),
     );
 }
