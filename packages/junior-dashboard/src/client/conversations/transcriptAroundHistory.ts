@@ -49,6 +49,7 @@ import {
   CONVERSATION_TURN_PARAM,
   messageEventSeq,
   parseConversationEventSeq,
+  parseTranscriptRowHash,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import {
@@ -451,16 +452,22 @@ export type ConversationLink =
   | { message: string }
   | { turn: string };
 
-/** Read the link of a page URL. A Turn wins over an event, then a Message. */
+/**
+ * Read the link of a page URL. A Turn wins over an event, then a Message,
+ * then a `#event-<seq>` row.
+ */
 export function readConversationLink(
   params: URLSearchParams,
+  hash: string,
 ): ConversationLink | undefined {
   const turn = params.get(CONVERSATION_TURN_PARAM);
   if (turn) return { turn };
   const event = parseConversationEventSeq(params.get(CONVERSATION_EVENT_PARAM));
   if (event !== undefined) return { event };
   const message = params.get(CONVERSATION_MESSAGE_PARAM);
-  return message ? { message } : undefined;
+  if (message) return { message };
+  const row = parseTranscriptRowHash(hash);
+  return row === undefined ? undefined : { event: row };
 }
 
 /** The page to open for a link, or nothing when `events` hold its row. */

@@ -164,6 +164,37 @@ test("opens a Message link on its row and marks it", async ({
   expect(mock.pageRequests).toContain("?message=message-400&limit=300");
 });
 
+test("opens an event link on its row and marks it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  let release = () => {};
+  mock.holdReads = new Promise((resolve) => {
+    release = resolve;
+  });
+  const rowMarks = await recordRowMarks(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}#event-1200`,
+  );
+  const transcript = page.getByLabel("Conversation transcript");
+  // The latest page does not hold the row, so the read around it loads it.
+  await expect.poll(() => mock.pageRequests).toEqual(["?event=1200&limit=300"]);
+  await expect(row(transcript, 1_200)).toHaveCount(0);
+  release();
+  const linked = transcript.locator("#event-1200");
+  await expect(linked).toBeInViewport();
+  await expect(linked).toHaveAttribute("data-transcript-seq", "1200");
+  await expect.poll(rowMarks).toEqual([1_200]);
+  // The link shows the transcript row. It does not open the event log.
+  expect(new URL(page.url()).searchParams.has("event")).toBe(false);
+  expect(new URL(page.url()).hash).toBe("#event-1200");
+});
+
 test("holds the top row while earlier pages load above it", async ({
   page,
   dashboard,

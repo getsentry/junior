@@ -68,6 +68,7 @@ import {
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
+import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
 import {
   TranscriptOpenRows,
@@ -714,6 +715,7 @@ function TranscriptEntryList(
                 renderEntry={renderEntry}
                 renderTasks={renderTasks}
                 row={rows[item.index]!}
+                rowAnchor={rowAnchorAt(rows, item.index)}
               />
             ))}
           </div>
@@ -750,6 +752,8 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   ) => ReactNode;
   renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
+  /** The `#event-<seq>` anchor of the row. */
+  rowAnchor: string | undefined;
 }) {
   const { row } = props;
   return (
@@ -766,7 +770,12 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           <TranscriptActivityGroup
             entries={row.entries}
             live={props.live}
@@ -775,17 +784,38 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
           />
         </TranscriptRow>
       ) : row.kind === "tasks" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           {props.renderTasks(row.entries)}
         </TranscriptRow>
       ) : (
-        <TranscriptRow anchorKey={row.key} seq={row.seq}>
+        <TranscriptRow anchorKey={row.key} id={props.rowAnchor} seq={row.seq}>
           {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
   );
 });
+
+// A question moved after its reply keeps the reply seq. Only the first row
+// with a seq takes its anchor, so each anchor names one row.
+function rowAnchorAt(
+  rows: readonly TranscriptListRow[],
+  index: number,
+): string | undefined {
+  const seq = rowSeq(rows[index]);
+  return seq === undefined || seq === rowSeq(rows[index - 1])
+    ? undefined
+    : transcriptRowAnchor(seq);
+}
+
+function rowSeq(row: TranscriptListRow | undefined): number | undefined {
+  return row && row.kind !== "unread_marker" ? row.seq : undefined;
+}
 
 function RedactedTranscriptView(
   props: TranscriptListPlacement & {
