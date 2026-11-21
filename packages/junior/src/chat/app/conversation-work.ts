@@ -25,7 +25,7 @@ import {
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
-import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
+import { resumeForPersonInput } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
@@ -216,14 +216,10 @@ export function createConversationWork(
     return result;
   };
   const run = async (
-    attemptContext: ConversationWorkerContext,
+    context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // Apply a session stop to automated input, on a root or a child.
-    const stopped = await skipInputAfterConversationStop(attemptContext);
-    if ("skipped" in stopped) {
-      return stopped.skipped;
-    }
-    const { context } = stopped;
+    // A person's input ends a stop, on a root or a child.
+    await resumeForPersonInput(context.conversationId, context.attempt.messages);
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });

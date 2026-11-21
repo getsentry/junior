@@ -14,7 +14,10 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  enqueueAutomatedInput,
+  getConversationStoppedAtMs,
+} from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { closeOpenTodosOfChild } from "@/chat/todos/store";
@@ -32,7 +35,6 @@ import type {
 } from "@/chat/task-execution/conversation-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  appendAndEnqueueInboundMessage,
   getConversationWorkState,
   type InboundMessage,
   type RenderInboundText,
@@ -317,7 +319,7 @@ export async function enqueueAgentInvocationResult(
   ) {
     await closeTodosForResult(invocation, invocation.status, nowMs);
   }
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
     queue: options.queue,
@@ -436,7 +438,7 @@ export async function enqueueAgentMessageToParent(args: {
     namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
     trustedSummary: summary,
   });
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,
       createdAtMs: nowMs,
@@ -530,7 +532,7 @@ export async function enqueueChildResultToParent(args: {
   ) {
     await closeTodosForResult(args.sender, "completed", nowMs);
   }
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,
       createdAtMs: nowMs,
@@ -693,9 +695,8 @@ async function startAgentInvocationsForChildInput(
   if (messages.length === 0 || !latest) {
     return undefined;
   }
-  const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
   const routes = await mapBounded(messages, (message) =>
-    routeChildInput(message, latest, stoppedAtMs),
+    routeChildInput(message, latest),
   );
   if (!routes.includes("agent invocation")) {
     return undefined;
@@ -932,19 +933,16 @@ export async function withAgentInvocationResultActors(
     return work;
   }
   const conversationId = work.batch[0]?.message.conversationId;
-  const [latest, stoppedAtMs] = conversationId
-    ? await Promise.all([
-        getLatestAgentInvocationForConversation(conversationId),
-        getConversationStoppedAtMs(conversationId),
-      ])
-    : [undefined, undefined];
+  const latest = conversationId
+    ? await getLatestAgentInvocationForConversation(conversationId)
+    : undefined;
   const batch = await mapBounded(work.batch, async (entry) => {
     // A parent message from the stored parent runs as the Actor of the
     // parent's Turn, with its grants and text, as on an Agent invocation.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
       if (
-        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+        (await routeChildInput(entry.message, latest)) ===
         "dropped"
       ) {
         logDroppedParentMessage(entry.message, parentMessage);
@@ -969,7 +967,7 @@ export async function withAgentInvocationResultActors(
       return entry;
     }
     if (
-      (await routeChildInput(entry.message, latest, stoppedAtMs)) === "dropped"
+      (await routeChildInput(entry.message, latest)) === "dropped"
     ) {
       return undefined;
     }

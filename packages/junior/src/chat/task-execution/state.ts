@@ -2235,6 +2235,21 @@ export async function dropPendingMessages(args: {
   return dropped.map((message) => message.inboundMessageId);
 }
 
+/**
+ * Remove the pending Event input of a Conversation and return it, so a stop
+ * can hold input that reached the mailbox before it.
+ */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  return await removePendingMessages(
+    args,
+    (message) => message.source === "event",
+  );
+}
+
 async function removePendingMessages(
   args: {
     conversationId: string;

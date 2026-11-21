@@ -67,7 +67,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
   coerceThreadConversationState,
@@ -817,7 +817,7 @@ export function createConversationTurnWorker(
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 });
-              await maybePostAutomatedTurnLimitNotice({
+              await stopAtAutomatedTurnLimit({
                 conversationId: context.conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,

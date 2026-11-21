@@ -119,7 +119,7 @@ import {
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
@@ -1272,7 +1272,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 });
-              await maybePostAutomatedTurnLimitNotice({
+              await stopAtAutomatedTurnLimit({
                 conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,

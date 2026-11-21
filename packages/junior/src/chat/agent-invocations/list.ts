@@ -234,7 +234,6 @@ async function listChildAgentsFromInvocations(
         (await runsOnConversationLoop(
           conversationKindFromRow(row),
           byChild.get(row.conversationId)![0],
-          row.stoppedAt?.getTime(),
           workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
           mailboxTurnSources.get(row.conversationId) ?? [],
         ))
@@ -354,7 +353,6 @@ async function listChildAgentsWithoutAgentInvocations(
           runsOnConversationLoop(
             kind,
             undefined,
-            undefined,
             workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
@@ -399,7 +397,6 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 async function runsOnConversationLoop(
   kind: ConversationKind,
   latest: AgentInvocation | undefined,
-  stoppedAtMs: number | undefined,
   pending: readonly InboundMessage[],
   mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
@@ -407,7 +404,7 @@ async function runsOnConversationLoop(
     if (
       answersParent(kind, message.source) &&
       // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
-      (await routeChildInput(message, latest, stoppedAtMs)) ===
+      (await routeChildInput(message, latest)) ===
         "Conversation loop"
     ) {
       return true;

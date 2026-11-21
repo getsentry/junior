@@ -1,8 +1,5 @@
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
-import {
-  getConversationStoppedAtMs,
-  isSkippedAfterConversationStop,
-} from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { isEventMailboxMetadata } from "@/chat/events/notification";
 import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -83,8 +80,8 @@ export function childAgentInput(
  * Event, and input from a child agent go to an agent invocation, and so do a
  * result, and input to a child that waits for its own child agents
  * (`replaced`). A stopped child drops input from its own child agents, also
- * input sent before the stop. A session stop at `stoppedAtMs` skips Events
- * as `skipInputAfterConversationStop` does.
+ * input sent before the stop. A stopped Conversation never routes automated
+ * input: `enqueueAutomatedInput` and the stop hold it first.
  *
  * TODO(dcramer): Drop the agent invocation route with the legacy child worker
  * (#3060 step 7).
@@ -92,7 +89,6 @@ export function childAgentInput(
 export async function routeChildInput(
   message: InboundMessage,
   latest: AgentInvocation | undefined,
-  stoppedAtMs: number | undefined,
 ): Promise<ChildInputRoute> {
   if (isPersonInput(message.source)) {
     return "Conversation loop";
@@ -112,18 +108,14 @@ export async function routeChildInput(
     if (open) {
       return "agent invocation";
     }
-    return isSkippedAfterConversationStop(message, stoppedAtMs)
-      ? "dropped"
-      : "Conversation loop";
+    return "Conversation loop";
   }
   const input = childAgentInput(message);
   if (!input) {
     if (open && isEventMailboxMetadata(message.input.metadata)) {
       return "agent invocation";
     }
-    return isSkippedAfterConversationStop(message, stoppedAtMs)
-      ? "dropped"
-      : "Conversation loop";
+    return "Conversation loop";
   }
   if (latest && isStoppedAgentInvocation(latest)) {
     return "dropped";
@@ -144,9 +136,7 @@ export async function routeChildInput(
   ) {
     return "agent invocation";
   }
-  return isSkippedAfterConversationStop(message, stoppedAtMs)
-    ? "dropped"
-    : "Conversation loop";
+  return "Conversation loop";
 }
 
 /**

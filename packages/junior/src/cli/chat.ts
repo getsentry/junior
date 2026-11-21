@@ -252,7 +252,7 @@ async function prepareLocalChatRun(
     await import("@/chat/agent-invocations/result");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
-  const { skipInputAfterConversationStop } =
+  const { resumeForPersonInput } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
@@ -275,10 +275,11 @@ async function prepareLocalChatRun(
       queue: localConversationWork.queue,
       // The local queue carries only child Conversation work.
       run: async (context) => {
-        const stopped = await skipInputAfterConversationStop(context);
-        return "skipped" in stopped
-          ? stopped.skipped
-          : await childWorker(stopped.context);
+        await resumeForPersonInput(
+          context.conversationId,
+          context.attempt.messages,
+        );
+        return await childWorker(context);
       },
     });
   });

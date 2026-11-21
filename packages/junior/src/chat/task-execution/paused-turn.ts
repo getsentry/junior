@@ -213,6 +213,12 @@ async function persistStoppedTurnState(turn: TurnRecord): Promise<void> {
     turnId: turn.turnId,
     errorMessage: "Turn interrupted",
   });
+  await getTurnLifecycle().complete({
+    conversationId: turn.conversationId,
+    createdAtMs: Date.now(),
+    outcome: "cancelled",
+    turnId: turn.turnId,
+  });
   const currentState = await getPersistedThreadState(turn.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
@@ -507,6 +513,12 @@ async function runPausedTurnInContext(
               conversationId: payload.conversationId,
               turnId: turn.turnId,
               errorMessage: "Authorization no longer belongs to this request",
+            });
+            await getTurnLifecycle().complete({
+              conversationId: payload.conversationId,
+              createdAtMs: Date.now(),
+              outcome: "cancelled",
+              turnId: turn.turnId,
             });
             clearPendingAuth(conversation, turn.turnId);
             await persistThreadStateById(payload.conversationId, {

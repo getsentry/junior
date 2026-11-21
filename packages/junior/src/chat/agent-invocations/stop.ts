@@ -2,14 +2,12 @@ import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
-  markConversationsStopped,
+  stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
   dropPendingMessages,
   getConversationWorkState,
-  stopConversationWork,
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { mapBounded } from "@/chat/fan-out";
@@ -28,9 +26,8 @@ import type { TerminalAgentInvocation } from "./types";
 /**
  * Stop one child agent of a parent Conversation and every child agent below
  * it. The parent gets no result. SQL stops the work first. Then each
- * Conversation in the tree ends its session. An agent stop is not a person
- * stop, so their Watches end. A Conversation stop request aborts each run
- * that is still working.
+ * Conversation in the tree stops through `stopConversationTree`, which keeps
+ * their Watches and holds their automated input.
  *
  * Returns undefined when the child does not belong to the parent.
  */
@@ -54,7 +51,7 @@ export async function stopChildAgent(args: {
     return undefined;
   }
   await finishStoppedTree(tree, tree.conversationIds, {
-    cancelWatches: true,
+    stoppedAtMs: Date.now(),
     state: args.state,
   });
   await dropUnreadLoopReplies(
@@ -80,8 +77,7 @@ export async function stopChildAgent(args: {
  *
  * Only a person's stop of this Conversation itself leaves child agents to
  * stop here: an agent stop, or a stop of a Conversation above it, stops this
- * Conversation's own agent invocations first, so it cannot spawn more. So
- * this keeps their Watches, as a person's stop does.
+ * Conversation's own agent invocations first, so it cannot spawn more.
  */
 export async function stopChildAgentsOf(
   conversationId: string,
@@ -103,8 +99,8 @@ export async function stopChildAgentsOf(
   // theirs too.
   const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
   await finishStoppedTree(tree, stoppedIds, {
-    cancelWatches: false,
-    nowMs: stoppedAtMs,
+    nowMs,
+    stoppedAtMs,
     state,
   });
   await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
@@ -137,8 +133,8 @@ export async function stopChildAgentsBelow(
   await skipUnreadResults(conversationId, nowMs, state);
   const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
   await finishStoppedTree(tree, stoppedIds, {
-    cancelWatches: false,
-    nowMs: stoppedAtMs,
+    nowMs,
+    stoppedAtMs,
     state,
   });
   await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
@@ -256,17 +252,13 @@ export async function dropOwnUnreadLoopReplies(
 async function finishStoppedTree(
   tree: StoppedAgentTree,
   conversationIdsToStop: string[],
-  options: Parameters<typeof markConversationsStopped>[1],
+  options: Omit<Parameters<typeof stopConversationTree>[1], "onStopSaved">,
 ): Promise<void> {
   for (const invocation of tree.stopped) {
     // oxlint-disable-next-line no-await-in-loop -- Append the end markers in stop order.
     await recordSubagentEnded(invocation);
   }
-  await markConversationsStopped(conversationIdsToStop, options);
-  await mapBounded(conversationIdsToStop, async (conversationId) => {
-    await cancelSignInWait(conversationId);
-    await stopConversationWork({ conversationId, state: options.state });
-  });
+  await stopConversationTree(conversationIdsToStop, options);
 }
 
 /**

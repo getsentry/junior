@@ -577,6 +577,20 @@ export async function dropPendingMessages(args: {
   return dropped;
 }
 
+/** Remove and return the pending Event input of a Conversation. */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  const taken = await workState.takePendingEventMessages(args);
+  if (taken.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return taken;
+}
+
 /** Mark one author's queued web messages as interrupts. */
 export async function steerWebPendingMessages(args: {
   authorIds: readonly string[];
