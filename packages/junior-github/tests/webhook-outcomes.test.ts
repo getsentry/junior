@@ -337,6 +337,10 @@ function webhookRoute(
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
   codeChanges: CodeChangeInput[] = [],
+  warn: (
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) => void = () => {},
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -365,7 +369,7 @@ function webhookRoute(
     db: fixture.db(),
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
-    log: { error },
+    log: { error, warn },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     events: {
@@ -1989,6 +1993,80 @@ describe("GitHub-owned issue outcomes", () => {
           state: "closed",
           stateReason: null,
           updatedAt: new Date("2026-07-03T12:00:00.000Z"),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("records an issue close without a terminal time at its update time", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const warnings: Array<{
+        message: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (message, metadata) => {
+          warnings.push({ message, metadata });
+        },
+      );
+      await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3020,
+            number: 990,
+          }),
+          "issues",
+        ),
+      );
+      const closed = await route.handler(
+        signedRequest(
+          issueLifecyclePayload({
+            action: "closed",
+            closedAt: null,
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: 3020,
+            number: 990,
+            stateReason: "completed",
+            updatedAt: "2026-07-03T12:05:00.000Z",
+          }),
+          "issues",
+        ),
+      );
+      expect(closed.status).toBe(202);
+      expect(warnings).toEqual([
+        {
+          message: "GitHub issue close has no valid terminal timestamp",
+          metadata: {
+            closedAt: null,
+            number: 990,
+            repository: "getsentry/junior",
+            updatedAt: "2026-07-03T12:05:00.000Z",
+          },
+        },
+      ]);
+
+      await expect(
+        fixture.db().select().from(juniorGitHubIssues),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          closedAt: new Date("2026-07-03T12:05:00.000Z"),
+          issueId: "3020",
+          state: "closed",
+          stateReason: "completed",
+          updatedAt: new Date("2026-07-03T12:05:00.000Z"),
         }),
       ]);
     } finally {
