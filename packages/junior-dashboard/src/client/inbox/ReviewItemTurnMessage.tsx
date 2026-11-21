@@ -35,10 +35,10 @@ function turnLastMessage(
 }
 
 /**
- * The last message of the Turn that asked a question, above the question in
- * an expanded Inbox row. Its clamp keeps the form near the top. It reads the
- * page of events around that Turn when the row expands, and shows nothing
- * until then or when the read fails.
+ * The last message of the Turn that asked a question, under the question in
+ * an expanded Inbox row. It shows about 12 lines, then Show more. It reads
+ * the page of events around that Turn when the row expands, and shows
+ * nothing until then or when the read fails.
  */
 export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
   const conversationId = itemConversationId(props.item);
@@ -69,7 +69,7 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
       <ClampedDisplayText
         className="max-w-[80ch] leading-6"
         label={label}
-        lines={4}
+        lines={12}
         mentions={message.mentions}
         text={message.text}
       />

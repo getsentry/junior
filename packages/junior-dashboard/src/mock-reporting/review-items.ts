@@ -1,7 +1,7 @@
 /**
  * Process-local Review items for mock reporting. Three Conversations ask the
- * viewer questions, so the questions above the message box, their transcript
- * rows, and the Inbox can be checked without a database. GitHub
+ * viewer questions, so the question cards in their transcripts, the
+ * questions pill, and the Inbox can be checked without a database. GitHub
  * plugin asks, FYI notices, and the alerts of the viewer's Automations that
  * need attention fill the rest of the inbox.
  */
@@ -18,7 +18,7 @@ import { PULL_REQUEST_RESOURCE } from "./snooze-resources";
 
 /** One open question, and an earlier one that the viewer answered. */
 export const MOCK_QUESTION_CONVERSATION_ID = "internal:question-qa";
-/** Three open questions, so the question shows "1 of 3". */
+/** Three open questions, so the pill says "3 questions waiting". */
 export const MOCK_QUESTIONS_CONVERSATION_ID = "internal:questions-qa";
 
 /** The mock viewer, who answers and closes items. */
@@ -56,6 +56,7 @@ const DAY = 24 * 60;
 
 export type MockItemSeed = Pick<
   ReviewItemPayload,
+  | "addedByTurnId"
   | "answer"
   | "body"
   | "id"
@@ -99,6 +100,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       closedAt: at(50),
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(58),
+      addedByTurnId: "qa-turn-region",
       id: "qa-canary-region",
       mentions: [AVERY_MENTION],
       request: {
@@ -120,6 +122,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       body: "The canary error rate is flat for 30 minutes.",
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(26),
+      addedByTurnId: "qa-turn-rollout",
       id: "qa-rollout",
       linkedConversationIds: [ROLLBACK_CONVERSATION_ID],
       request: {
@@ -159,6 +162,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       body: "Each window keeps the write lock for about 4 minutes.",
       conversationId: MOCK_QUESTIONS_CONVERSATION_ID,
       createdAt: at(42),
+      addedByTurnId: "qa-turn-migration",
       id: "qa-migration-window",
       request: {
         question: "When should the billing migration run?",
@@ -188,6 +192,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       body: "Invoices and credits change shape. Refunds can wait.",
       conversationId: MOCK_QUESTIONS_CONVERSATION_ID,
       createdAt: at(41),
+      addedByTurnId: "qa-turn-migration",
       id: "qa-migration-tables",
       request: {
         question: "Which tables go in the first batch?",
@@ -217,6 +222,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       body: "The dry run found 12 invoices with a negative total.",
       conversationId: MOCK_QUESTIONS_CONVERSATION_ID,
       createdAt: at(40),
+      addedByTurnId: "qa-turn-migration",
       id: "qa-migration-negative",
       request: {
         question: "What should happen to the 12 negative invoices?",
