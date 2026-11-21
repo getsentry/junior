@@ -26,11 +26,5 @@
     "incremental": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": [
-    "dist",
-    "node_modules",
-    // Moved from @sentry/junior-memory, which did not type-check its tests.
-    // scripts/typecheck-coverage-baseline.json lists it until its types pass.
-    "tests/component/memory/storage.test.ts"
-  ]
+  "exclude": ["dist", "node_modules"]
 }

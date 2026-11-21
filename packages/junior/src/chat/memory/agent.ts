@@ -3,10 +3,10 @@ import {
   escapeTagText,
   renderInlineTag,
   renderTag,
-  sourceSchema,
   type PluginModel,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { sourceLabel } from "@/chat/conversations/kind-behavior";
 import {
   memorySupersessionDecisionSchema,
   memorySupersessionInputSchema,
@@ -321,23 +321,6 @@ function actorLabel(actor: z.output<typeof actorSchema> | undefined): string {
       return `local:${actor.userId}`;
     case "web":
       return `web:${actor.userId}`;
-  }
-}
-
-function sourceLabel(source: z.output<typeof sourceSchema>): string {
-  switch (source.kind) {
-    case "slack":
-      return `slack:${source.teamId}:${source.channelId}`;
-    case "web":
-    case "local":
-      return `${source.kind}:${source.conversationId}`;
-    case "event":
-      return `event:${source.namespace}:${source.eventKey}`;
-    case "scheduled_automation":
-    case "event_automation":
-    case "plugin_dispatch":
-    case "agent_invocation":
-      return source.kind;
   }
 }
 

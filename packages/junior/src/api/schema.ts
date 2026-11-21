@@ -18,12 +18,12 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/review-items/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
@@ -263,15 +263,15 @@ export {
   watchParamsSchema,
 } from "./schema/watch";
 export {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemStatusBodySchema,
-} from "./schema/plan";
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
+} from "./schema/todos";
 export type {
-  ConversationPlanItem,
-  ConversationPlanReport,
-  PlanItemStatusBody,
-} from "./schema/plan";
+  ConversationTodo,
+  ConversationTodosReport,
+  TodoStatusBody,
+} from "./schema/todos";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -316,8 +316,8 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
-export type { ApiError } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/response";
+export type { ApiError } from "./schema/response";
 export {
   connectionListSchema,
   connectionParamsSchema,

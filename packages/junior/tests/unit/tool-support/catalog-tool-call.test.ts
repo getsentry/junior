@@ -4,7 +4,7 @@ import {
   prepareCatalogToolCall,
   resolveCatalogToolCall,
 } from "@/chat/tool-support/catalog-tool-call";
-import { tool } from "@/chat/tools/definition";
+import { tool } from "@/chat/tool-support/definition";
 
 describe("catalog tool calls", () => {
   it("resolves and prepares a catalog tool call", () => {
@@ -77,7 +77,7 @@ describe("catalog tool calls", () => {
         },
         { catalogDemo: definition },
       ),
-    ).toThrow("executeTool can only call catalog tools");
+    ).toThrow("`hiddenDemo` is not a catalog tool");
     expect(() =>
       resolveCatalogToolCall(
         {

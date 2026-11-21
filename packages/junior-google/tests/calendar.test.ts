@@ -4,13 +4,10 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
-import { recurrenceRule } from "../src/tools/create-event";
-import {
-  findFreeSlots,
-  type SlotAttendee,
-} from "../src/tools/find-meeting-times";
-import { accountChooserLink, parseEventId } from "../src/tools/shared";
+import { googlePlugin } from "../src/index";
+import { recurrenceRule } from "../src/calendar/recurrence";
+import { findFreeSlots, type SlotAttendee } from "../src/calendar/free-slots";
+import { accountChooserLink, parseEventId } from "../src/calendar/events";
 import { stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";

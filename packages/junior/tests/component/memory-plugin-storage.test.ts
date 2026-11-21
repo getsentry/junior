@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { defineJuniorPlugins } from "@/plugins";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { readConversationAuxiliaryCostsFromSql } from "@/api/conversations/auxiliary-costs";
@@ -88,7 +88,6 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 afterEach(async () => {
-  setPlugins([]);
   await closeDb();
   NEON.sql = undefined;
 });

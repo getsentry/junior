@@ -18,7 +18,7 @@ import {
   normalizeUserInputAnswer,
   type UserInputAnswer,
   type UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ReviewItemChangeRecord } from "./change-record";
 import { getReviewItem, type ReviewItem } from "./store";

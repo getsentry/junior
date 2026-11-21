@@ -384,7 +384,9 @@ export async function closeGitHubConflictItem(args: {
 /**
  * Close the merge conflict items of some Junior pull requests, such
  * as ones that GitHub reports as mergeable. An item is optional, so a failed
- * close is logged, and the next check closes it again.
+ * close is logged, and the next check closes it again. When an open item
+ * closes, the ask was not dismissed, so a later fix that does not land asks
+ * again.
  */
 export async function closeGitHubConflictItems(args: {
   db: GitHubDb;
@@ -404,11 +406,19 @@ export async function closeGitHubConflictItems(args: {
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
   const close = async (number: number, conversationId: string) => {
     try {
-      await args.reviewItems.forConversation(conversationId).close({
-        dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),
-        reason: args.reason,
-        status: args.status,
-      });
+      const closed = await args.reviewItems
+        .forConversation(conversationId)
+        .close({
+          dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),
+          reason: args.reason,
+          status: args.status,
+        });
+      if (closed) {
+        await args.db
+          .update(juniorGitHubPullRequests)
+          .set({ conflictFixAskedAt: null })
+          .where(pullRequestRow({ number, repositoryFullName }));
+      }
     } catch (error) {
       logFailOpenFailure(
         args.log,

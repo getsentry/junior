@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
-import { CONTENT_VERSION_HEADER } from "./schema/common";
+import { CONTENT_VERSION_HEADER } from "./schema/response";
 
 /**
  * Hash a response body without its top-level `generatedAt`, the read time,
@@ -57,7 +57,7 @@ export const revalidateContent: MiddlewareHandler = async (context, next) => {
 export const REVALIDATED_READ_PATHS = [
   "/api/cache-warming/savings/refill",
   "/api/conversations/:conversationId/agents",
-  "/api/conversations/:conversationId/plan",
+  "/api/conversations/:conversationId/todos",
   "/api/conversations/:conversationId/watches",
   // An item, `count`, and `waiting-conversations`.
   "/api/review-items/:id",
