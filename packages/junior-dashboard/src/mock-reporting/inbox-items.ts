@@ -290,7 +290,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
         id: "https://github.com/getsentry/junior/pull/2188",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "Retry Slack uploads on rate limits",
+        title: "fix(slack): Retry Slack uploads on rate limits",
+        titleParts: {
+          scope: "slack",
+          text: "Retry Slack uploads on rate limits",
+          type: "Fix",
+        },
         url: "https://github.com/getsentry/junior/pull/2188",
       },
       title: "Merge conflict · #2188",
@@ -367,7 +372,14 @@ export function seeds(nowMs: number): MockItemSeed[] {
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         // As the GitHub plugin names it, with its number.
-        title: "Retry a canary stage once on a lost agent (#418)",
+        title: "ref(gocd)!: Retry a canary stage once on a lost agent (#418)",
+        // As the GitHub plugin parses the title.
+        titleParts: {
+          breaking: true,
+          scope: "gocd",
+          text: "Retry a canary stage once on a lost agent",
+          type: "Refactor",
+        },
         url: "https://github.com/getsentry/sentaur/pull/418",
       },
       title: "Review requested · #418",
@@ -487,7 +499,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
         id: "https://github.com/getsentry/junior/pull/3052",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "Tabs in the dashboard sidebar",
+        title: "feat(dashboard): Tabs in the dashboard sidebar (#3052)",
+        titleParts: {
+          scope: "dashboard",
+          text: "Tabs in the dashboard sidebar",
+          type: "Feature",
+        },
         url: "https://github.com/getsentry/junior/pull/3052",
       },
       title: "Review requested · #3052",

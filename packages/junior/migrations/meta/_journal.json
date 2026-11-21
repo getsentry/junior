@@ -1027,8 +1027,15 @@
     {
       "idx": 146,
       "version": "7",
-      "when": 1795286280679,
-      "tag": "0146_inbox_hides",
+      "when": 1795286127229,
+      "tag": "0146_inbox_item_subject_title_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795288989709,
+      "tag": "0147_inbox_hides",
       "breakpoints": true
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "id": "1d56f71a-eb17-44ee-a57e-2240d672bbdb",
+  "id": "0467c4ef-64d2-4496-9691-573866872db4",
   "prevId": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "version": "7",
   "dialect": "postgresql",
@@ -4136,88 +4136,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_inbox_hides": {
-      "name": "junior_inbox_hides",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "inbox_item_id": {
-          "name": "inbox_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "junior_inbox_hides_inbox_item_idx": {
-          "name": "junior_inbox_hides_inbox_item_idx",
-          "columns": [
-            {
-              "expression": "inbox_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_inbox_hides_user_id_junior_users_id_fk": {
-          "name": "junior_inbox_hides_user_id_junior_users_id_fk",
-          "tableFrom": "junior_inbox_hides",
-          "tableTo": "junior_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "junior_inbox_hides_inbox_item_id_junior_inbox_items_id_fk": {
-          "name": "junior_inbox_hides_inbox_item_id_junior_inbox_items_id_fk",
-          "tableFrom": "junior_inbox_hides",
-          "tableTo": "junior_inbox_items",
-          "columnsFrom": [
-            "inbox_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_inbox_hides_user_id_inbox_item_id_pk": {
-          "name": "junior_inbox_hides_user_id_inbox_item_id_pk",
-          "columns": [
-            "user_id",
-            "inbox_item_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_inbox_item_assignees": {
       "name": "junior_inbox_item_assignees",
       "schema": "",
@@ -4528,6 +4446,12 @@
         "subject_url": {
           "name": "subject_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

@@ -112,6 +112,19 @@ export const inboxItemSchema = z
          */
         resource: inboxSnoozeResourceSchema.optional(),
         title: z.string().min(1).optional(),
+        /**
+         * A code change title split by Conventional Commits, as the plugin
+         * that owns the code change parsed it.
+         */
+        titleParts: z
+          .object({
+            breaking: z.boolean().optional(),
+            scope: z.string().min(1).optional(),
+            text: z.string().min(1),
+            type: z.string().min(1).optional(),
+          })
+          .strict()
+          .optional(),
         url: z.string().min(1).optional(),
       })
       .strict()

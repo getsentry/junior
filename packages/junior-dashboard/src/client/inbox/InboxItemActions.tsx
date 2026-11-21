@@ -223,7 +223,8 @@ export function InboxItemActions(props: {
         </div>
       ) : take || snooze || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1 sm:ml-auto">
+          {/* The actions sit at the right edge, as on a desktop. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}
           </div>
         </div>
