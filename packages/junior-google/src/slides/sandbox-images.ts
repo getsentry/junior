@@ -3,35 +3,28 @@
  *
  * Google fetches the url of a createImage or replaceImage request once,
  * without credentials, and saves that URL with the image. A sandbox file has
- * no such URL. So Junior keeps a private copy of each sandbox image and gives
- * Google a download URL that stops working within minutes.
+ * no such URL. So Junior publishes each sandbox image as a public artifact
+ * that stops serving within minutes, and gives Google that URL.
  */
 import { posix } from "node:path";
-import {
-  PluginToolInputError,
-  type PluginDownloadUrl,
-  type PluginDownloadUrls,
-} from "@sentry/junior-plugin-api";
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
 import type { GoogleToolContext } from "../google-api";
 
 // Request kinds that take an image url. Each request has one key.
 const IMAGE_REQUEST_KINDS = ["createImage", "replaceImage"] as const;
-// Google takes images under 50 MB. It also refuses more than 25 megapixels,
-// which only Google checks.
-const MAX_IMAGE_BYTES = 50_000_000;
-// Google refuses an image url longer than 2 KB.
-const MAX_IMAGE_URL_LENGTH = 2048;
+// Google Slides takes PNG, JPEG, and GIF. The artifact store also caps the
+// size, and Google refuses more than 25 megapixels, which only Google checks.
 const IMAGE_SIGNATURES = [
-  {
-    bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-    mimeType: "image/png",
-  },
-  { bytes: [0xff, 0xd8, 0xff], mimeType: "image/jpeg" },
-  { bytes: [0x47, 0x49, 0x46, 0x38], mimeType: "image/gif" },
+  [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  [0xff, 0xd8, 0xff],
+  [0x47, 0x49, 0x46, 0x38],
 ] as const;
-const UPLOAD_CONCURRENCY = 4;
+// Long enough for Google to fetch each image during the batchUpdate. The URL
+// stops serving after this, so a deck's saved sourceUrl links to nothing.
+const IMAGE_URL_TTL_MS = 5 * 60 * 1000;
+const PUBLISH_CONCURRENCY = 4;
 
 const imageRequestSchema = z.object({ url: z.string() }).loose();
 
@@ -55,113 +48,76 @@ export function sandboxImagePaths(
   ];
 }
 
-/**
- * Read and check one sandbox image, then make its download URL. The URL goes
- * on `links` as soon as it exists, so the caller deletes its copy even when a
- * later check fails.
- */
-async function imageUrl(
+/** Read one sandbox image and check that Google Slides takes its format. */
+async function readImage(
   ctx: GoogleToolContext,
-  downloadUrls: PluginDownloadUrls,
   path: string,
-  links: PluginDownloadUrl[],
-): Promise<[string, string]> {
+): Promise<Uint8Array> {
+  if (
+    posix.normalize(path) !== path ||
+    !path.startsWith(`${ctx.sandbox.root}/`)
+  ) {
+    throw new PluginToolInputError(
+      `An image path must be a normalized absolute path under ${ctx.sandbox.root}, not ${path}.`,
+    );
+  }
   const bytes = await ctx.sandbox.readFile(path);
   if (!bytes) {
     throw new PluginToolInputError(`No sandbox file at ${path}.`);
   }
-  if (bytes.byteLength >= MAX_IMAGE_BYTES) {
-    throw new PluginToolInputError(
-      `${path} is ${Math.ceil(bytes.byteLength / 1_000_000)} MB. Google Slides takes images under 50 MB.`,
-    );
-  }
-  const mimeType = IMAGE_SIGNATURES.find(({ bytes: signature }) =>
+  const known = IMAGE_SIGNATURES.some((signature) =>
     signature.every((byte, index) => bytes[index] === byte),
-  )?.mimeType;
-  if (!mimeType) {
+  );
+  if (!known) {
     throw new PluginToolInputError(`${path} is not a PNG, JPEG, or GIF.`);
   }
-  // The checked bytes are the bytes that Google gets.
-  const link = await downloadUrls.create({
-    body: bytes,
-    contentType: mimeType,
-  });
-  links.push(link);
-  if (link.url.length > MAX_IMAGE_URL_LENGTH) {
-    throw new PluginToolInputError(
-      `The download URL for ${path} is longer than the 2 KB that Google Slides takes. Use a public image URL instead.`,
-    );
-  }
-  return [path, link.url];
+  return bytes;
 }
 
 /**
- * Run `apply` with the requests, after each sandbox path used as an image
- * url is replaced by a short-lived download URL of a private copy.
+ * Return the requests after each sandbox path used as an image url is
+ * replaced by the URL of a public artifact that expires within minutes.
  */
-export async function withSandboxImages<T>(
+export async function withSandboxImageUrls(
   ctx: GoogleToolContext,
   requests: Array<Record<string, unknown>>,
-  apply: (requests: Array<Record<string, unknown>>) => Promise<T>,
-): Promise<T> {
+): Promise<Array<Record<string, unknown>>> {
   const paths = sandboxImagePaths(requests);
-  if (paths.length === 0) return await apply(requests);
-  for (const path of paths) {
-    if (
-      posix.normalize(path) !== path ||
-      !path.startsWith(`${ctx.sandbox.root}/`)
-    ) {
-      throw new PluginToolInputError(
-        `An image path must be a normalized absolute path under ${ctx.sandbox.root}, not ${path}.`,
-      );
-    }
-  }
-  const { downloadUrls } = ctx;
-  if (!downloadUrls) {
+  if (paths.length === 0) return requests;
+  const { artifacts } = ctx;
+  if (!artifacts) {
     throw new PluginToolInputError(
-      "The storage of this install cannot sign short-lived download URLs, so you cannot insert a sandbox image. Use a public image URL instead.",
+      "This install cannot publish artifacts, so you cannot insert a sandbox image. Use a public image URL instead.",
     );
   }
-
-  const links: PluginDownloadUrl[] = [];
-  try {
-    // Wait for every image, even after one fails, so that each copy is on
-    // `links` before the deletes start.
-    const made = await pLimit(UPLOAD_CONCURRENCY).map(paths, (path) =>
-      imageUrl(ctx, downloadUrls, path, links).then(
-        (entry) => ({ entry }),
-        (error: unknown) => ({ error }),
-      ),
-    );
-    const failed = made.find((result) => "error" in result);
-    if (failed) throw failed.error;
-    const urls = new Map(
-      made.flatMap((result) => ("entry" in result ? [result.entry] : [])),
-    );
-    return await apply(
-      requests.map((request) => {
-        const image = sandboxImage(request);
-        return image
-          ? { [image.kind]: { ...image.body, url: urls.get(image.path) } }
-          : request;
-      }),
-    );
-  } finally {
-    // Google has fetched each image by the time batchUpdate returns. Each URL
-    // stops working at its expiry whether or not its copy is deleted, so a
-    // failed delete exposes nothing and is not an error for the edit.
-    await pLimit(UPLOAD_CONCURRENCY).map(links, (link) =>
-      link.delete().catch(() => undefined),
-    );
-  }
+  const limit = pLimit(PUBLISH_CONCURRENCY);
+  // Check every image before any is published, so a bad path publishes
+  // nothing.
+  const images = await limit.map(paths, (path) => readImage(ctx, path));
+  const urls = new Map(
+    await limit.map(paths, async (path, index) => {
+      // The checked bytes are the bytes that Google gets.
+      const { url } = await artifacts.publishImage({
+        body: images[index]!,
+        expiresInMs: IMAGE_URL_TTL_MS,
+      });
+      return [path, url] as const;
+    }),
+  );
+  return requests.map((request) => {
+    const image = sandboxImage(request);
+    return image
+      ? { [image.kind]: { ...image.body, url: urls.get(image.path) } }
+      : request;
+  });
 }
 
 /**
  * Return Slides API JSON without the `sourceUrl` of any image.
  *
  * Google saves the url that inserted an image as its `sourceUrl`. For a
- * sandbox image that is a download URL, a bearer credential until it
- * expires, so no read returns any image's `sourceUrl` to the model.
+ * sandbox image that is a public artifact URL that serves until it expires,
+ * so no read returns any image's `sourceUrl` to the model.
  */
 export function withoutImageSourceUrls(value: unknown): unknown {
   return strip(value, false);

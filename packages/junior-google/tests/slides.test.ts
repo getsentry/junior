@@ -2,7 +2,7 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import {
   PluginToolInputError,
-  type PluginDownloadUrls,
+  type PluginArtifacts,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src/index";
@@ -20,7 +20,7 @@ function slidesTools(
   readableIds: readonly string[] = [DECK_ID],
   /** Sandbox files by path. Any other path reads as the PNG stub. */
   files: Record<string, Uint8Array | null> = {},
-  downloadUrls?: PluginDownloadUrls,
+  artifacts?: PluginArtifacts,
 ) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
@@ -33,7 +33,7 @@ function slidesTools(
     path in files ? (files[path] ?? null) : PNG,
   );
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
-    ...(downloadUrls ? { downloadUrls } : undefined),
+    ...(artifacts ? { artifacts } : undefined),
     egress: { fetch: withReadCheck(fetch, readableIds) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
     users: {
@@ -375,32 +375,24 @@ describe("Google Slides tools", () => {
       requests,
       revision_id: "rev-1",
     });
-    /** Download URLs that record each copy and each delete. */
-    const fakeDownloadUrls = (
-      options: { failDelete?: boolean; url?: string } = {},
-    ) => {
-      const copies: Array<{ body: Uint8Array; contentType: string }> = [];
-      const deleted: string[] = [];
-      const downloadUrls: PluginDownloadUrls = {
-        async create({ body, contentType }) {
-          const url =
-            options.url ??
-            `https://storage.example/downloads/${copies.length}?sig=1`;
-          copies.push({ body, contentType });
+    /** Artifacts that record each published image. */
+    const fakeArtifacts = (options: { fail?: boolean } = {}) => {
+      const published: Array<{ body: Uint8Array; expiresInMs?: number }> = [];
+      const artifacts: PluginArtifacts = {
+        async publishImage(image) {
+          if (options.fail) throw new PluginToolInputError("image is empty");
+          published.push(image);
           return {
-            async delete() {
-              if (options.failDelete) throw new Error("storage is down");
-              deleted.push(url);
-            },
-            url,
+            expiresAt: "2026-11-21T12:05:00.000Z",
+            url: `https://junior.example/public/artifacts/${published.length}.png`,
           };
         },
       };
-      return { copies, deleted, downloadUrls };
+      return { artifacts, published };
     };
 
-    it("inserts a sandbox image from a short-lived download URL and deletes the copy", async () => {
-      const urls = fakeDownloadUrls();
+    it("inserts a sandbox image from a public artifact that expires within 5 minutes", async () => {
+      const store = fakeArtifacts();
       const { call, calls } = slidesTools(
         [
           deckFile(),
@@ -414,7 +406,7 @@ describe("Google Slides tools", () => {
         0,
         [DECK_ID],
         { [GRID]: GRID_PNG },
-        urls.downloadUrls,
+        store.artifacts,
       );
       const logo = {
         replaceImage: {
@@ -435,11 +427,11 @@ describe("Google Slides tools", () => {
         "google.slides.presentation.batchUpdate",
         "google.slides.presentation.get",
       ]);
-      // One copy for the path that two requests use.
-      expect(urls.copies).toEqual([
-        { body: GRID_PNG, contentType: "image/png" },
+      // One artifact for the path that two requests use.
+      expect(store.published).toEqual([
+        { body: GRID_PNG, expiresInMs: 5 * 60 * 1000 },
       ]);
-      const url = "https://storage.example/downloads/0?sig=1";
+      const url = "https://junior.example/public/artifacts/1.png";
       expect(sent[2]?.body).toEqual({
         requests: [
           { createImage: { ...createGrid.createImage, url } },
@@ -448,59 +440,42 @@ describe("Google Slides tools", () => {
         ],
         writeControl: { requiredRevisionId: "rev-1" },
       });
-      expect(urls.deleted).toEqual([url]);
     });
 
-    it("refuses a path outside the sandbox, a file that Google cannot insert, or an install without download URLs, before any edit", async () => {
-      const huge = new Uint8Array(50_000_000);
-      huge.set(GRID_PNG);
+    it("refuses a bad image or an install without artifacts before publishing anything or editing", async () => {
+      const PHOTO = `${SANDBOX_ROOT}/photo.jpg`;
       const refused: Array<
-        [string, Uint8Array | null, string, PluginDownloadUrls | undefined]
+        [Record<string, Uint8Array | null>, string, string, boolean]
       > = [
+        [{}, "/etc/grid.png", "normalized absolute path under /sandbox", true],
         [
-          "/etc/grid.png",
-          GRID_PNG,
-          "normalized absolute path under /sandbox",
-          fakeDownloadUrls().downloadUrls,
-        ],
-        [
+          {},
           `${SANDBOX_ROOT}/../etc/grid.png`,
-          GRID_PNG,
           "normalized absolute path under /sandbox",
-          fakeDownloadUrls().downloadUrls,
+          true,
         ],
+        [{ [GRID]: null }, GRID, `No sandbox file at ${GRID}.`, true],
         [
+          { [GRID]: new TextEncoder().encode("<svg/>") },
           GRID,
-          null,
-          `No sandbox file at ${GRID}.`,
-          fakeDownloadUrls().downloadUrls,
-        ],
-        [
-          GRID,
-          new TextEncoder().encode("<svg/>"),
           "is not a PNG, JPEG, or GIF",
-          fakeDownloadUrls().downloadUrls,
+          true,
         ],
         [
+          { [GRID]: GRID_PNG },
           GRID,
-          huge,
-          "Google Slides takes images under 50 MB",
-          fakeDownloadUrls().downloadUrls,
-        ],
-        [
-          GRID,
-          GRID_PNG,
-          "cannot sign short-lived download URLs, so you cannot insert a sandbox image",
-          undefined,
+          "cannot publish artifacts, so you cannot insert a sandbox image",
+          false,
         ],
       ];
-      for (const [path, file, message, downloadUrls] of refused) {
+      for (const [files, path, message, hasArtifacts] of refused) {
+        const store = fakeArtifacts();
         const tools = slidesTools(
           [deckFile(), editor()],
           0,
           [DECK_ID],
-          { [path]: file },
-          downloadUrls,
+          files,
+          hasArtifacts ? store.artifacts : undefined,
         );
         await expect(
           tools.call(
@@ -508,24 +483,22 @@ describe("Google Slides tools", () => {
             input([{ createImage: { ...createGrid.createImage, url: path } }]),
           ),
         ).rejects.toThrow(message);
+        expect(store.published).toEqual([]);
         expect((await tools.calls()).map((item) => item.operation)).toEqual([
           "google.drive.file.get",
           "google.drive.permissions.list",
         ]);
       }
-    });
 
-    it("deletes every copy when an image, its URL, or the edit fails", async () => {
-      // The second image is refused, but the first already has a copy.
-      const PHOTO = `${SANDBOX_ROOT}/photo.jpg`;
-      const partial = fakeDownloadUrls();
+      // A good image is not published when another image in the edit is bad.
+      const store = fakeArtifacts();
       await expect(
         slidesTools(
           [deckFile(), editor()],
           0,
           [DECK_ID],
           { [GRID]: GRID_PNG, [PHOTO]: new Uint8Array([1, 2, 3]) },
-          partial.downloadUrls,
+          store.artifacts,
         ).call(
           "updateGoogleSlides",
           input([
@@ -534,67 +507,25 @@ describe("Google Slides tools", () => {
           ]),
         ),
       ).rejects.toThrow(`${PHOTO} is not a PNG, JPEG, or GIF.`);
-      expect(partial.copies).toHaveLength(1);
-      expect(partial.deleted).toHaveLength(1);
+      expect(store.published).toEqual([]);
 
-      const long = fakeDownloadUrls({
-        url: `https://storage.example/${"x".repeat(2048)}`,
-      });
-      await expect(
-        slidesTools(
-          [deckFile(), editor()],
-          0,
-          [DECK_ID],
-          { [GRID]: GRID_PNG },
-          long.downloadUrls,
-        ).call("updateGoogleSlides", input([createGrid])),
-      ).rejects.toThrow("longer than the 2 KB that Google Slides takes");
-      expect(long.deleted).toHaveLength(1);
-
-      const refused = fakeDownloadUrls();
-      await expect(
-        slidesTools(
-          [
-            deckFile(),
-            editor(),
-            Response.json(
-              {
-                error: {
-                  message:
-                    "Invalid requests[0].createImage: Access to the provided image was forbidden.",
-                },
-              },
-              { status: 400 },
-            ),
-          ],
-          0,
-          [DECK_ID],
-          { [GRID]: GRID_PNG },
-          refused.downloadUrls,
-        ).call("updateGoogleSlides", input([createGrid])),
-      ).rejects.toThrow("Access to the provided image was forbidden.");
-      expect(refused.deleted).toHaveLength(1);
-    });
-
-    it("applies the edit when a copy cannot be deleted, because its URL expires anyway", async () => {
-      const { call } = slidesTools(
-        [
-          deckFile(),
-          editor(),
-          Response.json({
-            replies: [{}],
-            writeControl: { requiredRevisionId: "rev-2" },
-          }),
-          checkedDeck({ objectId: "s1" }),
-        ],
+      // The artifact store's own refusal, such as its size limit, reaches
+      // the model before any edit.
+      const failing = fakeArtifacts({ fail: true });
+      const tools = slidesTools(
+        [deckFile(), editor()],
         0,
         [DECK_ID],
         { [GRID]: GRID_PNG },
-        fakeDownloadUrls({ failDelete: true }).downloadUrls,
+        failing.artifacts,
       );
       await expect(
-        call("updateGoogleSlides", input([createGrid])),
-      ).resolves.toMatchObject({ revision_id: "rev-2" });
+        tools.call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("image is empty");
+      expect((await tools.calls()).map((item) => item.operation)).toEqual([
+        "google.drive.file.get",
+        "google.drive.permissions.list",
+      ]);
     });
   });
 
@@ -747,11 +678,11 @@ describe("Google Slides tools", () => {
       /^revisionId,pageSize,layouts\(objectId,.*\),slides\(objectId,/,
     );
 
-    // The sourceUrl of a sandbox image is its download URL, which works
+    // The sourceUrl of a sandbox image is its artifact URL, which serves
     // until it expires, so no read returns any image's sourceUrl.
     const image = {
       contentUrl: "https://lh7-us.googleusercontent.com/image",
-      sourceUrl: "https://blob.example.com/sandbox-image.png?token=signed",
+      sourceUrl: "https://junior.example/public/artifacts/sandbox-image.png",
     };
     const slide = slidesTools([
       deckFile(),

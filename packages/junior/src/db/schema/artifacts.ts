@@ -37,6 +37,8 @@ export const juniorArtifacts = pgTable(
     createdAt: timestamptz("created_at").notNull(),
     /** Set when the artifact is unpublished or its live file is deleted. */
     deleteRequestedAt: timestamptz("delete_requested_at"),
+    /** When a public artifact stops serving. Null serves until unpublished. */
+    expiresAt: timestamptz("expires_at"),
   },
   (table) => [
     check(

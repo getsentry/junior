@@ -81,9 +81,8 @@ can check its work. The sandbox downloads the rendered image, which needs no
 credential.
 
 Google fetches an inserted image from a URL that needs no credential, and
-keeps that URL in the deck. So Junior stores a private copy of a sandbox
-image in its attachment storage and gives Google a download URL that expires
-within 5 minutes. The copy is deleted when the edit ends. If the storage
-cannot sign reads, only public image URLs work.
+keeps that URL in the deck. So Junior publishes a sandbox image as a public
+artifact that stops serving after 5 minutes, and gives Google its URL. If the
+install cannot publish artifacts, only public image URLs work.
 
 Plugin setup: https://junior.sentry.dev/extend/

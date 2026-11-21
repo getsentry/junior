@@ -110,7 +110,7 @@ import {
 } from "@/chat/plugins/core-registrations";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
-import { createPluginDownloadUrls } from "@/chat/plugins/download-urls";
+import { createPluginArtifacts } from "@/chat/plugins/artifacts";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -848,7 +848,7 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
-  const downloadUrls = createPluginDownloadUrls(
+  const artifacts = createPluginArtifacts(
     context.attachmentStorage,
     context.conversationId,
   );
@@ -902,6 +902,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           resolveActor,
         }),
+      ...(artifacts ? { artifacts } : undefined),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -911,7 +912,6 @@ export function getPluginTools(
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
       decider: createPluginDecider(pluginName, { onCost }),
-      ...(downloadUrls ? { downloadUrls } : undefined),
       embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),

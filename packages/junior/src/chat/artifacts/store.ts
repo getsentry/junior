@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import {
   detectImageMediaType,
   type InputImageType,
@@ -75,17 +75,23 @@ function resolvePublicBaseUrl(publicBaseUrl: string): string {
   return baseUrl;
 }
 
-/** Publish validated image bytes as a conversation-owned public artifact. */
+/**
+ * Publish validated image bytes as a conversation-owned public artifact.
+ * With `expiresAt`, the URL stops serving at that time.
+ */
 export async function publishImage(args: {
   body: Buffer;
   conversationId: string;
   db: JuniorSqlDatabase;
+  expiresAt?: Date;
   now?: Date;
   publicBaseUrl: string;
   storage: Pick<AttachmentStorage, "put">;
 }): Promise<{
   bytes: number;
   contentType: string;
+  /** Null when the URL serves until unpublished. */
+  expiresAt: Date | null;
   url: string;
 }> {
   if (args.body.byteLength === 0) {
@@ -145,6 +151,7 @@ export async function publishImage(args: {
       conversationId: args.conversationId,
       createdAt: now,
       deleteRequestedAt: null,
+      expiresAt: args.expiresAt ?? null,
       ext: extension,
       id,
       sha256,
@@ -158,12 +165,25 @@ export async function publishImage(args: {
         bytes: args.body.byteLength,
         contentType,
         deleteRequestedAt: null,
+        // A row that no longer serves takes the new expiry. A live row keeps
+        // the later one, and no expiry beats both, so publishing the same
+        // bytes again never cuts short a URL that is already out.
+        expiresAt: sql`case
+          when ${juniorArtifacts.deleteRequestedAt} is not null
+            or ${juniorArtifacts.expiresAt} <= ${now.toISOString()}::timestamptz
+            then excluded.expires_at
+          when ${juniorArtifacts.expiresAt} is null
+            or excluded.expires_at is null
+            then null
+          else greatest(${juniorArtifacts.expiresAt}, excluded.expires_at)
+        end`,
         ext: extension,
         // Keep the winning row's id/storage key. A raced put may leave an
         // unused object; that is fine for mvp.
       },
     })
     .returning({
+      expiresAt: juniorArtifacts.expiresAt,
       ext: juniorArtifacts.ext,
       id: juniorArtifacts.id,
     });
@@ -175,6 +195,7 @@ export async function publishImage(args: {
   return {
     bytes: args.body.byteLength,
     contentType,
+    expiresAt: row.expiresAt,
     url: `${baseUrl}/public/artifacts/${row.id}.${row.ext}`,
   };
 }
@@ -232,6 +253,7 @@ export async function readPublicArtifact(args: {
 }): Promise<{
   body: ReadableStream<Uint8Array>;
   contentType: string;
+  expiresAt: Date | null;
 } | null> {
   const parsed = parseArtifactFilename(args.filename);
   if (!parsed) return null;
@@ -240,6 +262,7 @@ export async function readPublicArtifact(args: {
     .db()
     .select({
       contentType: juniorArtifacts.contentType,
+      expiresAt: juniorArtifacts.expiresAt,
       storageKey: juniorArtifacts.storageKey,
     })
     .from(juniorArtifacts)
@@ -248,6 +271,10 @@ export async function readPublicArtifact(args: {
         eq(juniorArtifacts.id, parsed.id),
         eq(juniorArtifacts.visibility, "public"),
         isNull(juniorArtifacts.deleteRequestedAt),
+        or(
+          isNull(juniorArtifacts.expiresAt),
+          gt(juniorArtifacts.expiresAt, new Date()),
+        ),
       ),
     );
 
@@ -255,14 +282,25 @@ export async function readPublicArtifact(args: {
 
   const body = await args.storage.get(row.storageKey);
   if (!body) return null;
-  return { body, contentType: row.contentType };
+  return { body, contentType: row.contentType, expiresAt: row.expiresAt };
 }
 
 /** Build public response headers for one live public artifact. */
-export function publicArtifactHeaders(contentType: string): Headers {
+export function publicArtifactHeaders(
+  contentType: string,
+  expiresAt: Date | null = null,
+): Headers {
+  // Keep TTL short so unpublish can take effect, and no longer than the
+  // expiry so no cache serves the artifact after it. Do not mark immutable.
+  const maxAge =
+    expiresAt === null
+      ? 300
+      : Math.min(
+          300,
+          Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
+        );
   return new Headers({
-    // Keep TTL short so unpublish can take effect. Do not mark immutable.
-    "cache-control": "public, max-age=300, must-revalidate",
+    "cache-control": `public, max-age=${maxAge}, must-revalidate`,
     "content-type": contentType,
     "x-content-type-options": "nosniff",
   });

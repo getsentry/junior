@@ -106,27 +106,18 @@ export interface PluginEgress {
   }): Promise<Response>;
 }
 
-/** One private copy of some bytes that an outside service may read briefly. */
-export interface PluginDownloadUrl {
+/** Public artifacts that a plugin tool publishes for the conversation. */
+export interface PluginArtifacts {
   /**
-   * Plain HTTPS GET of the copy, with no headers. It is a bearer credential
-   * until it expires: do not log it or return it to the model.
+   * Publish image bytes at a public HTTPS URL that anyone with the URL can
+   * open. With `expiresInMs`, the URL stops serving after that long. PNG,
+   * JPEG, GIF, or WebP up to 10 MB; other input throws a tool input error.
    */
-  url: string;
-  /** Delete the copy now. The URL expires on its own either way. */
-  delete(): Promise<void>;
-}
-
-/**
- * Short-lived download URLs for an outside service that fetches bytes once
- * and accepts only a URL, such as an image that Google Slides inserts.
- */
-export interface PluginDownloadUrls {
-  /** Store `body` privately and sign a GET of it that expires within minutes. */
-  create(input: {
-    body: Uint8Array;
-    contentType: string;
-  }): Promise<PluginDownloadUrl>;
+  publishImage(input: { body: Uint8Array; expiresInMs?: number }): Promise<{
+    url: string;
+    /** ISO time when the URL stops serving. Absent when it does not expire. */
+    expiresAt?: string;
+  }>;
 }
 
 export const pluginToolContentSchema = z.discriminatedUnion("type", [
@@ -844,13 +835,10 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
+  /** Absent when the install has no artifact storage or public base URL. */
+  artifacts?: PluginArtifacts;
   /** Decision model for narrow choices, such as checks on text a tool writes. */
   decider: PluginDecider;
-  /**
-   * Short-lived download URLs. Absent when the host storage cannot sign
-   * reads.
-   */
-  downloadUrls?: PluginDownloadUrls;
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

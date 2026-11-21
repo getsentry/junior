@@ -107,9 +107,7 @@ export function googlePlugin(): PluginRegistration {
           (ctx): GoogleToolContext => ({
             accountEmail: config.accountEmail,
             allowedDomains: config.allowedDomains,
-            ...(ctx.downloadUrls
-              ? { downloadUrls: ctx.downloadUrls }
-              : undefined),
+            ...(ctx.artifacts ? { artifacts: ctx.artifacts } : undefined),
             egress: ctx.egress,
             sandbox: ctx.sandbox,
             users: ctx.users,
