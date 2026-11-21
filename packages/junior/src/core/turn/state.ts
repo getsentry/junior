@@ -9,9 +9,9 @@
 //     │     cancelTurn      │   cancelTurn
 //     └─────────────────────┴──────────────────────────▶ cancelled
 //
-// A Turn starts as queued. completed, failed and cancelled are final: no
-// function changes them. A lease covers one step: commitStep (continue) queues
-// the Turn again, and the next step needs a new claim.
+// createTurn inserts a Turn as queued. completed, failed and cancelled are
+// final: no function changes them. A lease covers one step: commitStep
+// (continue) queues the Turn again, and the next step needs a new claim.
 //
 // | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
 // | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
@@ -34,7 +34,9 @@
 //
 // commitStep takes the Conversation lock before it touches the Turn row. A
 // writer that needs both takes them in this order, so writers cannot deadlock.
-import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import type { Source } from "@sentry/junior-plugin-api";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -42,6 +44,11 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
+
+type TurnState = (typeof juniorTurns.$inferSelect)["state"];
+
+/** A Turn's id and state. */
+export type Turn = { turnId: string; state: TurnState };
 
 /** The lease of one invocation on one step of a Turn. */
 export type TurnLease = { turnId: string; leaseEpoch: number };
@@ -64,6 +71,54 @@ function leaseFence(lease: TurnLease) {
     eq(juniorTurns.state, "running"),
     eq(juniorTurns.leaseEpoch, lease.leaseEpoch),
   );
+}
+
+/**
+ * Inserts a queued Turn. It sends no step message: the caller publishes the
+ * Turn after its transaction commits, so a worker can claim it.
+ */
+export async function createTurn(
+  executor: JuniorSqlDatabase,
+  args: {
+    conversationId: string;
+    actorIdentityId: string;
+    source: Source["kind"];
+    priority: number;
+  },
+): Promise<Turn> {
+  const turnId = randomUUID();
+  await executor
+    .db()
+    .insert(juniorTurns)
+    .values({ ...args, id: turnId, state: "queued" });
+  return { turnId, state: "queued" };
+}
+
+/**
+ * Finds the Turn of a Conversation that has not ended: the running Turn, else
+ * the next queued Turn by priority and age.
+ */
+export async function findOpenTurn(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<Turn | undefined> {
+  const [turn] = await executor
+    .db()
+    .select({ turnId: juniorTurns.id, state: juniorTurns.state })
+    .from(juniorTurns)
+    .where(
+      and(
+        eq(juniorTurns.conversationId, conversationId),
+        inArray(juniorTurns.state, ["queued", "running"]),
+      ),
+    )
+    .orderBy(
+      sql`${juniorTurns.state} = 'running' desc`,
+      asc(juniorTurns.priority),
+      asc(juniorTurns.createdAt),
+    )
+    .limit(1);
+  return turn;
 }
 
 /**
