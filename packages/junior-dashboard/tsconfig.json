@@ -50,6 +50,7 @@
     "e2e/person-cards.spec.ts",
     "e2e/lead-home.spec.ts",
     "e2e/pick-option.ts",
+    "e2e/question-cards.spec.ts",
     "e2e/request-budget.ts",
     "e2e/inbox-item-evidence.spec.ts",
     "playwright.config.ts",

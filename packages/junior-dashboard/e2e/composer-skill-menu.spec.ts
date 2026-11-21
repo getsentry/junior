@@ -245,7 +245,7 @@ test.describe("on a touch screen", () => {
   });
 });
 
-test("Esc closes the menu, not the question docked above it @classic", async ({
+test("Esc closes the menu, not the question in the transcript @classic", async ({
   page,
   dashboard,
 }) => {
@@ -254,9 +254,9 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:question-qa")}`,
   );
-  const question = page.getByRole("region", {
-    name: "Question: Approve the payments-v42 rollout",
-  });
+  const question = page
+    .getByRole("region", { name: "Asked Approve the payments-v42 rollout" })
+    .getByRole("region", { name: "Question" });
   await expect(question).toBeVisible();
   const composer = page.getByRole("textbox", {
     name: "Continue this conversation",

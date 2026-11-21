@@ -39,15 +39,13 @@ export function conversationUrl(conversationId: string): string {
 /**
  * Navigation state that asks the opened Conversation to focus its reply box.
  * `draftFrom` names the draft of a composer the reader typed in before the
- * page opened. The reply box takes its text. `questionId` names the docked
- * question to show and focus.
+ * page opened. The reply box takes its text.
  */
 export type ReplyFocusState = {
   /** The reader asked to type, so the reply box takes focus on touch too. */
   compose?: true | undefined;
   draftFrom?: string | undefined;
   focusReply: true;
-  questionId?: string | undefined;
 };
 
 /** Ask the opened Conversation to focus its reply box. */
@@ -73,10 +71,6 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
         ? state.draftFrom
         : undefined,
     focusReply: true,
-    questionId:
-      "questionId" in state && typeof state.questionId === "string"
-        ? state.questionId
-        : undefined,
   };
 }
 

@@ -207,7 +207,7 @@ export function ConversationPage(props: {
   // The transcript mounts only rows near the viewport. The rows of the last
   // memory or outline jump stay mounted, so the jump finds its row.
   const [revealSeq, setRevealSeq] = useState<number>();
-  // The docked question whose transcript row shows, and the Turn that
+  // The question whose transcript card shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
   const [askReveal, setAskReveal] = useState<
     TranscriptAskReveal & { turnId?: string }
@@ -425,7 +425,6 @@ export function ConversationPage(props: {
           compose: replyFocus.compose,
           draftFrom: replyFocus.draftFrom,
           key: location.key,
-          questionId: replyFocus.questionId,
         }
       : undefined;
   const transcript = history.data;
@@ -511,9 +510,8 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: InboxItemPayload, arrived: boolean) =>
+    (item: InboxItemPayload) =>
       setAskReveal((current) => ({
-        arrived,
         itemId: item.id,
         // A child Conversation can add an item to this one. Its Turn is not
         // in this transcript.
@@ -526,8 +524,7 @@ export function ConversationPage(props: {
     [conversationId],
   );
   // A question that the reader moves to can sit outside the loaded rows.
-  // Then the transcript opens at the page around its Turn, like a link. A
-  // question that arrives by itself is at the latest, so it needs no page.
+  // Then the transcript opens at the page around its Turn, like a link.
   const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
     const held = history.data?.events.some(
       (event) =>
@@ -539,7 +536,7 @@ export function ConversationPage(props: {
     if (!held) openLink({ turn: turnId });
   });
   useEffect(() => {
-    if (askReveal?.turnId && !askReveal.arrived) {
+    if (askReveal?.turnId) {
       openAskTurn(askReveal.itemId, askReveal.turnId);
     }
   }, [askReveal]);
@@ -931,7 +928,6 @@ export function ConversationPage(props: {
                     live={live}
                     onFocusRequestDone={setReplyFocusDoneKey}
                     onPinRequest={requestPin}
-                    onShowQuestion={showQuestion}
                     placeholder={
                       lead
                         ? "Ask your Lead to start, find, or check on work…"
