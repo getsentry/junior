@@ -135,6 +135,7 @@ export class ToolActionRejectedError extends Error {
   readonly reason: string;
   readonly reviewedAction?: ToolActionPriorRejection | undefined;
   readonly riskLevel?: ToolActionReviewDecision["riskLevel"] | undefined;
+  readonly rule?: ToolActionReviewDecision["rule"] | undefined;
   readonly userAuthorization?:
     | ToolActionReviewDecision["userAuthorization"]
     | undefined;
@@ -143,7 +144,7 @@ export class ToolActionRejectedError extends Error {
     decision: Exclude<ToolActionDecision, "allow">,
     reason: string,
     assessment: Partial<
-      Pick<ToolActionReviewDecision, "riskLevel" | "userAuthorization">
+      Pick<ToolActionReviewDecision, "riskLevel" | "rule" | "userAuthorization">
     > & {
       instructions?: string;
       reviewedAction?: ToolActionPriorRejection;
@@ -160,6 +161,7 @@ export class ToolActionRejectedError extends Error {
     this.reason = reason;
     this.reviewedAction = assessment.reviewedAction;
     this.riskLevel = assessment.riskLevel;
+    this.rule = assessment.rule;
     this.userAuthorization = assessment.userAuthorization;
   }
 }
@@ -599,7 +601,10 @@ export function createToolActionReview(options: {
         {
           "app.guardian.decision": step.decision.decision,
           "app.guardian.risk_level": step.decision.riskLevel,
-          "app.guardian.user_authorization": step.decision.userAuthorization,
+          ...(step.decision.rule
+            ? { "app.guardian.rule": step.decision.rule }
+            : undefined),
+          "app.guardian.user_consent": step.decision.userAuthorization,
           "gen_ai.tool.name": step.proposal.tool.name,
           "gen_ai.tool.call.id": actions[index]!.toolCallId,
         },
@@ -643,6 +648,7 @@ export function createToolActionReview(options: {
         }),
         riskLevel: decision.riskLevel,
         reviewedAction,
+        rule: decision.rule,
         userAuthorization: decision.userAuthorization,
       }),
     };
