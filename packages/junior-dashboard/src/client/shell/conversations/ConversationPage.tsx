@@ -869,7 +869,13 @@ export function ConversationPage(props: {
                       onShowQuestion={showQuestion}
                       revealAsk={askReveal}
                       linkedMessageId={linkedMessageId}
-                      linkedRowSeq={linkedRowSeq}
+                      linkedRowSeq={
+                        // A link past the last event shows the row that its
+                        // read lands on.
+                        linkStart && "event" in linkStart
+                          ? (aroundHistory?.shownSeq ?? linkedRowSeq)
+                          : linkedRowSeq
+                      }
                       revealSeq={revealSeq}
                       responding={
                         !detail.error &&

@@ -195,6 +195,27 @@ test("opens an event link on its row and marks it", async ({
   expect(new URL(page.url()).hash).toBe("#event-1200");
 });
 
+test("opens an event link past the last event on the last row", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  const rowMarks = await recordRowMarks(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}#event-5000`,
+  );
+  const transcript = page.getByLabel("Conversation transcript");
+  // The read around the seq holds the last events, so the last row shows
+  // and the link reads no more.
+  await expect(row(transcript, EVENT_COUNT - 1)).toBeInViewport();
+  await expect.poll(rowMarks).toEqual([EVENT_COUNT - 1]);
+  expect(mock.pageRequests).toEqual(["?event=5000&limit=300"]);
+});
+
 test("holds the top row while earlier pages load above it", async ({
   page,
   dashboard,
