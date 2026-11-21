@@ -16,17 +16,21 @@ const REPO_ROOT = path.resolve(
 );
 const BASE_BRANCH = "origin/main";
 
-// `tool-error-classification-baseline.txt` is not here: it is the list of
-// approved system errors, so a new system error adds an entry.
-const BASELINES = [
-  "packages/junior/scripts/tool-descriptions-baseline.txt",
-  "scripts/await-in-loop-baseline.json",
-  "scripts/file-length-exceptions.mjs",
-  "scripts/migration-locks-baseline.json",
-  "scripts/test-architecture-baseline.json",
-  "scripts/type-assertions-baseline.json",
-  "scripts/typecheck-coverage-baseline.json",
+// A ratchet list is found by its name, so a new one is checked without an
+// edit here.
+const BASELINE_PATTERNS = [
+  "scripts/*-baseline.{json,txt}",
+  "scripts/*-exceptions.mjs",
+  "packages/*/scripts/*-baseline.{json,txt}",
+  "packages/*/scripts/*-exceptions.mjs",
 ];
+// Files that match a pattern but are allowed to grow.
+const GROWABLE = new Set([
+  // Approved system errors: a new system error adds an entry.
+  "packages/junior/scripts/tool-error-classification-baseline.txt",
+  // Byte budgets, not a list of violations.
+  "scripts/dashboard-bundle-size-baseline.json",
+]);
 
 /**
  * Flatten a parsed baseline into a map from entry key to allowed count. A key
@@ -144,10 +148,13 @@ function readAtBase(base, filePath) {
 async function main() {
   const base = mergeBase();
   const errors = [];
-  for (const filePath of BASELINES) {
+  const baselines = fs
+    .globSync(BASELINE_PATTERNS, { cwd: REPO_ROOT })
+    .filter((filePath) => !GROWABLE.has(filePath));
+  for (const filePath of baselines) {
     const headPath = path.join(REPO_ROOT, filePath);
     const baseSource = readAtBase(base, filePath);
-    if (baseSource === undefined || !fs.existsSync(headPath)) continue;
+    if (baseSource === undefined) continue;
     const growth = findGrowth(
       await parseBaseline(filePath, baseSource),
       await parseBaseline(filePath, fs.readFileSync(headPath, "utf8")),
