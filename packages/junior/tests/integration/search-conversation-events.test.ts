@@ -563,6 +563,26 @@ describe("searchConversationEvents", () => {
       nowMs: nowMs - 8 * dayMs,
       visibility: "public",
     });
+    // More events than one run embeds.
+    const busyConversationId = "slack:C123:1700000000.400000";
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: busyConversationId,
+      nowMs: nowMs - 2 * dayMs,
+      visibility: "public",
+    });
+    await getConversationEventStore().append(
+      busyConversationId,
+      Array.from({ length: 300 }, (_, index) => ({
+        createdAtMs: index + 1,
+        data: {
+          type: "message" as const,
+          messageId: `m-build-${index}`,
+          role: "assistant" as const,
+          text: `Build step ${index} passed.`,
+        },
+      })),
+    );
     // History from before the index: no Turn completed since, so the task
     // never indexed it.
     for (const conversationId of [
@@ -622,6 +642,16 @@ describe("searchConversationEvents", () => {
       lexemes: 2,
       vectors: 1,
     });
+    // The run stopped at its vector limit, and the next run continues.
+    await expect(storedRows(busyConversationId)).resolves.toEqual({
+      lexemes: 300,
+      vectors: 255,
+    });
+    await runEventSearchBackfill({ embedder, nowMs });
+    await expect(storedRows(busyConversationId)).resolves.toEqual({
+      lexemes: 300,
+      vectors: 300,
+    });
     const byMeaning = await executeTool({ query: "pull request" }, context(), {
       embedder,
     });
@@ -632,7 +662,8 @@ describe("searchConversationEvents", () => {
       lexemes: 0,
       vectors: 0,
     });
-    // Nothing is left, so a retry stores nothing and calls no model.
+    // Nothing is left, so a new pass stores nothing, calls no model, and
+    // completes.
     await expect(
       backfillEventSearchIndex({
         db: getDb(),
@@ -644,11 +675,11 @@ describe("searchConversationEvents", () => {
           },
         },
         nowMs,
+        pass: { after: null, conversations: 0, events: 0, skipped: 0 },
       }),
     ).resolves.toMatchObject({
-      backlog: { conversations: 0 },
-      done: true,
-      stored: { lexemes: 0, vectors: 0 },
+      outcome: "completed",
+      run: { conversations: 2, lexemes: 0, vectors: 0 },
     });
   });
 
