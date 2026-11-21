@@ -4,7 +4,7 @@
  * wait.
  */
 import { useMutation } from "@tanstack/react-query";
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useRef } from "react";
 
 import {
   conversationCatchUpSchema,
@@ -22,6 +22,8 @@ const CATCH_UP_MIN_TURNS = 2;
 export type ConversationCatchUpState = {
   data?: ConversationCatchUp | undefined;
   error: boolean;
+  /** Record that the offer was shown, once for each unread range. */
+  markOffered(): void;
   pending: boolean;
   request(): void;
   /** Unread Messages in the loaded rows. */
@@ -103,21 +105,25 @@ export function useConversationCatchUp(input: {
         range,
       ),
   });
+  const offeredRange = useRef<string | undefined>(undefined);
   // Once asked, keep the answer even if the loaded rows change.
   const asked = !mutation.isIdle;
-  const offered = Boolean(
-    unread &&
-    (asked || (input.events && hasEnoughUnread(input.events, unread, input))),
-  );
-  // Once per unread range: new rows move its end, not its start.
-  const offerKey = offered ? unread?.afterSeq : undefined;
-  useEffect(() => {
-    if (offerKey !== undefined) recordCatchUpOffered(input.conversationId);
-  }, [input.conversationId, offerKey]);
-  if (!unread || !offered) return undefined;
+  if (
+    !unread ||
+    (!asked && (!input.events || !hasEnoughUnread(input.events, unread, input)))
+  ) {
+    return undefined;
+  }
   return {
     data: mutation.data,
     error: mutation.isError,
+    markOffered: () => {
+      // New rows move the end of the unread range, not its start.
+      const range = `${input.conversationId}:${unread.afterSeq}`;
+      if (offeredRange.current === range) return;
+      offeredRange.current = range;
+      recordCatchUpOffered(input.conversationId);
+    },
     pending: mutation.isPending,
     request: () => mutation.mutate(unread),
     unreadMessages: countLoadedUnreadMessages(
