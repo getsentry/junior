@@ -306,7 +306,17 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   // A `reply` closed them when it was sent, and a quiet Turn sends no result.
-  await closeTodosForResult(invocation, invocation.status, nowMs);
+  // A retry after the append must not close To-dos assigned after it.
+  const resultMessageId = getAgentInvocationResultMessageId(
+    invocation.invocationId,
+  );
+  if (
+    !parentMessages.some(
+      (message) => message.inboundMessageId === resultMessageId,
+    )
+  ) {
+    await closeTodosForResult(invocation, invocation.status, nowMs);
+  }
   await appendAndEnqueueInboundMessage({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),

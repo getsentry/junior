@@ -62,9 +62,7 @@ async function createHarness() {
     childConversationId: child.childConversationId,
     spawn,
     /** Ends a child's invocation and sends its result to the parent. */
-    finish: async (
-      end: Parameters<typeof completeAgentInvocation>[0],
-    ): Promise<void> => {
+    finish: async (end: Parameters<typeof completeAgentInvocation>[0]) => {
       const invocation = await completeAgentInvocation(end);
       if (!invocation || !isTerminalAgentInvocation(invocation)) {
         throw new Error(`${end.invocationId} did not end`);
@@ -73,7 +71,16 @@ async function createHarness() {
         queue: work.queue,
         state: work.state,
       });
+      return invocation;
     },
+    /** Sends a result again, as heartbeat recovery does after a crash. */
+    resend: async (
+      invocation: Parameters<typeof enqueueAgentInvocationResult>[0],
+    ): Promise<void> =>
+      await enqueueAgentInvocationResult(invocation, {
+        queue: work.queue,
+        state: work.state,
+      }),
     /** Sends the `reply` of a child's agent invocation to the parent. */
     reply: async (
       invocation: Awaited<ReturnType<typeof spawn>>,
@@ -385,11 +392,16 @@ describe("updateTodos", () => {
         result: "",
         status: "completed",
       });
-      await harness.finish({
+      const completed = await harness.finish({
         invocationId: children.completed.invocationId,
         result: "Done.",
         status: "completed",
       });
+      // A retry of the same result leaves To-dos assigned after it open.
+      await harness.updateTodos({
+        add: [{ title: "Echo next", assignee: "Echo" }],
+      });
+      await harness.resend(completed);
       for (const status of ["stopped", "failed", "blocked"] as const) {
         await harness.finish({
           errorMessage: `Child ${status}.`,
@@ -419,6 +431,7 @@ describe("updateTodos", () => {
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
         ["India next", "open", undefined],
+        ["Echo next", "open", undefined],
       ]);
     } finally {
       await harness.close();
