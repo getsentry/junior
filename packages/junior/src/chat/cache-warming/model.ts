@@ -571,14 +571,15 @@ export function chooseIdleCompaction(
   input: IdleCompactionChoiceInput,
 ): IdleCompactionChoiceResult {
   const { histogram, conversationGaps, segmentGaps } = returnCurve(input);
-  const S = (ms: number) => survival(histogram, Math.min(ms, IDLE_HORIZON_MS));
+  const S = (ms: number) =>
+    survival(histogram, Math.min(ms, input.idleHorizonMs));
   const now = S(input.idleMs);
   const readFull = input.cacheReadPrice * input.prefixTokens;
   const warmupFull = warmupPrice(input.cacheReadPrice) * input.prefixTokens;
   const writeFull = input.cacheWritePrice * input.prefixTokens;
   const writeCompacted = input.cacheWritePrice * input.compactedTokens;
   const intervalMs = input.cacheTtlMs - WARMUP_MARGIN_MS;
-  const end = S(IDLE_HORIZON_MS);
+  const end = S(input.idleHorizonMs);
   // Slot k starts at `startMs`, and its cache expires at `expiryMs`. Costs
   // are not yet divided by `now`, so each slot weighs its own still-idle
   // share.
@@ -594,7 +595,7 @@ export function chooseIdleCompaction(
         ? Infinity
         : left * warmupFull +
           (left - S(nextMs)) * readFull +
-          (nextMs < IDLE_HORIZON_MS
+          (nextMs < input.idleHorizonMs
             ? best(options(nextMs, startMs + input.cacheTtlMs, true))
             : 0);
     return {

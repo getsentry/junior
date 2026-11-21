@@ -456,4 +456,19 @@ describe("chooseIdleCompaction", () => {
   it("compacts when no return is left in the horizon", () => {
     expect(slot(gaps(100, NO_REPLY_GAP_MS)).choice).toBe("compact");
   });
+
+  it("counts returns up to the longer horizon of a child agent wait", () => {
+    const late = {
+      idleMs: 56.25 * MINUTE,
+      cacheExpiryIdleMs: 57 * MINUTE,
+    };
+
+    expect(slot(gaps(100, 58 * MINUTE), late).choice).toBe("compact");
+    expect(
+      slot(gaps(100, 58 * MINUTE), {
+        ...late,
+        idleHorizonMs: CHILD_WAIT_IDLE_HORIZON_MS,
+      }).choice,
+    ).toBe("warm");
+  });
 });
