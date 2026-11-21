@@ -116,32 +116,19 @@ describe("completeText", () => {
     vi.resetModules();
   });
 
-  it("creates a gen_ai.chat span for provider completions", async () => {
+  it("sends the request through Pi and returns its text", async () => {
     mocks.resolveGatewayCredential.mockResolvedValue({
       mode: "oidc",
       token: "oidc-token",
     });
-    mocks.completeSimple.mockImplementation(
-      async (_model, _context, options) => {
-        await options.onResponse?.({
-          status: 200,
-          headers: { "x-vercel-id": "iad1::iad1::abc-123" },
-        });
-        return {
-          content: [{ type: "text", text: "hello world" }],
-          stopReason: "stop",
-          responseId: "gen_123",
-          usage: {
-            input: 12,
-            output: 4,
-            totalTokens: 16,
-          },
-        };
-      },
-    );
+    mocks.completeSimple.mockResolvedValue({
+      content: [{ type: "text", text: "hello world" }],
+      stopReason: "stop",
+      responseId: "gen_123",
+      usage: { input: 12, output: 4, totalTokens: 16 },
+    });
 
-    const { completeText, GEN_AI_PROVIDER_NAME } =
-      await import("@/chat/pi/client");
+    const { completeText } = await import("@/chat/pi/client");
 
     const result = await completeText({
       modelId: "openai/gpt-4o-mini",
@@ -149,156 +136,46 @@ describe("completeText", () => {
       messages: [{ role: "user", content: "hi", timestamp: 1 }] as any,
       thinkingLevel: "low",
       cacheRetention: "none",
-      messageAttributeMode: "content",
       sessionId: "slack:C123:1700000000.000",
     });
 
     expect(result.text).toBe("hello world");
-    expect(mocks.withSpan).toHaveBeenCalledTimes(1);
     expect(mocks.completeSimple).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
+      expect.objectContaining({ id: "openai/gpt-4o-mini" }),
+      expect.objectContaining({ systemPrompt: "Be concise." }),
       expect.objectContaining({
         apiKey: "oidc-token",
         cacheRetention: "none",
+        reasoning: "low",
         sessionId: "slack:C123:1700000000.000",
       }),
     );
-
-    const [name, op, context, _callback, attributes] = mocks.withSpan.mock
-      .calls[0] as [
-      string,
-      string,
-      Record<string, unknown>,
-      () => Promise<unknown>,
-      Record<string, unknown>,
-    ];
-
-    expect(name).toBe("chat openai/gpt-4o-mini");
-    expect(op).toBe("gen_ai.chat");
-    expect(context).toEqual({ modelId: "openai/gpt-4o-mini" });
-    expect(attributes).toEqual(
-      expect.objectContaining({
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": "chat",
-        "gen_ai.request.model": "openai/gpt-4o-mini",
-        "gen_ai.output.type": "text",
-        "server.address": "ai-gateway.vercel.sh",
-        "server.port": 443,
-        "gen_ai.request.reasoning.level": "low",
-        "gen_ai.provider.auth_mode": "oidc",
-      }),
-    );
-    expect(attributes["gen_ai.system_instructions"]).toBeDefined();
-    expect(attributes["gen_ai.input.messages"]).toBeDefined();
-
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "gen_ai.output.messages": expect.any(String),
-        "gen_ai.response.finish_reasons": ["stop"],
-        "gen_ai.response.id": "gen_123",
-      }),
-    );
-    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
-      "app.ai.gateway.vercel_id": "iad1::iad1::abc-123",
-    });
   });
 
-  it("omits opt-in semantic content for non-public conversation traces", async () => {
+  it("throws a provider error for an error stop", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
+    });
     mocks.completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "private answer" }],
-      stopReason: "stop",
-      usage: { input: 12, output: 4, totalTokens: 16 },
+      content: [],
+      stopReason: "error",
+      errorMessage: "upstream exploded",
+      usage: { input: 0, output: 0, totalTokens: 0 },
     });
 
     const { completeText } = await import("@/chat/pi/client");
 
-    await completeText({
-      modelId: "openai/gpt-4o-mini",
-      system: "private system",
-      messages: [
-        { role: "user", content: "private question", timestamp: 1 },
-      ] as any,
-      metadata: {
-        conversationId: "slack:D1:123",
-        channelId: "D1",
-      },
-    });
-
-    const attributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
-      string,
-      unknown
-    >;
-    const context = mocks.withSpan.mock.calls[0]?.[2] as Record<
-      string,
-      unknown
-    >;
-    expect(context).toMatchObject({
-      conversationId: "slack:D1:123",
-      destinationName: "D1",
-      modelId: "openai/gpt-4o-mini",
-    });
-    expect(attributes["app.conversation.privacy"]).toBe("private");
-    expect(attributes["server.address"]).toBe("ai-gateway.vercel.sh");
-    expect(attributes["server.port"]).toBe(443);
-    expect(attributes["gen_ai.output.type"]).toBe("text");
-    expect(attributes["gen_ai.input.message_count"]).toBe(1);
-    expect(attributes["gen_ai.input.content_chars"]).toBe(16);
-    expect(attributes["gen_ai.system_instructions"]).toBeUndefined();
-    expect(attributes["gen_ai.input.messages"]).toBeUndefined();
-
-    const endAttributes = mocks.setSpanAttributes.mock.calls[0]?.[0] as Record<
-      string,
-      unknown
-    >;
-    expect(endAttributes["gen_ai.output.message_count"]).toBe(1);
-    expect(endAttributes["gen_ai.output.content_chars"]).toBe(14);
-    expect(endAttributes["gen_ai.output.messages"]).toBeUndefined();
-  });
-
-  it("scrubs C-prefixed channel traces unless the turn confirmed the channel public", async () => {
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "maybe private answer" }],
-      stopReason: "stop",
-      usage: { input: 12, output: 4, totalTokens: 16 },
-    });
-
-    const { completeText } = await import("@/chat/pi/client");
-    const { runWithConversationPrivacy } =
-      await import("@/chat/conversation-privacy");
-
-    // Modern Slack private channels also use C ids: without a confirmed
-    // signal the capture stays metadata-only.
-    await completeText({
-      modelId: "openai/gpt-4o-mini",
-      messages: [
-        { role: "user", content: "possibly private question", timestamp: 1 },
-      ] as any,
-      metadata: { conversationId: "slack:C1:123", channelId: "C1" },
-    });
-    const noSignal = mocks.withSpan.mock.calls[0]?.[4] as Record<
-      string,
-      unknown
-    >;
-    expect(noSignal["app.conversation.privacy"]).toBe("private");
-    expect(noSignal["gen_ai.input.messages"]).toBeUndefined();
-
-    // The turn-scoped privacy context carries the source-confirmed signal.
-    await runWithConversationPrivacy("public", () =>
+    await expect(
       completeText({
         modelId: "openai/gpt-4o-mini",
-        messages: [
-          { role: "user", content: "public question", timestamp: 1 },
-        ] as any,
-        metadata: { conversationId: "slack:C1:123", channelId: "C1" },
+        messages: [{ role: "user", content: "hi", timestamp: 1 }] as any,
       }),
+    ).rejects.toThrow("AI provider error");
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      "ai.completion.provider_error",
+      expect.objectContaining({ "exception.message": "upstream exploded" }),
     );
-    const publicSignal = mocks.withSpan.mock.calls[1]?.[4] as Record<
-      string,
-      unknown
-    >;
-    expect(publicSignal["app.conversation.privacy"]).toBe("public");
-    expect(publicSignal["gen_ai.input.messages"]).toContain("public question");
   });
 
   it("uses AI SDK structured output for object completions", async () => {

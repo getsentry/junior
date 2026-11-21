@@ -67,8 +67,9 @@ vi.mock("@/chat/guardian/reviewer", () => ({
 
 // Keep the provider as the integration boundary. The real Pi loop executes
 // the tools, handles abort, persists the toolResults, and invokes continue().
-vi.mock("@/chat/pi/traced-stream", () => ({
-  createTracedStreamFn:
+vi.mock("@/chat/pi/chat-span", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/chat-span")>()),
+  withChatStreamTelemetry:
     () =>
     async (
       model: { id: string },

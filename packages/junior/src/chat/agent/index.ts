@@ -69,7 +69,7 @@ import {
   getUserMessageInstructionText,
   isAssistantMessage,
 } from "@/chat/pi/transcript";
-import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { withChatStreamTelemetry } from "@/chat/pi/chat-span";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -864,11 +864,10 @@ async function executeAgentRunInPrivacyContext(
     runResume.setTurnContexts(turnContexts);
     // The same stream as the agent loop, so the summary request reaches the
     // provider like an agent call. Only its span gets the prompt name.
-    const summaryStreamFn = createTracedStreamFn({
-      conversationPrivacy,
-      promptName: CONTEXT_COMPACTION_PROMPT_NAME,
-      ...(streamFn ? { base: streamFn } : undefined),
-    });
+    const summaryStreamFn = withChatStreamTelemetry(
+      { attributes: { "gen_ai.prompt.name": CONTEXT_COMPACTION_PROMPT_NAME } },
+      streamFn,
+    );
     const nextInputAfterReplacement = createNextInputTracker();
     /**
      * Commit and adopt an active capacity replacement. True when it replaced
@@ -1173,14 +1172,15 @@ async function executeAgentRunInPrivacyContext(
       // One AI Gateway session per Conversation, not a prompt fingerprint.
       sessionId: conversationId,
       streamFn: withAgentRequest(
-        createTracedStreamFn({
-          conversationPrivacy,
-          base: cacheWarming.wrap(streamFn),
-          endAttributes: (message) =>
-            nextInputAfterReplacement.attributes(
-              lastRequestInputSize([message]),
-            ),
-        }),
+        withChatStreamTelemetry(
+          {
+            endAttributes: (message) =>
+              nextInputAfterReplacement.attributes(
+                lastRequestInputSize([message]),
+              ),
+          },
+          cacheWarming.wrap(streamFn),
+        ),
         { systemPrompt: baseInstructions, tools: wiring.agentTools },
       ),
       steeringMode: "all",

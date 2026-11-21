@@ -120,6 +120,8 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
+- `piAiIntegration` records prompts, responses, and tool definitions on
+  `gen_ai.chat` only in public Conversations.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
