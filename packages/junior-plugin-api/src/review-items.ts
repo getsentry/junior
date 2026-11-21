@@ -37,8 +37,8 @@ export interface PluginReviewNotice {
   /**
    * The assignees must act, such as merge a pull request that is ready. The
    * item then waits on them: its Conversation shows in their Needs you, and
-   * it counts in their Inbox. Leave it unset for a notice that is only for
-   * information.
+   * it counts in their Inbox. Leave it unset for a notice that names a step
+   * for them but does not block work. Add no item that names no step.
    */
   waitsOnAssignees?: boolean;
 }
