@@ -61,6 +61,32 @@ export async function interceptTestGitHubCraftReleaseHttp(
             isDraft: false,
             mergedAt,
             autoMergeRequest: null,
+            // `github_getPullRequest` reads the merge state and checks too.
+            mergeStateStatus: "UNKNOWN",
+            reviewDecision: "APPROVED",
+            commits: {
+              nodes: [
+                {
+                  commit: {
+                    oid: sha,
+                    statusCheckRollup: {
+                      contexts: {
+                        nodes: [
+                          {
+                            __typename: "CheckRun",
+                            name: "test",
+                            status: "COMPLETED",
+                            conclusion: "SUCCESS",
+                            isRequired: true,
+                          },
+                        ],
+                        pageInfo: { hasNextPage: false },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
             headRefName: pullRequest.head.ref,
             headRefOid: sha,
             baseRefName: pullRequest.base.ref,

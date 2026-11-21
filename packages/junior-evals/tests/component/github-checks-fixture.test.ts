@@ -93,3 +93,25 @@ it("serves the merged Craft release blocker with no Dependabot alerts", async ()
   });
   expect(await serve("/dependabot/alerts")).toEqual([]);
 });
+
+it("answers the pull request tool's GraphQL read of the Craft release blocker", async () => {
+  const graphql = "https://api.github.com/graphql";
+  const response = await interceptTestHttp({
+    provider: "github",
+    request: new Request(graphql, {
+      body: JSON.stringify({
+        query:
+          "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){mergeStateStatus}}}",
+        variables: { name: "craft", number: 983, owner: "getsentry" },
+      }),
+      method: "POST",
+    }),
+    upstreamUrl: new URL(graphql),
+  }).then((res) => res.json());
+  expect(response.data.repository.pullRequest).toMatchObject({
+    commits: { nodes: [expect.anything()] },
+    mergeStateStatus: expect.any(String),
+    reviewDecision: "APPROVED",
+    state: "MERGED",
+  });
+});
