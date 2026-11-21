@@ -116,6 +116,42 @@ public struct MCPMessage: Decodable, Sendable, Hashable, Identifiable {
   public var isAssistant: Bool { role == "assistant" }
 }
 
+/// Reasoning and tool calls of one transcript event (`mcpActivitySchema`).
+public struct MCPActivity: Decodable, Sendable, Hashable, Identifiable {
+  public enum Part: Decodable, Sendable, Hashable {
+    case reasoning(String)
+    case toolCall(ToolCall)
+    /// A part type that this app does not know yet.
+    case unknown
+
+    private enum CodingKeys: String, CodingKey { case type, text }
+
+    public init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      switch try container.decode(String.self, forKey: .type) {
+      case "reasoning": self = .reasoning(try container.decode(String.self, forKey: .text))
+      case "tool_call": self = .toolCall(try ToolCall(from: decoder))
+      default: self = .unknown
+      }
+    }
+  }
+
+  /// One sighting of a tool call. It shows again with the same id when it ends.
+  public struct ToolCall: Decodable, Sendable, Hashable {
+    public var toolCallId: String
+    public var name: String
+    /// `running`, `completed`, or `error`.
+    public var status: String
+    public var startedAt: Timestamp?
+  }
+
+  public var seq: Int
+  public var createdAt: Timestamp
+  public var parts: [Part]
+
+  public var id: Int { seq }
+}
+
 /// An accepted message that no Turn has read yet.
 public struct PendingMessage: Decodable, Sendable, Hashable, Identifiable {
   public var messageId: String
@@ -143,6 +179,9 @@ public struct ConversationState: Decodable, Sendable {
   public var lastReply: MCPMessage?
   /// Messages after `after`, oldest first. Set only with `after`.
   public var messages: [MCPMessage]?
+  /// Reasoning and tool calls up to `cursor`. Set only with `after` and
+  /// `includeActivity`.
+  public var activity: [MCPActivity]?
   public var hasMore: Bool?
   public var pendingMessages: [PendingMessage]
   public var authorization: PendingAuthorization?
@@ -152,6 +191,8 @@ public struct ConversationState: Decodable, Sendable {
 /// `listConversationMessages`: newest last.
 public struct MessagePage: Decodable, Sendable {
   public var messages: [MCPMessage]
+  /// Set only with `includeActivity`.
+  public var activity: [MCPActivity]?
   /// Set when older messages can exist.
   public var nextCursor: String?
 }

@@ -14,6 +14,7 @@ import {
 } from "../../../../fixtures/mcp-http";
 import {
   appendMcpMessages,
+  appendMcpToolStep,
   seedMcpConversation,
 } from "../../../../fixtures/mcp-tools";
 
@@ -201,13 +202,25 @@ describe("getConversation MCP tool", () => {
       await call("getConversation", { conversationId: CONVERSATION_ID })
     ).structuredContent as { cursor: string };
     await appendMcpMessages(CONVERSATION_ID, [
-      { role: "user", text: "Roll it back." },
-      { role: "assistant", text: "The rollback is done." },
+      { messageId: "message-2", role: "user", text: "Roll it back." },
+    ]);
+    await appendMcpToolStep(CONVERSATION_ID, {
+      reasoning: "Roll back the relay deploy.",
+      toolCallId: "call-rollback",
+      toolName: "rollback",
+    });
+    await appendMcpMessages(CONVERSATION_ID, [
+      {
+        messageId: "message-3",
+        role: "assistant",
+        text: "The rollback is done.",
+      },
     ]);
 
     const newer = await call("getConversation", {
       conversationId: CONVERSATION_ID,
       after: cursor,
+      includeActivity: true,
     });
     const next = (newer.structuredContent as { cursor: string }).cursor;
     const caughtUp = await call("getConversation", {
@@ -224,12 +237,22 @@ describe("getConversation MCP tool", () => {
         { role: "user", text: "Roll it back." },
         { role: "assistant", text: "The rollback is done." },
       ],
+      activity: [
+        {
+          parts: [
+            { type: "reasoning", text: "Roll back the relay deploy." },
+            { name: "rollback", status: "running" },
+          ],
+        },
+        { parts: [{ name: "rollback", status: "completed" }] },
+      ],
     });
     expect(newer.structuredContent).not.toHaveProperty("lastReply");
     expect(caughtUp.structuredContent).toMatchObject({
       cursor: next,
       messages: [],
     });
+    expect(caughtUp.structuredContent).not.toHaveProperty("activity");
     expect(invalid).toMatchObject({ isError: true });
   });
 

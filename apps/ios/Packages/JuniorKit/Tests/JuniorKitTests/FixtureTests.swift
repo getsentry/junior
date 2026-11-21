@@ -76,7 +76,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
         seq: seq, messageId: id, createdAt: Timestamp(raw: "2026-08-07T12:00:00Z"), role: "user", author: nil,
         text: text, attachments: nil)
     }
-    let merged = mergeMessages(
+    let merged = mergeBySeq(
       [message(1, "a", "old"), message(3, "c", "x")], [message(2, "b", "y"), message(3, "c", "new")])
     #expect(merged.map(\.seq) == [1, 2, 3])
     #expect(merged.last?.text == "new")
