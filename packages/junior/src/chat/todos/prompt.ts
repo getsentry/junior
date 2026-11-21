@@ -56,15 +56,23 @@ export function renderTodoAssignee(assignee: TodoAssignee): string {
   }
 }
 
+function renderAuthor(todo: Todo): string | undefined {
+  if (todo.changedBy) {
+    const { email, name } = todo.changedBy;
+    return name ? `${name} (${email})` : email;
+  }
+  if (todo.changedByAgent) {
+    return `child agent ${todo.changedByAgent.name ?? todo.changedByAgent.conversationId}`;
+  }
+  return undefined;
+}
+
 function renderTodo(todo: Todo, withAuthor: boolean): string {
+  const author = withAuthor ? renderAuthor(todo) : undefined;
   const fields = [
     todo.status,
     `assignee ${renderTodoAssignee(todo.assignee)}`,
-    ...(withAuthor && todo.changedBy
-      ? [
-          `changed by ${todo.changedBy.name ? `${todo.changedBy.name} (${todo.changedBy.email})` : todo.changedBy.email}`,
-        ]
-      : []),
+    ...(author ? [`changed by ${author}`] : []),
   ];
   const notes = todo.notes ? `\n  Notes: ${todo.notes}` : "";
   return escapeTagText(
@@ -116,20 +124,21 @@ export function latestSeenTodosVersion(messages: readonly PiMessage[]): number {
 }
 
 /**
- * Render the changes that people made after the version that history
- * shows, or null when there are none. Changes of the list's own agent are
- * left out: its tool calls and results are already in history.
+ * Render the changes that people and child agents made after the version
+ * that history shows, or null when there are none. Changes of the list's own
+ * agent are left out: its tool calls and results are already in history.
  */
 export function renderTodoDelta(
   todos: readonly Todo[],
   seenVersion: number,
 ): string | null {
   const changed = todos.filter(
-    (todo) => todo.changedBy && todo.version > seenVersion,
+    (todo) =>
+      (todo.changedBy || todo.changedByAgent) && todo.version > seenVersion,
   );
   if (changed.length === 0) return null;
   return renderTag(TODO_DELTA_TAG, {}, [
-    `To-do version ${todosVersion(todos)}. People changed these To-dos since you last saw them. Each To-do shows its current fields.`,
+    `To-do version ${todosVersion(todos)}. Others changed these To-dos since you last saw them. Each To-do shows its current fields.`,
     ...changed.map((todo) => renderTodo(todo, true)),
   ]);
 }

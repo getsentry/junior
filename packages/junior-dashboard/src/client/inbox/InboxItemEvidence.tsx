@@ -145,7 +145,7 @@ export function InboxItemEvidence(props: { item: InboxItemPayload }) {
     return null;
   }
   return (
-    <div className="mt-2 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+    <div className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
       <EntryList entries={evidenceEntries} label="Evidence" />
       <EntryList entries={relatedEntries} label="Related" />
     </div>
