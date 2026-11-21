@@ -126,7 +126,7 @@ export async function resolveSandboxCommandEnvironment(): Promise<
     )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
-    if (credentials?.authTokenEnv) {
+    if (credentials?.type === "oauth-bearer") {
       env[credentials.authTokenEnv] = resolveAuthTokenPlaceholder(credentials);
     }
   }
