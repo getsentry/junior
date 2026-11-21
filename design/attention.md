@@ -52,10 +52,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
   do".
 - Some asks are only a Slack message: a draft pull request that waits for
-  the requester's review, a decision on a watched issue, and a blocked
-  Automation. They add no Review item. This breaks "Junior asks a person
-  only with a Review item" and "Slack and the dashboard ask for attention
-  for the same things".
+  the requester's review (`github#draft-held`), a decision on a watched
+  issue, and a blocked Automation. They add no Review item. This breaks
+  "Junior asks a person only with a Review item" and "Slack and the
+  dashboard ask for attention for the same things".
 - In a dashboard Conversation, a Turn that ends with a question card and no
   reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".
