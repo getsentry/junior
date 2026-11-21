@@ -8,6 +8,8 @@ import { toolbarControlBoxClass } from "./ui/button";
  * beside it, such as in the pane's top row.
  */
 export function JuniorLogo(props: { size?: "sm" }) {
+  const src =
+    globalThis.window?.__JUNIOR_DASHBOARD_ICONS__?.iconUrl ?? juniorAvatarUrl;
   if (props.size === "sm")
     return (
       <img
@@ -17,7 +19,7 @@ export function JuniorLogo(props: { size?: "sm" }) {
           "shrink-0 select-none object-cover opacity-90",
         )}
         draggable={false}
-        src={juniorAvatarUrl}
+        src={src}
       />
     );
   return (
@@ -26,7 +28,7 @@ export function JuniorLogo(props: { size?: "sm" }) {
         alt=""
         className="relative -m-0.5 size-11 max-w-none object-contain opacity-90 drop-shadow-[0_0_7px_rgba(255,255,255,0.16)]"
         draggable={false}
-        src={juniorAvatarUrl}
+        src={src}
       />
     </div>
   );

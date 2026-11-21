@@ -27,6 +27,7 @@ declare global {
   interface Window {
     __JUNIOR_DASHBOARD_AGENT_NAME__?: string;
     __JUNIOR_DASHBOARD_BASE_PATH__?: string;
+    __JUNIOR_DASHBOARD_ICONS__?: { faviconUrl?: string; iconUrl?: string };
     __JUNIOR_DASHBOARD_SHOW_ERROR__?: (error: unknown) => void;
   }
 }

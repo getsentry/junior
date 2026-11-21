@@ -109,6 +109,10 @@ export function resetMockDashboardState(): void {
 export interface JuniorDashboardOptions {
   /** The configured bot name. Core passes `botConfig.userName`. */
   agentName: string;
+  /** Agent image: an https URL or a path. Defaults to the built-in avatar. */
+  iconUrl?: string | undefined;
+  /** Browser tab icon: an https URL or a path. Defaults to `iconUrl`. */
+  faviconUrl?: string | undefined;
   basePath?: string;
   baseURL?: string;
   authPath?: string;
@@ -385,6 +389,27 @@ function pluginRouteContext(
   } satisfies PluginApiRouteRequestContext;
 }
 
+// These paths redirect to the host image, so it cannot be one of them.
+const FIXED_IMAGE_PATHS = [
+  "/favicon.ico",
+  DASHBOARD_AVATAR_HEADER_PATH,
+  DASHBOARD_INSTALL_ICON_PATH,
+];
+const PATH_BASE = "https://dashboard.invalid";
+
+/** Parse a host image as a browser does: an https URL or a same-origin path. */
+function hostImageUrl(option: string, value: string | undefined) {
+  if (value === undefined) return undefined;
+  const url = URL.parse(value, PATH_BASE);
+  if (url && !FIXED_IMAGE_PATHS.includes(url.pathname)) {
+    if (url.origin === PATH_BASE) return url.pathname + url.search + url.hash;
+    if (url.protocol === "https:") return url.href;
+  }
+  throw new Error(
+    `dashboard.${option} must be an https URL or a path, and not a dashboard image path`,
+  );
+}
+
 /** Create the authenticated dashboard Hono app mounted by Nitro. */
 export function createDashboardApp(
   rawOptions: DashboardRuntimeOptions,
@@ -405,6 +430,11 @@ export function createDashboardApp(
   );
   const allowedDomains = normalizeValues(options.allowedDomains);
   const agentName = options.agentName;
+  const iconUrl = hostImageUrl("iconUrl", options.iconUrl);
+  const icons = {
+    faviconUrl: hostImageUrl("faviconUrl", options.faviconUrl) ?? iconUrl,
+    iconUrl,
+  };
 
   const authRequired = options.authRequired !== false;
   const configuredBaseURL = options.baseURL ?? process.env["JUNIOR_BASE_URL"];
@@ -479,9 +509,13 @@ export function createDashboardApp(
       c.req.path.slice(DASHBOARD_ASSETS_PATH.length + 1),
     ),
   );
-  app.get("/favicon.ico", () => renderFavicon());
+  app.get("/favicon.ico", (c) =>
+    icons.faviconUrl ? c.redirect(icons.faviconUrl) : renderFavicon(),
+  );
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
-  app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
+  app.get(DASHBOARD_INSTALL_ICON_PATH, (c) =>
+    icons.iconUrl ? c.redirect(icons.iconUrl) : renderInstallIcon(),
+  );
   app.get(DASHBOARD_SERVICE_WORKER_PATH, () =>
     renderServiceWorker(basePath, agentName),
   );
@@ -616,6 +650,7 @@ export function createDashboardApp(
   const renderPage = async (c: Context<{ Variables: Variables }>) =>
     renderDashboard(basePath, agentName, {
       bootstrap: await readPageBootstrap(c.get("authSession")),
+      icons,
       sentry: getBrowserSentryConfig(),
     });
   for (const { nested, path } of dashboardPagePaths(basePath)) {
@@ -785,7 +820,8 @@ export function createDashboardApp(
       },
     });
   });
-  app.get(DASHBOARD_AVATAR_HEADER_PATH, () => {
+  app.get(DASHBOARD_AVATAR_HEADER_PATH, (c) => {
+    if (icons.iconUrl) return c.redirect(icons.iconUrl);
     return new Response(readDashboardAvatarHeader(), {
       headers: {
         "cache-control": "public, max-age=0, must-revalidate",

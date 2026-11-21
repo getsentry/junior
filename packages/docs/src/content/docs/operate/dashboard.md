@@ -156,6 +156,10 @@ Dashboard dates use the viewer's browser timezone. `JUNIOR_TIMEZONE` does not ch
 
 For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are reporting fixtures and appear before real conversation records. Messages that you send get a fixed reply, and no agent runs.
 
+## Use your own icon
+
+Set `dashboard.iconUrl` to replace the avatar, install icon, and notification icon, and `dashboard.faviconUrl` to replace the browser tab icon (it defaults to `iconUrl`). Each value is an `https` URL or a path such as `/brand/icon.png`. Use square PNG images. A favicon on another origin must allow CORS for the Inbox count badge.
+
 ## Configure Google auth
 
 Create a Google OAuth client for the deployment origin. Add this redirect URI:
