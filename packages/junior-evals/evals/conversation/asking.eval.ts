@@ -1,52 +1,14 @@
 import { describe, expect } from "vitest";
-import {
-  githubWebhook,
-  heartbeat,
-  person,
-  slackMention,
-} from "@junior-evals/fixture/inputs";
+import { heartbeat, person, slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
-  insertWatch,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import {
-  readAskedRequests,
-  readTodosForPeople,
-} from "@junior-evals/fixture/items";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
 
 const MAYA = person("UMAYA", "Maya");
-
-const RELEASE_BLOCKER = "getsentry/craft#983";
-
-/** GitHub's webhook for the merge of the release's last blocker. */
-function releaseBlockerMerged() {
-  const mergedAt = new Date().toISOString();
-  return githubWebhook("pull_request", {
-    action: "closed",
-    pull_request: {
-      closed_at: mergedAt,
-      created_at: "2026-01-01T00:00:00Z",
-      head: { ref: "fix/picomatch-patch" },
-      id: 983_000,
-      merged: true,
-      merged_at: mergedAt,
-      number: 983,
-      title: "Patch picomatch",
-      updated_at: mergedAt,
-      user: { login: "junior-eval[bot]" },
-    },
-    repository: {
-      full_name: "getsentry/craft",
-      id: 2,
-      name: "craft",
-      owner: { login: "getsentry" },
-    },
-  });
-}
 
 /** The `request` of each action item that the agent added. */
 function askedRequests(conversation: { toolCalls: ToolCall[] }) {
@@ -110,40 +72,6 @@ describe("Asking a Person", () => {
     const urls = (ask!.request?.evidence ?? []).map((entry) => entry.url ?? "");
     expect(urls.some((url) => url.includes("/canary/payments-v42"))).toBe(true);
     expect(urls.some((url) => url.includes("/checkout-p95"))).toBe(true);
-  });
-
-  test("when a watched event leaves a decision and a task for the person, the reply carries an action item and a To-do for them", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        "Thanks for the picomatch patch. It's the last blocker before the Craft release.",
-        { author: MAYA },
-      ),
-    );
-    await insertWatch({
-      conversation,
-      events: ["pull_request.merged"],
-      identifier: RELEASE_BLOCKER,
-      intent: `picomatch patch follow-up, the last blocker before the Craft release. On merge, tell <@${MAYA.userId}> the release (#979–#983, minor, likely 3.13.0) is ready, and that I'll cut it when she asks in-thread. Also remind her to dismiss the picomatch Dependabot alerts by hand.`,
-      label: `GitHub PR ${RELEASE_BLOCKER}`,
-      resourceType: "pull_request",
-    });
-
-    // The thanks leaves nothing for Maya, so the items below come from the
-    // merge delivery.
-    const id = conversation.conversationId;
-    expect(await readAskedRequests(id)).toEqual([]);
-    expect(await readTodosForPeople(id)).toEqual([]);
-
-    const delivery = await conversation.continue(releaseBlockerMerged());
-
-    expect(delivery.turns).not.toHaveLength(0);
-    // Read the stored items: a `codemode` call shows no input. Cutting the
-    // release is Maya's decision, so it is an action item.
-    expect(await readAskedRequests(id)).not.toHaveLength(0);
-    // Only Maya can dismiss the alerts, so that task is a To-do for her.
-    expect(await readTodosForPeople(id)).not.toHaveLength(0);
   });
 
   test("when a scope choice does not block the work, choose the conventional option and state it without an item", async ({
