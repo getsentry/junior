@@ -10,6 +10,9 @@ let package = Package(
   products: [.library(name: "JuniorKit", targets: ["JuniorKit"])],
   targets: [
     .target(name: "JuniorKit", resources: [.copy("Demo/demo-data.json")]),
-    .testTarget(name: "JuniorKitTests", dependencies: ["JuniorKit"], resources: [.copy("Fixtures")]),
+    // The TestFlight lane versions CHANGELOG.md with it (fastlane/Fastfile).
+    .executableTarget(name: "junior-changelog", dependencies: ["JuniorKit"]),
+    .testTarget(
+      name: "JuniorKitTests", dependencies: ["JuniorKit", "junior-changelog"], resources: [.copy("Fixtures")]),
   ]
 )

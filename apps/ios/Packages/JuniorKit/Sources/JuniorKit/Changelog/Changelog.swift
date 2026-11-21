@@ -39,7 +39,7 @@ public struct ChangelogEntry: Equatable, Sendable {
   }
 
   /// The build number after `+` in the version (`0.1.0+42` is 42), or `nil`.
-  var build: Int? {
+  public var build: Int? {
     version.firstIndex(of: "+").flatMap { Int(version[version.index(after: $0)...]) }
   }
 
