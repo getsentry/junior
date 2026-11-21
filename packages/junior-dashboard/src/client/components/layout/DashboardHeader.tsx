@@ -143,7 +143,7 @@ export function DashboardHeader(props: {
               <Link
                 aria-current={props.workspaceActive ? "page" : undefined}
                 className={navLinkClass({ isActive: props.workspaceActive })}
-                to="/"
+                to="/conversations"
               >
                 Conversations
               </Link>
@@ -278,7 +278,7 @@ export function DashboardHeader(props: {
                   className={sheetLinkClass({
                     isActive: props.workspaceActive,
                   })}
-                  to="/"
+                  to="/conversations"
                 >
                   Conversations
                 </Link>

@@ -9,6 +9,7 @@ import type {
   ConversationDetailReport,
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
+import { mockLeadEvents } from "./lead-transcript";
 
 /** Time before the reply shows, so the working state can be seen. */
 const MOCK_REPLY_DELAY_MS = 2_000;
@@ -31,6 +32,8 @@ type MockCreatedConversation = {
   conversationId: string;
   createdAtMs: number;
   fork?: MockFork;
+  /** A Lead, which lists leave out. */
+  lead?: boolean;
   title?: string;
   visibility?: "private" | "public";
 };
@@ -79,6 +82,22 @@ export function createMockConversation(args: {
       createdAtMs: Date.now(),
       title: titleFromMessage(args.message),
       ...(args.visibility ? { visibility: args.visibility } : undefined),
+    });
+  }
+  return conversationId;
+}
+
+/** Find or start the mock Lead of one person. */
+export function createMockLead(actorIdentity: ActorIdentity): string {
+  const conversationId = mockConversationId("lead", actorIdentity.email ?? "");
+  if (!createdConversations.has(conversationId)) {
+    createdConversations.set(conversationId, {
+      actorIdentity,
+      conversationId,
+      createdAtMs: Date.now(),
+      lead: true,
+      title: "Lead",
+      visibility: "private",
     });
   }
   return conversationId;
@@ -137,10 +156,15 @@ export function keepMockQuickQuestion(conversationId: string): boolean {
   return true;
 }
 
-/** Return whether lists hide this Conversation: an unkept Quick question. */
+/**
+ * Return whether lists hide this Conversation: a Lead or an unkept Quick
+ * question.
+ */
 export function isUnlistedMockConversation(conversationId: string): boolean {
+  const created = createdConversations.get(conversationId);
+  if (created?.lead) return true;
   return (
-    Boolean(createdConversations.get(conversationId)?.fork?.quickQuestion) &&
+    Boolean(created?.fork?.quickQuestion) &&
     !keptQuickQuestionIds.has(conversationId)
   );
 }
@@ -237,7 +261,7 @@ function createdConversation(
     eventHistory: { status: "available" as const },
     generatedAt: startedAt,
     isParticipant: true,
-    kind: "root" as const,
+    kind: created.lead ? ("lead" as const) : ("root" as const),
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
@@ -250,7 +274,7 @@ function createdConversation(
     return {
       ...base,
       displayTitle: created.title ?? "New conversation",
-      events: [],
+      events: created.lead ? mockLeadEvents(created.actorIdentity) : [],
     };
   }
   const { messageId, sourceConversationId } = created.fork;

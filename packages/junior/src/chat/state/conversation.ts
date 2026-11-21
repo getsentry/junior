@@ -35,6 +35,8 @@ export interface ConversationMessageMeta {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
+  /** Resource identifier of the first Event, such as a Conversation id. */
+  eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
   /**
    * The Watch Events when several arrived together. A Message that also

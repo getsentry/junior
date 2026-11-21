@@ -81,8 +81,6 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -101,6 +99,10 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
+} from "./schema/conversation-fork";
 export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
@@ -371,6 +373,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { leadSchema } from "./schema/lead";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

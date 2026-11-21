@@ -82,8 +82,10 @@ function ReplyFooter(props: {
     | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
-  /** Lets the page add a quote of selected text to the draft. */
-  ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** The message box's hint when it is empty. */
+  placeholder?: string | undefined;
+  /** Lets the page add text, such as a quote, to the draft, or focus it. */
+  ref?: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -271,6 +273,7 @@ function ReplyFooter(props: {
   const composerRef = useRef<ConversationComposerHandle>(null);
   useImperativeHandle(props.ref, () => ({
     appendText: (text) => composerRef.current?.appendText(text),
+    focus: () => composerRef.current?.focus(),
   }));
   // Wait until the questions are known: an open question takes focus, so
   // its number keys work at once. On a touch screen, focus would open the
@@ -490,7 +493,7 @@ function ReplyFooter(props: {
         linksWork
         ref={composerRef}
         label="Continue this conversation"
-        placeholder={questionShown ? "Or type your answer…" : undefined}
+        placeholder={questionShown ? "Or type your answer…" : props.placeholder}
         sendsWithoutDraft={hasQuestionAnswers}
         submitLabel="Send"
         onFocus={onComposerFocus}

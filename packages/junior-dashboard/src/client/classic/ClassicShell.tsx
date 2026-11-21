@@ -31,6 +31,7 @@ import { isNewConversationPath } from "../conversations/conversationRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "../conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "../conversations/ConversationWorkspaceLoading";
+import { useLead } from "../lead/Lead";
 import { useConversationData } from "../conversations/queries";
 import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
@@ -180,13 +181,18 @@ export function ClassicShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
+  // Home shows the viewer's Lead, and so does the wide conversation list.
+  const home =
+    location.pathname === "/" || location.pathname === "/conversations";
+  const leadId = useLead(loggedIn && home).data?.conversationId;
+  const openConversationId = conversationId ?? (home ? leadId : undefined);
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.
-  const conversationDetail = useConversationData(conversationId, {
+  const conversationDetail = useConversationData(openConversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
   });
-  useVersionsPoll(conversationId, Boolean(data));
+  useVersionsPoll(openConversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -283,7 +289,7 @@ export function ClassicShell() {
             header={
               <DashboardHeader
                 desktopTopBar={desktopTopBar}
-                mobileBackTo={conversationId ? "/" : undefined}
+                mobileBackTo={conversationId ? "/conversations" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
@@ -530,7 +536,17 @@ export function ClassicShell() {
               path="/conversations/:conversationId"
             />
             <Route
-              element={<Navigate replace to="/" />}
+              element={
+                loading ? (
+                  <ConversationWorkspaceLoading detail={false} />
+                ) : data ? (
+                  <ConversationWorkspace detail={conversationDetail} />
+                ) : (
+                  <LoadingView
+                    label={query.error?.message ?? "Dashboard unavailable"}
+                  />
+                )
+              }
               path="/conversations"
             />
             <Route

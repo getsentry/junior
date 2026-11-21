@@ -23,7 +23,9 @@ export function ConversationPageDock(props: {
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
   onShowQuestion(item: ReviewItemPayload, arrived: boolean): void;
-  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** The message box's hint when it is empty. */
+  placeholder?: string | undefined;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls
@@ -69,6 +71,7 @@ export function ConversationPageDock(props: {
       // every 2s; a prop would bust footer memo while the reader types.
       pendingGeneratedAtRef={pendingGeneratedAtRef}
       pendingMessages={detail.pendingMessages}
+      placeholder={props.placeholder}
       ref={props.ref}
       // Without live history, an inline send would never leave the
       // transcript tail. A started Turn reads a new send only later.
