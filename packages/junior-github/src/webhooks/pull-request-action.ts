@@ -35,9 +35,11 @@ import type {
   PluginLogger,
   PluginInboxItems,
   PluginState,
+  InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
+import { loadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
@@ -317,6 +319,7 @@ async function showAction(
     number: number;
     previous: GitHubPullRequestAction | undefined;
     state: GitHubPullRequestMergeState;
+    titleParts: InboxItemSubjectTitleParts | undefined;
   },
 ): Promise<void> {
   const { action, number, state } = args;
@@ -336,6 +339,7 @@ async function showAction(
       subject: {
         id: state.url,
         title: `${state.title} (#${number})`,
+        ...(args.titleParts ? { titleParts: args.titleParts } : undefined),
         url: state.url,
       },
       title:
@@ -537,6 +541,16 @@ async function syncOne(
         number: target.number,
         previous,
         state,
+        titleParts: next.action
+          ? await loadGitHubTitleParts(
+              args.env,
+              {
+                repositoryFullName: target.repositoryFullName,
+                title: state.title,
+              },
+              args.log,
+            )
+          : undefined,
       });
     }
     // Close the old items only after the new one shows, so a failed show

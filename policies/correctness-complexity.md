@@ -14,6 +14,10 @@ cost.
 - Prefer the smallest design that closes the proven failure mode. Do not add
   speculative states, abstractions, retries, fallbacks, or recovery paths for
   failures that are not part of the current contract.
+- When output is wrong because it lacks information, first find where the
+  system already stores that information, such as Conversation annotations,
+  and pass it to the code that needs it. Do not add a hook, resolver, or API
+  lookup to fetch what the system already has.
 - When correctness needs complexity, name the rule at the owning edge and keep
   the implementation local to that edge.
 - Avoid spreading one rule across callbacks in many layers. If several layers
