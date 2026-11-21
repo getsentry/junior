@@ -75,7 +75,7 @@ new RuleTester({
       errors: [{ messageId: "newAttribute" }],
     },
     {
-      code: `${allWritten}\nopeningTag("plan-delta", { version: 3 });`,
+      code: `${allWritten}\nopeningTag("todo-delta", { version: 3 });`,
       filename,
       options,
       errors: [{ messageId: "newAttribute" }],
@@ -87,7 +87,7 @@ new RuleTester({
       errors: [{ messageId: "newAttribute" }, { messageId: "newAttribute" }],
     },
     {
-      code: `${allWritten}\nrenderTag("plan-delta", { version: 3 }, lines);`,
+      code: `${allWritten}\nrenderTag("todo-delta", { version: 3 }, lines);`,
       filename,
       options,
       errors: [{ messageId: "newAttribute" }],

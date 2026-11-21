@@ -132,7 +132,7 @@ const CHILD_AGENT_RUN_RULES = [
   `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. \`${REPLY_TOOL_NAME}\` sends your finished work to the parent. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
   `- ${SLACK_MENTION_FORMAT_RULE}`,
-  "- The parent entry of `listAgents` shows the parent's open plan items. Only the parent changes them. Tell it what changed with `messageAgent` or your result.",
+  "- The parent entry of `listAgents` shows the parent's open To-dos. Only the parent changes them. Tell it what changed with `messageAgent` or your result.",
 ];
 
 /**
@@ -314,15 +314,16 @@ const SKILL_POLICY_RULES = [
 ];
 
 /**
- * Block 5, `<planning>`: what goes on the durable plan: only work that
- * outlives the Turn. It is not a per-Turn checklist. How to call `updatePlan` goes in its description.
+ * Block 5, `<todo-policy>`: what goes on the durable To-dos: only work that
+ * outlives the Turn. It is not a per-Turn checklist. How to call
+ * `updateTodos` goes in its description.
  */
-const PLANNING_RULES = [
-  "- Use `updatePlan` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
-  "- The plan is your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Close an item in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<plan>` lists the open items after a compaction, or when the plan has not changed for a few Turns. `<plan-delta>` shows items that people changed since you last saw them.",
-  "- Do not repeat the plan in chat, and do not end a Turn with a plan when you can do the work now.",
-  "- Plan item ids such as `TODO-12` are only for `updatePlan`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
+const TODO_POLICY_RULES = [
+  "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
+  "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
+  "- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<todos>` lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns. `<todo-delta>` shows To-dos that people changed since you last saw them.",
+  "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
+  "- To-do ids such as `TODO-12` are only for `updateTodos`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
 ];
 
 /**
@@ -476,7 +477,7 @@ function buildToolsSection(mode: PromptMode): string {
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
-    renderRuleSection("planning", PLANNING_RULES),
+    renderRuleSection("todo-policy", TODO_POLICY_RULES),
   ].join("\n\n");
 }
 

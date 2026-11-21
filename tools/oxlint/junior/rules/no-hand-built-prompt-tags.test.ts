@@ -25,7 +25,7 @@ new RuleTester({
   ],
   invalid: [
     { code: `const close = "</agent-result>";`, errors: handBuiltTag },
-    { code: `const close = "&lt;/plan-delta>";`, errors: handBuiltTag },
+    { code: `const close = "&lt;/todo-delta>";`, errors: handBuiltTag },
     { code: `const close = "</INSTRUCTIONS>";`, errors: handBuiltTag },
     {
       code: `const block = ["<runtime>", ...lines, "</runtime>"];`,
