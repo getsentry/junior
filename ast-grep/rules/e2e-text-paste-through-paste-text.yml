@@ -1,0 +1,8 @@
+id: e2e-text-paste-through-paste-text
+language: TypeScript
+severity: error
+message: "Paste text in a dashboard e2e test with pasteText from packages/junior-dashboard/e2e/paste-text.ts, not with a scripted paste event. The editor reads the caret on the paste shortcut's key press. A scripted paste has no key press, so it can land at the caret from before the last arrow key, which makes the test flaky."
+files:
+  - packages/junior-dashboard/e2e/**/*.ts
+rule:
+  pattern: $DATA.setData("text/plain", $$$)
