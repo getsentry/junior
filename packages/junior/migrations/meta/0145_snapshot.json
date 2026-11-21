@@ -1,6 +1,6 @@
 {
-  "id": "5a1e63c6-65ba-4b46-bafc-7d4f3585369b",
-  "prevId": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "prevId": "a9c89fe6-259a-465c-a8e0-0815e4aeab77",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3675,22 +3675,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "junior_conversations_lead_actor_idx": {
-          "name": "junior_conversations_lead_actor_idx",
-          "columns": [
-            {
-              "expression": "actor_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_conversations\".\"kind\" = 'lead'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4279,8 +4263,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "review_item_id": {
-          "name": "review_item_id",
+        "inbox_item_id": {
+          "name": "inbox_item_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -4309,7 +4293,7 @@
               "nulls": "last"
             },
             {
-              "expression": "review_item_id",
+              "expression": "inbox_item_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4337,11 +4321,11 @@
           "method": "btree",
           "with": {}
         },
-        "junior_inbox_snoozes_review_item_idx": {
-          "name": "junior_inbox_snoozes_review_item_idx",
+        "junior_inbox_snoozes_inbox_item_idx": {
+          "name": "junior_inbox_snoozes_inbox_item_idx",
           "columns": [
             {
-              "expression": "review_item_id",
+              "expression": "inbox_item_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4367,12 +4351,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk": {
-          "name": "junior_inbox_snoozes_review_item_id_junior_review_items_id_fk",
+        "junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk": {
+          "name": "junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
           "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_review_items",
+          "tableTo": "junior_inbox_items",
           "columnsFrom": [
-            "review_item_id"
+            "inbox_item_id"
           ],
           "columnsTo": [
             "id"
@@ -5153,8 +5137,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_review_item_assignees": {
-      "name": "junior_review_item_assignees",
+    "public.junior_inbox_item_assignees": {
+      "name": "junior_inbox_item_assignees",
       "schema": "",
       "columns": {
         "item_id": {
@@ -5171,8 +5155,8 @@
         }
       },
       "indexes": {
-        "junior_review_item_assignees_user_idx": {
-          "name": "junior_review_item_assignees_user_idx",
+        "junior_inbox_item_assignees_user_idx": {
+          "name": "junior_inbox_item_assignees_user_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -5188,10 +5172,10 @@
         }
       },
       "foreignKeys": {
-        "junior_review_item_assignees_item_id_junior_review_items_id_fk": {
-          "name": "junior_review_item_assignees_item_id_junior_review_items_id_fk",
-          "tableFrom": "junior_review_item_assignees",
-          "tableTo": "junior_review_items",
+        "junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk": {
+          "name": "junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
+          "tableFrom": "junior_inbox_item_assignees",
+          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
@@ -5201,9 +5185,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "junior_review_item_assignees_user_id_junior_users_id_fk": {
-          "name": "junior_review_item_assignees_user_id_junior_users_id_fk",
-          "tableFrom": "junior_review_item_assignees",
+        "junior_inbox_item_assignees_user_id_junior_users_id_fk": {
+          "name": "junior_inbox_item_assignees_user_id_junior_users_id_fk",
+          "tableFrom": "junior_inbox_item_assignees",
           "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
@@ -5216,8 +5200,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "junior_review_item_assignees_item_id_user_id_pk": {
-          "name": "junior_review_item_assignees_item_id_user_id_pk",
+        "junior_inbox_item_assignees_item_id_user_id_pk": {
+          "name": "junior_inbox_item_assignees_item_id_user_id_pk",
           "columns": [
             "item_id",
             "user_id"
@@ -5229,8 +5213,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_review_item_conversations": {
-      "name": "junior_review_item_conversations",
+    "public.junior_inbox_item_conversations": {
+      "name": "junior_inbox_item_conversations",
       "schema": "",
       "columns": {
         "item_id": {
@@ -5247,8 +5231,8 @@
         }
       },
       "indexes": {
-        "junior_review_item_conversations_conversation_idx": {
-          "name": "junior_review_item_conversations_conversation_idx",
+        "junior_inbox_item_conversations_conversation_idx": {
+          "name": "junior_inbox_item_conversations_conversation_idx",
           "columns": [
             {
               "expression": "conversation_id",
@@ -5264,10 +5248,10 @@
         }
       },
       "foreignKeys": {
-        "junior_review_item_conversations_item_id_junior_review_items_id_fk": {
-          "name": "junior_review_item_conversations_item_id_junior_review_items_id_fk",
-          "tableFrom": "junior_review_item_conversations",
-          "tableTo": "junior_review_items",
+        "junior_inbox_item_conversations_item_id_junior_inbox_items_id_fk": {
+          "name": "junior_inbox_item_conversations_item_id_junior_inbox_items_id_fk",
+          "tableFrom": "junior_inbox_item_conversations",
+          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
@@ -5277,9 +5261,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "junior_review_item_conversations_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_review_item_conversations_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_review_item_conversations",
+        "junior_inbox_item_conversations_conversation_id_junior_conversations_conversation_id_fk": {
+          "name": "junior_inbox_item_conversations_conversation_id_junior_conversations_conversation_id_fk",
+          "tableFrom": "junior_inbox_item_conversations",
           "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
@@ -5292,8 +5276,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "junior_review_item_conversations_item_id_conversation_id_pk": {
-          "name": "junior_review_item_conversations_item_id_conversation_id_pk",
+        "junior_inbox_item_conversations_item_id_conversation_id_pk": {
+          "name": "junior_inbox_item_conversations_item_id_conversation_id_pk",
           "columns": [
             "item_id",
             "conversation_id"
@@ -5305,8 +5289,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_review_item_slack_cards": {
-      "name": "junior_review_item_slack_cards",
+    "public.junior_inbox_item_slack_cards": {
+      "name": "junior_inbox_item_slack_cards",
       "schema": "",
       "columns": {
         "item_id": {
@@ -5342,10 +5326,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_review_item_slack_cards_item_id_junior_review_items_id_fk": {
-          "name": "junior_review_item_slack_cards_item_id_junior_review_items_id_fk",
-          "tableFrom": "junior_review_item_slack_cards",
-          "tableTo": "junior_review_items",
+        "junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk": {
+          "name": "junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
+          "tableFrom": "junior_inbox_item_slack_cards",
+          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
@@ -5355,9 +5339,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "junior_review_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_review_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_review_item_slack_cards",
+        "junior_inbox_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk": {
+          "name": "junior_inbox_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk",
+          "tableFrom": "junior_inbox_item_slack_cards",
           "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
@@ -5370,8 +5354,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "junior_review_item_slack_cards_item_id_conversation_id_pk": {
-          "name": "junior_review_item_slack_cards_item_id_conversation_id_pk",
+        "junior_inbox_item_slack_cards_item_id_conversation_id_pk": {
+          "name": "junior_inbox_item_slack_cards_item_id_conversation_id_pk",
           "columns": [
             "item_id",
             "conversation_id"
@@ -5383,8 +5367,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_review_items": {
-      "name": "junior_review_items",
+    "public.junior_inbox_items": {
+      "name": "junior_inbox_items",
       "schema": "",
       "columns": {
         "id": {
@@ -5535,8 +5519,8 @@
         }
       },
       "indexes": {
-        "junior_review_items_open_dedupe_uidx": {
-          "name": "junior_review_items_open_dedupe_uidx",
+        "junior_inbox_items_open_dedupe_uidx": {
+          "name": "junior_inbox_items_open_dedupe_uidx",
           "columns": [
             {
               "expression": "coalesce(\"provider\", '')",
@@ -5558,13 +5542,13 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_review_items\".\"status\" = 'open'",
+          "where": "\"junior_inbox_items\".\"status\" = 'open'",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_status_idx": {
-          "name": "junior_review_items_status_idx",
+        "junior_inbox_items_status_idx": {
+          "name": "junior_inbox_items_status_idx",
           "columns": [
             {
               "expression": "status",
@@ -5590,8 +5574,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_subject_idx": {
-          "name": "junior_review_items_subject_idx",
+        "junior_inbox_items_subject_idx": {
+          "name": "junior_inbox_items_subject_idx",
           "columns": [
             {
               "expression": "subject_id",
@@ -5611,8 +5595,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_owner_idx": {
-          "name": "junior_review_items_owner_idx",
+        "junior_inbox_items_owner_idx": {
+          "name": "junior_inbox_items_owner_idx",
           "columns": [
             {
               "expression": "owner_kind",
@@ -5632,8 +5616,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_open_action_owner_idx": {
-          "name": "junior_review_items_open_action_owner_idx",
+        "junior_inbox_items_open_action_owner_idx": {
+          "name": "junior_inbox_items_open_action_owner_idx",
           "columns": [
             {
               "expression": "owner_id",
@@ -5643,13 +5627,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"kind\" = 'action'",
+          "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_automation_idx": {
-          "name": "junior_review_items_automation_idx",
+        "junior_inbox_items_automation_idx": {
+          "name": "junior_inbox_items_automation_idx",
           "columns": [
             {
               "expression": "automation_id",
@@ -5669,8 +5653,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_review_items_answered_idx": {
-          "name": "junior_review_items_answered_idx",
+        "junior_inbox_items_answered_idx": {
+          "name": "junior_inbox_items_answered_idx",
           "columns": [
             {
               "expression": "owner_id",
@@ -5692,16 +5676,16 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_review_items\".\"answer\" is not null",
+          "where": "\"junior_inbox_items\".\"answer\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "junior_review_items_automation_id_junior_automations_id_fk": {
-          "name": "junior_review_items_automation_id_junior_automations_id_fk",
-          "tableFrom": "junior_review_items",
+        "junior_inbox_items_automation_id_junior_automations_id_fk": {
+          "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
+          "tableFrom": "junior_inbox_items",
           "tableTo": "junior_automations",
           "columnsFrom": [
             "automation_id"
@@ -5712,9 +5696,9 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "junior_review_items_closed_by_user_id_junior_users_id_fk": {
-          "name": "junior_review_items_closed_by_user_id_junior_users_id_fk",
-          "tableFrom": "junior_review_items",
+        "junior_inbox_items_closed_by_user_id_junior_users_id_fk": {
+          "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
+          "tableFrom": "junior_inbox_items",
           "tableTo": "junior_users",
           "columnsFrom": [
             "closed_by_user_id"
@@ -5730,25 +5714,25 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "junior_review_items_kind_check": {
-          "name": "junior_review_items_kind_check",
-          "value": "(\"junior_review_items\".\"kind\" = 'notice' and \"junior_review_items\".\"request\" is null and \"junior_review_items\".\"answer\" is null) or (\"junior_review_items\".\"kind\" = 'action' and (\"junior_review_items\".\"request\" is not null or ((\"junior_review_items\".\"dedupe_key\" like 'plugin:%' or \"junior_review_items\".\"dedupe_key\" like 'automation:%') and \"junior_review_items\".\"answer\" is null)))"
+        "junior_inbox_items_kind_check": {
+          "name": "junior_inbox_items_kind_check",
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
-        "junior_review_items_owner_check": {
-          "name": "junior_review_items_owner_check",
-          "value": "(\"junior_review_items\".\"owner_kind\" = 'conversation' and \"junior_review_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_review_items\".\"owner_kind\" = 'automation' and \"junior_review_items\".\"dedupe_key\" like 'automation:%')"
+        "junior_inbox_items_owner_check": {
+          "name": "junior_inbox_items_owner_check",
+          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'conversation' and \"junior_inbox_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_inbox_items\".\"owner_kind\" = 'automation' and \"junior_inbox_items\".\"dedupe_key\" like 'automation:%')"
         },
-        "junior_review_items_status_check": {
-          "name": "junior_review_items_status_check",
-          "value": "(\"junior_review_items\".\"status\" = 'open' and \"junior_review_items\".\"closed_at\" is null) or (\"junior_review_items\".\"status\" in ('done', 'dismissed') and \"junior_review_items\".\"closed_at\" is not null)"
+        "junior_inbox_items_status_check": {
+          "name": "junior_inbox_items_status_check",
+          "value": "(\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"closed_at\" is null) or (\"junior_inbox_items\".\"status\" in ('done', 'dismissed') and \"junior_inbox_items\".\"closed_at\" is not null)"
         },
-        "junior_review_items_tenant_check": {
-          "name": "junior_review_items_tenant_check",
-          "value": "(\"junior_review_items\".\"provider\" is null) = (\"junior_review_items\".\"provider_tenant_id\" is null)"
+        "junior_inbox_items_tenant_check": {
+          "name": "junior_inbox_items_tenant_check",
+          "value": "(\"junior_inbox_items\".\"provider\" is null) = (\"junior_inbox_items\".\"provider_tenant_id\" is null)"
         },
-        "junior_review_items_visibility_check": {
-          "name": "junior_review_items_visibility_check",
-          "value": "\"junior_review_items\".\"visibility\" = 'public' or not \"junior_review_items\".\"assigned_to_everyone\""
+        "junior_inbox_items_visibility_check": {
+          "name": "junior_inbox_items_visibility_check",
+          "value": "\"junior_inbox_items\".\"visibility\" = 'public' or not \"junior_inbox_items\".\"assigned_to_everyone\""
         }
       },
       "isRLSEnabled": false

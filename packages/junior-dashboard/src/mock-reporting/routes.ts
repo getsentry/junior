@@ -88,9 +88,9 @@ import {
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
-  answerMockReviewItemByReply,
+  answerMockInboxItemByReply,
   withMockViewerAnswers,
-} from "./review-items";
+} from "./inbox-items";
 import {
   markMockConversationRead,
   withMockReadPosition,
@@ -139,7 +139,7 @@ import {
   cancelMockConversationWatch,
   readMockConversationWatches,
 } from "./watches";
-import { addMockReviewItemRoutes } from "./review-item-routes";
+import { addMockInboxItemRoutes } from "./inbox-item-routes";
 import { readMockConversationTodos, setMockTodoStatus } from "./todos";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
@@ -395,7 +395,7 @@ export function createMockReportingApi(): Hono<{
     }
     // A message answers an open question, like a reply that the decision
     // model matches.
-    answerMockReviewItemByReply(
+    answerMockInboxItemByReply(
       NOW_MS,
       params.data.conversationId,
       body.data.message,
@@ -871,11 +871,11 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(versionsSchema, {
       conversationDetails: {},
       conversations: "mock",
-      reviewItems: "mock",
+      inboxItems: "mock",
       spend: "mock",
     }),
   );
-  addMockReviewItemRoutes(app);
+  addMockInboxItemRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

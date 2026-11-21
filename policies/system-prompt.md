@@ -28,7 +28,7 @@ A Prompt mode (`conversation`, `automation`, `child_agent`, `lead`,
 `thread`) can replace the content of a block, but not add or move one.
 `<tool-call-style>`, `<conversation>`, and the conversation lines of
 `<context-trust>` are only for a person's input. `child_agent` mode also
-gets the Review item line of `<context-trust>`, because a child gets answers
+gets the Inbox item line of `<context-trust>`, because a child gets answers
 to its own items. `<slack-actions>` is only for a person's input on Slack.
 `thread` and `automation` hold two rule sets, with `for` set to the sender.
 

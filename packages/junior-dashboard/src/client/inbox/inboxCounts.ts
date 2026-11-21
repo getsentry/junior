@@ -1,7 +1,7 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { isCodeChangeItem, isDecisionItem } from "./inboxModel";
-import { itemNeedsViewer } from "./reviewItemFormat";
+import { itemNeedsViewer } from "./inboxItemFormat";
 
 /** The server counts of the items that wait on the viewer, on every page. */
 type WaitingCounts = {
@@ -48,9 +48,9 @@ export function inboxCounts(input: {
   /** More pages of open items follow the loaded ones. */
   hasMore: boolean;
   /** Every open item that the list knows, also a linked or held one. */
-  known: readonly ReviewItemPayload[];
+  known: readonly InboxItemPayload[];
   /** The loaded pages of open items, in the list's order: what waits first. */
-  loaded: readonly ReviewItemPayload[] | undefined;
+  loaded: readonly InboxItemPayload[] | undefined;
   rows: ShownRows;
   server: WaitingCounts | undefined;
 }): Partial<Record<keyof ShownRows, number>> {
@@ -62,7 +62,7 @@ export function inboxCounts(input: {
   // The waiting items past the loaded pages that a page holds.
   const past = (
     counted: (counts: WaitingCounts) => number,
-    inPage: (item: ReviewItemPayload) => boolean,
+    inPage: (item: InboxItemPayload) => boolean,
   ) => {
     if (complete) return 0;
     if (!server) return undefined;

@@ -44,8 +44,8 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageAuthorIdentityId,
 } from "@/chat/services/message-actor-identity";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
-import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import { bindMessageInboxItemChange } from "@/chat/inbox-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { getSqlExecutor } from "@/chat/db";
@@ -574,7 +574,7 @@ function restoreMessage(args: {
   );
   rehydrateAttachmentFetchers(message);
   bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
-  bindMessageReviewItemChange(message, args.record.input.reviewItemChange);
+  bindMessageInboxItemChange(message, args.record.input.reviewItemChange);
   return message;
 }
 
@@ -894,7 +894,7 @@ export function buildSlackInboundMessage(args: {
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
-  reviewItemChange?: ReviewItemChangeRecord | undefined;
+  reviewItemChange?: InboxItemChangeRecord | undefined;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {

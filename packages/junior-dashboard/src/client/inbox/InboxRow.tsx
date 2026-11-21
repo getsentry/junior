@@ -16,8 +16,8 @@ import {
 import { Link } from "react-router";
 import type {
   OwnedObjectAnnotation,
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
@@ -59,7 +59,7 @@ import {
 } from "./inboxRowStyles";
 import { openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
-import { ReviewItemObjects } from "./ReviewItemObjects";
+import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxRowCard } from "./InboxRowCard";
 import { askPills, Pill, type AskPill } from "./inboxAsks";
 import { InboxFiles } from "./InboxFiles";
@@ -84,17 +84,17 @@ import {
 } from "./RowHoverActions";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
-import type { InboxBundle } from "./reviewItemFormat";
+import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
   itemOwnerPath,
-} from "./reviewItemFormat";
+} from "./inboxItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
-const NO_NOTICES: readonly ReviewItemPayload[] = [];
+const NO_NOTICES: readonly InboxItemPayload[] = [];
 
 /** The second line: the Brief, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
@@ -147,7 +147,7 @@ type InboxRowProps = {
   answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
-  cardActions?(item: ReviewItemPayload): InboxCardActions;
+  cardActions?(item: InboxItemPayload): InboxCardActions;
   /** A row with one ask shows its Snooze and Dismiss on hover. */
   itemActions?: boolean;
   conversation?: Conversation;
@@ -160,7 +160,7 @@ type InboxRowProps = {
   drag?: PinnedRowDrag;
   expanded: boolean;
   /** The notices that fold into each ask, by the ask's id. */
-  foldedNotices?: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+  foldedNotices?: ReadonlyMap<string, readonly InboxItemPayload[]>;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
@@ -169,8 +169,8 @@ type InboxRowProps = {
   itemSize?: CodeChangeSize | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
-    item: ReviewItemPayload,
-    body: ReviewItemActionBody,
+    item: InboxItemPayload,
+    body: InboxItemActionBody,
   ): Promise<void>;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
@@ -402,7 +402,7 @@ function RowSummary(props: {
         {/* As messages show it: links show as chips, so the clamp ends on
             a word or a chip, not inside a URL. One line runs the
             paragraphs together; more lines keep them. */}
-        <ReviewItemObjects
+        <InboxItemObjects
           cards={props.objects}
           conversationId={props.conversationId}
         >
@@ -413,7 +413,7 @@ function RowSummary(props: {
             paragraphs={props.expanded || props.comfortable}
             text={props.summary.text}
           />
-        </ReviewItemObjects>
+        </InboxItemObjects>
       </div>
     </div>
   );

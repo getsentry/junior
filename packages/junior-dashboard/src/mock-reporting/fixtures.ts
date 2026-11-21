@@ -2448,7 +2448,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
         -2.9 * 60 * 60_000,
         DASHBOARD_QA_THREAD_ID,
       ),
-      // QA shows a Thread whose Review item waits on a person.
+      // QA shows a Thread whose Inbox item waits on a person.
       status: "needs_input" as const,
     },
     threadConversation(
@@ -2486,7 +2486,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
-      // A root whose Review item waits on a person.
+      // A root whose Inbox item waits on a person.
       status: "needs_input",
     }),
     simpleConversation(nowMs, {

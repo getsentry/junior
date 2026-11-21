@@ -365,7 +365,7 @@ async function doctor(runDir) {
   } catch {
     // Reported by the check below.
   }
-  const servesMock = versions.includes('"reviewItems":"mock"');
+  const servesMock = versions.includes('"inboxItems":"mock"');
   check(
     `dashboard serves ${mock ? "mock" : "live"} data`,
     servesMock === mock

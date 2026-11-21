@@ -2,7 +2,7 @@ import {
   expandRow,
   grab,
   license,
-  mockReviewItems,
+  mockInboxItems,
   rowHead,
   viewer,
 } from "./inbox-fixture";
@@ -29,7 +29,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 0, open: [shared, grab] });
+    await mockInboxItems(page, { automations: () => 0, open: [shared, grab] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, shared.title));
@@ -47,7 +47,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       automations: () => 0,
       open: [grab],
     });
@@ -68,7 +68,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [license, grab],
     });

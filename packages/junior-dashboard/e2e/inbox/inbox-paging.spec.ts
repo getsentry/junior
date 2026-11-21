@@ -4,7 +4,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   answered,
   license,
-  mockReviewItems,
+  mockInboxItems,
   mockViewerCodeChanges,
   prMerge,
   prReady,
@@ -19,7 +19,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prReview, prMerge, prReady],
       pageSize: 1,
     });
@@ -28,7 +28,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const cursors: string[] = [];
     page.on("request", (request) => {
       const cursor = new URL(request.url()).searchParams.get("cursor");
-      if (request.url().includes("/api/review-items?") && cursor)
+      if (request.url().includes("/api/inbox-items?") && cursor)
         cursors.push(cursor);
     });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
@@ -55,7 +55,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     // The server lists the longest idle first, so the freshest come last.
     await mockViewerCodeChanges(page, [
       ...Array.from({ length: 100 }, (_, index) => ({
@@ -82,7 +82,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // The ask for #91 is on the second page of asks.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prMerge, { ...prReview, createdAt: "2026-08-01T00:00:00.000Z" }],
       pageSize: 1,
     });
@@ -112,18 +112,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license] });
+    await mockInboxItems(page, { open: [license] });
     const todo = page.getByRole("region", { name: "To do" });
     const row = todo.getByRole("link", { name: new RegExp(license.title) });
     // A failed count leaves the badge without a number, not To do empty.
-    await page.route("**/api/review-items/count**", (route) =>
+    await page.route("**/api/inbox-items/count**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
     await page.goto(`${dashboard.baseURL}/`);
     await expect(row).toBeVisible();
     // A count that never answers does the same.
-    await page.unroute("**/api/review-items/count**");
-    await page.route("**/api/review-items/count**", () => undefined);
+    await page.unroute("**/api/inbox-items/count**");
+    await page.route("**/api/inbox-items/count**", () => undefined);
     await page.reload();
     await expect(row).toBeVisible();
   });
@@ -132,14 +132,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prReview, prMerge, prReady],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
     await mockViewerCodeChanges(page, []);
     let attempts = 0;
-    await page.route(/\/api\/review-items\?.*cursor=1(?:&|$)/, (route) => {
+    await page.route(/\/api\/inbox-items\?.*cursor=1(?:&|$)/, (route) => {
       attempts += 1;
       return attempts === 1
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
@@ -182,7 +182,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: `item-todo-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, { open: asks, pageSize: 10 });
+    await mockInboxItems(page, { open: asks, pageSize: 10 });
     await page.goto(`${dashboard.baseURL}/`);
     const rows = page
       .getByRole("region", { name: "To do" })
@@ -220,9 +220,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     return { ask, notices };
   }
 
-  /** Later pages of the Review item list never load. */
-  async function holdLaterReviewItemPages(page: Page) {
-    await page.route(/\/api\/review-items\?.*cursor=/, () => undefined);
+  /** Later pages of the Inbox item list never load. */
+  async function holdLaterInboxItemPages(page: Page) {
+    await page.route(/\/api\/inbox-items\?.*cursor=/, () => undefined);
   }
 
   test("To do's first page holds the new ask behind older notices", async ({
@@ -230,8 +230,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const { ask, notices } = askBehindNotices();
-    await mockReviewItems(page, { open: [...notices, ask], pageSize: 25 });
-    await holdLaterReviewItemPages(page);
+    await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const rows = page
       .getByRole("region", { name: "To do" })
@@ -245,8 +245,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const { ask, notices } = askBehindNotices();
-    await mockReviewItems(page, { open: [...notices, ask], pageSize: 25 });
-    await holdLaterReviewItemPages(page);
+    await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
@@ -257,7 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const reads: string[] = [];
     page.on("request", (request) => {
       const url = request.url();
-      if (/\/api\/review-items\?/.test(url) && !url.includes("cursor="))
+      if (/\/api\/inbox-items\?/.test(url) && !url.includes("cursor="))
         reads.push(url);
     });
     await page.reload();
@@ -292,9 +292,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: `item-todo-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, { open: asks, pageSize: 10 });
+    await mockInboxItems(page, { open: asks, pageSize: 10 });
     // The count only feeds the badge, so its failure cannot stop To do.
-    await page.route("**/api/review-items/count**", (route) =>
+    await page.route("**/api/inbox-items/count**", (route) =>
       route.fulfill({ json: { error: "Count failed" }, status: 500 }),
     );
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
@@ -315,9 +315,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     let fail = true;
-    await page.route(/\/api\/review-items\?.*status=done/, async (route) => {
+    await page.route(/\/api\/inbox-items\?.*status=done/, async (route) => {
       if (!fail) return route.fallback();
       fail = false;
       return route.fulfill({ json: { error: "Read failed" }, status: 500 });
@@ -353,7 +353,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const asleep = decisions.at(-1)!;
     // A row on a later page sleeps until tomorrow.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [...decisions, ...prs],
       pageSize: 2,
       snoozes: [
@@ -363,7 +363,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await holdLaterReviewItemPages(page);
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(
@@ -386,12 +386,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const decisions = questionsByPage();
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: decisions,
       pageSize: 2,
     });
-    await holdLaterReviewItemPages(page);
+    await holdLaterInboxItemPages(page);
     const linked = decisions[5]!;
     await page.goto(`${dashboard.baseURL}/?item=${linked.id}`);
     const todo = page.getByRole("region", { name: "To do" });
@@ -409,7 +409,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 3, open: [license] });
+    await mockInboxItems(page, { automations: () => 3, open: [license] });
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
       route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
     );
@@ -425,7 +425,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 0, open: [] });
+    await mockInboxItems(page, { automations: () => 0, open: [] });
     let olderReads = 0;
     await page.route(/\/api\/conversations(\?|$)/, async (route) => {
       if (new URL(route.request().url()).searchParams.has("cursor")) {

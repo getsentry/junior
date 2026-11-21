@@ -15,13 +15,13 @@ import {
 import {
   answeredChoices,
   conversationDetailReportSchema,
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
-  type ReviewItemActionBody,
-  type ReviewItemPayload,
+  inboxItemActionSchema,
+  inboxItemCountSchema,
+  inboxItemListSchema,
+  inboxItemSchema,
+  inboxItemWaitingConversationsSchema,
+  type InboxItemActionBody,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import * as z from "zod";
 
@@ -41,15 +41,15 @@ import {
   withoutVersion,
   type ContentVersioned,
 } from "../revalidation";
-import { itemConversationId, itemNeedsViewer } from "./reviewItemFormat";
+import { itemConversationId, itemNeedsViewer } from "./inboxItemFormat";
 
-type ReviewItemCount = z.output<typeof reviewItemCountSchema>;
-type ReviewItemList = z.output<typeof reviewItemListSchema>;
+type InboxItemCount = z.output<typeof inboxItemCountSchema>;
+type InboxItemList = z.output<typeof inboxItemListSchema>;
 
-/** Prefix of every Review item read, for refreshes after a change. */
-export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
+/** Prefix of every Inbox item read, for refreshes after a change. */
+export const INBOX_ITEMS_QUERY_KEY = ["dashboard", "inbox-items"] as const;
 
-type ReviewItemListFilters = {
+type InboxItemListFilters = {
   /** Only Automation alerts. */
   automationAlerts?: boolean;
   /** Lists the done and dismissed items instead, newest closed first. */
@@ -67,7 +67,7 @@ type ReviewItemListFilters = {
   sort?: "waiting";
 };
 
-function reviewItemListSearch(filters: ReviewItemListFilters) {
+function inboxItemListSearch(filters: InboxItemListFilters) {
   const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
@@ -81,52 +81,52 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   return params.toString();
 }
 
-/** Key one Review item. Each Review item row reads its own item. */
-export function reviewItemQueryKey(id: string | undefined) {
-  return [...REVIEW_ITEMS_QUERY_KEY, "detail", id];
+/** Key one Inbox item. Each Inbox item row reads its own item. */
+export function inboxItemQueryKey(id: string | undefined) {
+  return [...INBOX_ITEMS_QUERY_KEY, "detail", id];
 }
 
-const REVIEW_ITEM_COLLECTIONS = [
+const INBOX_ITEM_COLLECTIONS = [
   "count",
   "list",
   "waiting-conversations",
 ] as const;
 
 /**
- * Refresh the Review item reads that a change to known items moves: the
+ * Refresh the Inbox item reads that a change to known items moves: the
  * count, the lists, and the waiting Conversations. Write each changed item
  * to its own key, so the rows of the other items do not refetch.
  */
-export function invalidateReviewItemCollections(queryClient: QueryClient) {
+export function invalidateInboxItemCollections(queryClient: QueryClient) {
   return Promise.all(
-    REVIEW_ITEM_COLLECTIONS.map((collection) =>
+    INBOX_ITEM_COLLECTIONS.map((collection) =>
       queryClient.invalidateQueries({
-        queryKey: [...REVIEW_ITEMS_QUERY_KEY, collection],
+        queryKey: [...INBOX_ITEMS_QUERY_KEY, collection],
       }),
     ),
   );
 }
 
-/** Key the Review item list that these filters read. */
-export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
-  return [...REVIEW_ITEMS_QUERY_KEY, "list", reviewItemListSearch(filters)];
+/** Key the Inbox item list that these filters read. */
+export function inboxItemListQueryKey(filters: InboxItemListFilters) {
+  return [...INBOX_ITEMS_QUERY_KEY, "list", inboxItemListSearch(filters)];
 }
 
 /**
- * Refresh the Review item lists that show an item that one Conversation
+ * Refresh the Inbox item lists that show an item that one Conversation
  * added. The item's subject card reads that Conversation's detail, so a
  * change there, such as a merged pull request, can come with a change to
  * the item. Only mounted lists refetch.
  */
-export function invalidateReviewItemListsOfConversation(
+export function invalidateInboxItemListsOfConversation(
   queryClient: QueryClient,
   conversationId: string,
 ) {
-  const lists = [...REVIEW_ITEMS_QUERY_KEY, "list"];
+  const lists = [...INBOX_ITEMS_QUERY_KEY, "list"];
   // Each list key ends with the search of its filters.
   const searches = new Set(
     queryClient
-      .getQueriesData<ReviewItemListCache>({ queryKey: lists })
+      .getQueriesData<InboxItemListCache>({ queryKey: lists })
       .filter(([, list]) =>
         list?.pages?.some((page) =>
           page.items.some(
@@ -143,23 +143,23 @@ export function invalidateReviewItemListsOfConversation(
 }
 
 /**
- * List the open Review items that the viewer can see, one page at a time.
+ * List the open Inbox items that the viewer can see, one page at a time.
  * A search also finds archived items, with the first page. `items` holds the
  * items of every loaded page, and `query` loads more. `forViewer` drops the
  * items that are assigned only to other people.
  */
-export function useReviewItemsData(filters: ReviewItemListFilters) {
-  const search = reviewItemListSearch(filters);
+export function useInboxItemsData(filters: InboxItemListFilters) {
+  const search = inboxItemListSearch(filters);
   const query = useInfiniteQuery({
     enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
-    queryKey: reviewItemListQueryKey(filters),
+    queryKey: inboxItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {
       const pageParams = new URLSearchParams(search);
       if (pageParam) pageParams.set("cursor", pageParam);
       return fetchDashboardJson(
-        reviewItemListSchema,
-        `/api/review-items?${pageParams.toString()}`,
+        inboxItemListSchema,
+        `/api/inbox-items?${pageParams.toString()}`,
         signal,
       );
     },
@@ -176,41 +176,41 @@ export function useReviewItemsData(filters: ReviewItemListFilters) {
 }
 
 /**
- * Read one Review item, for a link to an item outside the current list.
+ * Read one Inbox item, for a link to an item outside the current list.
  * `placeholder` shows until the read finishes.
  */
-export function useReviewItemData(
+export function useInboxItemData(
   id: string | undefined,
-  placeholder?: ReviewItemPayload,
+  placeholder?: InboxItemPayload,
 ) {
   return useQuery({
-    ...reviewItemQuery(id),
+    ...inboxItemQuery(id),
     enabled: Boolean(id),
     placeholderData: placeholder,
   });
 }
 
-function reviewItemQuery(id: string | undefined) {
+function inboxItemQuery(id: string | undefined) {
   return {
-    queryKey: reviewItemQueryKey(id),
+    queryKey: inboxItemQueryKey(id),
     queryFn: revalidatedJsonQuery(
-      reviewItemSchema,
-      `/api/review-items/${encodeURIComponent(id!)}`,
+      inboxItemSchema,
+      `/api/inbox-items/${encodeURIComponent(id!)}`,
     ),
     retry: false,
   };
 }
 
 /** What one item's own read says now, or `pending` while it reads. */
-type ReviewItemState = ReviewItemPayload | "closed" | "pending";
+type InboxItemState = InboxItemPayload | "closed" | "pending";
 
-function reviewItemStates(
+function inboxItemStates(
   reads: {
-    data?: ReviewItemPayload;
+    data?: InboxItemPayload;
     error: Error | null;
     isFetching: boolean;
   }[],
-): ReviewItemState[] {
+): InboxItemState[] {
   return reads.map((read) => {
     if (read.isFetching) return "pending";
     if (read.data) return read.data.status === "open" ? read.data : "closed";
@@ -226,27 +226,27 @@ function reviewItemStates(
  * and say whether it is open, closed, or still reading. A list read holds
  * only its loaded pages, so an item that leaves it may still be open.
  */
-export function useReviewItemStates(ids: readonly string[]): ReviewItemState[] {
+export function useInboxItemStates(ids: readonly string[]): InboxItemState[] {
   return useQueries({
     queries: ids.map((id) => ({
-      ...reviewItemQuery(id),
+      ...inboxItemQuery(id),
       refetchOnMount: "always" as const,
     })),
-    combine: reviewItemStates,
+    combine: inboxItemStates,
   });
 }
 
 /**
- * Read one Review item that a Conversation's transcript shows. An item in
+ * Read one Inbox item that a Conversation's transcript shows. An item in
  * the Conversation's list comes from there, so it refreshes with the list
  * and needs no read of its own. The list holds only open items, so a
  * closed item, or one on a later page, loads by itself.
  */
-export function useConversationReviewItemData(
+export function useConversationInboxItemData(
   conversationId: string,
   id: string,
 ) {
-  const { items, query } = useReviewItemsData({ conversationId });
+  const { items, query } = useInboxItemsData({ conversationId });
   const listed = items.find((item) => item.id === id);
   // An item that closes leaves the list, and a list read that starts again,
   // such as Try again after a failed page, turns the item read off. The row
@@ -254,7 +254,7 @@ export function useConversationReviewItemData(
   const lastShown = useRef(listed);
   // Wait for this Conversation's list before reading the item by itself.
   const waiting = query.isPending || query.isPlaceholderData;
-  const direct = useReviewItemData(
+  const direct = useInboxItemData(
     listed || waiting ? undefined : id,
     lastShown.current,
   );
@@ -311,45 +311,45 @@ export function useLinkedConversationTitles(
  * Count the open action items assigned to the viewer, for the nav. The
  * versions poll refreshes it when it changes.
  */
-export function useReviewItemCountData(enabled: boolean) {
+export function useInboxItemCountData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"],
+    queryKey: [...INBOX_ITEMS_QUERY_KEY, "count"],
     queryFn: revalidatedJsonQuery(
-      reviewItemCountSchema,
-      "/api/review-items/count",
+      inboxItemCountSchema,
+      "/api/inbox-items/count",
     ),
     retry: false,
   });
 }
 
-const REVIEW_ITEM_ACTION_KEY = [...REVIEW_ITEMS_QUERY_KEY, "action"];
+const INBOX_ITEM_ACTION_KEY = [...INBOX_ITEMS_QUERY_KEY, "action"];
 
-const reviewItemActionVariablesSchema = z.object({
-  body: reviewItemActionSchema,
+const inboxItemActionVariablesSchema = z.object({
+  body: inboxItemActionSchema,
   id: z.string(),
 });
 
-/** One action on one Review item, as `useReviewItemAction` sends it. */
-type ReviewItemAction = z.output<typeof reviewItemActionVariablesSchema>;
+/** One action on one Inbox item, as `useInboxItemAction` sends it. */
+type InboxItemAction = z.output<typeof inboxItemActionVariablesSchema>;
 
-/** The action that a mutation of `useReviewItemAction` sends. */
+/** The action that a mutation of `useInboxItemAction` sends. */
 function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
-  const parsed = reviewItemActionVariablesSchema.safeParse(
+  const parsed = inboxItemActionVariablesSchema.safeParse(
     mutation.state.variables,
   );
   return parsed.success ? parsed.data : undefined;
 }
 
-function closesItem(body: ReviewItemActionBody): boolean {
+function closesItem(body: InboxItemActionBody): boolean {
   return body.action !== "take";
 }
 
-type ReviewItemListCache = InfiniteData<ReviewItemList, string | undefined>;
+type InboxItemListCache = InfiniteData<InboxItemList, string | undefined>;
 
 /** Where one item showed in each open list, so it can go back there. */
 type ItemPlaces = {
-  item: ReviewItemPayload;
+  item: InboxItemPayload;
   places: { index: number; page: number; queryKey: QueryKey }[];
 };
 
@@ -362,12 +362,12 @@ function listsOpenItems(queryKey: QueryKey): boolean {
 
 function changeCounts(
   queryClient: QueryClient,
-  item: ReviewItemPayload,
+  item: InboxItemPayload,
   by: number,
 ) {
   if (!itemNeedsViewer(item)) return;
-  queryClient.setQueriesData<ContentVersioned<ReviewItemCount>>(
-    { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"] },
+  queryClient.setQueriesData<ContentVersioned<InboxItemCount>>(
+    { queryKey: [...INBOX_ITEMS_QUERY_KEY, "count"] },
     (count) =>
       count &&
       withoutVersion(
@@ -394,19 +394,18 @@ async function takeOutClosedItem(
   queryClient: QueryClient,
   id: string,
 ): Promise<ItemPlaces | undefined> {
-  const lists = { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list"] };
-  const counts = { queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"] };
+  const lists = { queryKey: [...INBOX_ITEMS_QUERY_KEY, "list"] };
+  const counts = { queryKey: [...INBOX_ITEMS_QUERY_KEY, "count"] };
   // A read in flight would write the item back.
   await Promise.all([
     queryClient.cancelQueries(lists),
     queryClient.cancelQueries(counts),
   ]);
-  let item: ReviewItemPayload | undefined;
+  let item: InboxItemPayload | undefined;
   const places: ItemPlaces["places"] = [];
-  for (const [
-    queryKey,
-    list,
-  ] of queryClient.getQueriesData<ReviewItemListCache>(lists)) {
+  for (const [queryKey, list] of queryClient.getQueriesData<InboxItemListCache>(
+    lists,
+  )) {
     if (!list || !listsOpenItems(queryKey)) continue;
     const found = places.length;
     for (const [page, { items }] of list.pages.entries()) {
@@ -416,7 +415,7 @@ async function takeOutClosedItem(
       places.push({ index, page, queryKey });
     }
     if (places.length === found) continue;
-    queryClient.setQueryData<ReviewItemListCache>(queryKey, {
+    queryClient.setQueryData<InboxItemListCache>(queryKey, {
       ...list,
       pages: list.pages.map((page) => ({
         ...page,
@@ -437,7 +436,7 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
   // A read that already shows the item again also counted it.
   let restored = false;
   for (const place of places) {
-    queryClient.setQueryData<ReviewItemListCache>(place.queryKey, (list) => {
+    queryClient.setQueryData<InboxItemListCache>(place.queryKey, (list) => {
       if (
         !list ||
         list.pages.some((page) =>
@@ -473,7 +472,7 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
  */
 async function showAnswerOnFeedRows(
   queryClient: QueryClient,
-  item: ReviewItemPayload,
+  item: InboxItemPayload,
 ): Promise<void> {
   if (!item.answer || !item.request || !item.closedAt) return;
   const viewerAnswer = {
@@ -500,26 +499,26 @@ async function showAnswerOnFeedRows(
   );
 }
 
-/** How many Review item actions are in flight. */
-export function reviewItemActionsInFlight(queryClient: QueryClient): number {
-  return queryClient.isMutating({ mutationKey: REVIEW_ITEM_ACTION_KEY });
+/** How many Inbox item actions are in flight. */
+export function inboxItemActionsInFlight(queryClient: QueryClient): number {
+  return queryClient.isMutating({ mutationKey: INBOX_ITEM_ACTION_KEY });
 }
 
 /**
- * Take, submit, or dismiss one Review item. `optimistic` takes an item that
+ * Take, submit, or dismiss one Inbox item. `optimistic` takes an item that
  * closes out of the lists and counts before the server answers, and puts it
  * back in its place if the action fails. Each action settles by itself, and
  * the lists read again after the last one in flight.
  */
-export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
+export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { optimistic = false } = options;
   return useMutation({
-    mutationKey: REVIEW_ITEM_ACTION_KEY,
-    mutationFn: (args: ReviewItemAction) =>
+    mutationKey: INBOX_ITEM_ACTION_KEY,
+    mutationFn: (args: InboxItemAction) =>
       post(
-        reviewItemSchema,
-        `/api/review-items/${encodeURIComponent(args.id)}/actions`,
+        inboxItemSchema,
+        `/api/inbox-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
       ),
     onMutate: (args) =>
@@ -530,29 +529,29 @@ export function useReviewItemAction(options: { optimistic?: boolean } = {}) {
       if (places) putBackItem(queryClient, places);
       return queryClient.invalidateQueries({
         exact: true,
-        queryKey: reviewItemQueryKey(args.id),
+        queryKey: inboxItemQueryKey(args.id),
       });
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
     onSuccess: async (item, args) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
-      queryClient.setQueryData(reviewItemQueryKey(item.id), item);
+      queryClient.setQueryData(inboxItemQueryKey(item.id), item);
       if (args.body.action === "submit")
         await showAnswerOnFeedRows(queryClient, item);
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>
-      reviewItemActionsInFlight(queryClient) === 1
-        ? invalidateReviewItemCollections(queryClient)
+      inboxItemActionsInFlight(queryClient) === 1
+        ? invalidateInboxItemCollections(queryClient)
         : undefined,
   });
 }
 
 /** The ids of the items that an action in flight closes. */
-export function useClosingReviewItemIds(): ReadonlySet<string> {
+export function useClosingInboxItemIds(): ReadonlySet<string> {
   const ids = useMutationState({
-    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY, status: "pending" },
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY, status: "pending" },
     select: (mutation) => {
       const action = actionOf(mutation);
       return action && closesItem(action.body) ? action.id : "";
@@ -566,9 +565,9 @@ export function useClosingReviewItemIds(): ReadonlySet<string> {
  * The answer of the viewer's last action on an item, when that action was
  * an answer that failed, so the form shows it again.
  */
-export function useFailedReviewItemAnswer(id: string) {
+export function useFailedInboxItemAnswer(id: string) {
   const actions = useMutationState({
-    filters: { mutationKey: REVIEW_ITEM_ACTION_KEY },
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
     select: (mutation) => {
       const action = actionOf(mutation);
       return action?.id === id
@@ -584,7 +583,7 @@ export function useFailedReviewItemAnswer(id: string) {
 }
 
 /**
- * Open Review items, newest first, that one Conversation waits on the viewer
+ * Open Inbox items, newest first, that one Conversation waits on the viewer
  * for, and when the wait began (the oldest item).
  */
 export type WaitingConversation = {
@@ -595,10 +594,10 @@ export type WaitingConversation = {
 const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
 const waitingConversationsQuery = {
-  queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+  queryKey: [...INBOX_ITEMS_QUERY_KEY, "waiting-conversations"],
   queryFn: revalidatedJsonQuery(
-    reviewItemWaitingConversationsSchema,
-    "/api/review-items/waiting-conversations",
+    inboxItemWaitingConversationsSchema,
+    "/api/inbox-items/waiting-conversations",
   ),
   retry: false,
 };
