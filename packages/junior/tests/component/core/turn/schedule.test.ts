@@ -23,8 +23,8 @@ const CONVERSATION_ID = "local:conversation-1";
 const LEASE_MS = 60_000;
 
 // The v1 rule: one Actor, so an input joins the open Turn or starts one.
-function joinOrCreate(open: Turn | undefined) {
-  return open ? { join: open.turnId } : { create: { priority: 0 } };
+function joinOrCreate(openTurn: Turn | undefined) {
+  return openTurn ? { join: openTurn.turnId } : { create: { priority: 0 } };
 }
 
 const stepMessageSchema = z.looseObject({ turnId: z.string() });
