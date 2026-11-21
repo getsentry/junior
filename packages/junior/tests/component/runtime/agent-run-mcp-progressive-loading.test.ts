@@ -1306,6 +1306,8 @@ describe("executeAgentRun progressive MCP loading", () => {
       state: "paused",
       resumeReason: "auth",
     });
+    // It paused before its prompt, so the resumed slice adds the prompt.
+    expect(pausedSessionRecord?.promptSaved).toBeUndefined();
     expect(pausedSessionRecord?.piMessages).toHaveLength(2);
     expect(pausedSessionRecord?.piMessages[0]).toMatchObject({
       role: "user",
