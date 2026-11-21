@@ -169,6 +169,16 @@ describe("Lead", () => {
       "is a public conversation and this conversation is private",
     );
 
+    // A root from an older deploy has no kind and still counts as a root.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: null })
+      .where(eq(juniorConversations.conversationId, anaWork.conversationId));
+    await expect(send(anaWork.conversationId, "call-legacy")).resolves.toEqual({
+      conversation_id: anaWork.conversationId,
+      delivery: "queued",
+    });
+
     // Only roots: an Automation run that the person takes part in would act
     // on the Lead's text.
     await getDb()

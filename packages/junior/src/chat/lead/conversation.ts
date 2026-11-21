@@ -13,6 +13,7 @@ import {
   recordWebConversationActivity,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { conversationKindSql } from "@/chat/conversations/sql/conversation-row";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { isPostgresErrorCode } from "@/db/postgres-error";
@@ -138,7 +139,8 @@ export async function leadPersonParticipates(args: {
       target,
       and(
         eq(target.conversationId, args.rootConversationId),
-        eq(target.kind, "root"),
+        // Rows from older deploys have no kind; decode them like other readers.
+        eq(conversationKindSql(target), "root"),
       ),
     )
     .where(
