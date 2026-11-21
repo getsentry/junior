@@ -1,5 +1,5 @@
 {
-  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "8c016ebf-a0bb-49d0-bf98-29964629b681",
   "prevId": "394b8a22-6d6d-4b95-9e49-5667cc140029",
   "version": "7",
   "dialect": "postgresql",
@@ -2654,6 +2654,28 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_events_authorization_request_idx": {
+          "name": "junior_conversation_events_authorization_request_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversation_events_plugin_conversation_idx": {
           "name": "junior_conversation_events_plugin_conversation_idx",
           "columns": [
@@ -3776,11 +3798,11 @@
       "checkConstraints": {
         "junior_conversations_kind_check": {
           "name": "junior_conversations_kind_check",
-          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead', 'thread', 'task')"
+          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'thread', 'task')"
         },
         "junior_conversations_kind_parent_check": {
           "name": "junior_conversations_kind_parent_check",
-          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
         }
       },
       "isRLSEnabled": false

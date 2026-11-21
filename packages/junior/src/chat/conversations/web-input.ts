@@ -29,6 +29,7 @@ import {
   appendAndEnqueueInboundMessage,
   appendAndEnqueueExclusiveInboundMessage,
   type InboundMessage,
+  type InboundMessageDelivery,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -62,6 +63,8 @@ export interface CreateConversationInput {
 export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
+  /** `interrupt` joins the running Turn at its next step. Default `defer`. */
+  delivery?: InboundMessageDelivery | undefined;
   message: string;
   /** Checked uploads of this Message. */
   uploads?: VerifiedAttachmentUpload[] | undefined;
@@ -170,6 +173,7 @@ export function buildWebInboundMessage(args: {
   authorIdentityId?: string | undefined;
   conversationId: string;
   createdAtMs?: number;
+  delivery?: InboundMessageDelivery | undefined;
   /** Existing Conversation Destination. A child's work keeps none. */
   destination?: Destination | undefined;
   message: string;
@@ -191,7 +195,7 @@ export function buildWebInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
-    delivery: "defer",
+    delivery: args.delivery ?? "defer",
     // TODO(dcramer): Remove InboundMessage.destination after workers read the
     // Conversation Location and no mailbox reader requires Destination.
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -360,6 +364,7 @@ export async function appendAndEnqueueWebMessage(
         actor: input.actor,
         authorIdentityId,
         conversationId: input.conversationId,
+        delivery: input.delivery,
         destination,
         message: text,
         attachments,

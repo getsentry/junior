@@ -39,12 +39,13 @@ import {
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import { OutlineStandIn } from "./OutlineStandIn";
 import {
-  cachedStartPage,
+  holdsHistoryStart,
   prefetchHistoryAround,
   unheldLinkStart,
   type HistoryStart,
 } from "./transcriptAroundHistory";
 import { useScrollsWithOutline } from "./transcriptScroller";
+import { markTranscriptRow } from "./useMessageLinkJump";
 
 const NO_EVENTS: ConversationReportEvent[] = [];
 
@@ -126,12 +127,15 @@ export function ConversationOutline(props: {
   // The latest jump. A row that lands for an older jump does not move the
   // transcript.
   const jumpedSeqRef = useRef<number>(undefined);
-  const jumpToMountedRow = (seq: number): boolean => {
+  // A click or release marks the row it lands on, like a message link. A
+  // drag marks no row on the way.
+  const jumpToMountedRow = (seq: number, mark: boolean): boolean => {
     const scroll = scrollRef.current;
     const row = scroll?.querySelector(`[data-transcript-seq="${seq}"]`);
     if (!scroll || !row) return false;
     jumpedSeqRef.current = seq;
     alignRow(scroll, row);
+    if (mark) markTranscriptRow(row);
     setJumpSeq(undefined);
     setStandInSeq(undefined);
     return true;
@@ -142,7 +146,7 @@ export function ConversationOutline(props: {
       setJumpSeq(seq);
       return;
     }
-    if (jumpToMountedRow(seq)) return;
+    if (jumpToMountedRow(seq, true)) return;
     setStandInSeq(seq);
     // The transcript renders the rows after the stand-in paints.
     startTransition(() => {
@@ -156,7 +160,7 @@ export function ConversationOutline(props: {
   const scrubSeqRef = useRef<number>(undefined);
   const scrub = (seq: number) => {
     scrubSeqRef.current = seq;
-    if (jumpToMountedRow(seq)) return;
+    if (jumpToMountedRow(seq, false)) return;
     jumpedSeqRef.current = undefined;
     setJumpSeq(undefined);
     setStandInSeq(seq);
@@ -174,7 +178,8 @@ export function ConversationOutline(props: {
     const scroll = scrollRef.current;
     const rowAt = () =>
       scroll?.querySelector(`[data-transcript-seq="${jumpSeq}"]`);
-    if (!scroll || !rowAt()) return;
+    const landed = rowAt();
+    if (!scroll || !landed) return;
     setJumpSeq(undefined);
     jumpedSeqRef.current = jumpSeq;
     const align = () => {
@@ -184,6 +189,7 @@ export function ConversationOutline(props: {
       return true;
     };
     align();
+    markTranscriptRow(landed);
     // In the next frame, the rows of a page that rendered with the jump
     // measure, and the transcript moves back to the place it held. So the
     // jump aligns again after that frame, unless a newer jump started. Then
@@ -191,6 +197,9 @@ export function ConversationOutline(props: {
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         if (!align()) return;
+        // The measure can mount the row again, without its mark.
+        const settled = rowAt();
+        if (settled && settled !== landed) markTranscriptRow(settled);
         setStandInSeq((seq) => (seq === jumpSeq ? undefined : seq));
       }),
     );
@@ -226,7 +235,10 @@ export function ConversationOutline(props: {
     let start: HistoryStart | undefined;
     while (!start && queue.seqs.length) {
       start = unheldLinkStart(props.events, { event: queue.seqs.shift()! });
-      if (start && cachedStartPage(queryClient, props.conversationId, start)) {
+      if (
+        start &&
+        holdsHistoryStart(queryClient, props.conversationId, start)
+      ) {
         start = undefined;
       }
     }
