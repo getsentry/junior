@@ -1,6 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -60,35 +60,38 @@ export async function markConversationsStopped(
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   const ids = [...conversationIds];
   const db = getSqlExecutor().db();
-  // Only a Conversation that was not stopped reports a stop. A retried or
-  // cascaded stop moves `stoppedAt` later but does not wake its Watches again.
-  const stopped = await db
-    .update(juniorConversations)
-    .set({ stoppedAt, detailVersion: nextDetailVersion })
+  // Report a stop before it is written. A stop whose report fails stays
+  // unwritten, so a retry reports it. A retried or cascaded stop of a
+  // stopped Conversation moves `stoppedAt` later but does not report again.
+  const unstopped = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
         isNull(juniorConversations.stoppedAt),
       ),
-    )
-    .returning({ conversationId: juniorConversations.conversationId });
-  await db
-    .update(juniorConversations)
-    .set({ stoppedAt, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inArray(juniorConversations.conversationId, ids),
-        lt(juniorConversations.stoppedAt, stoppedAt),
-      ),
     );
   const queue = options.queue ?? getVercelConversationWorkQueue();
-  await mapBounded(stopped, ({ conversationId }) =>
+  await mapBounded(unstopped, ({ conversationId }) =>
     publishConversationStatus(
       conversationId,
       { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
       { nowMs: stoppedAt.getTime(), queue, state: options.state },
     ),
   );
+  await db
+    .update(juniorConversations)
+    .set({ stoppedAt, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        or(
+          isNull(juniorConversations.stoppedAt),
+          lt(juniorConversations.stoppedAt, stoppedAt),
+        ),
+      ),
+    );
 }
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
