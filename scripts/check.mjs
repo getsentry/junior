@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
  * Run repo checks by name: `node scripts/check.mjs file-length money-units`.
  * With no name, it runs every check that `pnpm lint` needs. A check runs its
  * `scripts/check-<file>.test.mjs` tests, then `scripts/check-<file>.mjs`.
- * Each `pnpm <name>:check` script calls this runner.
+ * Flags, such as `--update`, go to each check script. Each `pnpm <name>:check`
+ * script calls this runner.
  */
 
 // `lint: true` checks run with no name, in this order. `after` runs once the
@@ -65,7 +66,7 @@ function unregisteredScripts() {
     );
 }
 
-function main(names) {
+function main(names, flags) {
   const unregistered = unregisteredScripts();
   if (unregistered.length > 0) {
     console.error(
@@ -94,7 +95,10 @@ function main(names) {
     if (status !== 0) return status;
   }
   for (const check of checks) {
-    const status = run(process.execPath, [`scripts/check-${check.file}.mjs`]);
+    const status = run(process.execPath, [
+      `scripts/check-${check.file}.mjs`,
+      ...flags,
+    ]);
     if (status !== 0) return status;
     if (check.after) {
       const [command, ...args] = check.after;
@@ -106,7 +110,9 @@ function main(names) {
 }
 
 // lint-staged appends the staged file paths. The checks scan the whole repo,
-// so the runner ignores them.
+// so the runner ignores them. Flags such as `--update` go to the check scripts.
+const args = process.argv.slice(2).filter((arg) => !arg.includes(path.sep));
 process.exitCode = main(
-  process.argv.slice(2).filter((arg) => !arg.includes(path.sep)),
+  args.filter((arg) => !arg.startsWith("-")),
+  args.filter((arg) => arg.startsWith("-")),
 );
