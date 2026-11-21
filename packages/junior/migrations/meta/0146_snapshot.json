@@ -1,6 +1,6 @@
 {
-  "id": "739bd13b-33de-4485-aa8e-f83546753a06",
-  "prevId": "a1574245-9089-4ee3-ab30-8026df47fc4d",
+  "id": "bf12e715-612e-4c29-8469-a84a53d8292f",
+  "prevId": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -517,28 +517,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_artifacts_public_sha_uidx": {
-          "name": "junior_artifacts_public_sha_uidx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sha256",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_artifacts\".\"visibility\" = 'public' and \"junior_artifacts\".\"expires_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6101,6 +6079,12 @@
         },
         "changed_by_user_id": {
           "name": "changed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_by_conversation_id": {
+          "name": "changed_by_conversation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false

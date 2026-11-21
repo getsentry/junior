@@ -1,5 +1,5 @@
 {
-  "id": "a1574245-9089-4ee3-ab30-8026df47fc4d",
+  "id": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "prevId": "a9c89fe6-259a-465c-a8e0-0815e4aeab77",
   "version": "7",
   "dialect": "postgresql",
@@ -491,12 +491,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -517,6 +511,28 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_artifacts_public_sha_uidx": {
+          "name": "junior_artifacts_public_sha_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_artifacts\".\"visibility\" = 'public'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6079,6 +6095,12 @@
         },
         "changed_by_user_id": {
           "name": "changed_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_by_conversation_id": {
+          "name": "changed_by_conversation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false

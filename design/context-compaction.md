@@ -17,11 +17,7 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   whole prefix to the cache again.
 - An idle Conversation costs as little as possible for the return that
   comes next. Junior warms the cache only when the chance of a return pays
-  for the warmup. With Claude Opus 5.5 prices for one million tokens (input
-  $4, 5-minute cache write $5, cache read $0.20), a warmup costs about 1.1
-  reads of the prefix ($0.22), and a warm return saves one write minus one
-  read. So warming pays when more than 0.22 / (5 − 0.2), about 4.6%, of
-  warmups reach a return. `design/cache-warming.md` owns that rule.
+  for the warmup ([Cache warming](./cache-warming.md)).
 - At or above the background compaction mark, an idle Conversation compacts
   instead of warming when that costs less. A returning Turn at that size is
   close to the compaction threshold, so it can compact in the Turn, and
