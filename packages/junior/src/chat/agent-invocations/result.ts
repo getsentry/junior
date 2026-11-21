@@ -941,10 +941,7 @@ export async function withAgentInvocationResultActors(
     // parent's Turn, with its grants and text, as on an Agent invocation.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
-      if (
-        (await routeChildInput(entry.message, latest)) ===
-        "dropped"
-      ) {
+      if ((await routeChildInput(entry.message, latest)) === "dropped") {
         logDroppedParentMessage(entry.message, parentMessage);
         return undefined;
       }
@@ -966,9 +963,7 @@ export async function withAgentInvocationResultActors(
     if (!input) {
       return entry;
     }
-    if (
-      (await routeChildInput(entry.message, latest)) === "dropped"
-    ) {
+    if ((await routeChildInput(entry.message, latest)) === "dropped") {
       return undefined;
     }
     const { invocation } = await getChildAgentInputSender(entry.message, input);

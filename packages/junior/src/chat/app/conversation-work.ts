@@ -219,7 +219,10 @@ export function createConversationWork(
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
     // A person's input ends a stop, on a root or a child.
-    await resumeForPersonInput(context.conversationId, context.attempt.messages);
+    await resumeForPersonInput(
+      context.conversationId,
+      context.attempt.messages,
+    );
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });

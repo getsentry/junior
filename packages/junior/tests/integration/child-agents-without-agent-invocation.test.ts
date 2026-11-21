@@ -22,7 +22,7 @@ import {
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import {
   getConversationStoppedAtMs,
-  markConversationsStopped,
+  stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
@@ -661,9 +661,9 @@ describe("child agents that no Agent invocation names", () => {
         ...slackInvocationInput,
         idempotencyKey: "open-row",
       });
-      await markConversationsStopped([open.childConversationId], {
-        cancelWatches: false,
+      await stopConversationTree([open.childConversationId], {
         state: harness.state,
+        stoppedAtMs: Date.now(),
       });
       // The child's run sees its stop late, after it spawned a helper.
       vi.setSystemTime(1_800_000_001_000);
@@ -827,9 +827,9 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      await markConversationsStopped([childId], {
-        cancelWatches: false,
+      await stopConversationTree([childId], {
         state: harness.state,
+        stoppedAtMs: Date.now(),
       });
 
       await expect(

@@ -105,17 +105,13 @@ export async function routeChildInput(
     if (!(await isFromStoredParent(message, parentMessage))) {
       return "dropped";
     }
-    if (open) {
-      return "agent invocation";
-    }
-    return "Conversation loop";
+    return open ? "agent invocation" : "Conversation loop";
   }
   const input = childAgentInput(message);
   if (!input) {
-    if (open && isEventMailboxMetadata(message.input.metadata)) {
-      return "agent invocation";
-    }
-    return "Conversation loop";
+    return open && isEventMailboxMetadata(message.input.metadata)
+      ? "agent invocation"
+      : "Conversation loop";
   }
   if (latest && isStoppedAgentInvocation(latest)) {
     return "dropped";

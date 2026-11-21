@@ -160,10 +160,8 @@ export async function stopConversationTree(
       conversationId,
       conversationStore: options.conversationStore,
       nowMs: options.nowMs,
-      ...(options.onStopSaved ? { onStopSaved: options.onStopSaved } : {}),
-      ...(options.sentAtOrBeforeMs !== undefined
-        ? { sentAtOrBeforeMs: options.sentAtOrBeforeMs }
-        : {}),
+      onStopSaved: options.onStopSaved,
+      sentAtOrBeforeMs: options.sentAtOrBeforeMs,
       state: options.state,
     });
   });

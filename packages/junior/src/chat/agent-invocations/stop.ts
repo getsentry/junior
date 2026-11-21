@@ -94,7 +94,6 @@ export async function stopChildAgentsOf(
     includeRoot: false,
     taskedAfterMs: stoppedAtMs,
   });
-  await skipUnreadResults(conversationId, nowMs, state);
   // They take the stop of this Conversation, so input that ends it ends
   // theirs too.
   const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
@@ -130,7 +129,6 @@ export async function stopChildAgentsBelow(
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
     includeRoot: false,
   });
-  await skipUnreadResults(conversationId, nowMs, state);
   const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
   await finishStoppedTree(tree, stoppedIds, {
     nowMs,
@@ -138,49 +136,6 @@ export async function stopChildAgentsBelow(
     state,
   });
   await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
-}
-
-/**
- * Skip the `appended` results and replies that still wait in a Conversation's
- * mailbox, so they start no Turn. A result that the Conversation already read keeps its
- * status. Call this after the tree stop: it skipped each `pending` result and
- * stopped each child agent, so no result becomes `appended` after this read.
- *
- * The mailbox read is not atomic with the parent worker. A worker that takes
- * a result before this update holds the work lease, so the stop request of
- * the Conversation stops its Turn. A result that such a Turn took but did not
- * ack yet is marked `skipped`.
- */
-async function skipUnreadResults(
-  conversationId: string,
-  nowMs: number,
-  state: StateAdapter | undefined,
-): Promise<void> {
-  const messages =
-    (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
-  // A child's `reply` is its result, so a stop skips it too. A reply from a
-  // Turn on the Conversation loop names no work of its own:
-  // `dropUnreadLoopReplies` drops it instead.
-  const invocationIds = (await readChildMessageSenders(messages)).flatMap(
-    (sender) => {
-      const invocation = sender && ownAgentInvocation(sender);
-      return invocation ? [invocation] : [];
-    },
-  );
-  if (invocationIds.length === 0) {
-    return;
-  }
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "skipped", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.parentConversationId, conversationId),
-        inArray(juniorAgentInvocations.invocationId, invocationIds),
-        eq(juniorAgentInvocations.parentMailboxStatus, "appended"),
-      ),
-    );
 }
 
 /**
