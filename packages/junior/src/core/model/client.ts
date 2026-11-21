@@ -4,14 +4,24 @@
 import type {
   Api,
   AssistantMessage,
+  AssistantMessageEventStream,
   Context,
   Model,
+  SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import {
-  instrumentModelStream,
-  type ConversationPrivacy,
-  type ModelStream,
-} from "@/core/model/instrument";
+// The one deliberate import from chat: it keeps the model span identical to
+// main's. It moves into core when core replaces chat's agent loop.
+import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+
+/** Whether a Conversation's spans may record message content. */
+type ConversationPrivacy = "public" | "private";
+
+/** Sends one model request, such as pi-ai's `streamSimple`. */
+type ModelStream = (
+  model: Model<Api>,
+  context: Context,
+  options?: SimpleStreamOptions,
+) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 /** How much the model reasons before it replies. */
 export type ReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh";
@@ -56,10 +66,11 @@ export function modelClient(dependencies: {
 }): ModelClient {
   return {
     complete: async ({ model, session, context }, signal) => {
-      const stream = await instrumentModelStream(
-        dependencies.stream,
-        model.privacy,
-      )(dependencies.resolveModel(model.id), context, {
+      const send = createTracedStreamFn({
+        base: dependencies.stream,
+        conversationPrivacy: model.privacy,
+      });
+      const stream = await send(dependencies.resolveModel(model.id), context, {
         apiKey: await dependencies.apiKey(),
         sessionId: session,
         // Pi calls no reasoning `off`, and takes `undefined` to mean it.
