@@ -211,6 +211,7 @@ test("each inbox item gets a fresh answer form", async ({
   // A sent answer must not lock the form of the next item.
   await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
   await detail.getByRole("button", { name: "Roll out" }).click();
+  await detail.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => actions.length).toBe(1);
   expect(actions[0]).toMatchObject({
     body: { action: "submit", answer: { values: { go: ["Roll out"] } } },
@@ -234,14 +235,12 @@ test("each inbox item gets a fresh answer form", async ({
     id: license.id,
   });
 
-  // Other… lets the reader answer a button question in their own words.
+  // The note line answers a button question in the reader's own words.
   await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  await detail.getByRole("button", { name: "Other…" }).click();
-  await expect(detail.getByLabel("Anything else?")).toBeFocused();
-  await page.keyboard.type("Wait for the EU canary first.");
+  const note = detail.getByLabel("Anything else?");
+  await note.fill("Wait for the EU canary first.");
   await screenshot(page, "review-desk-other", { view: "desktop" });
-  // Every text box sends its form on Ctrl+Enter or Cmd+Enter.
-  await page.keyboard.press("ControlOrMeta+Enter");
+  await note.press("Enter");
   await expect.poll(() => actions.length).toBe(3);
   expect(actions[2]).toMatchObject({
     body: {
@@ -563,11 +562,11 @@ test("an Automation alert names its Automation as its source", async ({
   ).toBeVisible();
 });
 
-test("Send sends docked picks and asks before a message drops others", async ({
+test("a message asks before it drops picks on a question card, and Send sends them", async ({
   dashboard,
   page,
 }) => {
-  // A notice fills the first page, so the question docks from the second.
+  // A notice fills the first page, so the question loads from the second.
   const actions = await mockInboxItems(page, {
     open: [{ ...prReady, conversationIds: [conversationId] }, migration],
     pageSize: 1,
@@ -624,27 +623,32 @@ test("Send sends docked picks and asks before a message drops others", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const question = page.getByRole("region", {
-    name: `Question: ${migration.title}`,
-  });
+  // The question came from the second page, and its card in the
+  // transcript holds the form.
+  const card = page.getByRole("region", { name: `Asked ${migration.title}` });
+  const approve = card.getByRole("radio", { name: "Approve" });
+  await approve.click();
+  await expect(card.getByText("1 of 2 answered")).toBeVisible();
   const composer = page.getByLabel("Continue this conversation");
 
-  // Picks in the details panel do not go with a message.
-  await page
-    .getByRole("button", { name: "Conversation details", exact: true })
-    .click();
-  const details = page.getByRole("region", { name: "Needs you" });
-  await details.getByRole("button", { name: migration.title }).click();
-  await details.getByRole("radio", { name: "Reject" }).click();
-
-  // The message box sends the docked picks. With an empty draft no message
-  // goes, so nothing asks about the details-panel picks.
-  await expect(
-    question.getByRole("textbox", { name: /Anything else/ }),
-  ).toHaveCount(0);
-  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
-  await question.getByRole("radio", { name: "Approve" }).click();
+  // A message drops the picks, so it asks first.
+  await composer.fill("Friday works.");
   await composer.press("Enter");
+  const confirm = page.getByRole("alertdialog", {
+    name: "Send without your answers?",
+  });
+  await expect(confirm).toContainText(migration.title);
+  await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
+  // Go back keeps the draft and the picks.
+  await confirm.getByRole("button", { name: "Go back" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(composer).toHaveText("Friday works.", { useInnerText: true });
+  await expect(approve).toBeChecked();
+  expect(messages).toEqual([]);
+  expect(actions).toEqual([]);
+
+  // The card's Send sends the picks, and then the message asks nothing.
+  await card.getByRole("button", { name: "Send", exact: true }).click();
   await expect
     .poll(() => actions)
     .toEqual([
@@ -656,30 +660,9 @@ test("Send sends docked picks and asks before a message drops others", async ({
         id: migration.id,
       },
     ]);
-  const confirm = page.getByRole("alertdialog", {
-    name: "Send without your answers?",
-  });
-  await expect(confirm).toHaveCount(0);
-  expect(messages).toEqual([]);
-
-  // A message drops the details-panel picks, so it asks first.
-  await composer.fill("Friday works.");
   await composer.press("Enter");
-  await expect(confirm).toContainText(migration.title);
-  // A mobile view would close the details panel and its picks.
-  await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
-  // Go back keeps the draft and the picks.
-  await confirm.getByRole("button", { name: "Go back" }).click();
-  await expect(confirm).toBeHidden();
-  await expect(composer).toHaveText("Friday works.", { useInnerText: true });
-  await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
-  expect(messages).toEqual([]);
-
-  // The reader can send the message anyway.
-  await composer.press("ControlOrMeta+Enter");
-  await confirm.getByRole("button", { name: "Send message" }).click();
   await expect
     .poll(() => messages)
     .toEqual([{ answersBefore: 1, message: "Friday works." }]);
-  expect(actions).toHaveLength(1);
+  await expect(confirm).toHaveCount(0);
 });

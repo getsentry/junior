@@ -64,7 +64,8 @@ Grouping:
   the rest when its open row is past the first four.
 - An open row says each fact once. The row's head names the kind, the
   number, the title, and the sub-thread. The open card and the subject's
-  preview do not say them again.
+  preview do not say them again. A question's card has no subject preview
+  ([Inbox](./inbox.md)).
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
