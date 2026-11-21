@@ -127,6 +127,13 @@ describe("snoozes", () => {
     const unchanged = await readCountAgain();
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
+    // So does the list.
+    const listRead = await asAna.request("/inbox-items?for=viewer");
+    const readListAgain = () =>
+      asAna.request("/inbox-items?for=viewer", {
+        [CONTENT_VERSION_HEADER]: listRead.headers.get(CONTENT_VERSION_HEADER)!,
+      });
+    expect((await readListAgain()).status).toBe(304);
 
     // A row snooze is one snooze per open item in it.
     const created = await asAna.snooze(
@@ -137,6 +144,7 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
     expect((await readCountAgain()).status).toBe(200);
+    expect((await readListAgain()).status).toBe(200);
     expect(await feedWaitingIds(ana.id)).toEqual([]);
     const snoozed = await asAna.snoozed();
     expect(snoozed.count).toBe(2);
@@ -203,6 +211,9 @@ describe("snoozes", () => {
     expect((await asAna.inbox()).count).toBe(1);
     expect(await asAna.versions()).not.toBe(asleep);
     expect(await storedStates()).toEqual(["woken"]);
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": { kind: "time" },
+    });
 
     // A time in the past cannot snooze.
     expect(
@@ -256,6 +267,14 @@ describe("snoozes", () => {
     expect((await asAna.inbox()).count).toBe(1);
     expect(await storedStates()).toEqual(["woken"]);
     expect(await publisher().hasMatch([event])).toBe(false);
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": {
+        eventType: "pull_request.checks.passed",
+        kind: "event",
+        phrase: "passes its checks",
+        resource: PULL_REQUEST.identifier,
+      },
+    });
   });
 
   it("takes every Event of its subject at once", async () => {
@@ -311,6 +330,74 @@ describe("snoozes", () => {
     );
     expect((await asAna.inbox()).count).toBe(2);
     expect(await storedStates()).toEqual(["woken", "woken"]);
+    const merged = {
+      eventType: "pull_request.merged",
+      kind: "event",
+      phrase: "is merged",
+      resource: OTHER_PULL_REQUEST.identifier,
+    };
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": merged,
+      "Review globex entry": merged,
+    });
+  });
+
+  it("shows why it woke only to its viewer, until they open or act on it", async () => {
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const acme = await addItem(ROOT, [ana, bob], "Review acme entry");
+    const globex = await addItem(ROOT, [ana, bob], "Review globex entry");
+    const initech = await addItem(ROOT, [ana], "Review initech entry");
+    const hooli = await addItem(ROOT, [ana], "Review hooli entry");
+    const asAna = api(fixture, ana);
+    const asBob = api(fixture, bob);
+    expect(
+      (await asAna.snooze({ conversationId: ROOT }, NOW_MS + 60_000)).status,
+    ).toBe(201);
+    vi.setSystemTime(NOW_MS + 60_000);
+    await heartbeat();
+    const time = { kind: "time" };
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": time,
+      "Review globex entry": time,
+      "Review hooli entry": time,
+      "Review initech entry": time,
+    });
+    // Bob did not snooze them, so they say nothing to him.
+    expect(await asBob.wakes()).toEqual({
+      "Review acme entry": undefined,
+      "Review globex entry": undefined,
+    });
+    // Bob's open does not touch Ana's reason.
+    expect((await asBob.openWoken([acme])).status).toBe(204);
+    expect((await asAna.wakes())["Review acme entry"]).toEqual(time);
+
+    // Ana opens one, takes one, and snoozes one again and wakes it herself.
+    expect((await asAna.openWoken([acme])).status).toBe(204);
+    expect((await asAna.act(globex, { action: "take" })).status).toBe(200);
+    const initechRow = { conversationId: ROOT, inboxItemId: initech };
+    expect((await asAna.snooze(initechRow, NOW_MS + HOUR_MS)).status).toBe(201);
+    expect((await asAna.unsnooze(initechRow)).status).toBe(204);
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": undefined,
+      "Review globex entry": undefined,
+      "Review hooli entry": time,
+      "Review initech entry": undefined,
+    });
+    // An answer closes the item, and the reason goes with it.
+    expect(
+      (
+        await asAna.act(hooli, {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await asAna.wakes()).toEqual({
+      "Review acme entry": undefined,
+      "Review globex entry": undefined,
+      "Review initech entry": undefined,
+    });
   });
 
   it("rejects a page that the viewer cannot see, that is missing, or that has no Events", async () => {

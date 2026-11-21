@@ -1156,8 +1156,8 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
       }),
     ).rejects.toThrow("Only the creator can resume it or run it now.");
-    // A reader can move it to a public channel that they name. Junior joins
-    // the channel, and the move drops the creator's credentials.
+    // A reader can move it to a public channel that they name and that
+    // Junior is in. The move drops the creator's credentials.
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({ channelId: "CPRIVATE", isPrivate: true }),
     });
@@ -1175,6 +1175,15 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
         destination: "<#CPUBLIC|security-alerts>",
       }),
+    ).rejects.toThrow("You are not in that channel.");
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+    });
+    await expect(
+      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
+        automation_id: automationId,
+        destination: "<#CPUBLIC|security-alerts>",
+      }),
     ).resolves.toMatchObject({
       automation: {
         credential_mode: "system",
@@ -1182,9 +1191,7 @@ describe("Scheduled automation tools", () => {
         conversation_access: { audience: "channel", visibility: "public" },
       },
     });
-    expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
-      { params: { channel: "CPUBLIC" } },
-    ]);
+    expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
         automation_id: automationId,
@@ -2507,11 +2514,15 @@ describe("Scheduled automation tool wiring via createTools", () => {
       queueSlackApiResponse("conversations.info", {
         body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: false }),
       });
+      await expect(createFromWeb("<#CPUBLIC>")).rejects.toThrow(
+        "You are not in that channel.",
+      );
+      queueSlackApiResponse("conversations.info", {
+        body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+      });
       const shared = await createFromWeb("<#CPUBLIC>");
       expect(shared.automation.is_creator).toBe(true);
-      expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
-        { params: { channel: "CPUBLIC" } },
-      ]);
+      expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
       await expect(
         readStoredTask(fixture.sql.db(), shared.automation.id),
       ).resolves.toMatchObject({

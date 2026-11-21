@@ -64,7 +64,6 @@ packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile c
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);
-packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");
 packages/junior/src/chat/tool-support/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`, { cause: error }, );
