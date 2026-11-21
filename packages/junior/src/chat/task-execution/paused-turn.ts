@@ -7,7 +7,7 @@
  * pause, or another safe pause boundary.
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
-import { savedInputInstruction } from "@/chat/review-items/prompt-input";
+import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
@@ -607,6 +607,7 @@ async function runPausedTurnInContext(
                 runtime:
                   Boolean(dispatchId) ||
                   isEventConversationMessage(userMessage),
+                requestText: userMessage.meta?.requestText,
                 reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
                 text: userMessage.text,
               })),

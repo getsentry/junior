@@ -23,7 +23,8 @@ function activeTurn(
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "active",
+    status: "working",
+    turnActive: true,
     surface: "slack",
     displayTitle: "Conversation",
     generatedAt: "2026-01-01T00:00:10.000Z",
@@ -82,7 +83,7 @@ describe("transcript bottom pinning", () => {
       }),
     );
     const after = transcriptJuniorMessageVersion(
-      activeTurn({ status: "completed" }),
+      activeTurn({ status: "done" }),
     );
 
     expect(before).toBe("empty");
@@ -102,7 +103,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "done",
       }),
     );
 
@@ -126,7 +127,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "done",
       }),
     );
 
@@ -287,7 +288,7 @@ describe("transcript bottom pinning", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
       activeTurn({
-        status: "completed",
+        status: "done",
       }),
     );
 

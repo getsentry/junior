@@ -1,5 +1,10 @@
 import { juniorArtifacts } from "./schema/artifacts";
 import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
+} from "./schema/memory";
+import {
   juniorAttachmentUploads,
   juniorAttachments,
   juniorMessageAttachments,
@@ -24,17 +29,21 @@ import {
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
+import {
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+} from "./schema/inbox-snoozes";
 import { juniorStats } from "./schema/stats";
 import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
 import {
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-} from "./schema/review-items";
-import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+} from "./schema/inbox-items";
+import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
@@ -62,14 +71,19 @@ export {
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
-  juniorPlanItemVersionSeq,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
+  juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
@@ -103,13 +117,18 @@ export const juniorSqlSchema = {
   juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,

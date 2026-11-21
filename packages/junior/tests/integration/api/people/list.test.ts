@@ -6,21 +6,58 @@ import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import {
+  expectNoFullScan,
+  expectSqlBudget,
+  measureSql,
+} from "../../../fixtures/sql-budget";
+import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import { recordTurn, seedPeople, turnActorIdentityId } from "./fixture";
 
 describe("people list API", () => {
-  test("serves the route through its response schema", async () => {
+  test("serves a cached list and refreshes it once when stale", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
     const fixture = createConfiguredJuniorSqlFixture();
+    const background = createWaitUntilCollector();
+    const api = createJuniorApi({ waitUntil: background.fn });
+    const readPeople = async () => {
+      const response = await api.request("http://localhost/api/people");
+      expect(response.status).toBe(200);
+      return actorDirectoryReportSchema.parse(await response.json());
+    };
+
     try {
       await migrateSchema(fixture.sql);
-      const response = await createJuniorApi().request(
-        "http://localhost/api/people",
-      );
-      expect(response.status).toBe(200);
-      actorDirectoryReportSchema.parse(await response.json());
+      const uncached = await measureSql(readPeople);
+      expect(uncached.sql.statements).toBe(4);
+      const first = uncached.result;
+      expect(first.people).toEqual([]);
+
+      await seedPeople(fixture);
+      vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
+      const fresh = await measureSql(readPeople);
+      expect(fresh.sql.statements).toBe(0);
+      expect(fresh.result).toEqual(first);
+      expect(background.pendingCount()).toBe(0);
+
+      // A stale list is served at once. Concurrent requests start one
+      // refresh between them.
+      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      const stale = await measureSql(async () => {
+        const reports = await Promise.all([readPeople(), readPeople()]);
+        expect(background.pendingCount()).toBe(2);
+        await background.flush();
+        return reports;
+      });
+      expect(stale.result).toEqual([first, first]);
+      expect(stale.sql.statements).toBe(4);
+
+      const refreshed = await readPeople();
+      expect(refreshed.people.length).toBeGreaterThan(0);
     } finally {
+      vi.useRealTimers();
       await fixture.close();
     }
   });
@@ -102,11 +139,14 @@ describe("people list API", () => {
         });
       }
 
-      // One round of bounded reads, whatever the history length.
-      const report = await expectSqlBudget(() => readPeopleListFromSql(), {
-        statements: 5,
-        serialRounds: 1,
-      });
+      // One round of bounded reads, whatever the history length. Each read
+      // of a big table uses an index.
+      const report = await expectNoFullScan(() =>
+        expectSqlBudget(() => readPeopleListFromSql(), {
+          statements: 4,
+          serialRounds: 1,
+        }),
+      );
 
       expect(report.people.map((person) => person.actor.email)).toEqual([
         "bob@example.com",

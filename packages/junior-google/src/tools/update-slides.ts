@@ -5,12 +5,16 @@ import {
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { revisionAfterUpdate } from "./doc-edits";
-import { requireEditableFile } from "./editable-file";
-import { readRequesterFile } from "./file-access";
-import { FILE_ID_PATTERN, googleFileRequest } from "./files";
-import type { GoogleToolContext } from "./shared";
-import { presentationReferenceSchema, presentationUrl } from "./slides";
+import { revisionAfterUpdate } from "../docs/edits";
+import { requireEditableFile } from "../drive/editable-file";
+import { readRequesterFile } from "../drive/file-access";
+import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
+import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
+import {
+  presentationReferenceSchema,
+  presentationUrl,
+} from "../slides/presentation";
 
 // Google validates each request. The tool checks only the shape that every
 // batchUpdate request has: one key, the request kind.
@@ -36,7 +40,7 @@ const inputSchema = z
       .min(1)
       .max(200)
       .describe(
-        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. See https://developers.google.com/workspace/slides/api/reference/rest/v1/presentations/request.',
+        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. createSlide without slideLayoutReference is BLANK. Sizes accept unit PT. See https://developers.google.com/workspace/slides/api/reference/rest/v1/presentations/request.',
       ),
   })
   .strict();
@@ -54,6 +58,20 @@ const outputSchema = pluginToolOutputSchema.extend({
     .optional()
     .describe(
       "Revision after this edit. Pass it as revision_id to edit again without reading first.",
+    ),
+  changed_slides: z
+    .array(z.string())
+    .describe("Object ids of the slides that the requests touched."),
+  issues: z
+    .array(
+      z.object({
+        element_id: z.string().optional(),
+        problem: z.string(),
+        slide_id: z.string(),
+      }),
+    )
+    .describe(
+      "Layout problems found on the changed slides, such as empty placeholders or text that overflows. Fix them, then render the slide to confirm.",
     ),
   title: z.string(),
   url: z.string(),
@@ -150,6 +168,68 @@ async function requireReadableSources(
   );
 }
 
+// Request fields that the checks below read.
+const meaningSchema = z.object({
+  createSlide: z
+    .object({
+      slideLayoutReference: z
+        .object({ predefinedLayout: z.string().optional() })
+        .optional(),
+    })
+    .optional(),
+  updatePageElementTransform: z
+    .object({
+      applyMode: z.string().optional(),
+      transform: z
+        .object({
+          scaleX: z.number().optional(),
+          scaleY: z.number().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  updateSlideProperties: z.object({ fields: z.string().optional() }).optional(),
+});
+
+/**
+ * Refuse requests that Google accepts but that do not do what they seem to.
+ * An ABSOLUTE transform replaces the whole matrix, so an omitted scale
+ * becomes 0. A slide's layout is fixed when the slide is created.
+ */
+function requireMeaningfulRequests(
+  requests: Array<Record<string, unknown>>,
+): void {
+  for (const request of requests) {
+    const parsed = meaningSchema.safeParse(request).data;
+    const move = parsed?.updatePageElementTransform;
+    if (
+      move?.applyMode === "ABSOLUTE" &&
+      (move.transform?.scaleX === undefined ||
+        move.transform.scaleY === undefined)
+    ) {
+      throw new PluginToolInputError(
+        "An ABSOLUTE updatePageElementTransform replaces the whole matrix, and an omitted scaleX or scaleY becomes 0. Send scaleX and scaleY: 1 unless you resize.",
+      );
+    }
+    if (parsed?.updateSlideProperties?.fields?.includes("layoutObjectId")) {
+      throw new PluginToolInputError(
+        "A slide's layout cannot change. Create a slide with the layout that you need, move the content to it, and delete the old slide.",
+      );
+    }
+  }
+}
+
+/** Return whether a request names a predefined layout. */
+function namesPredefinedLayout(
+  requests: Array<Record<string, unknown>>,
+): boolean {
+  return requests.some(
+    (request) =>
+      meaningSchema.safeParse(request).data?.createSlide?.slideLayoutReference
+        ?.predefinedLayout !== undefined,
+  );
+}
+
 const replySchema = z.object({ replies: z.array(z.unknown()).default([]) });
 
 /** Count request kinds for the action review proposal, such as `insertText ×2`. */
@@ -185,6 +265,7 @@ export const updateGoogleSlidesTool = definePluginTool({
       input.presentation,
       "presentation",
     );
+    requireMeaningfulRequests(input.requests);
     await requireReadableSources(ctx, input.requests);
     const response = await googleFileRequest(ctx, file.ref, {
       body: {
@@ -194,13 +275,39 @@ export const updateGoogleSlidesTool = definePluginTool({
       editable: file,
       operation: "google.slides.presentation.batchUpdate",
       path: `/v1/presentations/${file.ref.fileId}:batchUpdate`,
+    }).catch((error: unknown) => {
+      // Custom themes often lack predefined layouts, and Google's error does
+      // not say which layouts the deck has.
+      if (
+        error instanceof PluginToolInputError &&
+        namesPredefinedLayout(input.requests)
+      ) {
+        throw new PluginToolInputError(
+          `${error.message}. A predefined layout works only when the deck's master has it: use a layoutId from the layouts that readGoogleSlidesLayout returns.`,
+        );
+      }
+      throw error;
     });
     const after = revisionAfterUpdate(response.body);
+    const { replies } = replySchema.parse(response.body);
+    // The edit has applied, so a failed read must not look like a failed
+    // edit: a retry at the old revision would be refused anyway.
+    const deck = await googleFileRequest(ctx, file.ref, {
+      operation: "google.slides.presentation.get",
+      path: `/v1/presentations/${file.ref.fileId}`,
+      query: { fields: SLIDE_CHECK_FIELDS },
+    }).catch((error: unknown) => {
+      throw new Error(
+        `The edit applied${after ? ` at revision ${after}` : ""}, but reading the changed slides to check them failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    });
     return {
       target: "updateGoogleSlides" as const,
       presentation_id: file.ref.fileId,
-      replies: replySchema.parse(response.body).replies,
+      replies,
       ...(after ? { revision_id: after } : undefined),
+      ...checkTouchedSlides(deck.body, input.requests, replies),
       title: file.title,
       url: file.webViewLink ?? presentationUrl(file.ref.fileId),
     };

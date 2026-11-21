@@ -62,8 +62,8 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import { useWaitingConversations } from "../review-desk/queries";
-import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
+import { useWaitingConversations } from "../inbox/queries";
+import { UnsentAnswersProvider } from "../inbox/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { HomeSummary } from "./HomeSummary";
 import {

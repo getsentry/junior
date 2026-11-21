@@ -59,7 +59,7 @@ function toolContext(
 
 async function getIssue(tool: ReturnType<typeof toolContext>["tool"]) {
   return await tool.execute?.(
-    { repo: "getsentry/junior", number: 2768 },
+    { repo: "getsentry/junior", issue: 2768 },
     { toolCallId: "get-issue" },
   );
 }

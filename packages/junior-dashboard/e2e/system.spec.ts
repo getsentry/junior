@@ -150,8 +150,13 @@ test("loads the System overview within its request budget", async ({
       await expect(
         page.getByText("Net savings", { exact: true }),
       ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "Cache health" })
+          .getByText("Warmups sent after", { exact: true }),
+      ).toBeVisible();
     },
-    { requests: 7, serialRounds: 2 },
+    { requests: 8, serialRounds: 2 },
   );
 });
 
@@ -355,6 +360,89 @@ test("shows what cache warming saved in the range", async ({
   await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
 });
 
+test("shows cache health and warmup outcomes from Sentry", async ({
+  page,
+  dashboard,
+}) => {
+  const day = page.waitForResponse("**/api/cache-warming/health?window=7d");
+  await page.goto(`${dashboard.baseURL}/system`);
+  expect((await day).ok()).toBe(true);
+  const health = page.getByRole("region", { name: "Cache health" });
+  await expect(
+    health.getByText(/^Write share, [\d.]+% last week$/),
+  ).toBeVisible();
+  await expect(
+    health.getByText(/^Full rewrites, [\d.]+k? of [\d.]+k? calls$/),
+  ).toBeVisible();
+  // The default 30d range shows the last 7 days.
+  await expect(health.getByText(/Shows the last 7 days/)).toBeVisible();
+  await expect(health.getByText("anthropic warming on")).toBeVisible();
+  await expect(
+    health.getByText("Warming stopped early", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    health.getByText("Unlikely return", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    health.getByLabel(
+      "Prompt cache write share and full-rewrite rate over time",
+    ),
+  ).toBeVisible();
+
+  const hourly = page.waitForResponse("**/api/cache-warming/health?window=24h");
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  expect((await hourly).ok()).toBe(true);
+  await expect(health.getByText(/Shows the last 7 days/)).toHaveCount(0);
+  await screenshot(page, "system-cache-health-24h", { target: health });
+});
+
+test("shows when cache health is not set up, loading, or old", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/cache-warming/health?*", (route) =>
+    route.fulfill({
+      json: { status: "unconfigured", missing: ["SENTRY_READ_TOKEN"] },
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}/system`);
+  const health = page.getByRole("region", { name: "Cache health" });
+  await expect(
+    health.getByText(/^Set SENTRY_READ_TOKEN to read cache health from Sentry/),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-health-setup", {
+    target: health,
+    view: "desktop",
+  });
+
+  // Another load is still reading Sentry, and nothing is stored yet.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", (route) =>
+    route.fulfill({ json: { status: "busy" } }),
+  );
+  await page.reload();
+  await expect(
+    health.getByText(/^Cache health is still loading from Sentry/),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-health-busy", {
+    target: health,
+    view: "desktop",
+  });
+
+  // An older answer says when it is from.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...(await response.json()), stale: true } });
+  });
+  await page.reload();
+  await expect(health.getByText(/This is from /)).toBeVisible();
+  await screenshot(page, "system-cache-health-stale", {
+    target: health,
+    view: "desktop",
+  });
+});
+
 test("lets an admin re-fill cache warming savings from history", async ({
   page,
   dashboard,
@@ -408,4 +496,41 @@ test("lets an admin re-fill cache warming savings from history", async ({
     target: panel,
   });
   expect(starts).toEqual(["POST"]);
+});
+
+test.describe("keeps the people directory across window focus", () => {
+  test.use({ controlTimers: true });
+
+  test("loads System People within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    let directoryReads = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/people") {
+        directoryReads += 1;
+      }
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/system/people`);
+        await expect(
+          page.getByText("Highest spend", { exact: true }),
+        ).toBeVisible();
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+    expect(directoryReads).toBe(1);
+
+    // React Query refetches stale queries on `visibilitychange`. Go past the
+    // default stale time so a focus refetch would read the directory again.
+    await page.clock.fastForward(60_000);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForLoadState("networkidle");
+    expect(directoryReads).toBe(1);
+  });
 });

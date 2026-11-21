@@ -8,13 +8,27 @@ options:
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig
+fileGroups:
+  - README.md
+  - project.yml
+  - Makefile
+  - Brewfile
+  - Brewfile.ci
+  - Gemfile
+  - Gemfile.lock
+  - .ruby-version
+  - .swift-format
+  - oauth-client.json
+  - fastlane/Appfile
+  - fastlane/Fastfile
+  - fastlane/Matchfile
+  - scripts
 settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    CODE_SIGN_STYLE: Automatic
     # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
@@ -33,7 +47,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(JUNIOR_BUNDLE_ID)
         PRODUCT_NAME: Junior
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone and iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Junior/Info.plist
@@ -46,6 +61,12 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Every orientation, which iPad multitasking requires.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIAppFonts:
           - InterVariable.ttf
           - OutfitVariable.ttf

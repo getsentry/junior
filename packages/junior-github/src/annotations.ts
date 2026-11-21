@@ -52,11 +52,19 @@ export function githubSidebarAnnotations(
       };
       if (annotation.kind === "object") {
         sidebar.title = annotation.title;
-        const image =
-          annotation.facts?.type === "code_change"
-            ? annotation.facts.previewImageUrls?.[0]
-            : undefined;
-        if (image) sidebar.imageUrl = image;
+        if (annotation.facts?.type === "code_change") {
+          const { additions, changedFiles, deletions, previewImageUrls } =
+            annotation.facts;
+          const image = previewImageUrls?.[0];
+          if (image) sidebar.imageUrl = image;
+          if (
+            additions !== undefined ||
+            deletions !== undefined ||
+            changedFiles !== undefined
+          ) {
+            sidebar.size = { additions, changedFiles, deletions };
+          }
+        }
       }
       if (annotation.url) sidebar.url = annotation.url;
       return [{ annotation: sidebar, updatedAt: annotation.updatedAt }];

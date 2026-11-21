@@ -4,8 +4,11 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "@dashboard/lib/utils";
+import { codeChangeSize } from "../codeChangeSize";
 import { ActorAvatar } from "../components/ActorAvatar";
+import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { Sparkline } from "../components/charts/Sparkline";
@@ -76,15 +79,18 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
  * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
  * A live card can attach its object to the Conversation. A saved card tells
  * when Junior fetched its facts. With `fill`, the card fills the height of
- * its container and its body scrolls.
+ * its container and its body scrolls. `children` end the body, such as the
+ * recent activity of a person.
  */
 export function ObjectCard({
   card,
+  children,
   className,
   fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
+  children?: ReactNode;
   className?: string;
   fill?: boolean | undefined;
   live?: boolean | undefined;
@@ -117,6 +123,8 @@ export function ObjectCard({
   );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
+  const size = card.facts?.type === "code_change" ? card.facts : undefined;
+  const sized = codeChangeSize(size) !== undefined;
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
@@ -207,7 +215,7 @@ export function ObjectCard({
             spans={card.facts.spans}
           />
         )}
-        {(card.status || fields.length > 0) && (
+        {(card.status || fields.length > 0 || sized) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
           <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
             {card.status && (
@@ -239,6 +247,17 @@ export function ObjectCard({
                 </dd>
               </div>
             ))}
+            {sized && (
+              <div className="min-w-0">
+                <dt className="text-xs text-dashboard-text-muted">Size</dt>
+                <dd className="m-0 mt-1">
+                  <ChangeSize
+                    className="text-sm text-dashboard-text"
+                    size={size}
+                  />
+                </dd>
+              </div>
+            )}
           </dl>
         )}
         {card.description && (
@@ -262,6 +281,7 @@ export function ObjectCard({
             {card.warning}
           </p>
         )}
+        {children}
       </div>
       {(card.url || fetchedAt || attachable) && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">

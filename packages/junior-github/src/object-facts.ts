@@ -20,6 +20,7 @@ const responseSchema = z.object({
   head: z.object({ ref: z.string() }).optional(),
   base: z.object({ ref: z.string() }).optional(),
   mergeable: z.boolean().nullable().optional(),
+  state: z.string().optional(),
   changed_files: z.number().int().nonnegative().optional(),
   additions: z.number().int().nonnegative().optional(),
   deletions: z.number().int().nonnegative().optional(),
@@ -183,7 +184,11 @@ export function githubObjectFacts(
                 .filter(Boolean),
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
-              mergeable: data.mergeable ?? undefined,
+              // A merge state matters only while the pull request is open.
+              mergeable:
+                data.state === "open"
+                  ? (data.mergeable ?? undefined)
+                  : undefined,
               changedFiles: data.changed_files,
               additions: data.additions,
               deletions: data.deletions,

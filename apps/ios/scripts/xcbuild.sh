@@ -14,6 +14,8 @@ mkdir -p "$cache_dir/cas" "$derived"
 # spec or the set of source files changes, and skips it otherwise.
 (cd "$ios_dir" && xcodegen generate --quiet --use-cache --cache-path "$ios_dir/.build.noindex/xcodegen-cache")
 
+# The prefix mappings remove the checkout path from cache keys, so a new
+# worktree reuses compiled work.
 exec xcodebuild \
   -project "$ios_dir/Junior.xcodeproj" \
   -derivedDataPath "$derived" \

@@ -337,7 +337,7 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
-- After it files an issue for a person, ask them with a Review item whether
+- After it files an issue for a person, ask them with an Inbox item whether
   to start a Thread that implements it. When they already asked for the fix,
   start the Thread without asking. Automation runs, events, and child agents
   do not ask
@@ -350,8 +350,11 @@ Once configured, Junior can:
 - Watch or automate matching events when webhooks are enabled
 - Link issue, pull request, and commit references and URLs in Slack replies,
   and in replies and messages in the dashboard, as GitHub does. Bare `#123`
-  uses the one repository that the text names, or else the channel's
-  `github.repo`
+  uses the repository that the text names, in a reference, a URL, or as
+  plain `owner/repo` of the `github.org` owner. When the text names several,
+  it uses the last one named before the reference. When it names none, it
+  uses the channel's `github.repo`. The link text shows the repository, such
+  as `getsentry/sentry#123`
 - Turn `@login` into a Slack mention in Slack when the login links to a known
   person. Other logins become GitHub profile links when the text names a
   repository, or when it came from GitHub or went to GitHub
@@ -635,20 +638,34 @@ so for a pull request that Junior opened, the event publishes only while
 people work on it:
 
 - In the first 2 days after the latest push, review, or comment by a person,
-  or after the pull request opened, the event publishes at most once a day
-  and 3 times in total.
-- After that, or after the third event, Junior publishes no event. It adds
-  a review desk notice to the conversation that asked for the pull request.
-  The notice closes when the conflict is gone.
-- After 3 days without activity by a person, Junior does nothing.
+  or after the pull request opened, the event publishes at most once a day,
+  and at most 3 times in a row with no activity by a person between them.
+- After that, Junior publishes no event and tells nobody. The next push,
+  review, or comment by a person starts the count again.
 - An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, until
-  the total limit. The ready to merge notice needs a clean merge state, so it
-  comes after the fix.
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
+- When the head commit is the same a day after its fix, the fix did not
+  land. Then Junior adds an Inbox item with a **Resume** button for the
+  person who asked for the pull request. It adds the item once after each
+  Resume, so **Dismiss** ends these asks for the pull request. The item
+  closes when the conflict is gone, or when the pull request merges or
+  closes. When the conflict goes away while the item is open, a later fix
+  that does not land adds the item again.
+- **Resume** counts as activity by a person, so the count starts again. It
+  adds the pull request's watch again if it expired, so the event reaches
+  the conversation, and publishes the event at once. Until a fix lands
+  after it, Junior publishes no event. If no fix lands in a day, Junior
+  adds the item again. Resume on a draft, or on a pull request that GitHub
+  can merge, does nothing.
 
-Junior stores none of this. For each conflict, it reads the pull request's
-timeline and review decision from GitHub. Merges and force pushes by a bot
-count as earlier fixes. Each head commit publishes one event.
+For each conflict, Junior reads the pull request's timeline and review
+decision from GitHub, for the latest activity by a person. Only the events
+that Junior published for a fix count as fixes, so a merge or force push for
+work that a person asked for does not. Junior stores those, with the times
+of the latest Resume and the latest item. Each head commit publishes one
+event.
 
 </details>
 

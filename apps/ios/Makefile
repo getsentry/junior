@@ -1,9 +1,14 @@
 # Install the tools that the scripts and fastlane lanes in this folder use.
 .PHONY: init
 init:
-	brew install xcodegen xcbeautify jq rbenv
+	brew bundle --file=Brewfile
 	rbenv install --skip-existing
 	rbenv exec bundle install
+
+# Put the match development certificate and profile on this Mac, for device builds.
+.PHONY: signing
+signing:
+	rbenv exec bundle exec fastlane match development
 
 # Generate Junior.xcodeproj from project.yml.
 .PHONY: xcodegen

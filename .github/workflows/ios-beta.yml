@@ -30,8 +30,8 @@ jobs:
           working-directory: apps/ios
           bundler-cache: true
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install the CI tools
+        run: brew bundle --file=Brewfile.ci
 
       - name: Get codesigning repo token
         id: codesign-token

@@ -12,9 +12,9 @@ import {
   requireRevision,
   revisionAfterUpdate,
   revisionIdSchema,
-} from "./doc-edits";
-import { googleFileRequest } from "./files";
-import type { GoogleToolContext } from "./shared";
+} from "../docs/edits";
+import { googleFileRequest } from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({

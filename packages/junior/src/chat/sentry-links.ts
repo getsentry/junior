@@ -72,3 +72,10 @@ export function buildSentryEventUrl(eventId: string): string | undefined {
     query: { query: eventId },
   });
 }
+
+/** Format a failure reference, linked to the Sentry event when the runtime can build the URL. */
+export function formatSentryEventReference(eventId: string): string {
+  const reference = `event_id=${eventId}`;
+  const url = buildSentryEventUrl(eventId);
+  return url ? `[${reference}](${url})` : `\`${reference}\``;
+}

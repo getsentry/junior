@@ -238,7 +238,7 @@ describe("Event author trust", () => {
     const taskText = (message: (typeof messages)[number] | undefined) => {
       const inputs = renderEventBatchInputs([message!]);
       expect(inputs).toHaveLength(1);
-      return inputs[0]!;
+      return inputs[0]!.text;
     };
     const identityOf = async (userId: string) =>
       await resolveActorIdentityId(getSqlExecutor(), {

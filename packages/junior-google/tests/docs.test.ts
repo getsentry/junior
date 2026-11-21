@@ -1,8 +1,8 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
-import { convertMarkdown } from "../src/tools/doc-markdown";
+import { googlePlugin } from "../src/index";
+import { convertMarkdown } from "../src/docs/markdown";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";

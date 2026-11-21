@@ -1,0 +1,2 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_code_changes_search_idx" ON "junior_code_changes" USING gin (to_tsvector('simple', "number"::text || ' ' || coalesce("title", '')));--> statement-breakpoint
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_code_repositories_search_idx" ON "junior_code_repositories" USING gin (to_tsvector('simple', translate("name", '/', ' ')));

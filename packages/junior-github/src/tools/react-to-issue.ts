@@ -28,7 +28,7 @@ const REACTION_CONTENTS = [
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z
+    issue: z
       .number()
       .int()
       .positive()
@@ -74,7 +74,7 @@ export const gitHubReactToIssueTool = definePluginTool({
     const response = await githubApi(egress, {
       operation: "github.issue.reaction.create",
       method: "POST",
-      path: `${repoPath(repo)}/issues/${input.number}/reactions`,
+      path: `${repoPath(repo)}/issues/${input.issue}/reactions`,
       body: { content: input.content },
     });
     if (!response.ok) {
@@ -88,7 +88,7 @@ export const gitHubReactToIssueTool = definePluginTool({
     return {
       target: "reactToIssue",
       repo: repo.ref,
-      number: input.number,
+      number: input.issue,
       content: input.content,
       reaction_id: reaction.id,
     };

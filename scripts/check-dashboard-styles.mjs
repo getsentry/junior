@@ -162,11 +162,11 @@ export function findComposerSafeAreaBottomPadding(files) {
 }
 
 // The new UI fades text that does not fit, through client/textFade.ts,
-// instead of an ellipsis. These review-desk files also render in the
+// instead of an ellipsis. These Inbox files also render in the
 // classic UI, which keeps its ellipsis.
-const NEW_UI_PATH_PATTERN = /\/client\/(?:inbox|review-desk)\//;
+const NEW_UI_PATH_PATTERN = /\/client\/(?:shell|inbox)\//;
 const SHARED_WITH_CLASSIC_PATH_PATTERN =
-  /\/client\/review-desk\/(?:ComposerQuestion|ReviewDeskSidebar|ReviewItemCard|ReviewItemChangeRow|ReviewItemDetails)\.tsx$/;
+  /\/client\/inbox\/(?:ComposerQuestion|InboxSidebar|InboxItemCard|InboxItemChangeRow|InboxItemDetails)\.tsx$/;
 const ELLIPSIS_PATTERN =
   /(?<![\w-])(?:[a-z-]+:)*(?:truncate|text-ellipsis)(?![\w-])/;
 

@@ -123,7 +123,7 @@ describe("Slack webhook auth boundary", () => {
     },
   );
 
-  it("uses mention author fields without a lookup and rejects external authors", async () => {
+  it("uses mention author fields without a lookup and rejects external authors and shared channels", async () => {
     const state = createMemoryState();
     await state.connect();
     const adapter = createSlackAdapterFixture();
@@ -140,7 +140,14 @@ describe("Slack webhook auth boundary", () => {
     // Bolt's mention fixture has different team and user_team values.
     // Change IDs only.
     // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L717-L744
-    for (const [index, team] of ["TEXTERNAL", "T123"].entries()) {
+    // A workspace member in a channel shared with another organization
+    // starts nothing: Junior is read-only there.
+    const cases = [
+      { team: "TEXTERNAL", shared: false, accepted: false },
+      { team: "T123", shared: true, accepted: false },
+      { team: "T123", shared: false, accepted: true },
+    ];
+    for (const [index, { team, shared, accepted }] of cases.entries()) {
       const envelope = slackEventsApiEnvelope({
         channel: "C123",
         ts: `1712345.000${index + 2}`,
@@ -150,7 +157,7 @@ describe("Slack webhook auth boundary", () => {
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest({
           ...envelope,
-          is_ext_shared_channel: true,
+          is_ext_shared_channel: shared,
           event: {
             ...envelope.event,
             team: "T123",
@@ -161,14 +168,15 @@ describe("Slack webhook auth boundary", () => {
         services,
       });
       expect(response.status).toBe(200);
-      expect(queue.queuedMessages()).toHaveLength(index);
+      expect(queue.queuedMessages()).toHaveLength(accepted ? 1 : 0);
       const work = await getConversationWorkState({
         conversationId: threadId,
         state,
       });
-      expect(work !== undefined).toBe(index === 1);
+      expect(work !== undefined).toBe(accepted);
     }
     expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
+    expect(slackApiOutbox.messages()).toEqual([]);
     await state.disconnect();
   });
 

@@ -9,6 +9,7 @@ struct ConversationScreen: View {
   @State private var showDetails = false
   @State private var shareURL: URL?
   @State private var atBottom = true
+  @State private var width: CGFloat = 0
 
   init(conversationId: String) {
     _model = State(initialValue: ConversationModel(conversationId: conversationId))
@@ -22,6 +23,13 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .background(Tokens.bgElevated)
+        .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+    }
+    // Measured around the panel, so opening it does not change where it shows.
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .task { await model.open(app) }
     .task(id: app.isActive) {
       // Follow every 2s while a Turn runs or messages wait, and every 15s
@@ -38,16 +46,24 @@ struct ConversationScreen: View {
         showDetails = true
       }
     }
-    .sheet(isPresented: $showDetails) {
-      if let state = model.state {
-        ConversationDetailsSheet(state: state)
-          .presentationDetents([.fraction(0.85), .large])
-          .presentationDragIndicator(.visible)
-          .presentationBackground(Tokens.bgElevated)
-      }
+    .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Tokens.bgElevated)
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+  }
+
+  /// Room for the details panel beside a transcript at least 400pt wide;
+  /// narrower screens get the sheet.
+  private var detailsBeside: Bool { width >= 720 }
+
+  @ViewBuilder private var details: some View {
+    if let state = model.state {
+      ConversationDetailsSheet(state: state) { showDetails = false }
     }
   }
 
@@ -135,17 +151,15 @@ struct ConversationScreen: View {
             if model.olderCursor != nil {
               EarlierButton(loading: model.loadingEarlier) { Task { await model.loadEarlier(app) } }
             }
-            if model.messages.isEmpty, model.conversation?.status != .active {
+            if model.messages.isEmpty, model.conversation?.turnActive != true {
               Text("No messages yet.").type(.sm).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
             }
             ForEach(model.messages) { message in
               MessageRow(message: message, blocks: model.messageBlocks[message.seq])
                 .id(message.seq)
             }
-            switch model.conversation?.status {
-            case .active?: WorkingRow()
-            case let status? where status == .failed || status == .stopped: EndedRow(status: status)
-            default: EmptyView()
+            if model.conversation?.turnActive == true {
+              WorkingRow()
             }
             if let actionError = model.actionError {
               InlineError(text: actionError).padding(.leading, 32)
@@ -159,6 +173,7 @@ struct ConversationScreen: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
+          .readableWidth()
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
@@ -313,7 +328,7 @@ private struct ConversationComposer: View {
     model.state != nil && !model.sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  private var working: Bool { model.conversation?.status == .active }
+  private var working: Bool { model.conversation?.turnActive == true }
 
   var body: some View {
     ComposerDock(hasAbove: !model.queued.isEmpty || model.state?.authorization != nil) {

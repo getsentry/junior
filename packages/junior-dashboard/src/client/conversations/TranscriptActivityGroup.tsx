@@ -8,7 +8,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
   type RenderedTranscriptEntry,
@@ -39,10 +38,6 @@ export function isCollapsibleActivityEntry(
   // outcome.
   if (entry.kind === "message") {
     return isAgentInvocationResultMessage(entry.message);
-  }
-  // A Turn's captured memories stay visible, so the reader sees what it saved.
-  if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
   }
   return true;
 }

@@ -125,7 +125,7 @@ describe("object links API", () => {
       label: "Plan the private launch",
       objectType: "conversation",
       plugin: "junior",
-      status: "idle",
+      status: "done",
       title: "Plan the private launch",
       url: CONVERSATION_URL,
     });
@@ -341,6 +341,7 @@ describe("object links API", () => {
           draft: true,
           head: { ref: "feat/github-link-cards" },
           html_url: `${repo}/pull/34`,
+          mergeable: false,
           merged: false,
           number: 34,
           state: "open",
@@ -405,6 +406,8 @@ describe("object links API", () => {
         facts: {
           additions: 120,
           author: "byk",
+          // The live merge state: the Inbox says "Merge conflict".
+          mergeable: false,
           sourceBranch: "feat/github-link-cards",
           targetBranch: "main",
           type: "code_change",
