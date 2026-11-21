@@ -179,6 +179,8 @@ Sentry sends metric alerts only to an integration that is an action on the alert
 }
 ```
 
+For a metric monitor, add an alert that notifies the integration as a service. Sentry then sends each firing as an `event_alert` webhook for the monitor's metric issue. Junior publishes a firing at high priority as `metric_alert.critical` and one at medium priority as `metric_alert.warning`. The alert rule id is the monitor's legacy alert rule id, or the monitor id plus 1,000,000,000 when it has none. Junior does not publish resolved monitors or other issue alerts from this webhook.
+
 ## Watches
 
 Set `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.

@@ -16,6 +16,21 @@ import {
 } from "../events/metric-alert.js";
 import { sentrySlugDataSchema } from "../events/scope.js";
 
+// Sentry's `MetricIssue` group type id.
+const METRIC_ISSUE_TYPE_ID = 8001;
+// Sentry offsets a detector id by this to give a monitor with no legacy alert
+// rule an alert rule id. `metric_alert` webhooks send the same id.
+const DETECTOR_ALERT_RULE_ID_OFFSET = 1_000_000_000;
+
+/** Map a metric issue occurrence priority (Sentry `DetectorPriorityLevel`) to its alert state. */
+function metricIssueAction(
+  priority: number | null | undefined,
+): "critical" | "warning" | undefined {
+  if (priority === 75) return "critical";
+  if (priority === 50) return "warning";
+  return undefined;
+}
+
 // A level or priority that this plugin does not know counts as missing, so a
 // new Sentry value does not reject the webhook or match a filter by mistake.
 const issueLevelSchema = z
@@ -69,6 +84,43 @@ const metricAlertWebhookSchema = z
         })
         .passthrough(),
       web_url: z.string().url(),
+    }),
+    installation: z.object({ uuid: z.string().min(1) }).passthrough(),
+  })
+  .passthrough();
+
+// Sentry sends `event_alert.triggered` when a workflow's "notify via service"
+// (webhook) action names this app. That is the only alert action Sentry offers
+// for an alertable app without an alert-rule-action UI component, and it uses
+// it for metric monitors too. A monitor firing then comes as a metric issue
+// occurrence, not as a `metric_alert` webhook.
+// See sentry `send_alert_webhook_v2` and `WebhookActionHandler`.
+const eventAlertWebhookSchema = z
+  .object({
+    action: z.literal("triggered"),
+    data: z.object({
+      event: z
+        .object({
+          issue_url: z.string().url(),
+          occurrence: z
+            .object({
+              evidenceData: z
+                .object({
+                  alertId: z.coerce.string().min(1).nullish(),
+                  detectorId: z.coerce.number().int().positive(),
+                })
+                .passthrough(),
+              id: z.string().min(1),
+              issueTitle: z.string().optional(),
+              priority: z.number().int().nullish(),
+              subtitle: z.string().optional(),
+              type: z.literal(METRIC_ISSUE_TYPE_ID),
+            })
+            .passthrough(),
+          url: z.string().url(),
+          web_url: z.string().url(),
+        })
+        .passthrough(),
     }),
     installation: z.object({ uuid: z.string().min(1) }).passthrough(),
   })
@@ -156,12 +208,15 @@ function issueData(
   );
 }
 
-/** Trusted data on every metric alert event. See `metricAlertData`. */
+/**
+ * Trusted data on every metric alert event. See `metricAlertData`.
+ * `incidentId` is missing on a monitor firing that came as an issue alert.
+ */
 const metricAlertEventDataSchema = z
   .object({
     projects: z.array(sentrySlugDataSchema).min(1).optional(),
     alertRuleId: z.string().min(1),
-    incidentId: z.string().min(1),
+    incidentId: z.string().min(1).optional(),
     url: z.string().url(),
   })
   .strict();
@@ -289,6 +344,57 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   ];
 }
 
+/** Read the project slug from a Sentry project event API URL. */
+function projectSlug(eventUrl: string): string | undefined {
+  const segments = new URL(eventUrl).pathname.split("/").filter(Boolean);
+  const index = segments.indexOf("projects");
+  return index >= 0
+    ? segments[index + 2]?.toLowerCase() || undefined
+    : undefined;
+}
+
+/**
+ * Publish a metric monitor firing that Sentry sent as an issue alert as the
+ * same metric alert event that a `metric_alert` webhook gives. Issue alerts
+ * on other issue types are ignored.
+ */
+function normalizeEventAlertEvents(input: WebhookInput): EventInput[] {
+  const parsed = eventAlertWebhookSchema.safeParse(input.body);
+  if (!parsed.success) return [];
+
+  const { event } = parsed.data.data;
+  const { occurrence } = event;
+  const action = metricIssueAction(occurrence.priority);
+  const org = organizationSlug(event.issue_url);
+  const project = projectSlug(event.url);
+  if (!action || !org || !project) return [];
+
+  const eventType = `metric_alert.${action}` as const;
+  const alertRuleId =
+    occurrence.evidenceData.alertId ??
+    String(occurrence.evidenceData.detectorId + DETECTOR_ALERT_RULE_ID_OFFSET);
+  const resource = sentryMetricAlertResource({ alertRuleId, org });
+  // The monitor name and its condition text come from user-written rules.
+  const untrustedText = [occurrence.issueTitle, occurrence.subtitle]
+    .filter((part): part is string => Boolean(part))
+    .join("\n");
+  const base = {
+    // One occurrence per monitor state change. Sentry retries send the same one.
+    eventKey: `sentry:${resource.identifier}:occurrence:${occurrence.id}:${eventType}`,
+    eventType,
+    objectType: "item",
+    occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
+    trustedSummary: `${resource.label} is ${action}.`,
+    data: metricAlertData({ alertRuleId, url: event.web_url }, [project]),
+    ...(untrustedText ? { untrustedText } : undefined),
+  } satisfies Omit<EventInput, "identifier">;
+
+  return [
+    { ...base, identifier: resource.identifier },
+    { ...base, identifier: sentryProjectResource({ org, project }).identifier },
+  ];
+}
+
 /** Normalize one verified Sentry webhook into subscribable Sentry events. */
 export function normalizeSentryEvents(input: WebhookInput): EventInput[] {
   switch (input.hookResource) {
@@ -296,6 +402,8 @@ export function normalizeSentryEvents(input: WebhookInput): EventInput[] {
       return normalizeIssueEvents(input);
     case "metric_alert":
       return normalizeMetricAlertEvents(input);
+    case "event_alert":
+      return normalizeEventAlertEvents(input);
     default:
       return [];
   }
