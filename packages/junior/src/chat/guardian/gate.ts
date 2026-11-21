@@ -19,15 +19,16 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
-import type {
-  RootConversation,
-  ScriptCallStatus,
-  ToolActionDecision,
-  ToolActionEvidence,
-  ToolActionProposal,
-  ToolActionReviewDecision,
-  ToolActionReviewer,
-  ToolActionScript,
+import {
+  ToolActionProposalTooLargeError,
+  type RootConversation,
+  type ScriptCallStatus,
+  type ToolActionDecision,
+  type ToolActionEvidence,
+  type ToolActionProposal,
+  type ToolActionReviewDecision,
+  type ToolActionReviewer,
+  type ToolActionScript,
 } from "@/chat/guardian/proposal";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
@@ -470,6 +471,10 @@ async function prepareToolActionReview(
  */
 export const MAX_TOOL_ACTION_BATCH = 10;
 
+// Not a risk decision: the agent can make the same change in smaller calls.
+const PROPOSAL_TOO_LARGE_MESSAGE =
+  "This call is too large to review, so it was not run. Send a smaller change, such as a shorter input or several smaller calls.";
+
 /** Most Guardian reviews of one batch that run at the same time. */
 const MAX_CONCURRENT_REVIEWS = 4;
 
@@ -481,6 +486,7 @@ type ReviewStep =
       decision: ToolActionReviewDecision;
       proposal: ToolActionProposal;
     }
+  | { kind: "too_large" }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
 
 /** Create the core review path that prepares actions and enforces Guardian decisions. */
@@ -542,6 +548,10 @@ export function createToolActionReview(options: {
       if (signal?.aborted) {
         throw error;
       }
+      // Reject only this action; review still works for the rest of the Run.
+      if (error instanceof ToolActionProposalTooLargeError) {
+        return { kind: "too_large" };
+      }
       return {
         kind: "unavailable",
         error:
@@ -556,8 +566,8 @@ export function createToolActionReview(options: {
    * Count each attempt in the batch once, in batch order. An attempt with a
    * rejection adds one to the count from before the attempt, also when it
    * has allowed actions or spans several batches. An attempt with only
-   * allowed actions resets the count. Skipped and unavailable actions do not
-   * change it. Return the attempt state of each action.
+   * allowed actions resets the count. Skipped, too-large, and unavailable
+   * actions do not change it. Return the attempt state of each action.
    */
   const countAttempts = (
     actions: readonly ToolAction[],
@@ -616,6 +626,12 @@ export function createToolActionReview(options: {
   ): ToolActionReviewResult => {
     if (step.kind === "skipped") {
       return { allowed: true };
+    }
+    if (step.kind === "too_large") {
+      return {
+        allowed: false,
+        error: new ToolInputError(PROPOSAL_TOO_LARGE_MESSAGE),
+      };
     }
     if (step.kind === "unavailable") {
       options.onFatal(step.error);

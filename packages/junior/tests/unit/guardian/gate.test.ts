@@ -13,6 +13,7 @@ import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
 } from "@/chat/guardian/proposal";
+import { guardianPrompt } from "@/chat/guardian/reviewer";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -518,6 +519,65 @@ describe("tool action review", () => {
       cause: failure,
       name: "ToolActionReviewUnavailableError",
     });
+  });
+
+  it("rejects only an action too large to review and keeps the Run going", async () => {
+    const onDecision = vi.fn(async () => undefined);
+    const onFatal = vi.fn();
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Publish the report.",
+      },
+      onDecision,
+      onFatal,
+      reviewer: {
+        // Build the real prompt, so its size limit applies.
+        review: async (proposal) => {
+          guardianPrompt(proposal);
+          return {
+            decision: "allow",
+            reason: "Matches the request.",
+            riskLevel: "low",
+            userAuthorization: "high",
+          };
+        },
+      },
+    });
+    const tool = definition({ approvalMode: "review" });
+
+    const results = await reviewToolActions(
+      [
+        {
+          toolCallId: "large",
+          toolName: "generateReport",
+          tool,
+          input: { body: "x".repeat(200_000) },
+        },
+        // Under the limit, a large input still gets a full review.
+        {
+          toolCallId: "fits",
+          toolName: "generateReport",
+          tool,
+          input: { body: "y".repeat(150_000) },
+        },
+      ],
+      actionReview,
+    );
+
+    expect(results.get("large")).toMatchObject({
+      allowed: false,
+      error: {
+        name: "ToolInputError",
+        message: expect.stringContaining("too large to review"),
+      },
+    });
+    expect(results.get("fits")).toMatchObject({ allowed: true });
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(onDecision).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a batch over the limit before any review", async () => {

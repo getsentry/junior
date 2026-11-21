@@ -146,6 +146,17 @@ export interface ToolActionProposal {
   };
 }
 
+/**
+ * Thrown when a proposal is too large for Guardian to review. The gate
+ * rejects that one action instead of aborting the Run.
+ */
+export class ToolActionProposalTooLargeError extends Error {
+  constructor(maxChars: number) {
+    super(`Guardian action proposal exceeds ${maxChars} characters.`);
+    this.name = "ToolActionProposalTooLargeError";
+  }
+}
+
 /** Guardian capability for one schema-constrained action proposal. */
 export interface ToolActionReviewer {
   review(

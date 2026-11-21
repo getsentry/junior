@@ -14,6 +14,7 @@ import {
   RISK_LEVELS,
   USER_AUTHORIZATION_LEVELS,
   type RootConversation,
+  ToolActionProposalTooLargeError,
   type ToolActionDecision,
   type ToolActionProposal,
   type ToolActionReviewDecision,
@@ -97,9 +98,7 @@ export function guardianPrompt(proposal: ToolActionProposal): string {
   const { rootConversation, ...action } = proposal;
   const proposalJson = JSON.stringify(z.json().parse(action), null, 2);
   if (proposalJson.length > MAX_PROPOSAL_CHARS) {
-    throw new Error(
-      `Guardian action proposal exceeds ${MAX_PROPOSAL_CHARS} characters.`,
-    );
+    throw new ToolActionProposalTooLargeError(MAX_PROPOSAL_CHARS);
   }
   // An empty section adds nothing.
   const showRoot =
