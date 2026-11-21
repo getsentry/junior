@@ -79,7 +79,7 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
   ).toBe(501);
 });
 
-it("serves the merged Craft release blocker with no Dependabot alerts", async () => {
+it("serves the merged Craft release blocker with open alerts that only a person can dismiss", async () => {
   const api = "https://api.github.com/repos/getsentry/craft";
   const serve = (path: string) =>
     interceptTestHttp({
@@ -91,7 +91,23 @@ it("serves the merged Craft release blocker with no Dependabot alerts", async ()
     number: 983,
     merged: true,
   });
-  expect(await serve("/dependabot/alerts")).toEqual([]);
+  expect(await serve("/dependabot/alerts")).toMatchObject([
+    {
+      number: 1,
+      state: "open",
+      dependency: { package: { name: "picomatch" } },
+    },
+    { number: 2, state: "open" },
+  ]);
+  const dismiss = await interceptTestHttp({
+    provider: "github",
+    request: new Request(`${api}/dependabot/alerts/1`, {
+      body: JSON.stringify({ state: "dismissed" }),
+      method: "PATCH",
+    }),
+    upstreamUrl: new URL(`${api}/dependabot/alerts/1`),
+  });
+  expect(dismiss.status).toBe(403);
 });
 
 it("answers the pull request tool's GraphQL read of the Craft release blocker", async () => {

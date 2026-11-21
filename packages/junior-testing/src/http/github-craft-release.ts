@@ -1,5 +1,6 @@
-// The last blocker of a Craft release, merged. Its Dependabot alerts list is
-// empty: dismissing the alerts is the person's task in the eval.
+// The last blocker of a Craft release, merged. Two picomatch Dependabot
+// alerts stay open, and the app cannot dismiss them: that is the person's
+// task in the eval.
 const repo = "getsentry/craft";
 const sha = "9830000000000000000000000000000000000983";
 const web = `https://github.com/${repo}`;
@@ -18,6 +19,21 @@ const pullRequest = {
   head: { ref: "fix/picomatch-patch", sha },
   base: { ref: "master" },
 };
+
+const alerts = [1, 2].map((number) => ({
+  number,
+  state: "open",
+  html_url: `${web}/security/dependabot/${number}`,
+  dependency: {
+    package: { ecosystem: "npm", name: "picomatch" },
+    manifest_path: "package.json",
+  },
+  security_advisory: {
+    severity: "high",
+    summary: "picomatch ReDoS in extglob patterns",
+  },
+}));
+const alertPath = new RegExp(`^${api}/dependabot/alerts/\\d+$`);
 
 function isPullRequestQuery(body: {
   query?: string;
@@ -95,6 +111,13 @@ export async function interceptTestGitHubCraftReleaseHttp(
       },
     });
   }
+  // Only a person can dismiss the alerts.
+  if (request.method === "PATCH" && alertPath.test(url.pathname)) {
+    return Response.json(
+      { message: "Resource not accessible by integration", status: "403" },
+      { status: 403 },
+    );
+  }
   if (request.method !== "GET") return undefined;
   switch (url.pathname) {
     case `${api}/issues/983`:
@@ -109,7 +132,7 @@ export async function interceptTestGitHubCraftReleaseHttp(
         },
       ]);
     case `${api}/dependabot/alerts`:
-      return Response.json([]);
+      return Response.json(alerts);
     default:
       return undefined;
   }

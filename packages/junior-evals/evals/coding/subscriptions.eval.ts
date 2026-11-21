@@ -177,8 +177,8 @@ function mergedWebhook() {
 }
 
 const MAYA = person("UMAYA", "Maya");
-// The shared GitHub HTTP fixture serves this PR, merged, with no Dependabot
-// alerts.
+// The shared GitHub HTTP fixture serves this PR, merged, with two open
+// picomatch alerts that only a person can dismiss.
 const RELEASE_BLOCKER = "getsentry/craft#983";
 
 /** GitHub's webhook for the merge of a release's last blocker. */
