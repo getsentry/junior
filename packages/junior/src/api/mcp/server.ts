@@ -18,7 +18,6 @@ import {
   mcpToolResult,
   type McpToolContext,
 } from "./tool-context";
-import { registerCancelQueuedMessagesTool } from "./tools/cancel-queued-messages";
 import { registerCreateConversationTool } from "./tools/create-conversation";
 import { registerGetAutomationTool } from "./tools/get-automation";
 import { registerGetConversationTool } from "./tools/get-conversation";
@@ -29,7 +28,6 @@ import { registerMarkConversationReadTool } from "./tools/mark-conversation-read
 import { registerSearchConversationsTool } from "./tools/search-conversations";
 import { registerSearchReviewItemsTool } from "./tools/search-review-items";
 import { registerSendMessageTool } from "./tools/send-message";
-import { registerStopConversationTool } from "./tools/stop-conversation";
 
 type RegisterTool = (server: McpServer, context: McpToolContext) => void;
 
@@ -46,11 +44,7 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
     registerGetConversationTool,
     registerListConversationMessagesTool,
   ],
-  "conversations:manage": [
-    registerMarkConversationReadTool,
-    registerStopConversationTool,
-    registerCancelQueuedMessagesTool,
-  ],
+  "conversations:manage": [registerMarkConversationReadTool],
   "conversations:write": [
     registerCreateConversationTool,
     registerSendMessageTool,
@@ -68,7 +62,7 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
 function registerOperationTool(
   server: McpServer,
   operation: ApiOperation,
-  { user }: McpToolContext,
+  { queue, user }: McpToolContext,
 ): void {
   server.registerTool(
     operation.name,
@@ -81,7 +75,7 @@ function registerOperationTool(
     },
     async (input) => {
       try {
-        return mcpToolResult(await operation.run(user, input));
+        return mcpToolResult(await operation.run(user, input, { queue }));
       } catch (error) {
         return apiToolError(error);
       }

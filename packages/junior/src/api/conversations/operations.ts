@@ -9,6 +9,10 @@ import {
   conversationAutoArchiveSchema,
 } from "../schema/conversation-archive";
 import {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+} from "../schema/conversation-pending-messages";
+import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
 } from "../schema/conversation-pin";
@@ -16,12 +20,15 @@ import {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
+import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { archiveConversation } from "./archive";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
 } from "./auto-archive";
+import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { pinConversation } from "./pin";
+import { stopConversationTurnForViewer } from "./stop";
 import { setConversationSubscription } from "./subscription";
 
 // The route param, which MCP takes as an input field.
@@ -102,11 +109,42 @@ export const setConversationSubscriptionOperation = defineApiOperation({
     setConversationSubscription(viewer, conversationId, body),
 });
 
+/** Stop the running Turn and every child agent below it. */
+export const stopConversationOperation = defineApiOperation({
+  name: "stopConversation",
+  title: "Stop conversation",
+  description:
+    "Stop one of your conversations: its running turn and every child agent below it. Until you send the conversation a message, watch events of it and its child agents are saved to the conversation but start no turn. Messages that wait for the turn are dropped. It starts no new work.",
+  scope: "conversations:manage",
+  input: z.object(conversationIdInput).strict(),
+  output: stopConversationTurnResponseSchema,
+  annotations: { ...writeAnnotations, destructiveHint: true },
+  run: (viewer, { conversationId }, services) =>
+    stopConversationTurnForViewer(viewer, conversationId, services),
+});
+
+/** Drop the messages that wait for the running Turn. The Turn continues. */
+export const cancelQueuedMessagesOperation = defineApiOperation({
+  name: "cancelQueuedMessages",
+  title: "Cancel queued messages",
+  description:
+    "Drop the messages that wait for the running turn of one of your conversations. Without a filter, it drops every one. The running turn continues.",
+  scope: "conversations:manage",
+  input:
+    cancelConversationPendingMessagesBodySchema.extend(conversationIdInput),
+  output: cancelConversationPendingMessagesResponseSchema,
+  annotations: { ...writeAnnotations, destructiveHint: true },
+  run: (viewer, { conversationId, ...body }) =>
+    cancelConversationPendingMessagesForViewer(viewer, conversationId, body),
+});
+
 /** Every Conversation operation, for the MCP server. */
 export const conversationOperations = [
+  cancelQueuedMessagesOperation,
   archiveConversationOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
+  stopConversationOperation,
 ];

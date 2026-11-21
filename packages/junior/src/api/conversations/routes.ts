@@ -49,8 +49,6 @@ import {
   conversationInviteResponseSchema,
 } from "../schema/conversation-subscription";
 import {
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
   steerConversationPendingMessagesBodySchema,
   steerConversationPendingMessagesResponseSchema,
   conversationDetailWithMailboxReportSchema,
@@ -64,7 +62,6 @@ import {
 } from "../schema/conversation-title";
 import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
-import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
   attachObjectLinkBodySchema,
   attachObjectLinkResponseSchema,
@@ -97,10 +94,12 @@ import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
   archiveConversationOperation,
+  cancelQueuedMessagesOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
+  stopConversationOperation,
 } from "./operations";
 import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
@@ -121,11 +120,9 @@ import { readConversationEvents } from "./event-list";
 import { serializeConversationFeed } from "./feed-response";
 import { readConversationFeed } from "./list";
 import { readConversationOutline } from "./outline";
-import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
-import { stopConversationTurnForViewer } from "./stop";
 import {
   cancelConversationWatchForViewer,
   requireConversationWatches,
@@ -287,19 +284,7 @@ export function createConversationRoutes(
   app.post(
     "/:conversationId/stop",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    async (context) => {
-      const viewer = context.get("viewer");
-      const { conversationId } = context.req.valid("param");
-      return jsonResponse(
-        stopConversationTurnResponseSchema,
-        await stopConversationTurnForViewer(viewer, conversationId, options),
-      );
-    },
+    apiOperationHandler(stopConversationOperation, options),
   );
 
   app.post(
@@ -373,13 +358,13 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/archive",
     requireViewer,
-    apiOperationHandler(archiveConversationOperation),
+    apiOperationHandler(archiveConversationOperation, options),
   );
 
   app.patch(
     "/:conversationId/pin",
     requireViewer,
-    apiOperationHandler(pinConversationOperation),
+    apiOperationHandler(pinConversationOperation, options),
   );
 
   app.patch(
@@ -409,7 +394,7 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/subscription",
     requireViewer,
-    apiOperationHandler(setConversationSubscriptionOperation),
+    apiOperationHandler(setConversationSubscriptionOperation, options),
   );
 
   app.post(
@@ -529,13 +514,13 @@ export function createConversationRoutes(
   app.post(
     "/archive-done",
     requireViewer,
-    apiOperationHandler(archiveDoneConversationsOperation),
+    apiOperationHandler(archiveDoneConversationsOperation, options),
   );
 
   app.patch(
     "/:conversationId/auto-archive",
     requireViewer,
-    apiOperationHandler(setConversationAutoArchiveOperation),
+    apiOperationHandler(setConversationAutoArchiveOperation, options),
   );
 
   app.post(
@@ -741,29 +726,7 @@ export function createConversationRoutes(
   app.delete(
     "/:conversationId/pending-messages",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      cancelConversationPendingMessagesBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) => {
-      const viewer = context.get("viewer");
-      const { conversationId } = context.req.valid("param");
-      const body = context.req.valid("json");
-      return jsonResponse(
-        cancelConversationPendingMessagesResponseSchema,
-        await cancelConversationPendingMessagesForViewer(
-          viewer,
-          conversationId,
-          body,
-        ),
-      );
-    },
+    apiOperationHandler(cancelQueuedMessagesOperation, options),
   );
 
   app.get(

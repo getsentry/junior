@@ -9,9 +9,15 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { Context } from "hono";
 import type * as z from "zod";
 import type { User } from "@sentry/junior-plugin-api";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { jsonResponse, throwApiError } from "./http";
 import type { McpScope } from "./mcp/oauth/scopes";
 import type { AuthenticatedApiEnv } from "./route";
+
+/** Services that both surfaces give an operation. */
+export interface ApiOperationServices {
+  queue: ConversationWorkQueue;
+}
 
 /**
  * One operation that a viewer can run. `input` holds the route params and
@@ -32,7 +38,11 @@ export interface ApiOperation<
   annotations: Required<
     Pick<ToolAnnotations, "destructiveHint" | "idempotentHint" | "readOnlyHint">
   >;
-  run: (viewer: User, input: z.output<TInput>) => Promise<z.input<TOutput>>;
+  run: (
+    viewer: User,
+    input: z.output<TInput>,
+    services: ApiOperationServices,
+  ) => Promise<z.input<TOutput>>;
 }
 
 /** Define an operation and keep its input and output types. */
@@ -62,7 +72,7 @@ async function readJsonBody(
 export function apiOperationHandler<
   TInput extends z.ZodObject,
   TOutput extends z.ZodObject,
->(operation: ApiOperation<TInput, TOutput>) {
+>(operation: ApiOperation<TInput, TOutput>, services: ApiOperationServices) {
   return async (context: Context<AuthenticatedApiEnv>): Promise<Response> => {
     const body = await readJsonBody(context);
     // A body that is not an object fails the input schema as it is.
@@ -76,7 +86,7 @@ export function apiOperationHandler<
     }
     return jsonResponse(
       operation.output,
-      await operation.run(context.get("viewer"), input.data),
+      await operation.run(context.get("viewer"), input.data, services),
     );
   };
 }
