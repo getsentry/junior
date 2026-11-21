@@ -29,6 +29,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 vi.mock("@/chat/plugins/viewer", () => ({
+  findUserByReference: vi.fn(),
   readIdentityById: vi.fn(),
   resolveViewerUser: resolveViewerUserMock,
 }));

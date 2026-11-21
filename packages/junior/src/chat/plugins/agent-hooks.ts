@@ -84,6 +84,7 @@ import { createPluginWatches } from "@/chat/plugins/watches";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import {
+  findUserByReference,
   readActorIdentity,
   readIdentityById,
   resolveViewerUser,
@@ -927,6 +928,7 @@ export function getPluginTools(
             ...(resolved?.user ? { userId: resolved.user.id } : undefined),
           });
         },
+        findUser: findUserByReference,
         replaceSlackMentions,
       },
       workspaces: {

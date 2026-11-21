@@ -7,6 +7,7 @@ import {
 } from "@/chat/identities/actor";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
+  findUserByReferenceFromSql,
   readActorIdentityFromSql,
   readIdentityByIdFromSql,
 } from "@/chat/plugins/viewer";
@@ -44,6 +45,28 @@ describe("identity read", () => {
         after?.user?.identities.find((i) => i.provider === "github")?.handle,
       ).toBe("person");
       expect(await readIdentityByIdFromSql(db, "missing")).toBeUndefined();
+
+      // A Slack mention and an email find the User. Other text finds nobody.
+      const references = [
+        "<@U123|person>",
+        " Person@Example.com ",
+        "<@U999>",
+        "nobody@example.com",
+        "U123",
+      ];
+      const found = await Promise.all(
+        references.map(
+          async (reference) =>
+            (await findUserByReferenceFromSql(db, reference))?.id,
+        ),
+      );
+      expect(found).toEqual([
+        slack.userId,
+        slack.userId,
+        undefined,
+        undefined,
+        undefined,
+      ]);
     } finally {
       await fixture.close();
     }

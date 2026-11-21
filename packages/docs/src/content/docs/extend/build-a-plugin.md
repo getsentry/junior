@@ -368,7 +368,10 @@ not know the person's timezone. A tool that sends model text to your provider
 must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
 reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
 rewrites every string in `input`, outside Markdown code. A Slack user becomes
-`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
+`@handle` of their linked account at `provider`, or their name. When a tool
+input names a person, call `ctx.users.findUser(reference)` to map a Slack
+mention such as `<@U123>`, or an email, to the Junior user. Read their linked
+account at your provider from `identities`. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,

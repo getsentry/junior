@@ -840,6 +840,13 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      */
     resolveTimezone(): Promise<string>;
     /**
+     * Find the User that a person reference names: a Slack mention such as
+     * `<@U123>`, or an email. Read their linked provider accounts from
+     * `identities`. Returns nothing for other text, or when no User or more
+     * than one User matches.
+     */
+    findUser(reference: string): Promise<User | undefined>;
+    /**
      * Rewrite Slack mention syntax in every string of `value`, such as a tool
      * input that goes to `provider`. A Slack user becomes `@handle` of their
      * linked `provider` account, or else their name. Markdown code stays as

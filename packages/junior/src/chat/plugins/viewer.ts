@@ -145,6 +145,53 @@ export async function findUserByEmail(
   return await findUserByEmailFromSql(getDb(), email);
 }
 
+// A Slack mention, such as `<@U123>` or `<@U123|name>`.
+const SLACK_MENTION = /^<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>$/;
+
+/**
+ * Find the one User that a person reference names: a Slack mention or an
+ * email. Return undefined for other text, or when no User or more than one
+ * User matches.
+ */
+export async function findUserByReferenceFromSql(
+  db: JuniorDatabase,
+  reference: string,
+): Promise<User | undefined> {
+  const value = reference.trim();
+  const slackUserId = SLACK_MENTION.exec(value)?.[1];
+  if (slackUserId) {
+    const rows = await db
+      .selectDistinct({
+        displayName: juniorUsers.displayName,
+        id: juniorUsers.id,
+        isAdmin: juniorUsers.isAdmin,
+        primaryEmail: juniorUsers.primaryEmail,
+      })
+      .from(juniorIdentities)
+      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .where(
+        and(
+          eq(juniorIdentities.kind, "user"),
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, slackUserId),
+        ),
+      )
+      .limit(2);
+    const [row] = rows;
+    return rows.length === 1 && row ? await readUserById(db, row) : undefined;
+  }
+  return value.includes("@")
+    ? await findUserByEmailFromSql(db, value)
+    : undefined;
+}
+
+/** Find the one User that a Slack mention or an email names. */
+export async function findUserByReference(
+  reference: string,
+): Promise<User | undefined> {
+  return await findUserByReferenceFromSql(getDb(), reference);
+}
+
 /** Update one canonical user's display name in SQL. */
 export async function updateViewerDisplayNameFromSql(
   db: JuniorDatabase,
