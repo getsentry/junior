@@ -129,6 +129,13 @@ describe("snoozes", () => {
     const unchanged = await readCountAgain();
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
+    // So does the list.
+    const listRead = await asAna.request("/inbox-items?for=viewer");
+    const readListAgain = () =>
+      asAna.request("/inbox-items?for=viewer", {
+        [CONTENT_VERSION_HEADER]: listRead.headers.get(CONTENT_VERSION_HEADER)!,
+      });
+    expect((await readListAgain()).status).toBe(304);
 
     // A row snooze is one snooze per open item in it.
     const created = await asAna.snooze(
@@ -139,6 +146,7 @@ describe("snoozes", () => {
     expect(await storedStates()).toEqual(["snoozed", "snoozed"]);
     expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
     expect((await readCountAgain()).status).toBe(200);
+    expect((await readListAgain()).status).toBe(200);
     expect(await feedWaitingIds(ana.id)).toEqual([]);
     const snoozed = await asAna.snoozed();
     expect(snoozed.count).toBe(2);
