@@ -1,7 +1,18 @@
-import { and, desc, eq, gt, gte, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  notLike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
+  TODO_INBOX_ITEM_KEY_PREFIX,
   inboxItemNeedsInput,
   inboxItemOwnedByConversation,
 } from "@/chat/inbox-items/access";
@@ -199,9 +210,12 @@ function conversationWaitsOnStarterSql(
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
+  // A To-do's item waits only on its assignee, so it shows only to them,
+  // through their tree state and Inbox. It does not change this status.
   const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
     inboxItemOwnedByConversation(conversation.conversationId),
     inboxItemNeedsInput(),
+    notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
   )})`;
   return sql<ConversationReportStatus>`case
     when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'

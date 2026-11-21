@@ -120,6 +120,16 @@ describe("To-dos for a person in the Inbox", () => {
     expect(await asBob.count()).toEqual(
       expect.objectContaining({ needsViewer: 0 }),
     );
+    // The Conversation waits on Ana alone. Its shared status does not
+    // change, so it does not show as waiting to Bob.
+    const detail = async (viewer: typeof asAna) =>
+      await (await viewer.request(`/conversations/${ROOT}`)).json();
+    expect(await detail(asAna)).toEqual(
+      expect.objectContaining({ status: "done", treeState: "needs_you" }),
+    );
+    expect(await detail(asBob)).toEqual(
+      expect.objectContaining({ status: "done", treeState: "done" }),
+    );
 
     // Only Done closes it. Dismiss and answers are for other items.
     expect((await asAna.act(item!.id, "dismiss")).status).toBe(400);

@@ -6,8 +6,9 @@
  *
  * The item is private and links no Conversation, so only its assignee sees
  * it: no other person, no agent, and no Slack thread. The Conversation owns
- * it, so it stacks under the Conversation's root and the Conversation
- * waits on the person (`needs_input`). An assignee who cannot see the
+ * it, so it stacks under the Conversation's root and the Conversation's
+ * tree waits on the person (`needs_you`). The shared status does not
+ * change. An assignee who cannot see the
  * Conversation's content gets no item.
  */
 import { and, eq, inArray, like } from "drizzle-orm";

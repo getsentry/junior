@@ -77,7 +77,9 @@ how the dashboard groups and acts on its rows.
 - A To-do for a person is an open action for that person alone, in the
   stack of its Conversation. Its title and notes follow the To-do. Only the
   assignee sees it, and only while they can see the Conversation's private
-  content. No other person and no agent sees or changes it.
+  content. No other person and no agent sees or changes it. The
+  Conversation waits on the assignee alone; its shared status does not
+  change.
 - Done is the only way to close a "To do for you" item, and it marks the
   To-do done. It starts no Turn: the agent sees the change in its next
   Turn. It cannot be dismissed, and Snooze works as on any row.
