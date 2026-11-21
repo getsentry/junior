@@ -251,9 +251,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     // They use the action bar's words.
     await expect(quick("Snooze")).toHaveText("Snooze");
     await expect(quick("Dismiss")).toHaveText("Dismiss");
-    // Open goes to the child that asked, at its ask.
+    // The row has no main step, so the last quick action expands it. The
+    // open card's Open goes to the child that asked, at its ask.
     const open = row.getByRole("link", { name: "Open conversation" });
-    await expect(open).toBeVisible();
+    await expect(open).toHaveCount(0);
+    await quick("Expand").click();
     await expect(open).toHaveAttribute(
       "href",
       `/conversations/${encodeURIComponent(childReview.owner.id)}?ask=${childReview.id}`,

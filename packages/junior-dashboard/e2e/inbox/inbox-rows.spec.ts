@@ -588,7 +588,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     const names = await row
       .locator('[data-inbox-slot="meta"] :is(a, button)')
       .evaluateAll((nodes) =>
-        nodes.map((node) => node.getAttribute("aria-label") ?? ""),
+        nodes.map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+        ),
       );
     expect(names[0]).toBe("Dismiss");
     expect(names.at(-1)).toBe("Expand");
