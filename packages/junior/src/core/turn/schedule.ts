@@ -2,8 +2,8 @@
 // already with its Turn, under the Conversation lock, and publishes a Turn
 // only after that transaction commits. A message published before the commit
 // can reach a worker that does not see the Turn yet: the claim finds nothing,
-// the message is acknowledged, and the Turn never runs. The caller's
-// `assignTurn` picks which Turn takes the input.
+// the message is acknowledged, and the Turn never runs. `assignTurn` picks
+// which Turn takes the input.
 import { randomUUID } from "node:crypto";
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
@@ -22,20 +22,6 @@ type IncomingTurnInput = TurnInput & { source: Source["kind"] };
 /** The Turn that an input went to, and whether the input created it. */
 type ScheduleResult = { turnId: string; created: boolean };
 
-type ScheduleOptions = {
-  /**
-   * Chooses the Turn of an input that is not a duplicate: join the open
-   * Turn of the Conversation, or create a Turn with a priority. It runs
-   * under the Conversation lock, so `openTurn` cannot change before the write.
-   * `openTurn` is the Conversation's queued or running Turn, if any.
-   * It only picks the Turn; core writes the input.
-   */
-  assignTurn: (
-    openTurn: Turn | undefined,
-    input: IncomingTurnInput,
-  ) => { join: string } | { create: { priority: number } };
-};
-
 type Placement = ScheduleResult & { publish: boolean };
 
 // Not exported: scheduleInput is the only writer, so every input row is
@@ -50,10 +36,23 @@ async function addInput(
     .values({ ...input, id: randomUUID() });
 }
 
+/**
+ * Junior's rule for which Turn takes an input that is not a duplicate. Core
+ * owns it, so every Source schedules the same way. Later rules, such as
+ * superseding a Turn or checking for the same Actor, go here. It runs under
+ * the Conversation lock, so `openTurn`, the Conversation's queued or running
+ * Turn if any, cannot change before the write.
+ */
+function assignTurn(
+  openTurn: Turn | undefined,
+): { join: Turn } | { create: { priority: number } } {
+  // v1 has one Actor, so an input joins the open Turn or starts one.
+  return openTurn ? { join: openTurn } : { create: { priority: 0 } };
+}
+
 async function placeInput(
   executor: JuniorSqlDatabase,
   input: IncomingTurnInput,
-  { assignTurn }: ScheduleOptions,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
   const existing = await findInputTurn(executor, input);
@@ -67,16 +66,11 @@ async function placeInput(
       publish: existing.state === "queued",
     };
   }
-  const openTurn = await findOpenTurn(executor, input.conversationId);
-  const choice = assignTurn(openTurn, input);
+  const choice = assignTurn(await findOpenTurn(executor, input.conversationId));
   if ("join" in choice) {
-    if (choice.join !== openTurn?.turnId) {
-      throw new Error(
-        `assignTurn joined Turn ${choice.join}, but the open Turn is ${openTurn?.turnId ?? "none"}`,
-      );
-    }
-    await addInput(executor, { ...inboxInput, turnId: openTurn.turnId });
-    return { turnId: openTurn.turnId, created: false, publish: false };
+    const { turnId } = choice.join;
+    await addInput(executor, { ...inboxInput, turnId });
+    return { turnId, created: false, publish: false };
   }
   const turn = await createTurn(executor, {
     conversationId: input.conversationId,
@@ -97,12 +91,11 @@ async function placeInput(
 export async function scheduleInput(
   executor: JuniorSqlDatabase,
   input: IncomingTurnInput,
-  options: ScheduleOptions,
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
     input.conversationId,
-    () => placeInput(executor, input, options),
+    () => placeInput(executor, input),
   );
   if (placement.publish) {
     await publishTurnStep(placement.turnId);
