@@ -1,5 +1,7 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubFixture } from "./github-db";
+import { mswServer } from "./msw";
 import {
   DEDUPE_KEY,
   PULL_URL,
@@ -296,6 +298,44 @@ describe("next action item", () => {
         notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
       });
       expect(calls).toHaveLength(4);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reuses one installation token for later webhooks", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["clean"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    let minted = 0;
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () => {
+          minted += 1;
+          return HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          });
+        },
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, []);
+      await webhook.handler(checkSuiteCompleted());
+      await webhook.handler(reviewSubmitted("approved"));
+      expect(requests).toEqual(["pull", "pull"]);
+      expect(minted).toBe(1);
     } finally {
       await fixture.close();
     }

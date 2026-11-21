@@ -9,15 +9,23 @@ import type {
   PluginCredentialResult,
   PluginGrant,
   PluginProviderAccount,
+  PluginState,
   PluginStoredTokens,
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { sendConditionalRequest } from "./conditional-requests.js";
 import {
-  type GitHubAppPermissions,
-  readGrantPermissions,
-} from "./permissions.js";
+  parseInstallationTokenResponse,
+  readInstallationPermissions,
+} from "./installation-responses.js";
+import {
+  type InstallationToken,
+  type InstallationTokens,
+  reuseInstallationToken,
+} from "./installation-tokens.js";
+import type { GitHubAppPermissions } from "./permissions.js";
 
 export type GitHubGrantName =
   | "installation-read"
@@ -40,6 +48,8 @@ export type GitHubGrant = PluginGrant & {
 interface GitHubRequestParams {
   body?: unknown;
   method?: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
   token: string;
 }
 
@@ -84,6 +94,8 @@ interface InstallationCredentialBaseOptions {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }
 
 type InstallationCredentialOptions = InstallationCredentialBaseOptions &
@@ -172,13 +184,6 @@ const oauthTokenResponseSchema = z.object({
   refresh_token: z.unknown().optional(),
   refresh_token_expires_in: z.unknown().optional(),
   scope: z.unknown().optional(),
-});
-const installationTokenResponseSchema = z.object({
-  expires_at: z.unknown().optional(),
-  token: z.unknown().optional(),
-});
-const installationPermissionsSchema = z.object({
-  permissions: z.record(z.string(), z.unknown()),
 });
 const userAccountSchema = z.object({
   html_url: z.unknown().optional(),
@@ -297,16 +302,22 @@ export async function githubRequest(
   path: string,
   params: GitHubRequestParams,
 ): Promise<unknown> {
-  const response = await fetch(`${apiBase}${path}`, {
-    method: params.method ?? "GET",
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${params.token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(params.body ? { "Content-Type": "application/json" } : undefined),
-    },
-    ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
-  });
+  const method = params.method ?? "GET";
+  const url = `${apiBase}${path}`;
+  const responses = method === "GET" ? params.responses : undefined;
+  const response = await sendConditionalRequest(responses, url, (headers) =>
+    fetch(url, {
+      method,
+      headers: {
+        ...headers,
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${params.token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(params.body ? { "Content-Type": "application/json" } : undefined),
+      },
+      ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
+    }),
+  );
 
   const text = await response.text();
   let parsed: unknown;
@@ -543,40 +554,6 @@ export function credentialUnavailable(message: string): PluginCredentialResult {
     type: "unavailable",
     message,
   };
-}
-
-function parseInstallationTokenResponse(value: unknown): {
-  expiresAtMs: number;
-  token: string;
-} {
-  const parsed = installationTokenResponseSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error("GitHub installation token response is invalid");
-  }
-  const data = parsed.data;
-  const token = data["token"];
-  if (typeof token !== "string" || !token.trim()) {
-    throw new Error("GitHub installation token response missing token");
-  }
-  const expiresAt = data["expires_at"];
-  const expiresAtMs =
-    typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-    throw new Error(
-      "GitHub installation token response returned invalid expires_at",
-    );
-  }
-  return { token, expiresAtMs };
-}
-
-function readInstallationPermissions(
-  installation: unknown,
-): Record<string, "read"> {
-  const parsed = installationPermissionsSchema.safeParse(installation);
-  if (!parsed.success) {
-    throw new Error("GitHub installation response missing permissions");
-  }
-  return readGrantPermissions(parsed.data.permissions);
 }
 
 function decodeGitHubPathSegment(value: string): string | undefined {
@@ -863,10 +840,24 @@ async function issueUserCredential(
   return credentialNeeded("Your GitHub authorization has expired.", scope);
 }
 
-/** Issue a bounded raw token for plugin-owned GitHub API calls. */
+/**
+ * Issue a bounded raw token for plugin-owned GitHub API calls. With
+ * `tokens`, reuse a token of the same scope.
+ */
 export async function issueInstallationToken(
   options: InstallationCredentialOptions,
-): Promise<{ expiresAtMs: number; token: string }> {
+): Promise<InstallationToken> {
+  if (!options.tokens || options.loadPermissions) {
+    return await mintInstallationToken(options);
+  }
+  return await reuseInstallationToken(options.tokens, options, () =>
+    mintInstallationToken(options),
+  );
+}
+
+async function mintInstallationToken(
+  options: InstallationCredentialOptions,
+): Promise<InstallationToken> {
   const appId = requireEnv(options.appIdEnv);
   const installationIdRaw = requireEnv(options.installationIdEnv);
   const installationId = Number(installationIdRaw);

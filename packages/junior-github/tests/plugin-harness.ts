@@ -33,7 +33,7 @@ export function signedRequest(input: {
 }
 
 /** Plugin state in memory, with expiry. */
-function memoryState(): PluginState {
+export function memoryState(): PluginState {
   const stored = new Map<string, { expiresAtMs: number; value: unknown }>();
   const live = (key: string) => {
     const entry = stored.get(key);
