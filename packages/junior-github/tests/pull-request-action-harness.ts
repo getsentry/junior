@@ -417,13 +417,14 @@ export function route(
         async close(input) {
           if (!isReady(input.dedupeKey)) {
             otherCloses.push(input.dedupeKey);
-            return;
+            return false;
           }
           if (failures.close > 0) {
             failures.close -= 1;
             throw new Error("Inbox is down");
           }
           calls.push({ conversationId, input, kind: "close" });
+          return true;
         },
       };
     },
