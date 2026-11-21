@@ -218,6 +218,7 @@ interface SandboxFixtureOptions {
   sandboxId?: string;
   /** The stored ref of an earlier Run. Wins over `sandboxId`. */
   sandboxRef?: SandboxRef;
+  startsTurn?: boolean;
   onSandboxRefChanged?: (ref: SandboxRef) => void;
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
@@ -293,6 +294,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
   let access: ReturnType<typeof createSandbox> | undefined;
   const getAccess = () =>
     (access ??= createSandbox({
+      startsTurn: options.startsTurn,
       sandboxRef: options.sandboxRef
         ? options.sandboxRef
         : options.sandboxId
@@ -3328,7 +3330,7 @@ describe("createTestSandbox", () => {
     },
   );
 
-  it("replaces a session near the provider's session cap before work starts", async () => {
+  it("replaces a session near the provider's session cap when a Turn starts", async () => {
     const oldSandbox = makeSandbox("sbx_rotate");
     oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
     const newSandbox = makeSandbox("sbx_rotate");
@@ -3338,6 +3340,7 @@ describe("createTestSandbox", () => {
       .mockResolvedValueOnce(newSandbox);
 
     const executor = createTestSandbox({
+      startsTurn: true,
       sandboxRef: {
         id: "sbx_rotate",
         toolSession: {
@@ -3358,6 +3361,32 @@ describe("createTestSandbox", () => {
     expect(result.result.details["sandbox_notice"]).toEqual(
       expect.stringContaining("check the checkout"),
     );
+  });
+
+  it("keeps an old session when a later Run resumes the Turn", async () => {
+    const oldSandbox = makeSandbox("sbx_no_rotate");
+    oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
+    sandboxGetMock.mockResolvedValueOnce(oldSandbox);
+
+    const executor = createTestSandbox({
+      startsTurn: false,
+      sandboxRef: {
+        id: "sbx_no_rotate",
+        toolSession: {
+          sandboxId: "sbx_no_rotate",
+          sessionId: "sbx_no_rotate_session",
+        },
+      },
+    });
+    executor.configureSkills([]);
+    const result = await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "git status" },
+    });
+
+    expect(oldSandbox.stop).not.toHaveBeenCalled();
+    expect(oldSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(result.result.details).not.toHaveProperty("sandbox_notice");
   });
 
   it("keeps a signal exit as the command result while its session is live", async () => {

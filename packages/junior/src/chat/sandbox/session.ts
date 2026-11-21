@@ -46,9 +46,8 @@ const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
-// Vercel stops a session 24 hours after it starts. Replace an older session
-// before work starts, so the cap does not stop a command in the middle of a
-// Turn.
+// Vercel stops a session 24 hours after it starts. A Turn replaces an older
+// session before work starts, so the cap does not stop a command mid-Turn.
 const SESSION_ROTATE_AFTER_MS = 20 * 60 * 60 * 1000;
 
 interface AcquiredSandbox {
@@ -89,6 +88,11 @@ interface SandboxCandidate extends ActiveSandbox {
 }
 interface SandboxRuntimeOptions {
   sandboxRef?: SandboxRef | undefined;
+  /**
+   * True on the first Run of a Turn. Only that Run replaces an old session,
+   * so a later Run does not drop unpushed work in the middle of the Turn.
+   */
+  startsTurn?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
@@ -589,7 +593,10 @@ export function createSandboxRuntime(
     let hintedSandbox: SandboxSession | null = null;
     try {
       hintedSandbox = await getHintedSandbox();
-      if (Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS) {
+      if (
+        options.startsTurn &&
+        Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS
+      ) {
         await stopSession(hintedSandbox);
         hintedSandbox = await getHintedSandbox();
       }

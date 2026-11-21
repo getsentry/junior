@@ -96,6 +96,8 @@ export interface SandboxAccess {
 
 export interface SandboxOptions {
   sandboxRef?: SandboxRef | undefined;
+  /** True on the first Run of a Turn. */
+  startsTurn?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
@@ -280,6 +282,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
+    startsTurn: options.startsTurn,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: options.referenceFiles,

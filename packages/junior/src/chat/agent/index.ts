@@ -685,6 +685,7 @@ async function executeAgentRunInPrivacyContext(
       run,
       skillSandbox,
       spanContext,
+      startsTurn: !resumedFromSessionRecord,
       state,
     });
     closeTools = async () => runSandbox.agentSandbox.close();

@@ -32,6 +32,8 @@ import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
   sandboxRef?: SandboxRef | undefined;
+  /** True on the first Run of a Turn. */
+  startsTurn?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   traceContext: LogContext;
@@ -165,6 +167,7 @@ function bashCommand(input: unknown): string | undefined {
 export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   const sandbox = createSandbox({
     sandboxRef: options.sandboxRef,
+    startsTurn: options.startsTurn,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: listReferenceFiles(),

@@ -113,6 +113,8 @@ interface RunSandboxArgs {
   run: AgentRun;
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
+  /** True on the first Run of a Turn, not a Run that resumes it. */
+  startsTurn: boolean;
   state: Pick<AgentRunState, "sandboxRef">;
 }
 
@@ -145,6 +147,7 @@ export async function createRunSandbox(
   const attachmentStorage = args.run.environment?.attachmentStorage;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
+    startsTurn: args.startsTurn,
     workspace,
     skills: args.availableSkills,
     traceContext: args.spanContext,
