@@ -6,20 +6,37 @@
  */
 import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 
+/** The `type` and `scope` groups of a title pattern's match. */
+export interface TitlePatternMatch {
+  scope?: string | undefined;
+  type?: string | undefined;
+}
+
+/** A compiled title pattern: the groups of its first match, if any. */
+export type TitlePattern = (title: string) => TitlePatternMatch | undefined;
+
 /** One changelog category: its title and its compiled title patterns. */
 export interface CodeChangeCategory {
   /** True for a category from `.github/release.yml`. */
   custom: boolean;
-  patterns: RegExp[];
+  patterns: TitlePattern[];
   title: string;
 }
 
-function defaultCategory(title: string, sources: string[]): CodeChangeCategory {
-  return {
-    custom: false,
-    patterns: sources.map((source) => new RegExp(source, "i")),
-    title,
+// The default patterns are this file's own, so the built-in engine runs
+// them. Repository patterns use RE2 (`release-config.ts`).
+function nativePattern(source: string): TitlePattern {
+  const regex = new RegExp(source, "i");
+  return (title) => {
+    const match = regex.exec(title);
+    return match
+      ? { scope: match.groups?.["scope"], type: match.groups?.["type"] }
+      : undefined;
   };
+}
+
+function defaultCategory(title: string, sources: string[]): CodeChangeCategory {
+  return { custom: false, patterns: sources.map(nativePattern), title };
 }
 
 /** Craft's `DEFAULT_RELEASE_CONFIG` categories, in match order. */
@@ -98,10 +115,10 @@ function typeWord(
 function firstMatch(
   title: string,
   categories: readonly CodeChangeCategory[],
-): { category: CodeChangeCategory; match: RegExpExecArray } | undefined {
+): { category: CodeChangeCategory; match: TitlePatternMatch } | undefined {
   for (const category of categories) {
     for (const pattern of category.patterns) {
-      const match = pattern.exec(title);
+      const match = pattern(title);
       if (match) return { category, match };
     }
   }
@@ -126,7 +143,7 @@ export function parseCodeChangeTitle(
       ? firstMatch(bounded, DEFAULT_CODE_CHANGE_CATEGORIES.slice(0, 1))
       : undefined);
   if (!found) return undefined;
-  const prefix = found.match.groups?.["type"];
+  const prefix = found.match.type;
   const token = prefix ? /^\w+/.exec(prefix)?.[0] : undefined;
   // A repository pattern need not be anchored, so strip the type only where
   // it leads the title.
@@ -135,7 +152,7 @@ export function parseCodeChangeTitle(
     .replace(PULL_REQUEST_SUFFIX, "")
     .trim();
   const type = typeWord(found.category, token, bounded);
-  const scope = found.match.groups?.["scope"]?.trim();
+  const scope = found.match.scope?.trim();
   return {
     text: rest ? capitalize(rest) : title,
     ...(type ? { type } : undefined),

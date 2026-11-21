@@ -4,24 +4,24 @@
  * each category. When the file has categories with patterns, they replace
  * the default categories, as in Craft.
  */
+import { RE2JS } from "re2js";
 import { parse as parseYaml } from "yaml";
 import * as z from "zod";
 import {
   DEFAULT_CODE_CHANGE_CATEGORIES,
   type CodeChangeCategory,
+  type TitlePattern,
 } from "./parse.js";
 
 // Patterns come from any repository that Junior opens pull requests in, so
-// they are untrusted input to the regex engine. These limits, with the
-// pattern check below and the title length limit in `parse.ts`, bound the
-// work that one title can cause.
+// they are untrusted. RE2 matches in time linear in the title, so no
+// pattern can backtrack, such as `(a|aa)*b`. It rejects backreferences and
+// lookarounds as syntax errors. These limits, with the title length limit
+// in `parse.ts`, bound the work that one title can cause.
 const MAX_CONFIG_LENGTH = 64 * 1024;
 const MAX_CATEGORIES = 30;
 const MAX_PATTERNS = 10;
 const MAX_PATTERN_LENGTH = 200;
-// Backreferences, and a quantified group that ends in a quantifier, such as
-// `(a+)+`, can take exponential time.
-const UNSAFE_PATTERN = /\\[1-9]|\\k<|[+*}?]\)[+*{]/;
 
 const releaseConfigSchema = z.object({
   changelog: z
@@ -38,16 +38,25 @@ const releaseConfigSchema = z.object({
     .optional(),
 });
 
-function compilePattern(source: string): RegExp | undefined {
-  if (source.length > MAX_PATTERN_LENGTH || UNSAFE_PATTERN.test(source)) {
-    return undefined;
-  }
+function compilePattern(source: string): TitlePattern | undefined {
+  if (source.length > MAX_PATTERN_LENGTH) return undefined;
+  let regex: RE2JS;
   try {
-    return new RegExp(source, "i");
+    regex = RE2JS.compile(source, RE2JS.CASE_INSENSITIVE);
   } catch {
     // Craft skips an invalid pattern.
     return undefined;
   }
+  const groups = regex.namedGroups();
+  return (title) => {
+    const match = regex.matcher(title);
+    if (!match.find()) return undefined;
+    return {
+      scope:
+        "scope" in groups ? (match.group("scope") ?? undefined) : undefined,
+      type: "type" in groups ? (match.group("type") ?? undefined) : undefined,
+    };
+  };
 }
 
 /**

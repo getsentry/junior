@@ -74,21 +74,40 @@ describe("code change title parts", () => {
   });
 
   it("keeps the title whole when a repository pattern matches later in it", () => {
-    const categories = [
-      { custom: true, patterns: [/(?<type>feat:\s*)/i], title: "Features" },
-    ];
+    const categories = parseReleaseCategories(`
+changelog:
+  categories:
+    - title: Features
+      commit_patterns: ["(?<type>feat:\\\\s*)"]
+`);
     expect(parseCodeChangeTitle("[WIP] feat: New thing", categories)).toEqual({
       text: "[WIP] feat: New thing",
       type: "Feature",
     });
   });
 
-  it("skips unsafe and invalid repository patterns", () => {
+  it("matches repository patterns in linear time", () => {
     const categories = parseReleaseCategories(`
 changelog:
   categories:
     - title: Nested
-      commit_patterns: ["^(a+)+$"]
+      commit_patterns: ["^(a+)+$x"]
+    - title: Alternation
+      commit_patterns: ["^(a|aa)*b"]
+`);
+    // A backtracking engine takes exponential time on these titles.
+    const started = performance.now();
+    expect(parseCodeChangeTitle("a".repeat(256), categories)).toBeUndefined();
+    expect(
+      parseCodeChangeTitle(`${"a".repeat(255)}!`, categories),
+    ).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("skips invalid repository patterns", () => {
+    const categories = parseReleaseCategories(`
+changelog:
+  categories:
     - title: Backreference
       commit_patterns: ["^(a)\\\\1"]
     - title: Invalid
