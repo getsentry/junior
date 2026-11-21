@@ -5,6 +5,7 @@ import {
   type InboxSnoozeCreateBody,
   type InboxSnoozeResource,
   type InboxSnoozeSubjectBody,
+  type InboxSnoozeWake,
   type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { useState } from "react";
@@ -80,11 +81,12 @@ export function useInboxSnoozes(read: SnoozedRead) {
   const [hidden, setHidden] = useState<ReadonlyMap<string, number>>(new Map());
   // The items that were just woken, by id.
   const [waking, setWaking] = useState<ReadonlySet<string>>(new Set());
-  // The woken items that the viewer opened, by id. The server forgets why
-  // they woke at once; the lists keep their copy until they read again.
-  const [openedWakes, setOpenedWakes] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
+  // The wake that the viewer opened, by item id. The server forgets it at
+  // once; the lists keep their copy until they read again. A later wake of
+  // the same item is a new object, so it shows.
+  const [openedWakes, setOpenedWakes] = useState<
+    ReadonlyMap<string, InboxSnoozeWake>
+  >(new Map());
   // When the viewer's last snooze change saved and the lists refetched.
   // Snoozed read before that time may be stale.
   const [savedAtMs, setSavedAtMs] = useState(-Infinity);
@@ -173,27 +175,27 @@ export function useInboxSnoozes(read: SnoozedRead) {
   /** Wake one item now. The other items of its stack stay snoozed. */
   const wakeItem = (item: InboxItemPayload) =>
     unsnooze([item.id], itemSubject(item));
+  const wakeOpened = (item: InboxItemPayload) =>
+    item.wake !== undefined && openedWakes.get(item.id) === item.wake;
   /**
    * The viewer opened these items, so the server forgets why they woke. If
    * that fails, they say it again.
    */
   const openWoken = (items: readonly InboxItemPayload[]) => {
-    const ids = items
-      .filter((item) => item.wake && !openedWakes.has(item.id))
-      .map((item) => item.id);
-    if (ids.length === 0) return;
+    const woken = items.filter((item) => item.wake && !wakeOpened(item));
+    if (woken.length === 0) return;
     const mark = (opened: boolean) =>
       setOpenedWakes((current) => {
-        const next = new Set(current);
-        for (const id of ids) {
-          if (opened) next.add(id);
-          else next.delete(id);
+        const next = new Map(current);
+        for (const item of woken) {
+          if (opened && item.wake) next.set(item.id, item.wake);
+          else if (next.get(item.id) === item.wake) next.delete(item.id);
         }
         return next;
       });
     mark(true);
     deleteDashboardResource(`${SNOOZES_PATH}/wakes`, {
-      inboxItemIds: ids,
+      inboxItemIds: woken.map((item) => item.id),
     }).catch(() => mark(false));
   };
   return {
@@ -223,7 +225,7 @@ export function useInboxSnoozes(read: SnoozedRead) {
     failed: read.failed,
     openWoken,
     /** The viewer opened the item since it woke. */
-    wakeOpened: (itemId: string) => openedWakes.has(itemId),
+    wakeOpened,
     snooze,
     snoozeItem,
     wake,

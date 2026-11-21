@@ -394,7 +394,7 @@ export function InboxList(props: {
     const wake = row.items.find(
       (item) =>
         item.status === "open" &&
-        (expanded || !snoozes.wakeOpened(item.id)) &&
+        (expanded || !snoozes.wakeOpened(item)) &&
         item.wake,
     )?.wake;
     const snoozeRow = options.snoozed

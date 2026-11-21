@@ -62,6 +62,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(rowOf(page, timed.title)).toContainText(
       "Woke: snooze time reached",
     );
+
+    // Opening the other row's owner in a new tab also counts as opening it.
+    const timedCleared = wakesCleared(page);
+    const tab = page.context().waitForEvent("page");
+    await rowHead(page, timed.title).click({ modifiers: ["ControlOrMeta"] });
+    expect((await timedCleared).postDataJSON()).toEqual({
+      inboxItemIds: [timed.id],
+    });
+    await (await tab).close();
+    await expect(rowOf(page, timed.title)).not.toContainText("Woke:");
   });
 
   test("an open Conversation row's card says why its item woke", async ({

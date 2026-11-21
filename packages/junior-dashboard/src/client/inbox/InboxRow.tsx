@@ -619,7 +619,6 @@ function InboxRowBody(
                 // place. A modified click keeps the link, so Ctrl/⌘-click
                 // opens a new tab.
                 onClick={(event) => {
-                  if (opens) props.onOpen?.();
                   if (
                     opens ||
                     event.button !== 0 ||
@@ -627,8 +626,10 @@ function InboxRowBody(
                     event.ctrlKey ||
                     event.shiftKey ||
                     event.altKey
-                  )
+                  ) {
+                    props.onOpen?.();
                     return;
+                  }
                   event.preventDefault();
                   props.onToggle();
                 }}
