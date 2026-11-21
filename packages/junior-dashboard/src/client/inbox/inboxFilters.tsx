@@ -166,21 +166,26 @@ export function ConversationStateFilters(props: {
   );
 }
 
-/** Toggle between every row and only the viewer's pinned Conversations. */
+/**
+ * Switch between every row and only the viewer's pinned Conversations, as
+ * one All / Pinned control.
+ */
 export function PinnedFilter(props: { on: boolean; search: string }) {
-  const params = new URLSearchParams(props.search);
-  if (props.on) params.delete(PINNED_PARAM);
-  else params.set(PINNED_PARAM, "1");
+  const all = new URLSearchParams(props.search);
+  all.delete(PINNED_PARAM);
+  const pinned = new URLSearchParams(props.search);
+  pinned.set(PINNED_PARAM, "1");
   return (
     <ScopeTabs
       label="Rows to show"
       tabs={[
+        { label: "All", on: !props.on, search: all.toString() },
         {
           icon: Pin,
           iconOnlyOnPhone: true,
-          label: "Pinned only",
+          label: "Pinned",
           on: props.on,
-          search: params.toString(),
+          search: pinned.toString(),
         },
       ]}
     />

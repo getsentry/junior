@@ -107,7 +107,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=conversations&pinned=1`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
-    // Pinned only lists every pin, and no other row.
+    // Pinned lists every pin, and no other row.
     const pinned = page.getByRole("region", {
       exact: true,
       name: "Conversations",

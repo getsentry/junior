@@ -229,7 +229,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("the repository Conversations tab keeps a pin in place, and Pinned only lists only the pins", async ({
+  test("the repository Conversations tab keeps a pin in place, and Pinned lists only the pins", async ({
     page,
     dashboard,
   }) => {
@@ -245,23 +245,26 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Only the pin has the pin marker.
     await expect(list.getByRole("img", { name: "Pinned" })).toHaveCount(1);
 
-    const pinnedOnly = list
-      .getByRole("navigation", { name: "Rows to show" })
-      .getByRole("link", { name: "Pinned only" });
-    await pinnedOnly.click();
+    // An All / Pinned switch, on All by default.
+    const rows = list.getByRole("navigation", { name: "Rows to show" });
+    const all = rows.getByRole("link", { exact: true, name: "All" });
+    const pinnedTab = rows.getByRole("link", { exact: true, name: "Pinned" });
+    await expect(all).toHaveAttribute("aria-current", "page");
+    await pinnedTab.click();
     await expect(page).toHaveURL(/\/conversations\?pinned=1$/);
     await expect(pinned).toBeVisible();
     await expect(unpinned).toHaveCount(0);
     await page.reload();
-    await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+    await expect(pinnedTab).toHaveAttribute("aria-current", "page");
     await expect(pinned).toBeVisible();
     await expect(unpinned).toHaveCount(0);
 
-    await pinnedOnly.click();
+    await all.click();
+    await expect(page).not.toHaveURL(/[?&]pinned=1/);
     await expect(unpinned).toBeVisible();
   });
 
-  test("the repository Conversations tab says how to pin when Pinned only finds no pin", async ({
+  test("the repository Conversations tab says how to pin when Pinned finds no pin", async ({
     page,
     dashboard,
   }) => {
@@ -271,7 +274,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await list
       .getByRole("navigation", { name: "Rows to show" })
-      .getByRole("link", { name: "Pinned only" })
+      .getByRole("link", { exact: true, name: "Pinned" })
       .click();
     await expect(list.getByText(/^Nothing pinned\./)).toBeVisible();
     await expect(list.getByRole("link", { name: /^Open / })).toHaveCount(0);

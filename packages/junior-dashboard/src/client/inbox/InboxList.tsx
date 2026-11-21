@@ -161,7 +161,7 @@ export function InboxList(props: {
   );
   // `?type=` shows the Inbox asks of one type, and `?pinned=1` only the
   // rows of the viewer's pins, in their places. The feed's first page holds
-  // every pin, so Pinned only reads no more of it.
+  // every pin, so Pinned reads no more of it.
   const [params] = useSearchParams();
   const pinnedOnly =
     data.signedIn &&
@@ -711,7 +711,7 @@ export function InboxList(props: {
       inboxRows.todo.length + inboxRows.grabs.length + inboxRows.fyi.length ===
         0;
     // A type's count adds the asks past the loaded pages, as All's does.
-    // Pinned only counts the rows that it shows.
+    // Pinned counts the rows that it shows.
     const todoCount = pinnedOnly
       ? rowCount(inboxRows.todo, STACK_ROW_KEYS.todo, true)
       : data.todoCounts[type];

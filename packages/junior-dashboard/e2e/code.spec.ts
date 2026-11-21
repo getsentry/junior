@@ -155,5 +155,7 @@ test("the repository Conversations tab lists pins in their own section", async (
   await expect(
     pins.getByRole("link", { name: /Unpinned conversation/ }),
   ).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Pinned only" })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Rows to show" }),
+  ).toHaveCount(0);
 });

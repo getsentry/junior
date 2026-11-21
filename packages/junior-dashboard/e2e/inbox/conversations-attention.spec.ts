@@ -36,7 +36,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test.describe("conversation rows", () => {
-    test("a pin keeps its place, and Pinned only lists only the pins", async ({
+    test("a pin keeps its place, and Pinned lists only the pins", async ({
       page,
       dashboard,
     }) => {
@@ -71,20 +71,25 @@ test.describe("new UI", { tag: "@new" }, () => {
           .getByRole("link", { name: new RegExp(title) }),
       ).toBeVisible();
 
-      // Pinned only shows only the pin, also after a reload.
-      const pinnedOnly = page
-        .getByRole("navigation", { name: "Rows to show" })
-        .getByRole("link", { name: "Pinned only" });
-      await pinnedOnly.click();
+      // Pinned shows only the pin, also after a reload.
+      // An All / Pinned switch, on All by default.
+      const rowsToShow = page.getByRole("navigation", { name: "Rows to show" });
+      const all = rowsToShow.getByRole("link", { exact: true, name: "All" });
+      const pinnedTab = rowsToShow.getByRole("link", {
+        exact: true,
+        name: "Pinned",
+      });
+      await expect(all).toHaveAttribute("aria-current", "page");
+      await pinnedTab.click();
       await expect(page).toHaveURL(/[?&]pinned=1/);
-      await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+      await expect(pinnedTab).toHaveAttribute("aria-current", "page");
       const rows = list.locator("a[data-inbox-head]");
       await expect(rows).toHaveCount(1);
       await expect(row).toBeVisible();
       await page.reload();
-      await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+      await expect(pinnedTab).toHaveAttribute("aria-current", "page");
       await expect(rows).toHaveCount(1);
-      await screenshot(page, "conversations-pinned-only", {
+      await screenshot(page, "conversations-pinned", {
         lightTheme: true,
         view: "desktop",
       });
@@ -98,8 +103,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(row).toHaveCount(0);
       await expect(page.getByText(/^Nothing pinned\./)).toBeVisible();
 
-      // Off again, every row shows.
-      await pinnedOnly.click();
+      // All again, every row shows.
+      await all.click();
       await expect(page).not.toHaveURL(/[?&]pinned=1/);
       await expect(row).toBeVisible();
       await expect.poll(() => sectionOf(list, title)).toBe(section);
