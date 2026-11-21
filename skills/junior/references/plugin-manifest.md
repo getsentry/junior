@@ -65,6 +65,7 @@ credentials:
     service-account: <name>@<project>.iam.gserviceaccount.com
     token: service-account-jwt # needs audience; id-token needs audience; access-token needs scopes
     audience: https://app.example.com/*
+    # vercel-oidc-audience: https://vercel.com/<team> # when the provider lists allowed audiences
   # azure: { tenant-id, client-id, scope: api://<app>/.default }
 ```
 
@@ -220,8 +221,9 @@ accounts:
 - `oauth` requires `credentials.type: oauth-bearer` in `plugin.yaml`.
 - `workload-identity` rejects unknown keys, so `aws` fails. Top-level
   `api-headers` must not set the `credentials.header` name.
-- `workload-identity` `gcp.audience` must be an `https` URL on one of
-  `credentials.domains`. With `gcp.token: access-token`, every domain must be
+- `workload-identity` `gcp.audience` must be an `https` URL, and
+  `credentials.domains` must list only its host. With `gcp.token: access-token`, every scope must be
+  read-only (`.readonly`, `.read-only`, or `.read_only`), and every domain must be
   a `*.googleapis.com` host. Two plugins cannot use the same service account
   or Azure tenant and client ID.
 - `mcp.url` env refs must be declared in `env-vars`.

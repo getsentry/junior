@@ -84,6 +84,7 @@ async function startApp() {
               ...provider,
               serviceAccount:
                 "bigquery@example-project.iam.gserviceaccount.com",
+              vercelOidcAudience: "https://vercel.com/acme",
               token: "access-token",
               scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
             },
@@ -274,6 +275,16 @@ describe("sandbox egress workload identity credentials", () => {
     expect(azure?.get("authorization")).toBe(`Bearer ${AZURE_ACCESS_TOKEN}`);
 
     const requests = workloadIdentityRequests();
+    expect(
+      requests
+        .filter((request) => request.step === "gcp-sts")
+        .map(
+          (request) => jwtClaims(String(request.body["subject_token"]))["aud"],
+        ),
+    ).toEqual([
+      `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
+      "https://vercel.com/acme",
+    ]);
     expect(
       requests
         .filter((request) => request.step === "gcp-iam-credentials")

@@ -8,6 +8,11 @@ const WORKLOAD_IDENTITY_PROVIDER_RE =
   /^projects\/\d+\/locations\/global\/workloadIdentityPools\/[a-z0-9-]+\/providers\/[a-z0-9-]+$/;
 const GCP_SERVICE_ACCOUNT_RE = /^[a-z0-9-]+@[a-z0-9.-]+\.gserviceaccount\.com$/;
 const AZURE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+// Google read-only scopes end in `.readonly`, `.read-only`, or `.read_only`,
+// such as `bigquery.readonly` and `cloud-platform.read-only`. A workload
+// identity token is shared by everyone who uses Junior, so core allows only
+// read-only access. IAM roles on the service account are the second gate.
+const GOOGLE_READ_ONLY_SCOPE_RE = /\.read[-_]?only$/;
 
 const WORKLOAD_IDENTITY_HEADERS = [
   "Authorization",
@@ -28,6 +33,7 @@ const gcpBase = {
   "service-account": text.regex(GCP_SERVICE_ACCOUNT_RE, {
     error: "must be a service account email",
   }),
+  "vercel-oidc-audience": text.optional(),
 };
 
 const gcpSourceSchema = z.discriminatedUnion(
@@ -44,7 +50,14 @@ const gcpSourceSchema = z.discriminatedUnion(
       .object({
         ...gcpBase,
         token: z.literal("access-token"),
-        scopes: z.array(text).min(1, { error: "must not be empty" }),
+        scopes: z
+          .array(
+            text.regex(GOOGLE_READ_ONLY_SCOPE_RE, {
+              error:
+                "must be read-only scopes, such as https://www.googleapis.com/auth/bigquery.readonly",
+            }),
+          )
+          .min(1, { error: "must not be empty" }),
       })
       .strict(),
   ],
@@ -219,6 +232,9 @@ export function workloadIdentityCredentials(
     const base = {
       serviceAccount: gcp["service-account"],
       workloadIdentityProvider: gcp["workload-identity-provider"],
+      ...(gcp["vercel-oidc-audience"]
+        ? { vercelOidcAudience: gcp["vercel-oidc-audience"] }
+        : undefined),
     };
     return {
       type: "workload-identity",

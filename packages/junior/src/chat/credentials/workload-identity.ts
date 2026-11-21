@@ -138,9 +138,11 @@ async function mintGcp(
   gcp: NonNullable<WorkloadIdentityCredentials["gcp"]>,
 ): Promise<WorkloadIdentityToken> {
   // Vercel's GCP guide uses the provider's default audience for the subject
-  // token, and the `//` resource name as the STS audience.
+  // token, and the `//` resource name as the STS audience. A provider that
+  // lists allowed audiences accepts only those, so the manifest can set one.
   const subjectToken = await vercelOidcToken(
-    `https://iam.googleapis.com/${gcp.workloadIdentityProvider}`,
+    gcp.vercelOidcAudience ??
+      `https://iam.googleapis.com/${gcp.workloadIdentityProvider}`,
   );
   const sts = await postForJson(
     "Google STS",

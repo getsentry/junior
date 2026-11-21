@@ -47,6 +47,9 @@ function workloadIdentitySource(
     result["gcp"] = {
       "workload-identity-provider": gcp.workloadIdentityProvider,
       "service-account": gcp.serviceAccount,
+      ...(gcp.vercelOidcAudience
+        ? { "vercel-oidc-audience": gcp.vercelOidcAudience }
+        : undefined),
       token: gcp.token,
       ...(gcp.token === "access-token"
         ? { scopes: gcp.scopes }
