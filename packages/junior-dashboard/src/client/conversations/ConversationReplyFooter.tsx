@@ -10,7 +10,7 @@ import {
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
@@ -78,7 +78,7 @@ function ReplyFooter(props: {
    * Show the transcript row of a docked question. `arrived` means it docked
    * by itself, not by a step or an answer of the reader.
    */
-  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
+  onShowQuestion?(item: InboxItemPayload, arrived: boolean): void;
   pendingAuthorization?:
     | ConversationPendingMessagesReport["authorization"]
     | undefined;
@@ -97,7 +97,7 @@ function ReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
-  // A message closes the review items that it answers. Ask before it drops
+  // A message closes the inbox items that it answers. Ask before it drops
   // answers in the details panel that the reader did not send.
   const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
@@ -134,7 +134,7 @@ function ReplyFooter(props: {
   }
   const { conversationId, onShowQuestion } = props;
   const showQuestion = useCallback(
-    (item: ReviewItemPayload, byReader: boolean) => {
+    (item: InboxItemPayload, byReader: boolean) => {
       if (byReader) {
         onShowQuestion?.(item, false);
         return;

@@ -70,7 +70,7 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
-import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   isTurnInputCommitLostError,

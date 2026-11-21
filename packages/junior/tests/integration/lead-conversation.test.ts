@@ -27,8 +27,8 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
-import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import {
   juniorConversationParticipants,
@@ -348,17 +348,17 @@ describe("Lead", () => {
     // A child agent's status reaches the Watches on that child.
     await publishConversationStatus(
       child,
-      { type: "waiting", reviewItemId: "lead-watch-item" },
+      { type: "waiting", inboxItemId: "lead-watch-item" },
       { queue: harness.queue, state: harness.state },
     );
     // An update that makes a notice an action reports a wait.
-    const addItem = createAddReviewItemTool(
+    const addItem = createAddInboxItemTool(
       {
         conversationId: started.conversation_id,
         resolveActorIdentity: async () => undefined,
         source: { kind: "scheduled_automation" },
       },
-      createSlackReviewItemToolServices(() => harness.queue),
+      createSlackInboxItemToolServices(() => harness.queue),
     ) as any;
     const item = {
       assignees: ["everyone"],

@@ -1,6 +1,6 @@
 import { useMemo, useRef, type Ref } from "react";
 import { Lock } from "lucide-react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
@@ -22,7 +22,7 @@ export function ConversationPageDock(props: {
   live: boolean;
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
-  onShowQuestion(item: ReviewItemPayload, arrived: boolean): void;
+  onShowQuestion(item: InboxItemPayload, arrived: boolean): void;
   /** The message box's hint when it is empty. */
   placeholder?: string | undefined;
   ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;

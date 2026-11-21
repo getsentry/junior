@@ -185,10 +185,10 @@ export async function readLeadConversationId(
 }
 
 /**
- * Answer or dismiss one Review item as the person in the Inbox does.
+ * Answer or dismiss one Inbox item as the person in the Inbox does.
  * Junior tells each linked Conversation about the change.
  */
-export async function actOnReviewItem(
+export async function actOnInboxItem(
   api: Hono<JuniorApiEnv>,
   args: {
     action: "submit" | "dismiss";
@@ -198,7 +198,7 @@ export async function actOnReviewItem(
   },
 ): Promise<void> {
   const response = await api.request(
-    `/api/review-items/${encodeURIComponent(args.id)}/actions`,
+    `/api/inbox-items/${encodeURIComponent(args.id)}/actions`,
     jsonRequest(args.viewerEmail, {
       action: args.action,
       ...(args.values ? { answer: { values: args.values } } : undefined),
@@ -206,7 +206,7 @@ export async function actOnReviewItem(
   );
   if (response.status !== 200) {
     throw new Error(
-      `Review item action returned ${response.status}: ${await response.text()}`,
+      `Inbox item action returned ${response.status}: ${await response.text()}`,
     );
   }
 }

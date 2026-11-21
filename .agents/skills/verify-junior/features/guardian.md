@@ -33,7 +33,7 @@ Preconditions:
 
 ## Gotchas
 
-- Only tools that opt in, and plugin or MCP tools that are not read-only, are reviewed. A read, a reply, or a Review item gets no review row.
+- Only tools that opt in, and plugin or MCP tools that are not read-only, are reviewed. A read, a reply, or an Inbox item gets no review row.
 - The main agent often declines a risky or vague request before it calls a tool. Then Guardian reviews nothing, and the `hard-deny` or `rejection-reply` drive fails at the event-log step. Report that as a failed drive with the reply that Junior gave. Do not count the agent's own refusal as a Guardian decision.
 - The model provider can block a prompt that looks like a credential or an exfiltration. Junior then replies "The model provider blocked this request under its content policy", and no tool runs. That is not a Guardian deny.
 - An event log row is a button named `Event <n>: guardian_action_reviewed`, with the text `<decision> · <tool> · <risk> risk` in a child element. Match it with `button:has-text(...)`, because a `text=` selector does not span the two elements. Open the event log after `--idle`, because a running Turn adds rows.

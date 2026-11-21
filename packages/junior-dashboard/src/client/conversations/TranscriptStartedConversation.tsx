@@ -33,7 +33,7 @@ export function TranscriptStartedConversation(props: {
   const watched = lead?.watchedIds.has(id) ?? false;
   const prefetch = usePrefetchConversation(id);
   // A started Conversation is a root of the person, so it is a feed row. The
-  // row can be past the loaded feed pages. Then only a Review item tells its
+  // row can be past the loaded feed pages. Then only a Inbox item tells its
   // state, and the card shows none rather than a wrong one.
   const conversation = lead?.conversations.get(id);
   const waiting = lead?.waiting.get(id);
@@ -110,9 +110,9 @@ export function TranscriptStartedConversation(props: {
           <div className="flex flex-wrap gap-2 px-3 pb-3 pl-[3.375rem]">
             <Link
               className={buttonVariants({ variant: "default" })}
-              to={conversationPath(id, { reviewItems: Boolean(waiting) })}
+              to={conversationPath(id, { inboxItems: Boolean(waiting) })}
             >
-              {/* A sign-in wait has no Review item to approve. */}
+              {/* A sign-in wait has no Inbox item to approve. */}
               {waiting ? "Open to approve" : "Open"}
             </Link>
             {lead ? (

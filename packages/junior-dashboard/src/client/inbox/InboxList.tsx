@@ -1,7 +1,7 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
@@ -60,7 +60,7 @@ import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { eventSnoozeOf } from "./snoozeChoices";
-import { useReviewItemData, useReviewItemsData } from "./queries";
+import { useInboxItemData, useInboxItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
   conversationAnswerLine,
@@ -68,7 +68,7 @@ import {
   itemNeedsViewer,
   itemOwnerPath,
   itemUpForGrabs,
-} from "./reviewItemFormat";
+} from "./inboxItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -116,7 +116,7 @@ export function InboxList(props: {
   const conversationOf = (id: string | undefined) =>
     id === undefined ? undefined : data.conversationById.get(id);
   useEffect(readSnoozed, [readSnoozed]);
-  const done = useReviewItemsData({
+  const done = useInboxItemsData({
     closed: true,
     enabled: data.signedIn && view === "done",
     forViewer: true,
@@ -182,7 +182,7 @@ export function InboxList(props: {
   // Done shows a linked closed item that is past its first page too. The
   // list state keeps it, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
-  const linkedClosed = useReviewItemData(linkedItems.closed).data;
+  const linkedClosed = useInboxItemData(linkedItems.closed).data;
   const doneItems =
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
@@ -205,7 +205,7 @@ export function InboxList(props: {
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
   // An item that is not in this list may be closed, or past its first page.
-  const linked = useReviewItemData(
+  const linked = useInboxItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
   const { includedExtra, includedId, includeItem } = data;
@@ -358,7 +358,7 @@ export function InboxList(props: {
   });
 
   // The items of each row that this render shows, by row key.
-  const rowItems = new Map<string, readonly ReviewItemPayload[]>();
+  const rowItems = new Map<string, readonly InboxItemPayload[]>();
   const bundleRow = (
     row: InboxBundle,
     options: {

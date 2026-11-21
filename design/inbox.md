@@ -1,7 +1,7 @@
 # Inbox
 
 The Inbox is where work waits for a person. Junior or a plugin adds a
-Review item: an action that asks a question, or a notice that names a step
+Inbox item: an action that asks a question, or a notice that names a step
 for a person.
 Its assignees see it in the Inbox and in its linked Slack threads, and the
 first answer lets the work continue. [Inbox stacks](./inbox-stacks.md) owns
@@ -30,7 +30,7 @@ how the dashboard groups and acts on its rows.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   and the question above the message box.
 - Settings: "Show the Inbox count in the tab".
-- MCP server: read-only search and fetch with the `review_items:read` scope.
+- MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 

@@ -9,7 +9,7 @@ type LeadPageValue = {
   conversations: ReadonlyMap<string, Conversation>;
   /** Put text in the Lead's reply box, such as for "Message it". */
   prefill(text: string): void;
-  /** Open Review items that wait on the viewer, by Conversation id. */
+  /** Open Inbox items that wait on the viewer, by Conversation id. */
   waiting: ReadonlyMap<string, WaitingConversation>;
   /** The Conversations that the Lead has an active Watch on. */
   watchedIds: ReadonlySet<string>;

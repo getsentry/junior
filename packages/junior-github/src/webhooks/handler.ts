@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
   EventInput,
@@ -177,7 +177,7 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
@@ -249,7 +249,7 @@ export function createGitHubWebhookRoute(args: {
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
-          reviewItems: args.reviewItems,
+          inboxItems: args.inboxItems,
         });
         if (
           recordedOutcome.applied &&
@@ -442,7 +442,7 @@ export function createGitHubWebhookRoute(args: {
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          reviewItems: args.reviewItems,
+          inboxItems: args.inboxItems,
         })),
       );
       for (const event of events) {
@@ -472,7 +472,7 @@ export function createGitHubWebhookRoute(args: {
         env,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({

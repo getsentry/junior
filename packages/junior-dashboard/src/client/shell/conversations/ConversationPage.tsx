@@ -13,7 +13,7 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationFeed,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "../../conversations/queries";
@@ -87,11 +87,11 @@ import {
   ConversationStateIcon,
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
-import { useReviewItemData } from "../../inbox/queries";
+import { useInboxItemData } from "../../inbox/queries";
 import {
   itemConversationId,
-  reviewItemIdFromToolCall,
-} from "../../inbox/reviewItemFormat";
+  inboxItemIdFromToolCall,
+} from "../../inbox/inboxItemFormat";
 import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
 import {
@@ -494,7 +494,7 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: ReviewItemPayload, arrived: boolean) =>
+    (item: InboxItemPayload, arrived: boolean) =>
       setAskReveal((current) => ({
         arrived,
         itemId: item.id,
@@ -516,7 +516,7 @@ export function ConversationPage(props: {
       (event) =>
         event.data.type === "tool_calls" &&
         event.data.calls.some(
-          (call) => reviewItemIdFromToolCall(call) === itemId,
+          (call) => inboxItemIdFromToolCall(call) === itemId,
         ),
     );
     if (!held) openLink({ turn: turnId });
@@ -529,8 +529,8 @@ export function ConversationPage(props: {
   // An Inbox link names the ask it opens for. Its record shows like a
   // question the reader moves to, once, and the link drops the param.
   const askLinkId = searchParams.get(CONVERSATION_ASK_PARAM) ?? undefined;
-  const askLink = useReviewItemData(askLinkId).data;
-  const showAskLink = useEffectEvent((item: ReviewItemPayload) => {
+  const askLink = useInboxItemData(askLinkId).data;
+  const showAskLink = useEffectEvent((item: InboxItemPayload) => {
     showQuestion(item, false);
     setSearchParams(
       (params) => {

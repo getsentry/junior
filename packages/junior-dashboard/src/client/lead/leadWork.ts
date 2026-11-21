@@ -6,7 +6,7 @@ export type LeadWorkState = "needs_you" | "working" | "failed" | "done";
 
 /**
  * Pick the Lead state of one Conversation. Needs you comes from open action
- * Review items assigned to the viewer (`design/attention.md`) and from a
+ * Inbox items assigned to the viewer (`design/attention.md`) and from a
  * sign-in that the Conversation waits on, as in the sidebar.
  *
  * The feed has no failed status. `needs_input` without a finished Brief is a

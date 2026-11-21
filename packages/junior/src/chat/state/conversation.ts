@@ -2,7 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -40,7 +40,7 @@ export interface ConversationMessageMeta {
   eventObjectType?: ObjectType | undefined;
   /**
    * The Watch Events when several arrived together. A Message that also
-   * records Review item changes lists its own Event here even when it has
+   * records Inbox item changes lists its own Event here even when it has
    * one. Omitted otherwise.
    */
   events?: ConversationMessageEvent[];
@@ -58,8 +58,8 @@ export interface ConversationMessageMeta {
    * agent's task, so a resumed Turn recalls from them as the first did.
    */
   requestText?: string;
-  /** Person changes to Review items that this Message records. */
-  reviewItemChanges?: ReviewItemChangeRecord[];
+  /** Person changes to Inbox items that this Message records. */
+  reviewItemChanges?: InboxItemChangeRecord[];
   slackTs?: string;
   skippedReason?: string | undefined;
 }

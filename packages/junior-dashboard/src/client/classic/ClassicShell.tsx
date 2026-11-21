@@ -54,7 +54,7 @@ import {
 import { buildPrimaryNavItems, buildProfileNavItems } from "../primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
 import { InboxLoading, InboxPage } from "../inbox/InboxPage";
-import { useReviewItemCountData } from "../inbox/queries";
+import { useInboxItemCountData } from "../inbox/queries";
 import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { useVersionsPoll } from "../versions";
 import { getDashboardAgentName } from "../agentName";
@@ -207,7 +207,7 @@ export function ClassicShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const reviewCount = useReviewItemCountData(loggedIn).data?.needsViewer;
+  const reviewCount = useInboxItemCountData(loggedIn).data?.needsViewer;
   useInboxTabCount(reviewCount);
   const primaryNavItems = buildPrimaryNavItems({
     loading,

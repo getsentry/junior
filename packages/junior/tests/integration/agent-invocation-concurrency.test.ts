@@ -1,4 +1,4 @@
-import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
@@ -32,8 +32,8 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { actOnReviewItem } from "@/chat/review-items/actions";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -701,7 +701,7 @@ describe("agent invocation identity and concurrency", () => {
     },
   );
 
-  it("gives a child the Review item tag for an answer to its item", async () => {
+  it("gives a child the Inbox item tag for an answer to its item", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
@@ -727,13 +727,13 @@ describe("agent invocation identity and concurrency", () => {
       )) as User;
       // The child opened the item, so it is the only linked Conversation.
       const added = (await (
-        createAddReviewItemTool(
+        createAddInboxItemTool(
           {
             conversationId: child.childConversationId,
             resolveActorIdentity: async () => undefined,
             source: { kind: "scheduled_automation" },
           },
-          createSlackReviewItemToolServices(() => harness.queue),
+          createSlackInboxItemToolServices(() => harness.queue),
         ) as any
       ).execute(
         {
@@ -749,7 +749,7 @@ describe("agent invocation identity and concurrency", () => {
         {},
       )) as { item: { id: string } };
       const id = added.item.id;
-      await actOnReviewItem({
+      await actOnInboxItem({
         action: "submit",
         answer: { requestId: id, values: { owner: ["Bob"] } },
         delivery: { queue: harness.queue, show: async () => {} },
@@ -764,10 +764,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[1]!.instruction.text).toBe(
         [
-          `<review-item-answer id="${id}">`,
+          `<inbox-item-answer id="${id}">`,
           "Question: Who should own the login bug?",
           "Owner (owner): Bob",
-          "</review-item-answer>",
+          "</inbox-item-answer>",
         ].join("\n"),
       );
     } finally {

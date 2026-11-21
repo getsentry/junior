@@ -7,7 +7,7 @@ import type { Conversation } from "../types";
 
 /**
  * Read the viewer's Conversations for the Lead: each feed row by id, and the
- * open Review items that wait on the viewer.
+ * open Inbox items that wait on the viewer.
  */
 export function useLeadWork() {
   const feed = useConversationsData();

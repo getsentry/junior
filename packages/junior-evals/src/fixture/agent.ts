@@ -31,7 +31,7 @@ import {
   readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./inbox";
+import { actOnWebInboxItem } from "./inbox";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
 import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
@@ -41,7 +41,7 @@ import type {
   Input,
   MentionInput,
   MessageInput,
-  ReviewItemActionInput,
+  InboxItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -357,11 +357,11 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "review_item_action") {
+    if (input.kind === "inbox_item_action") {
       if (record.surface !== "web" || !record.started) {
-        throw new Error("A review item action continues a web Conversation");
+        throw new Error("An inbox item action continues a web Conversation");
       }
-      await actOnWebReviewItem(api, input, record);
+      await actOnWebInboxItem(api, input, record);
       return;
     }
     const started = record.started;
@@ -436,7 +436,7 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = async (
-    first: MessageInput | ReviewItemActionInput,
+    first: MessageInput | InboxItemActionInput,
     history: CallOptions["history"],
   ): Promise<ConversationRecord> => {
     if (first.kind === "web_message" && first.lead) {
@@ -447,7 +447,7 @@ export async function createFixtureAgent(
       });
     }
     // An Inbox action comes from the dashboard.
-    if (first.kind === "web_message" || first.kind === "review_item_action") {
+    if (first.kind === "web_message" || first.kind === "inbox_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);

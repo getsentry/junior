@@ -396,7 +396,7 @@ test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
   await expect(
     breadcrumb.getByRole("heading", { name: "Recheck pin order in Safari" }),
   ).toBeVisible();
-  // Its own Review item waits on a person.
+  // Its own Inbox item waits on a person.
   await expect(
     header.getByText("Needs input").filter({ visible: true }),
   ).toBeVisible();
