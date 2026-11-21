@@ -1,5 +1,5 @@
 {
-  "id": "d94cf42f-557b-4bb3-a2a4-a0a09f767577",
+  "id": "0467c4ef-64d2-4496-9691-573866872db4",
   "prevId": "eb9276d2-ed79-4137-bbe7-f75b1c573921",
   "version": "7",
   "dialect": "postgresql",
@@ -2269,13 +2269,7 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "through_seq": {
-          "name": "through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "provider": {
           "name": "provider",
@@ -2311,15 +2305,17 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_conversation_fk": {
-          "name": "junior_conversation_embeddings_conversation_fk",
+        "junior_conversation_embeddings_brief_fk": {
+          "name": "junior_conversation_embeddings_brief_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversations",
+          "tableTo": "junior_conversation_briefs",
           "columnsFrom": [
-            "conversation_id"
+            "conversation_id",
+            "brief_version"
           ],
           "columnsTo": [
-            "conversation_id"
+            "conversation_id",
+            "version"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -3389,18 +3385,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata_through_seq": {
-          "name": "metadata_through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4462,6 +4446,12 @@
         "subject_url": {
           "name": "subject_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

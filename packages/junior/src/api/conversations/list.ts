@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -161,7 +162,7 @@ async function conversationRows(
     cursor,
     filter,
     include = [],
-    includePrivateSummaries = false,
+    includePrivateMatches = false,
     limit,
     pinnedForUserId,
     query,
@@ -176,7 +177,7 @@ async function conversationRows(
     filter: ConversationFeedMembership | undefined;
     /** Extra row content to read in the same statement. */
     include?: readonly ConversationFeedInclude[];
-    includePrivateSummaries?: boolean;
+    includePrivateMatches?: boolean;
     limit?: number;
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
@@ -244,11 +245,12 @@ async function conversationRows(
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
               and(
-                includePrivateSummaries
+                includePrivateMatches
                   ? undefined
                   : eq(juniorDestinations.visibility, "public"),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
+              annotationMatch(db, query, includePrivateMatches),
             )
           : undefined,
       ),
@@ -259,6 +261,46 @@ async function conversationRows(
     )
     .$dynamic();
   return limit === undefined ? rows : rows.limit(limit);
+}
+
+const searchAnnotated = alias(juniorConversations, "search_annotated");
+
+/**
+ * Match a root whose tree has an Annotation with the text in its label or
+ * title, such as `getsentry/roach#12`. The feed shows the annotations of
+ * the whole tree, so search reads the same rows. Private annotations match
+ * only where the feed shows them.
+ */
+function annotationMatch(
+  db: JuniorDatabase,
+  query: string,
+  includePrivate: boolean,
+) {
+  const annotation = juniorConversationAnnotations.annotation;
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(juniorConversationAnnotations)
+      .innerJoin(
+        searchAnnotated,
+        eq(
+          searchAnnotated.conversationId,
+          juniorConversationAnnotations.conversationId,
+        ),
+      )
+      .where(
+        and(
+          eq(
+            searchAnnotated.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+          includePrivate
+            ? undefined
+            : eq(juniorDestinations.visibility, "public"),
+          sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
+        ),
+      ),
+  );
 }
 
 /**
@@ -509,7 +551,7 @@ export async function readConversationFeedFromSql(
       : undefined),
     filter,
     include,
-    includePrivateSummaries: filter?.kind === "viewer",
+    includePrivateMatches: filter?.kind === "viewer",
     query,
     status,
   };
@@ -536,7 +578,7 @@ export async function readConversationFeedFromSql(
       ? conversationRows(db, {
           filter,
           include,
-          includePrivateSummaries: true,
+          includePrivateMatches: true,
           status: "active",
           waitingForUserId: filter.userId,
         })

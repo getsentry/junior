@@ -50,6 +50,13 @@ import { DisplayText } from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import type { CodeChangeHead } from "./codeChangeHead";
+import {
+  CodeChangeOpenButton,
+  CodeChangeOpenLink,
+  CodeChangeSubtitle,
+  CodeChangeTitle,
+} from "./CodeChangeTitle";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -81,7 +88,12 @@ import {
   RowQuickActions,
   type InboxCardActions,
 } from "./RowHoverActions";
-import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import {
+  ButtonLabel,
+  LOOK_CLASSES,
+  RowSnoozeButton,
+  type ButtonLook,
+} from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
@@ -157,6 +169,8 @@ type InboxRowProps = {
   itemSubtitle?: string;
   /** The size of the code change that a row for one item is about. */
   itemSize?: CodeChangeSize | undefined;
+  /** A row for one code change item leads with the change's title. */
+  itemHead?: CodeChangeHead | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
     item: InboxItemPayload,
@@ -203,6 +217,11 @@ export function InboxRow(props: InboxRowProps) {
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
+        lead={
+          props.itemHead ? (
+            <CodeChangeOpenLink head={props.itemHead} />
+          ) : undefined
+        }
         open={rowOpenTarget(props)}
       />
     ) : undefined;
@@ -584,21 +603,36 @@ function InboxRowBody(
                 }}
                 to={path}
               >
-                <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
-                  {/* An item row's title names its kind; the icon marks it
-                    the way the pills do. */}
-                  {props.itemTitle && bundle ? (
-                    <AskKindIcon kind={inboxItemKind(bundle.newest)} />
-                  ) : null}
-                  {/* The size wraps under the title where both do not fit. */}
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span className={lineClass} ref={fadeWhenOverflowing}>
-                      {props.itemTitle ?? props.title}
+                {props.itemHead && bundle ? (
+                  <>
+                    <CodeChangeTitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                    />
+                    <CodeChangeSubtitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                      size={props.itemSize}
+                      subtitle={props.itemSubtitle}
+                    />
+                  </>
+                ) : (
+                  <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
+                    {/* An item row's title names its kind; the icon marks it
+                      the way the pills do. */}
+                    {props.itemTitle && bundle ? (
+                      <AskKindIcon kind={inboxItemKind(bundle.newest)} />
+                    ) : null}
+                    {/* The size wraps under the title where both do not fit. */}
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                      <span className={lineClass} ref={fadeWhenOverflowing}>
+                        {props.itemTitle ?? props.title}
+                      </span>
+                      <ChangeSize size={props.itemSize} />
                     </span>
-                    <ChangeSize size={props.itemSize} />
                   </span>
-                </span>
-                {props.itemTitle && props.itemSubtitle ? (
+                )}
+                {props.itemTitle && props.itemSubtitle && !props.itemHead ? (
                   <span
                     className={cn(
                       lineClass,
@@ -757,6 +791,11 @@ function InboxRowBody(
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               onAction={props.onItemAction}
+              primaryAction={
+                props.itemHead ? (
+                  <CodeChangeOpenButton head={props.itemHead} />
+                ) : undefined
+              }
               rowActions={inlineActions ? rowActions(props, true) : undefined}
               sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
@@ -775,6 +814,8 @@ function rowActions(props: InboxRowProps, inline = false) {
     <ExpandedActions
       conversation={props.conversation}
       inline={inline}
+      // A code change card leads with its own main action.
+      look={inline && props.itemHead ? "narrow" : undefined}
       // A stack of one card snoozes on the card.
       {...((props.bundle?.items.length ?? 0) > 1
         ? { eventSnooze: props.eventSnooze, onSnooze: props.onSnooze }
@@ -791,6 +832,7 @@ function ExpandedActions(props: {
   conversation?: Conversation;
   inline: boolean;
   eventSnooze?: EventSnooze | undefined;
+  look?: ButtonLook | undefined;
   open: { label: string; path: string };
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
@@ -800,14 +842,17 @@ function ExpandedActions(props: {
   const actions = (
     <>
       <Link
-        className={buttonVariants({ variant: "ghost" })}
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          props.look && LOOK_CLASSES[props.look],
+        )}
         to={props.open.path}
       >
         <ArrowUpRight aria-hidden="true" size={15} />
-        {props.open.label}
+        <ButtonLabel look={props.look}>{props.open.label}</ButtonLabel>
       </Link>
       {props.conversation?.isParticipant ? (
-        <ExpandedPin conversation={props.conversation} />
+        <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
       {props.onWake ? (
         <Button onClick={props.onWake} variant="ghost">
@@ -835,7 +880,10 @@ function ExpandedActions(props: {
 }
 
 /** Pin the Conversation from the open row. There is one pin: its own. */
-function ExpandedPin(props: { conversation: Conversation }) {
+function ExpandedPin(props: {
+  conversation: Conversation;
+  look?: ButtonLook | undefined;
+}) {
   const { clearActionError, showActionError } = useConversationActionToasts();
   const pin = usePinConversation(props.conversation.id, {
     onError: (pinning) =>
@@ -850,6 +898,7 @@ function ExpandedPin(props: { conversation: Conversation }) {
   return (
     <Button
       aria-pressed={pinned}
+      className={props.look && LOOK_CLASSES[props.look]}
       disabled={pin.isPending}
       onClick={() => pin.mutate(!pinned)}
       variant="ghost"
@@ -859,7 +908,7 @@ function ExpandedPin(props: { conversation: Conversation }) {
       ) : (
         <Pin aria-hidden="true" size={15} />
       )}
-      {pinned ? "Unpin" : "Pin"}
+      <ButtonLabel look={props.look}>{pinned ? "Unpin" : "Pin"}</ButtonLabel>
     </Button>
   );
 }
