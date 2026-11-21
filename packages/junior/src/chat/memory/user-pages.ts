@@ -1,7 +1,7 @@
 /** Render memory in Junior's User page format. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
 import { listMemories, type MemoryView } from "./viewer";
-import type { MemoryDb } from "./store";
+import { memoryDb } from "./store";
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -61,7 +61,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     description: "Public memories that every conversation can use.",
     async read(ctx, input) {
       const archived = input.filter === ARCHIVED_MEMORY_FILTER;
-      const page = await listMemories(ctx.db as MemoryDb, {
+      const page = await listMemories(memoryDb(ctx.db), {
         ...(archived ? { archived: true } : undefined),
         cursor: input.cursor,
         limit: input.limit,

@@ -27,6 +27,7 @@ export {
   moveIdleConversationDestination,
   pruneActiveConversation,
   releaseInboundMessage,
+  withIdleConversation,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,

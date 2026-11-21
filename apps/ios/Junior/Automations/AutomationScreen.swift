@@ -7,6 +7,7 @@ import SwiftUI
 struct AutomationScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.splitColumn) private var column
   let automationId: String
   @State private var detail: AutomationDetail?
   @State private var error: JuniorAPIError?
@@ -16,17 +17,20 @@ struct AutomationScreen: View {
       AppHeader(title: app.agentName)
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          Button {
-            dismiss()
-          } label: {
-            HStack(spacing: 8) {
-              Icon("arrow-left", size: 15)
-              Text("Automations")
+          // Beside the list, there is nothing to go back to.
+          if column != .detailRoot {
+            Button {
+              dismiss()
+            } label: {
+              HStack(spacing: 8) {
+                Icon("arrow-left", size: 15)
+                Text("Automations")
+              }
+              .type(.sm, .medium, family: .display)
+              .foregroundStyle(Tokens.textMuted)
             }
-            .type(.sm, .medium, family: .display)
-            .foregroundStyle(Tokens.textMuted)
+            .buttonStyle(.plain)
           }
-          .buttonStyle(.plain)
           if let detail {
             overview(detail.automation)
             runs(detail.runs)
@@ -41,6 +45,7 @@ struct AutomationScreen: View {
           }
         }
         .padding(16)
+        .readableWidth()
       }
       .refreshable { await load() }
     }

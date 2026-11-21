@@ -6,11 +6,13 @@ import {
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { isPersonSource } from "@/chat/conversations/kind-behavior";
 import {
   createMemoryStore,
   parseMemoryRow,
   type CreateMemoryInput,
   type CreateMemoryResult,
+  memoryDb,
   type MemoryDb,
 } from "./store";
 import {
@@ -291,7 +293,7 @@ export async function processMemorySession(
   const run = await context.run.load();
   // TODO(dcramer): Replace this hardcoded Source check when a plugin Run can
   // state whether passive memory extraction should run.
-  if (run.source.kind !== "slack" && run.source.kind !== "web") {
+  if (!isPersonSource(run.source)) {
     return;
   }
   // Memory tool turns already own memory management or recall; do not reinterpret
@@ -329,7 +331,7 @@ export async function processMemorySession(
     ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });
   const agent = createMemoryAgent(context.model);
-  const db = context.db as MemoryDb;
+  const db = memoryDb(context.db);
   const store = createMemoryStore(db, runtimeContext, {
     embedder: context.embedder,
     supersessionDecider: agent,

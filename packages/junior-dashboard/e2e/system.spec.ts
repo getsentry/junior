@@ -396,7 +396,10 @@ test("shows cache health and warmup outcomes from Sentry", async ({
   await screenshot(page, "system-cache-health-24h", { target: health });
 });
 
-test("shows how to set up cache health", async ({ page, dashboard }) => {
+test("shows when cache health is not set up, loading, or old", async ({
+  page,
+  dashboard,
+}) => {
   await page.route("**/api/cache-warming/health?*", (route) =>
     route.fulfill({
       json: { status: "unconfigured", missing: ["SENTRY_READ_TOKEN"] },
@@ -408,6 +411,33 @@ test("shows how to set up cache health", async ({ page, dashboard }) => {
     health.getByText(/^Set SENTRY_READ_TOKEN to read cache health from Sentry/),
   ).toBeVisible();
   await screenshot(page, "system-cache-health-setup", {
+    target: health,
+    view: "desktop",
+  });
+
+  // Another load is still reading Sentry, and nothing is stored yet.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", (route) =>
+    route.fulfill({ json: { status: "busy" } }),
+  );
+  await page.reload();
+  await expect(
+    health.getByText(/^Cache health is still loading from Sentry/),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-health-busy", {
+    target: health,
+    view: "desktop",
+  });
+
+  // An older answer says when it is from.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...(await response.json()), stale: true } });
+  });
+  await page.reload();
+  await expect(health.getByText(/This is from /)).toBeVisible();
+  await screenshot(page, "system-cache-health-stale", {
     target: health,
     view: "desktop",
   });

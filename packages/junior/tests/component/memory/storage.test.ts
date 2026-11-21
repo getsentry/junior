@@ -9,6 +9,7 @@ import {
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
   type HeartbeatHookContext,
+  type PluginCache,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
@@ -16,9 +17,11 @@ import {
   type PluginRunTranscriptEntry,
   type PluginState,
   type PluginTaskContext,
+  type ToolRegistrationHookContext,
   type Actor,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
+import * as z from "zod";
 import { eq, isNotNull } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "@/db/schema/memory";
@@ -75,6 +78,12 @@ const memoryState: PluginState = {
   },
 };
 
+const memoryCache: PluginCache = {
+  async getOrLoad(_key, load) {
+    return (await load()).value;
+  },
+};
+
 function memoryHeartbeatContext(args: {
   embedder: HeartbeatHookContext["embedder"];
   fixture: MemoryFixture;
@@ -87,11 +96,7 @@ function memoryHeartbeatContext(args: {
       get: vi.fn(),
     },
     annotations: { forConversation: vi.fn() },
-    cache: {
-      async getOrLoad(_key, load) {
-        return (await load()).value;
-      },
-    },
+    cache: memoryCache,
     codeChanges: {
       associateConversations: vi.fn(),
       record: vi.fn(),
@@ -103,6 +108,7 @@ function memoryHeartbeatContext(args: {
     log: noopLogger,
     nowMs: args.nowMs,
     plugin: { name: "memory" },
+    reviewItems: { forConversation: vi.fn() },
     state: memoryState,
   };
 }
@@ -177,8 +183,12 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
         stdout.push(text);
       },
     },
-    writeError: (text: string) => stderr.push(text),
-    writeOutput: (text: string) => stdout.push(text),
+    writeError: (text: string) => {
+      stderr.push(text);
+    },
+    writeOutput: (text: string) => {
+      stdout.push(text);
+    },
   };
   const command = new Command(definition.name)
     .description(definition.summary)
@@ -342,14 +352,22 @@ function extractionModel(
         statesChange: memory.statesChange ?? false,
       });
       return {
-        object: {
+        object: input.schema.parse({
           contradictedMemories,
           memories: memories.map(toResponseMemory),
-        },
+        }),
       };
     },
   };
   return { calls, model };
+}
+
+/** Ids of the memories in a recall contribution. */
+function recalledMemoryIds(memories: unknown): string[] {
+  return z
+    .array(z.object({ id: z.string() }))
+    .parse(memories)
+    .map((memory) => memory.id);
 }
 
 const defaultInstructionActor: Actor = {
@@ -543,6 +561,7 @@ function processSessionContext(
       },
     } satisfies MemoryTaskContext["run"]);
   return {
+    cache: memoryCache,
     db: overrides.db ?? {},
     embedder: overrides.embedder ?? createTestEmbedder(),
     events:
@@ -626,13 +645,13 @@ describe("memory plugin storage", () => {
       async completeObject(input) {
         calls.push(input);
         return {
-          object: {
+          object: input.schema.parse({
             decision: "store",
             kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
             expiresAtMs: null,
             reason: null,
-          },
+          }),
         };
       },
     };
@@ -648,7 +667,9 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
+    expect(
+      calls.map((call) => strictProviderSchemaProblems(call.schema)),
+    ).toEqual([[]]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -704,11 +725,13 @@ describe("memory plugin storage", () => {
 
   it("disables memory write tools outside a public main Conversation", () => {
     const plugin = createMemoryRegistration();
-    const toolStates = (source: PluginTaskContext["source"]) =>
+    const toolStates = (source: ToolRegistrationHookContext["source"]) =>
       Object.fromEntries(
         Object.keys(plugin.hooks?.tools?.() ?? {}).map((name) => [
           name,
-          plugin.hooks?.disabledTools?.({ source } as any)[name] ?? "enabled",
+          plugin.hooks?.disabledTools?.({
+            source,
+          } as ToolRegistrationHookContext)[name] ?? "enabled",
         ]),
       );
 
@@ -754,9 +777,9 @@ describe("memory plugin storage", () => {
 
   it("parses canonical actor extraction into stored memory text", async () => {
     const model: PluginModel = {
-      async completeObject() {
+      async completeObject(input) {
         return {
-          object: {
+          object: input.schema.parse({
             contradictedMemories: [],
             memories: [
               {
@@ -768,7 +791,7 @@ describe("memory plugin storage", () => {
                 statesChange: false,
               },
             ],
-          },
+          }),
         };
       },
     };
@@ -776,6 +799,8 @@ describe("memory plugin storage", () => {
 
     await expect(
       agent.extractSessionMemories({
+        existingMemories: [],
+        recalledMemories: [],
         transcript: [
           {
             type: "message",
@@ -807,9 +832,9 @@ describe("memory plugin storage", () => {
 
   it("accepts up to five passive extraction memories", async () => {
     const model: PluginModel = {
-      async completeObject() {
+      async completeObject(input) {
         return {
-          object: {
+          object: input.schema.parse({
             contradictedMemories: [],
             memories: [
               {
@@ -848,13 +873,15 @@ describe("memory plugin storage", () => {
                 statesChange: false,
               },
             ],
-          },
+          }),
         };
       },
     };
     const agent = createMemoryAgent(model);
 
     const result = await agent.extractSessionMemories({
+      existingMemories: [],
+      recalledMemories: [],
       transcript: [
         {
           type: "message",
@@ -871,9 +898,9 @@ describe("memory plugin storage", () => {
 
   it("rejects passive extraction responses with more than five memories", async () => {
     const model: PluginModel = {
-      async completeObject() {
+      async completeObject(input) {
         return {
-          object: {
+          object: input.schema.parse({
             memories: Array.from({ length: 6 }, (_, index) => ({
               canonicalFact: `Fact ${index + 1}.`,
               expiresAtMs: null,
@@ -881,7 +908,7 @@ describe("memory plugin storage", () => {
               evidenceMessageIndices: [0],
               statesChange: false,
             })),
-          },
+          }),
         };
       },
     };
@@ -889,6 +916,8 @@ describe("memory plugin storage", () => {
 
     await expect(
       agent.extractSessionMemories({
+        existingMemories: [],
+        recalledMemories: [],
         transcript: [
           {
             type: "message",
@@ -922,15 +951,15 @@ describe("memory plugin storage", () => {
 
   it("normalizes structured rejection responses", async () => {
     const model: PluginModel = {
-      async completeObject() {
+      async completeObject(input) {
         return {
-          object: {
+          object: input.schema.parse({
             decision: "reject",
             kind: null,
             canonicalFact: null,
             expiresAtMs: null,
             reason: "not_public_shareable",
-          },
+          }),
         };
       },
     };
@@ -1132,15 +1161,15 @@ describe("memory plugin storage", () => {
           ) {
             supersessionCalls.push(input);
             return {
-              object: {
+              object: input.schema.parse({
                 decision: "supersedes_old",
                 duplicateId: null,
                 supersededIds: [oldMemory.memory.id],
-              },
+              }),
             };
           }
           return {
-            object: {
+            object: input.schema.parse({
               contradictedMemories: [],
               memories: [
                 {
@@ -1151,7 +1180,7 @@ describe("memory plugin storage", () => {
                   statesChange: false,
                 },
               ],
-            },
+            }),
           };
         },
       };
@@ -1179,10 +1208,11 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(supersessionCalls).toHaveLength(1);
-      expect(strictProviderSchemaProblems(supersessionCalls[0].schema)).toEqual(
-        [],
-      );
+      expect(
+        supersessionCalls.map((call) =>
+          strictProviderSchemaProblems(call.schema),
+        ),
+      ).toEqual([[]]);
 
       const rows = await memoryDb(fixture)
         .select()
@@ -1223,10 +1253,10 @@ describe("memory plugin storage", () => {
               "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
             )
           ) {
-            return { object: { memories: [] } };
+            return { object: input.schema.parse({ memories: [] }) };
           }
           return {
-            object: {
+            object: input.schema.parse({
               contradictedMemories: [],
               memories: [
                 {
@@ -1238,7 +1268,7 @@ describe("memory plugin storage", () => {
                   statesChange: false,
                 },
               ],
-            },
+            }),
           };
         },
       };
@@ -1397,8 +1427,9 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toHaveLength(1);
-      expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
+      expect(
+        calls.map((call) => strictProviderSchemaProblems(call.schema)),
+      ).toEqual([[]]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -1635,25 +1666,26 @@ describe("memory plugin storage", () => {
             const existing = existingJson
               ? (JSON.parse(existingJson) as Array<{ id: string }>)
               : [];
-            if (existing.length === 0) {
+            const [existingMemory] = existing;
+            if (!existingMemory) {
               return {
-                object: {
+                object: input.schema.parse({
                   decision: "distinct",
                   duplicateId: null,
                   supersededIds: null,
-                },
+                }),
               };
             }
             return {
-              object: {
+              object: input.schema.parse({
                 decision: "supersedes_old",
                 duplicateId: null,
-                supersededIds: [existing[0].id],
-              },
+                supersededIds: [existingMemory.id],
+              }),
             };
           }
           return {
-            object: {
+            object: input.schema.parse({
               contradictedMemories: [],
               memories: [
                 {
@@ -1671,7 +1703,7 @@ describe("memory plugin storage", () => {
                   statesChange: false,
                 },
               ],
-            },
+            }),
           };
         },
       };
@@ -4357,8 +4389,8 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       if (!contribution || !("context" in contribution)) {
         throw new Error("Memory recall did not return structured context");
       }
-      const admittedIds = contribution.context.content["memories"].map(
-        (memory) => memory.id,
+      const admittedIds = recalledMemoryIds(
+        contribution.context.content["memories"],
       );
       expect(admittedIds).toHaveLength(6);
       expect([...admittedIds].sort()).toEqual(
@@ -4541,8 +4573,8 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       if (!contribution || !("context" in contribution)) {
         throw new Error("Memory recall did not return structured context");
       }
-      const recalledIds = contribution.context.content["memories"].map(
-        (memory) => memory.id,
+      const recalledIds = recalledMemoryIds(
+        contribution.context.content["memories"],
       );
       expect([...recalledIds].sort()).toEqual(
         [changed.memory.id, fresh.memory.id, beforeCompaction.memory.id].sort(),
@@ -5022,13 +5054,15 @@ INSERT INTO junior_memory_memories (
         async completeObject(input) {
           expect(input.prompt).toContain("<memory-adjudication-input>");
           return {
-            object: duplicateId
-              ? { decision: "duplicate", duplicateId, supersededIds: null }
-              : {
-                  decision: "distinct",
-                  duplicateId: null,
-                  supersededIds: null,
-                },
+            object: input.schema.parse(
+              duplicateId
+                ? { decision: "duplicate", duplicateId, supersededIds: null }
+                : {
+                    decision: "distinct",
+                    duplicateId: null,
+                    supersededIds: null,
+                  },
+            ),
           };
         },
       };
@@ -5154,9 +5188,13 @@ INSERT INTO junior_memory_memories (
             if (input.candidate.content !== newContent) {
               return { decision: "distinct" };
             }
+            const [existingMemory] = input.existingMemories;
+            if (!existingMemory) {
+              throw new Error("Expected an existing memory to supersede.");
+            }
             return {
               decision: "supersedes_old",
-              supersededIds: [input.existingMemories[0].id],
+              supersededIds: [existingMemory.id],
             };
           },
         },
@@ -5354,9 +5392,13 @@ INSERT INTO junior_memory_memories (
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession(input) {
+            const [existingMemory] = input.existingMemories;
+            if (!existingMemory) {
+              throw new Error("Expected an existing memory to supersede.");
+            }
             return {
               decision: "supersedes_old",
-              supersededIds: [input.existingMemories[0].id],
+              supersededIds: [existingMemory.id],
             };
           },
         },
