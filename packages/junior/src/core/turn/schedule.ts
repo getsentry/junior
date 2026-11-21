@@ -5,9 +5,9 @@
 // the message is acknowledged, and the Turn never runs. `assignTurn` picks
 // which Turn takes the input.
 //
-// When a Turn ends, `turnEnded` moves a failed Turn's inputs that no model
-// step was given to the Turn that `assignTurn` picks, then publishes the
-// Conversation's queued Turn. Every part of it is safe to repeat, so it needs
+// When a Turn ends, `turnEnded` moves a failed Turn's inputs that arrived
+// after its last claim to the Turn that `assignTurn` picks, then publishes
+// the Conversation's queued Turn. Every part of it is safe to repeat, so it needs
 // no marker: it runs on every end path, and again on a redelivery.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
@@ -133,9 +133,9 @@ async function moveInputs(
 }
 
 /**
- * Moves the unread inputs of a failed Turn that no model step was given to
- * the Turn that `assignTurn` picks. The failed Turn keeps, and so drops, the
- * inputs that a step was given.
+ * Moves the unread inputs of a failed Turn that arrived after its last claim
+ * to the Turn that `assignTurn` picks. The failed Turn keeps, and so drops,
+ * the inputs that an attempt claimed it with.
  */
 async function moveLeftovers(
   executor: JuniorSqlDatabase,
@@ -166,8 +166,8 @@ async function moveLeftovers(
 }
 
 /**
- * The end work of a Turn: a failed Turn hands on its inputs that no model
- * step was given, then the Conversation's queued Turn is published. It does
+ * The end work of a Turn: a failed Turn hands on its inputs that arrived
+ * after its last claim, then the Conversation's queued Turn is published. It does
  * nothing for a Turn that has not ended. Safe to run any number of times.
  * Call it outside a transaction: it publishes after its own commit.
  */

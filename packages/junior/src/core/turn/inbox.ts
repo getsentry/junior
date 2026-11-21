@@ -63,7 +63,7 @@ export type UnreadInput = Pick<
 > & {
   inputId: string;
   traceContext: TurnInputTraceContext | null;
-  /** When a model step was first given the input. */
+  /** When an attempt of the Turn first claimed it with the input unread. */
   attemptedAt: Date | null;
 };
 
@@ -115,8 +115,8 @@ export async function findUnreadInputs(
 }
 
 /**
- * Records that a model step was given these inputs. The first attempt keeps
- * its time. It does not mark the inputs read.
+ * Records that an attempt of the Turn claimed it with these inputs unread.
+ * The first attempt keeps its time. It does not mark the inputs read.
  */
 export async function markInputsAttempted(
   executor: JuniorSqlDatabase,

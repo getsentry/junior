@@ -33,6 +33,12 @@ export type StepInput = {
    * calls may have run.
    */
   replay: boolean;
+  /**
+   * True when the pending tool calls belong to an earlier Turn that ended
+   * before their results. The step runs none of them and closes each with an
+   * error result, so the next step is a model request.
+   */
+  abandonToolCalls: boolean;
   signal: AbortSignal;
   environment?: ToolExecutionEnvironment;
 };
@@ -170,7 +176,8 @@ type ToolCallStatus =
   | "not_found"
   | "invalid_arguments"
   | "replay_skipped"
-  | "truncated";
+  | "truncated"
+  | "abandoned";
 
 type ToolCallRun = { status: ToolCallStatus; result: ToolResult };
 
@@ -202,6 +209,9 @@ async function executeToolCall(
   truncated: boolean,
   input: StepInput,
 ): Promise<ToolCallRun> {
+  if (input.abandonToolCalls) {
+    return abandonedRun(call, input);
+  }
   if (truncated) {
     return errorRun(
       "truncated",
@@ -244,6 +254,16 @@ async function executeToolCall(
       errorText(error),
     );
   }
+}
+
+function abandonedRun(call: ToolCall, input: StepInput): ToolCallRun {
+  const tool = input.tools.find((candidate) => candidate.name === call.name);
+  return errorRun(
+    "abandoned",
+    tool?.replay === "safe"
+      ? "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it."
+      : "The previous Turn ended before this call's result was saved. It may or may not have run. Check its effect before you call it again.",
+  );
 }
 
 // `validateToolArguments` returns `any`.
