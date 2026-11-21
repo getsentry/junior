@@ -1,4 +1,3 @@
-import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
@@ -16,7 +15,7 @@ import {
 import { juniorIdentities } from "@/db/schema";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const linkedSlackIdentity = alias(
   juniorIdentities,
@@ -284,14 +283,6 @@ async function resolveStoredProvider(
     .slice(0, 10)
     .map((row) => slackMentionProfileFromIdentity(row.slack));
   return lookupResult({ provider, query, users });
-}
-
-/** Identity providers that `userLookup` can search: Slack, then OAuth account providers. */
-export function userLookupIdentityProviders(): [string, ...string[]] {
-  return [
-    "slack",
-    ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
-  ];
 }
 
 /** Static definition of `userLookup` for these identity providers. */

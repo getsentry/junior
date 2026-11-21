@@ -46,7 +46,7 @@ import {
   statsItems,
   turnRoot,
   verifiedActorWhere,
-} from "./shared";
+} from "./person-report";
 import { trailingUtcHourWindow } from "../reporting-window";
 
 type AggregateRow = {

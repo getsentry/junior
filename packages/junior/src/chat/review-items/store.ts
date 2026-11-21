@@ -37,7 +37,7 @@ import {
   juniorReviewItems,
   juniorUsers,
 } from "@/db/schema";
-import type { UserInputAnswer } from "@/chat/tools/runtime/user-input-request";
+import type { UserInputAnswer } from "@/chat/review-items/user-input-request";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
@@ -62,7 +62,7 @@ export type ReviewItemStatus = "open" | "done" | "dismissed";
 export type ReviewItemVisibility = "public" | "private";
 
 /** The thing a Review item is about, such as a pull request. */
-interface ReviewItemSubject {
+export interface ReviewItemSubject {
   /** Stable id that Search matches, such as a URL. */
   id: string;
   title?: string;

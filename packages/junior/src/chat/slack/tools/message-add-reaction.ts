@@ -4,10 +4,10 @@ import { addReactionToMessage } from "@/chat/slack/outbound";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { createOperationKey } from "@/chat/tools/idempotency";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /**

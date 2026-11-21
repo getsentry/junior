@@ -1,3 +1,4 @@
+import { createSearchReviewItemsTool } from "@/chat/review-items/tools/search";
 import type { Identity, User } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,14 +15,11 @@ import {
   juniorConversationParticipants,
   juniorIdentities,
 } from "@/db/schema";
-import {
-  createAddReviewItemTool,
-  createSearchReviewItemsTool,
-  createUpdateReviewItemTool,
-} from "@/chat/tools/review-items";
+import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
 type Context = Pick<

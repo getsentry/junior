@@ -110,7 +110,8 @@ describe("plugin reports API route", () => {
         expectSqlBudget(
           () =>
             createJuniorApi().request("http://localhost/api/plugin-reports"),
-          { statements: 2, serialRounds: 1 },
+          // Core Memory adds its own report queries to the feed.
+          { statements: 6, serialRounds: 1 },
         ),
       );
 

@@ -18,6 +18,7 @@ import { displayPlainText } from "../src/client/display-text/plainText";
 import type { DashboardCoreData } from "../src/client/types";
 
 // Links can ask the API for cards, so display text needs a query client.
+// A link to a Conversation routes in the app, so it needs a router too.
 // A viewer email seeds the signed-in person that mentions compare against.
 function markup(children: ReactNode, viewerEmail?: string) {
   const client = new QueryClient();
@@ -27,7 +28,9 @@ function markup(children: ReactNode, viewerEmail?: string) {
     } as DashboardCoreData);
   }
   return renderToStaticMarkup(
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -290,11 +293,9 @@ describe("display text object links", () => {
   // A person link opens their People page in the dashboard.
   function render(text: string, viewerEmail?: string) {
     return markup(
-      <MemoryRouter>
-        <KnownObjectsProvider annotations={annotations}>
-          <DisplayText text={text} />
-        </KnownObjectsProvider>
-      </MemoryRouter>,
+      <KnownObjectsProvider annotations={annotations}>
+        <DisplayText text={text} />
+      </KnownObjectsProvider>,
       viewerEmail,
     );
   }
@@ -391,19 +392,17 @@ describe("display text object links", () => {
     );
 
     const slack = markup(
-      <MemoryRouter>
-        <DisplayText
-          mentions={[
-            {
-              avatarUrl: PHOTO,
-              email: "dev@example.com",
-              fullName: "Morgan Lee",
-              slackUserId: "U123",
-            },
-          ]}
-          text="Ping <@U123>."
-        />
-      </MemoryRouter>,
+      <DisplayText
+        mentions={[
+          {
+            avatarUrl: PHOTO,
+            email: "dev@example.com",
+            fullName: "Morgan Lee",
+            slackUserId: "U123",
+          },
+        ]}
+        text="Ping <@U123>."
+      />,
       "dev@example.com",
     );
     expect(slack).toMatch(

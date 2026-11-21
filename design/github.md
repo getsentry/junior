@@ -72,10 +72,10 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
-- A PR opened ready for review, a change request that Junior marks
-  addressed, and a push after a change request ask for a review before the
-  required checks pass (`github#review-request`, `github#rereview`). This
-  breaks "asks for a review only when the required checks pass".
+- A PR opened ready for review, and Junior's push, reply, or comment
+  after a change request, ask for a review before the required checks pass
+  (`github#review-request`, `github#rereview`). This breaks "asks for a
+  review only when the required checks pass".
 - Junior fixes merge conflicts on a timer after a person's activity, not
   when the PR next needs a person, and a draft gets no fix, so it never
   reaches review (`github#conflict-fix`). This breaks "upkeep follows

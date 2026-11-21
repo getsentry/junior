@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { contentVersion, contentVersionHeaders } from "../content-version";
 import { emptyResponse, jsonResponse, throwApiError } from "../http";
-import { CONTENT_VERSION_HEADER } from "../schema/common";
+import { CONTENT_VERSION_HEADER } from "../schema/response";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {

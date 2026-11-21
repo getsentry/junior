@@ -48,11 +48,6 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
 ## Gaps
 
-- When Junior stops fixing a merge conflict on its pull request, it asks
-  the requester to Resume with a `Merge conflict` Review item in Slack and
-  the Inbox (`github#conflict-idle`). No agent runs for the stop. This
-  breaks "Junior owns the upkeep of its own work" and "when Junior stops
-  upkeep that it owns, it tells nobody".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
   do".

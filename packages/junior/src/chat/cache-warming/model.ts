@@ -81,7 +81,8 @@ export function warmupPrice(cacheReadPrice: number): number {
 }
 
 /**
- * Junior watches an idle period for this long. A person who replies later
+ * Junior watches an idle period for this long, unless it waits on a child
+ * agent (`CHILD_WAIT_IDLE_HORIZON_MS`). A person who replies later
  * counts as a person who did not reply. The reply chance of a warmup counts
  * only replies before this time. For a cache that outlives the horizon, this
  * is less than the real chance, so Junior warms less, never more.
@@ -92,11 +93,31 @@ export function warmupPrice(cacheReadPrice: number): number {
  * cap changed almost nothing: late returns exist, but they are too rare to
  * pay for warming every Conversation that long.
  *
- * The horizon message is signed when the idle period starts, and a queue
- * signature is valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other
- * 5 minutes let a late horizon still record its no-reply gap.
+ * A horizon message is signed when it is sent, and a queue signature is
+ * valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other 5 minutes
+ * let a late horizon still record its no-reply gap. A longer idle horizon
+ * sends its horizon in steps of this length.
  */
 export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
+
+/**
+ * Idle horizon of an idle period that waits on a child agent. The child's
+ * result starts a Turn, so a return stays likely long after people stop
+ * replying. In a backtest, the return chance per interval stayed well above
+ * breakeven for most of the time past the default horizon. The return
+ * chance still stops warming once the gaps of the child segment show that
+ * returns get rare. Two horizons, 110 minutes, cover the late returns and
+ * limit the cost of a child agent that never returns.
+ *
+ * A Review item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
+ * backtest was borderline.
+ */
+export const CHILD_WAIT_IDLE_HORIZON_MS = 2 * IDLE_HORIZON_MS;
+
+/** Idle horizon of an idle period that also waits on `waitingOn`. */
+export function idleHorizonMs(waitingOn: WaitingOn | undefined): number {
+  return waitingOn === "child" ? CHILD_WAIT_IDLE_HORIZON_MS : IDLE_HORIZON_MS;
+}
 
 /**
  * Whether a failed warmup request counts as a miss for the provider breaker.
@@ -321,6 +342,8 @@ export interface WarmupDecisionInput {
   priorGapsMs?: readonly (readonly number[])[];
   /** Time since the cached request started. */
   idleMs: number;
+  /** Idle time after which returns do not count (`idleHorizonMs`). */
+  idleHorizonMs: number;
   /**
    * Idle time at which the current cache expires. Returns before it read the
    * cache without a warmup, so no plan gets credit for them.
@@ -336,6 +359,37 @@ export interface WarmupDecisionInput {
    * within `timerFloorMaxDueIdleMs`.
    */
   timerDueIdleMs?: number;
+}
+
+// The return chances of an idle period: its Conversation's gaps blended
+// with its segment's, and a thin segment's with its parents'.
+function returnCurve(
+  input: Pick<
+    WarmupDecisionInput,
+    "conversationGapsMs" | "globalGapsMs" | "priorGapsMs"
+  >,
+) {
+  const conversation = histogramOf(input.conversationGapsMs);
+  const segments = [histogramOf(input.globalGapsMs)];
+  for (const gapsMs of input.priorGapsMs ?? []) {
+    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
+    segments.push(histogramOf(gapsMs));
+  }
+  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
+  // Each thin list leans on the blend of the lists after it.
+  const histogram = blendHistograms(
+    conversation,
+    segments.reduceRight((prior, own) =>
+      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
+    ),
+    CONVERSATION_BLEND_PSEUDOCOUNT,
+  );
+  return {
+    histogram,
+    conversationGaps: conversation.total,
+    segmentGaps,
+    parentPrior: segmentGaps > segments[0]!.total,
+  };
 }
 
 /** Result of one warmup decision. */
@@ -391,29 +445,17 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     savedPerReturn > 0
       ? Math.min(warmupPrice(input.cacheReadPrice) / savedPerReturn, 1)
       : 1;
-  const conversation = histogramOf(input.conversationGapsMs);
-  const segments = [histogramOf(input.globalGapsMs)];
-  for (const gapsMs of input.priorGapsMs ?? []) {
-    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
-    segments.push(histogramOf(gapsMs));
-  }
-  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
-  // Each thin list leans on the blend of the lists after it.
-  const histogram = blendHistograms(
-    conversation,
-    segments.reduceRight((prior, own) =>
-      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
-    ),
-    CONVERSATION_BLEND_PSEUDOCOUNT,
-  );
+  const { histogram, conversationGaps, segmentGaps, parentPrior } =
+    returnCurve(input);
   const probability = returnProbability(
     histogram,
     input.idleMs,
-    Math.min(input.cacheTtlMs, IDLE_HORIZON_MS - input.idleMs),
+    Math.min(input.cacheTtlMs, input.idleHorizonMs - input.idleMs),
   );
   const perWarmup = returnsPerWarmup(
     histogram,
     input.idleMs,
+    input.idleHorizonMs,
     input.cacheExpiryIdleMs,
     input.cacheTtlMs,
   );
@@ -423,7 +465,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     returnProbability: probability,
     returnsPerWarmup: perWarmup,
     threshold,
-    parentPrior: segmentGaps > segments[0]!.total,
+    parentPrior,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return decision("prefix_too_small");
@@ -431,18 +473,27 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (threshold >= 1) {
     return decision("no_savings");
   }
-  const timerFloor =
-    input.timerDueIdleMs !== undefined &&
-    input.cacheExpiryIdleMs < input.timerDueIdleMs + TIMER_START_DELAY_MS;
+  const timerFloor = timerFloorApplies(input);
   const reason =
-    input.idleMs >= IDLE_HORIZON_MS
+    input.idleMs >= input.idleHorizonMs
       ? "horizon"
-      : conversation.total + segmentGaps < MIN_GAP_SAMPLES
+      : conversationGaps + segmentGaps < MIN_GAP_SAMPLES
         ? "few_gaps"
         : perWarmup >= threshold
           ? "warm"
           : "unlikely_return";
   return decision(reason !== "warm" && timerFloor ? "timer" : reason);
+}
+
+// A timer is due before the cache that this warmup buys expires, plus the
+// time its Turn takes to start, so the timer's Turn reads the warm cache.
+function timerFloorApplies(
+  input: Pick<WarmupDecisionInput, "cacheExpiryIdleMs" | "timerDueIdleMs">,
+): boolean {
+  return (
+    input.timerDueIdleMs !== undefined &&
+    input.cacheExpiryIdleMs < input.timerDueIdleMs + TIMER_START_DELAY_MS
+  );
 }
 
 // Best expected returns per warmup over plans of 1, 2, ... warmups that end
@@ -453,6 +504,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
 function returnsPerWarmup(
   histogram: GapHistogram,
   idleMs: number,
+  horizonMs: number,
   cacheExpiryIdleMs: number,
   ttlMs: number,
 ): number {
@@ -461,16 +513,129 @@ function returnsPerWarmup(
   if (now < 0.001 || intervalMs <= 0) return 0;
   const leftAtExpiry = survival(
     histogram,
-    Math.min(cacheExpiryIdleMs, IDLE_HORIZON_MS),
+    Math.min(cacheExpiryIdleMs, horizonMs),
   );
   let best = 0;
   let warmups = 0;
-  for (let startMs = idleMs; startMs < IDLE_HORIZON_MS; startMs += intervalMs) {
+  for (let startMs = idleMs; startMs < horizonMs; startMs += intervalMs) {
     warmups += survival(histogram, startMs) / now;
-    const endMs = Math.min(startMs + ttlMs, IDLE_HORIZON_MS);
+    const endMs = Math.min(startMs + ttlMs, horizonMs);
     const returns =
       Math.max(0, leftAtExpiry - survival(histogram, endMs)) / now;
     best = Math.max(best, returns / warmups);
   }
   return best;
+}
+
+/** Inputs for one compaction on idle choice. Prices use one unit. */
+export interface IdleCompactionChoiceInput extends WarmupDecisionInput {
+  /** Estimated prefix after the ready summary replaces history. */
+  compactedTokens: number;
+  /** False when this slot cannot send a warmup, such as a late one. */
+  canWarm: boolean;
+}
+
+/** What a warmup slot does with a ready summary. */
+export type IdleCompactionChoice = "compact" | "warm" | "stop";
+
+/** Result of one compaction on idle choice, with the expected costs. */
+export interface IdleCompactionChoiceResult {
+  choice: IdleCompactionChoice;
+  /** Expected cost of each option for this idle period, in price units. */
+  costs: Record<IdleCompactionChoice, number>;
+}
+
+/**
+ * Choose what a warmup slot does when a ready summary could replace the
+ * full prefix P with a compacted prefix C. It uses the return chances of
+ * `decideWarmup`. Only returns in the idle horizon count. Each option's cost
+ * is the expected price of the warmups and of the first request of a return:
+ *
+ * - `warm`: a warmup costs `warmupPrice` of P, and a return before the next
+ *   slot reads P.
+ *   At the next slot, the choice runs again with the same three options.
+ * - `compact`: a return writes C. No more warmups.
+ * - `stop`: a return before the cache expires reads P, a later one writes P.
+ *
+ * The cheapest option wins. On a tie, compact wins, because a return after
+ * the horizon also writes less. So a likely quick return, such as a child
+ * agent's result, warms first and compacts at a later slot.
+ *
+ * Two cases do not use the costs. A slot that the timer floor of
+ * `decideWarmup` covers warms, so the timer's Turn reads the cache that the
+ * floor keeps. With too few gaps to trust the curve, `decideWarmup` stops
+ * warming, so a later return writes P either way. Then compact wins, because
+ * it writes C in place of P.
+ */
+export function chooseIdleCompaction(
+  input: IdleCompactionChoiceInput,
+): IdleCompactionChoiceResult {
+  const { histogram, conversationGaps, segmentGaps } = returnCurve(input);
+  const S = (ms: number) =>
+    survival(histogram, Math.min(ms, input.idleHorizonMs));
+  const now = S(input.idleMs);
+  const readFull = input.cacheReadPrice * input.prefixTokens;
+  const warmupFull = warmupPrice(input.cacheReadPrice) * input.prefixTokens;
+  const writeFull = input.cacheWritePrice * input.prefixTokens;
+  const writeCompacted = input.cacheWritePrice * input.compactedTokens;
+  const intervalMs = input.cacheTtlMs - WARMUP_MARGIN_MS;
+  const end = S(input.idleHorizonMs);
+  // Slot k starts at `startMs`, and its cache expires at `expiryMs`. Costs
+  // are not yet divided by `now`, so each slot weighs its own still-idle
+  // share.
+  const options = (
+    startMs: number,
+    expiryMs: number,
+    canWarm: boolean,
+  ): Record<IdleCompactionChoice, number> => {
+    const left = S(startMs);
+    const nextMs = startMs + intervalMs;
+    const warm =
+      !canWarm || intervalMs <= 0
+        ? Infinity
+        : left * warmupFull +
+          (left - S(nextMs)) * readFull +
+          (nextMs < input.idleHorizonMs
+            ? best(options(nextMs, startMs + input.cacheTtlMs, true))
+            : 0);
+    return {
+      compact: (left - end) * writeCompacted,
+      stop: (left - S(expiryMs)) * readFull + (S(expiryMs) - end) * writeFull,
+      warm,
+    };
+  };
+  const costs = options(input.idleMs, input.cacheExpiryIdleMs, input.canWarm);
+  // With no return left, each option that can run costs nothing.
+  const perIdle = (cost: number) => (now > 0 ? cost / now : cost);
+  return {
+    choice:
+      input.canWarm && timerFloorApplies(input)
+        ? "warm"
+        : conversationGaps + segmentGaps < MIN_GAP_SAMPLES
+          ? "compact"
+          : cheapest(costs),
+    costs: {
+      compact: perIdle(costs.compact),
+      stop: perIdle(costs.stop),
+      warm: perIdle(costs.warm),
+    },
+  };
+}
+
+const CHOICE_ORDER: readonly IdleCompactionChoice[] = [
+  "compact",
+  "stop",
+  "warm",
+];
+
+function cheapest(
+  costs: Record<IdleCompactionChoice, number>,
+): IdleCompactionChoice {
+  return CHOICE_ORDER.reduce((best, choice) =>
+    costs[choice] < costs[best] ? choice : best,
+  );
+}
+
+function best(costs: Record<IdleCompactionChoice, number>): number {
+  return costs[cheapest(costs)];
 }

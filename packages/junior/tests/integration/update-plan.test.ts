@@ -5,7 +5,7 @@ import { setPlanItemStatusByUser } from "@/chat/plan/store";
 import { parsePlanItemRef } from "@/chat/plan/tool-output";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";

@@ -27,7 +27,7 @@ import {
   MARK_PULL_REQUEST_READY_FOR_REVIEW,
 } from "../graphql-documents.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter } from "../conversation-footer.js";
 import {
   githubApi,
   githubErrorMessage,
