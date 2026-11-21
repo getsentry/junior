@@ -4,6 +4,31 @@ import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
 
 /**
+ * A code change title split by Conventional Commits, such as
+ * `feat(api)!: Add retries`. The plugin that owns the code change parses it,
+ * so the Inbox can lead with the words and show the rest as pills.
+ */
+export interface InboxItemSubjectTitleParts {
+  /** The title without its type prefix, such as `Add retries`. */
+  text: string;
+  /** The change type as one word, such as `Feature`. Unset when unknown. */
+  type?: string;
+  /** The scope, such as `api`. */
+  scope?: string;
+  /** The title marks a breaking change, such as with `!`. */
+  breaking?: boolean;
+}
+
+/** What a plugin item is about, such as a pull request. */
+export interface InboxItemSubjectInput {
+  id: string;
+  title?: string;
+  url?: string;
+  /** Set only for a code change whose title follows Conventional Commits. */
+  titleParts?: InboxItemSubjectTitleParts;
+}
+
+/**
  * An item that a plugin puts in the Inbox: a notice for information,
  * or an ask that waits on its assignees.
  */
@@ -21,7 +46,7 @@ export interface PluginReviewNotice {
    */
   dedupeKey: string;
   /** What the notice is about, such as a pull request. Search matches `id`. */
-  subject?: { id: string; title?: string; url?: string };
+  subject?: InboxItemSubjectInput;
   /**
    * For an item that waits on its assignees, name their step, such as
    * `Ready to merge · #946`. It is the reason that the dashboard shows.
