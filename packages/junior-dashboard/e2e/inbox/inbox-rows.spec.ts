@@ -127,7 +127,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("listitem")
-        .filter({ hasText: "Review requested · #91" })
+        .filter({ hasText: "Pin the release train" })
         .locator('[data-ask-kind="Review requested"]')
         .first(),
     ).toBeVisible();

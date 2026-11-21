@@ -323,7 +323,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Pull requests\s*2$/,
     );
 
-    await rowHead(page, prReview.title).click();
+    await rowHead(page, "Pin the release train").click();
     await page
       .locator("li[data-expanded]")
       .getByRole("button", { name: "Dismiss", exact: true })

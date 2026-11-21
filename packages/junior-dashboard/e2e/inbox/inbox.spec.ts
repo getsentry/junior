@@ -418,12 +418,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "Waiting on you" })
       .getByRole("listitem", { name: "Pin the release train" });
     await expect(
-      waiting.getByRole("link", { name: "Pin the release train" }),
+      waiting.getByRole("link", { exact: true, name: "Pin the release train" }),
     ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
     // The ask stays with its pull request.
-    await expect(
-      waiting.getByRole("link", { name: new RegExp(prReview.title) }),
-    ).toBeVisible();
+    await expect(waiting.locator("[data-inbox-head]")).toHaveAccessibleName(
+      /^Review Pin the release train/,
+    );
     // The rest wait on a reviewer, CI or Junior: newest activity first, so
     // the idle one comes last.
     await expect(
@@ -581,7 +581,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(3);
   });
 
-  test("an item row's second line names its subject, not its own title", async ({
+  test("a code change row's head names its subject, not its own title", async ({
     dashboard,
     page,
   }) => {
@@ -595,9 +595,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: prReview.title });
-    await expect(row).toContainText(prReview.subject.title);
-    await expect(row.getByText(prReview.title, { exact: true })).toHaveCount(1);
+      .filter({ hasText: prReview.subject.title });
+    // The head leads with the subject's title, so the second line does not
+    // say it again.
+    await expect(
+      row.getByText(prReview.subject.title, { exact: true }),
+    ).toHaveCount(0);
+    await expect(row.locator("[data-code-change-title]")).toContainText(
+      prReview.subject.title,
+    );
+    await expect(row).not.toContainText(prReview.title);
   });
 
   test("an item's text clamps only its prose, and its cards show in full", async ({
@@ -623,7 +630,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     };
     await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await rowHead(page, "Pin the release train").click();
     const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     const clamp = page.locator(
@@ -661,7 +668,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     };
     await mockReviewItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -874,9 +881,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const change = page.getByRole("listitem", {
       name: "Pin the release train",
     });
-    await change
-      .getByRole("link", { name: new RegExp(prReview.title) })
-      .click();
+    await change.locator("[data-inbox-head]").click();
     await expect(change.locator("[data-expanded]")).toHaveCount(1);
     await page.mouse.move(0, 0);
     await change.hover();

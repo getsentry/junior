@@ -32,6 +32,7 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "./inboxFocus";
+import { codeChangeHead } from "./codeChangeHead";
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
@@ -385,6 +386,9 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     const title = titleOf(row.conversationId) ?? row.newest.title;
     const acted = { items: row.items, key, passing: options.passing, title };
+    const head = options.itemRow
+      ? codeChangeHead(row.newest, conversationOf(row.conversationId))
+      : undefined;
     const snoozeRow = options.snoozed
       ? undefined
       : (end: SnoozeEnd) => {
@@ -411,6 +415,7 @@ export function InboxList(props: {
         drag={options.drag}
         expanded={state.expandedKey === key}
         foldedNotices={data.foldedNotices}
+        itemHead={head}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSize={
           options.itemRow
@@ -420,7 +425,8 @@ export function InboxList(props: {
         itemSubtitle={
           options.itemRow
             ? itemRowSubtitle(
-                options.subjectShown
+                // The code change head shows the subject's title.
+                options.subjectShown || head
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
                 // A child's item names its sub-thread: under the stack's

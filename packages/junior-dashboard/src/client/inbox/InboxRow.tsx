@@ -51,6 +51,13 @@ import { DisplayText } from "../display-text/DisplayText";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
+import type { CodeChangeHead } from "./codeChangeHead";
+import {
+  CodeChangeOpenButton,
+  CodeChangeOpenLink,
+  CodeChangeSubtitle,
+  CodeChangeTitle,
+} from "./CodeChangeTitle";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -167,6 +174,8 @@ type InboxRowProps = {
   itemSubtitle?: string;
   /** The size of the code change that a row for one item is about. */
   itemSize?: CodeChangeSize | undefined;
+  /** A row for one code change item leads with the change's title. */
+  itemHead?: CodeChangeHead | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
   onItemAction?(
     item: ReviewItemPayload,
@@ -213,6 +222,11 @@ export function InboxRow(props: InboxRowProps) {
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
         expanded={props.expanded}
+        lead={
+          props.itemHead ? (
+            <CodeChangeOpenLink head={props.itemHead} />
+          ) : undefined
+        }
         open={rowOpenTarget(props)}
       />
     ) : undefined;
@@ -599,21 +613,37 @@ function InboxRowBody(
                 }}
                 to={path}
               >
-                <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
-                  {/* An item row's title names its kind; the icon marks it
-                    the way the pills do. */}
-                  {props.itemTitle && bundle ? (
-                    <AskKindIcon kind={inboxItemKind(bundle.newest)} />
-                  ) : null}
-                  {/* The size wraps under the title where both do not fit. */}
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span className={lineClass} ref={fadeWhenOverflowing}>
-                      {props.itemTitle ?? props.title}
+                {props.itemHead && bundle ? (
+                  <>
+                    <CodeChangeTitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                      kind={inboxItemKind(bundle.newest)}
+                    />
+                    <CodeChangeSubtitle
+                      expanded={props.expanded}
+                      head={props.itemHead}
+                      size={props.itemSize}
+                      subtitle={props.itemSubtitle}
+                    />
+                  </>
+                ) : (
+                  <span className="flex min-w-0 items-center gap-1.5 font-display text-base font-medium leading-snug text-dashboard-text">
+                    {/* An item row's title names its kind; the icon marks it
+                      the way the pills do. */}
+                    {props.itemTitle && bundle ? (
+                      <AskKindIcon kind={inboxItemKind(bundle.newest)} />
+                    ) : null}
+                    {/* The size wraps under the title where both do not fit. */}
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                      <span className={lineClass} ref={fadeWhenOverflowing}>
+                        {props.itemTitle ?? props.title}
+                      </span>
+                      <ChangeSize size={props.itemSize} />
                     </span>
-                    <ChangeSize size={props.itemSize} />
                   </span>
-                </span>
-                {props.itemTitle && props.itemSubtitle ? (
+                )}
+                {props.itemTitle && props.itemSubtitle && !props.itemHead ? (
                   <span
                     className={cn(
                       lineClass,
@@ -772,6 +802,11 @@ function InboxRowBody(
               key={item.id}
               notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
               onAction={props.onItemAction}
+              primaryAction={
+                props.itemHead ? (
+                  <CodeChangeOpenButton head={props.itemHead} />
+                ) : undefined
+              }
               rowActions={inlineActions ? rowActions(props, true) : undefined}
               sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}

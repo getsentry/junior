@@ -72,9 +72,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "Pull request: Pin the release train" });
     await expect(pull.getByTitle(size)).toBeVisible();
     await expect(pull.getByText(size)).toHaveCount(1);
-    await expect(rowHead(page, prReview.title)).not.toHaveAccessibleName(
-      /lines added/,
-    );
+    await expect(
+      rowHead(page, "Pin the release train"),
+    ).not.toHaveAccessibleName(/lines added/);
   });
 
   test("a pull request ask shows one card, and a notice about it folds in", async ({
@@ -103,11 +103,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pull.getByText("open", { exact: true })).toBeVisible();
     await expect(pull).toContainText("release/pin-payments-4.2");
     // The head gives the change's size, so the card does not say it again.
-    await expect(rowHead(page, pinReview.title)).toHaveAccessibleName(
+    await expect(rowHead(page, "Pin the release train")).toHaveAccessibleName(
       /48 lines added, 9 removed, 3 files changed/,
     );
     await expect(pull.getByText(/lines added/)).toHaveCount(0);
-    // The head says "Review requested · #91", so the plugin's text that
+    // The head says the state and #91, so the plugin's text that
     // says the same shows in Slack only.
     await expect(asks.getByText("GitHub asks you to review #91.")).toHaveCount(
       0,
@@ -135,7 +135,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Merge conflict",
     );
     // The notice is a quiet line on the review, not a row or a card.
-    await expect(rowHead(page, pinChecks.title)).toHaveCount(0);
+    await expect(
+      page.locator("[data-code-change-state]", { hasText: "Checks failed" }),
+    ).toHaveCount(0);
     await expect(page.getByRole("region", { name: "FYI" })).toHaveCount(0);
     const checks = asks.locator("[data-folded-notice]");
     await expect(checks).toHaveText("Checks failed");
@@ -147,7 +149,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .toEqual([pinReview.id]);
     // The notice stays open, alone in the FYI list, with the same card.
     const fyi = page.getByRole("region", { name: "FYI" });
-    await rowHead(fyi, pinChecks.title).click();
+    await rowHead(fyi, "Pin the release train").click();
     const notice = fyi.getByRole("region", { name: /: asks$/ });
     await expect(notice.getByRole("region", { name: card })).toHaveAttribute(
       "data-subject-card",
