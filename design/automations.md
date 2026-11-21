@@ -21,7 +21,7 @@ result to a Slack Destination.
 
 ## Entry points
 
-- Slack: ask Junior in the conversation that should get the results.
+- Slack: ask Junior in a thread or DM.
 - Dashboard: ask Junior in a Conversation, and name a public Slack channel
   as the Destination.
 - Dashboard: Automations, and its Runs view.

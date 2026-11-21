@@ -5,7 +5,7 @@ import {
   type InputImageType,
 } from "@/chat/attachments/media";
 import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
 

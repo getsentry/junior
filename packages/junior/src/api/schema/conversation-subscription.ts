@@ -2,7 +2,7 @@ import * as z from "zod";
 
 /** Subscribe to or unsubscribe from one Conversation for the viewer. */
 export const conversationSubscriptionBodySchema = z
-  .object({ subscribed: z.boolean() })
+  .object({ subscribed: z.boolean().describe("False unsubscribes you.") })
   .strict();
 
 /**
@@ -12,7 +12,11 @@ export const conversationSubscriptionBodySchema = z
  */
 export const conversationSubscriptionResponseSchema = z
   .object({
-    archivedAt: z.string().datetime().nullable(),
+    archivedAt: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe("Set when the conversation is archived for everyone."),
     subscribed: z.boolean(),
   })
   .strict();

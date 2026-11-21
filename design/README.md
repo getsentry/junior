@@ -37,8 +37,12 @@ Do not list behaviors. The verification map in
 - [Attention](./attention.md): when Junior asks for a person's attention.
   Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
+- [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
+  Conversation warm while a return is likely.
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
+- [Context compaction](./context-compaction.md): summaries that replace old
+  history, and the prompt cache of an idle Conversation.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
   through Junior's own Google account.

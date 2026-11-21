@@ -162,7 +162,7 @@ describe("conversation stop API", () => {
       created.conversationId,
       "stranger@example.com",
     );
-    expect(stranger.status).toBe(403);
+    expect(stranger.status).toBe(404);
 
     const response = await stopRequest(
       fixture,

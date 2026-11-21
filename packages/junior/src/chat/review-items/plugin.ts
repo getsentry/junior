@@ -151,7 +151,7 @@ export function createPluginReviewItems(args: {
         scopedKey(input.dedupeKey),
         access.tenant,
       );
-      if (!item) return;
+      if (!item) return false;
       const closed = await closeReviewItem(db, {
         id: item.id,
         nowMs: Date.now(),
@@ -161,6 +161,7 @@ export function createPluginReviewItems(args: {
       if (closed) {
         await show(item.id);
       }
+      return closed;
     },
   };
 }

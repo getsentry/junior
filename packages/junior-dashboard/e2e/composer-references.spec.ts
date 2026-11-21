@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { pickOption } from "./pick-option";
 
 // A Thread the viewer takes part in. It has a nested Thread and two files.
 const THREAD_ID = "junior:internal:dashboard-qa:thread";
@@ -83,7 +84,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   const files = mentions.getByRole("group", { name: "Files" });
   await expect(files.getByRole("option")).toHaveText([/pinned-rows\.txt/]);
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
-  await files.getByRole("option").click();
+  await pickOption(files.getByRole("option"));
   await expect(composer.locator("[data-reference='file']")).toHaveText(
     "pinned-rows.txt",
   );

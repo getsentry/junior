@@ -137,6 +137,12 @@ export interface ChatConfig {
   functionMaxDurationSeconds: number;
   /** Kill switch for prompt cache warming. Defaults to true. */
   cacheWarmingEnabled: boolean;
+  /**
+   * Kill switch for compaction on idle: a warmup of a prefix at or above the
+   * background compaction mark swaps in a ready background summary instead.
+   * Defaults to true. It runs only while cache warming is on.
+   */
+  idleCompactionEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
@@ -442,6 +448,10 @@ export function readChatConfig(
     cacheWarmingEnabled: parseKillSwitch(
       "JUNIOR_CACHE_WARMING_ENABLED",
       env["JUNIOR_CACHE_WARMING_ENABLED"],
+    ),
+    idleCompactionEnabled: parseKillSwitch(
+      "JUNIOR_IDLE_COMPACTION_ENABLED",
+      env["JUNIOR_IDLE_COMPACTION_ENABLED"],
     ),
     conversationWorkEnabled: parseKillSwitch(
       "JUNIOR_CONVERSATION_WORK_ENABLED",

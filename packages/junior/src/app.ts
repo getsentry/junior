@@ -47,6 +47,10 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import {
+  setMemoryConfig,
+  type MemoryOptions,
+} from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -191,6 +195,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
+export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Name Junior uses for itself, such as its Slack bot username. Defaults to
@@ -227,6 +232,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   experimental?: ExperimentalFeaturesConfig;
   /** Turn and conversation limits. Unset limits keep their defaults. */
   limits?: RuntimeLimits;
+  /** Long-term Memory settings. Memory is always on. */
+  memory?: MemoryOptions;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -548,6 +555,7 @@ export async function createApp(
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
   );
+  const previousMemoryConfig = setMemoryConfig(options?.memory);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let previousTrustConfig: TrustConfig | undefined;
@@ -561,6 +569,7 @@ export async function createApp(
     setExperimentalFeatures(previousExperimentalFeatures);
     setBriefsConfig(previousBriefsConfig);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
+    setMemoryConfig(previousMemoryConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

@@ -10,9 +10,7 @@ import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-
-export const ARCHIVE_AGENT_TOOL_NAME = "archiveAgent";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const archiveAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Archived Thread ID"),

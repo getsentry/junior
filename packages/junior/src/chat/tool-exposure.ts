@@ -1,4 +1,7 @@
-import type { AnyToolDefinition, ToolExposure } from "@/chat/tools/definition";
+import type {
+  AnyToolDefinition,
+  ToolExposure,
+} from "@/chat/tool-support/definition";
 
 export interface PlannedToolExposure {
   /** Tools that `searchTools` finds and `executeTool` runs. */

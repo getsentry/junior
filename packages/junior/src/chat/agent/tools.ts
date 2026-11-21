@@ -42,10 +42,10 @@ import {
   getMcpProviderErrorAttributes,
   McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
-import { createTools } from "@/chat/tools";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type { DisabledToolPromptContext } from "@/chat/prompt";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import {
   toActiveMcpCatalogSummaries,

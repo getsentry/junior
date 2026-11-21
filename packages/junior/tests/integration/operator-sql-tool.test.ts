@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 const rootTurnTools = turnBehavior({

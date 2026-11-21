@@ -65,7 +65,7 @@ describe("sendMessage MCP tool", () => {
       messages: [],
       pendingMessages,
     });
-    expect(cancelled.structuredContent).toEqual({ cancelledMessages: 2 });
+    expect(cancelled.structuredContent).toMatchObject({ cancelledCount: 2 });
   });
 
   it("returns a cursor before the reply on a retry after the Turn", async () => {

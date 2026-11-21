@@ -1,3 +1,4 @@
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import type { User } from "@sentry/junior-plugin-api";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
@@ -30,8 +31,7 @@ import { and, eq } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
-import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
+import type { UserInputRequest } from "@/chat/review-items/user-input-request";
 import {
   closeConversationFixture,
   createConversationFixture,

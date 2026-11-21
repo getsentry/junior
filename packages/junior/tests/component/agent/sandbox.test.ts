@@ -27,7 +27,7 @@ vi.mock("@/chat/discovery", () => ({
   listReferenceFiles: () => ["/tmp/reference.md"],
 }));
 
-vi.mock("@/chat/tools/sandbox/generated-files", () => ({
+vi.mock("@/chat/sandbox/generated-files", () => ({
   writeSandboxGeneratedFiles: writeGeneratedFilesMock,
 }));
 

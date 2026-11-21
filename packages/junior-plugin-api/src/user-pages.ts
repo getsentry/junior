@@ -34,9 +34,11 @@ const pluginUserPageMetadataSchema = z
 const pluginUserPageActionSchema = z
   .object({
     confirmation: nonBlankStringSchema.max(500).optional(),
+    // App plugins own `/api/plugins/<name>` and core features own
+    // `/api/<name>`. The host checks that the path is the page owner's.
     href: nonBlankStringSchema
       .max(500)
-      .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
+      .regex(/^\/api\/(?:plugins\/)?[a-z][a-z0-9-]*(?:\/|$)/),
     label: nonBlankStringSchema.max(80),
     /**
      * `DELETE` sends a request and refreshes the page. `GET` opens the plugin

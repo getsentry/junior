@@ -30,12 +30,15 @@ const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
       cacheExpiresAtMs: z.number().int().positive(),
     })
     .strict(),
-  // Closes an idle period that got no reply within the idle horizon.
+  // Closes an idle period that got no reply within the idle horizon. A
+  // longer horizon sends one message per `IDLE_HORIZON_MS` step, so each
+  // arrives within the signature age. Unset means the first step.
   z
     .object({
       kind: z.literal("horizon"),
       conversationId: z.string().min(1),
       generation: z.string().min(1),
+      step: z.number().int().min(2).optional(),
     })
     .strict(),
 ]);
@@ -51,7 +54,11 @@ const cacheWarmupSign = {
     message.kind,
     message.conversationId,
     message.generation,
-    message.kind === "warmup" ? String(message.cycle) : "",
+    message.kind === "warmup"
+      ? String(message.cycle)
+      : message.step
+        ? String(message.step)
+        : "",
     message.kind === "warmup" ? String(message.cacheExpiresAtMs) : "",
   ],
 };
@@ -76,7 +83,9 @@ export async function sendCacheWarmup(
             )
           : QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
       idempotencyKey: `cache-warmup_${message.generation}_${
-        message.kind === "warmup" ? message.cycle : message.kind
+        message.kind === "warmup"
+          ? message.cycle
+          : `${message.kind}${message.step ? `_${message.step}` : ""}`
       }`,
     },
   );

@@ -4,8 +4,8 @@ import { startLeadConversation } from "@/chat/lead/start-conversation";
 import { SHORT_TITLE_MAX_LENGTH } from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 /** Static definition of `startConversation`, which only a Lead lists. */

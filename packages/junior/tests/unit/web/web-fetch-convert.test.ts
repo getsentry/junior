@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
+import {
+  FETCH_TIMEOUT_MS,
+  MAX_FETCH_BYTES,
+} from "@/chat/tool-support/web/constants";
 import {
   extractContent,
   extractContentDetails,
   extractWebFetchResponse,
-} from "@/chat/tools/web/fetch-content";
+} from "@/chat/tool-support/web/fetch-content";
 
 describe("web fetch content conversion", () => {
   it("converts HTML to markdown with links and headings", () => {

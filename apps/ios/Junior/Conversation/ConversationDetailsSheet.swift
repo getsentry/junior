@@ -1,12 +1,13 @@
 import JuniorKit
 import SwiftUI
 
-/// "Conversation details" (`ConversationDetails.tsx`, mobile sheet): the
-/// Brief (summary, outcome, intent, decisions, facts, links) and activity.
+/// "Conversation details" (`ConversationDetails.tsx`): the Brief (summary,
+/// outcome, intent, decisions, facts, links) and activity, in a sheet or in a
+/// panel beside a wide transcript.
 struct ConversationDetailsSheet: View {
   @Environment(AppModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
   let state: ConversationState
+  let close: () -> Void
 
   private var conversation: MCPConversation { state.conversation }
 
@@ -18,9 +19,7 @@ struct ConversationDetailsSheet: View {
           .foregroundStyle(Tokens.text)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        Button {
-          dismiss()
-        } label: {
+        Button(action: close) {
           Icon("x", size: 16).foregroundStyle(Tokens.textMuted).frame(width: 36, height: 36)
         }
         .buttonStyle(PressableStyle(radius: 6))
