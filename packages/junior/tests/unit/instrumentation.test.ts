@@ -107,6 +107,7 @@ describe("initSentry", () => {
         http,
         { name: "Anthropic_AI", setupOnce: () => {} },
         { name: "VercelAI", setupOnce: () => {} },
+        { name: "Dedupe", setupOnce: () => {} },
       ]),
     ).toEqual([http]);
     const span: {
