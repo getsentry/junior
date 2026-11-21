@@ -13,8 +13,7 @@ can act on it.
   a root, or their names. An item from a child agent shows in the stack of
   its root, not on its own.
 - Each Review item is its own row, with its own actions. An item row is
-  always one actionable item, such as a question or a pull request. A
-  Conversation row is a different row, for the Conversations view. A row
+  always one actionable item, such as a question or a pull request. A row
   action never applies to a group of items. A pull request review and a question are
   different decisions, and one click must not make both.
 - The reader finishes one Conversation before the next. Next goes to the

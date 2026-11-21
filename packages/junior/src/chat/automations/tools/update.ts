@@ -50,7 +50,7 @@ import { getConversationAccess } from "@/chat/scheduled-automations/tool-support
 import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 

@@ -176,13 +176,13 @@ describe("Sentry chart link cards", () => {
       `Bearer alice-token us.sentry.io/api/0/organizations/sentry/events-timeseries/?${new URLSearchParams(
         [
           ["dataset", "spans"],
-          ["interval", "5m"],
-          ["yAxis", "p95(span.duration)"],
           ["groupBy", "span.op"],
+          ["interval", "5m"],
           ["project", "11"],
           ["sort", "-p95(span.duration)"],
-          ["topEvents", "5"],
           ["statsPeriod", "24h"],
+          ["topEvents", "5"],
+          ["yAxis", "p95(span.duration)"],
         ],
       )}`,
     ]);

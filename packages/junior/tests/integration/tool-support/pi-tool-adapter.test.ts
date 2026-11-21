@@ -10,7 +10,7 @@ import { Type } from "@sinclair/typebox";
 import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import type { ToolActionReview } from "@/chat/guardian/gate";
@@ -18,7 +18,7 @@ import {
   disableTools,
   tool,
   type AnyToolDefinition,
-} from "@/chat/tools/definition";
+} from "@/chat/tool-support/definition";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),

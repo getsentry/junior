@@ -14,9 +14,9 @@ import { cancelWatch, createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRegistry } from "@/chat/tools/definition";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { incrementStat } from "@/stats";
 import { workspaceRepoCheckoutPath } from "./checkout-path";
 import {

@@ -18,9 +18,17 @@ const stoppedConversationMessageSchema = z
 export const stopConversationTurnResponseSchema = z
   .object({
     conversationId: z.string().min(1),
-    status: z.enum(["no_work", "requested"]),
-    stoppedInboundMessageIds: z.array(z.string().min(1)),
-    stoppedMessages: z.array(stoppedConversationMessageSchema),
+    status: z
+      .enum(["no_work", "requested"])
+      .describe(
+        "`requested` when the running turn was asked to stop. `no_work` when no turn was running. Child agents are stopped in both cases.",
+      ),
+    stoppedInboundMessageIds: z
+      .array(z.string().min(1))
+      .describe("Messages that waited for the turn and were dropped."),
+    stoppedMessages: z
+      .array(stoppedConversationMessageSchema)
+      .describe("Your own dropped messages, with their text."),
   })
   .strict();
 

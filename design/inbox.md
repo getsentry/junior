@@ -47,8 +47,8 @@ how the dashboard groups and acts on its rows.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a stopped merge conflict fix. It starts no
-  Turn.
+  the work, such as Resume on a merge conflict fix that did not land. It
+  starts no Turn.
 - An item from a public Conversation is visible to the whole workspace.
 - An Automation alert follows its Automation's Destination: a public
   channel makes it visible to the workspace. Only core changes or closes
@@ -79,5 +79,6 @@ how the dashboard groups and acts on its rows.
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
 - The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. The Inbox count and To do in the
-  new Inbox leave them out. This breaks "'Needs you' means one thing".
+  Everyone and actions with no assignees. To do in the new Inbox shows
+  actions with no assignees, and the Inbox count leaves them out. This
+  breaks "'Needs you' means one thing".

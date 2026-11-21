@@ -10,8 +10,8 @@ import {
 } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationStore, getDb } from "@/chat/db";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 /**
  * Whether work in `requesterConversationId` may read `conversationId`. A

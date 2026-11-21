@@ -158,7 +158,7 @@ describe("plugin prompt hook composition", () => {
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -237,7 +237,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -272,12 +272,12 @@ describe("plugin prompt hook composition", () => {
     const eventStore = getConversationEventStore();
     const stored = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "recall",
       version: 1,
       content: {
@@ -286,12 +286,12 @@ describe("plugin prompt hook composition", () => {
     });
     const storedMethod = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:1`,
+      `turn:${turnId}:context:notes:1`,
     );
     expect(storedMethod?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "note",
       version: 1,
       content: { note: "Run the tests." },
@@ -311,7 +311,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -363,7 +363,7 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toMatchObject({
       type: "turn_context",

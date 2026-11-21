@@ -12,12 +12,20 @@ extension View {
       .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Tokens.borderEmphasis))
   }
 
-  /// List card: radius 8, `border-subtle`, `fill-faint`.
-  /// The 1pt inset matches CSS, where a border adds to the box.
-  func listCard(radius: CGFloat = 8) -> some View {
+  /// List card: radius 8, `border-subtle`, `fill-faint`; stronger while its
+  /// item is open beside the list. The 1pt inset matches CSS, where a border
+  /// adds to the box.
+  func listCard(radius: CGFloat = 8, selected: Bool = false) -> some View {
     padding(1)
-      .background(Tokens.fillFaint, in: RoundedRectangle(cornerRadius: radius))
-      .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Tokens.borderSubtle))
+      .background(selected ? Tokens.fillHover : Tokens.fillFaint, in: RoundedRectangle(cornerRadius: radius))
+      .overlay(
+        RoundedRectangle(cornerRadius: radius).strokeBorder(selected ? Tokens.borderEmphasis : Tokens.borderSubtle))
+  }
+
+  /// Cap content at the dashboard's reading width (`max-w-[52.5rem]`) and
+  /// center it, so lines stay short on a wide screen.
+  func readableWidth() -> some View {
+    frame(maxWidth: 840).frame(maxWidth: .infinity)
   }
 
   /// Panel card: radius 8, `border-subtle`, `surface-panel`.

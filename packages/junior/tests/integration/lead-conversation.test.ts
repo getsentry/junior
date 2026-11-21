@@ -25,9 +25,9 @@ import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { publishConversationStatus } from "@/chat/conversations/watch-events";
 import {
@@ -37,10 +37,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import {
-  createConversationWorkHarness,
-  createConversationWorkQueueTestAdapter,
-} from "../fixtures/conversation-work";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
 
 /**
@@ -188,6 +185,26 @@ describe("Lead", () => {
       delivery: "queued",
     });
     await expect(send(boWork.conversationId, "call-bo")).rejects.toThrow(
+      "is a public conversation and this conversation is private",
+    );
+
+    // A root from an older deploy has no kind and still counts as a root.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: null })
+      .where(eq(juniorConversations.conversationId, anaWork.conversationId));
+    await expect(send(anaWork.conversationId, "call-legacy")).resolves.toEqual({
+      conversation_id: anaWork.conversationId,
+      delivery: "queued",
+    });
+
+    // Only roots: an Automation run that the person takes part in would act
+    // on the Lead's text.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: "automation" })
+      .where(eq(juniorConversations.conversationId, anaWork.conversationId));
+    await expect(send(anaWork.conversationId, "call-run")).rejects.toThrow(
       "is a public conversation and this conversation is private",
     );
   });
@@ -338,11 +355,10 @@ describe("Lead", () => {
     const addItem = createAddReviewItemTool(
       {
         conversationId: started.conversation_id,
-        conversationWorkQueue: harness.queue,
         resolveActorIdentity: async () => undefined,
         source: { kind: "scheduled_automation" },
       },
-      createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+      createSlackReviewItemToolServices(() => harness.queue),
     ) as any;
     const item = {
       assignees: ["everyone"],

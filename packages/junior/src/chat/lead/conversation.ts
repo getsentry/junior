@@ -7,11 +7,13 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   recordWebConversationActivity,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { conversationKindSql } from "@/chat/conversations/sql/conversation-row";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { isPostgresErrorCode } from "@/db/postgres-error";
@@ -108,12 +110,14 @@ export async function readLeadUser(
 
 /**
  * Return whether the person of a Lead is a Participant of one root
- * Conversation. False when the sender is not a Lead.
+ * Conversation. False when the sender is not a Lead, or when the target is
+ * not a root, such as an Automation run.
  */
 export async function leadPersonParticipates(args: {
   leadConversationId: string;
   rootConversationId: string;
 }): Promise<boolean> {
+  const target = alias(juniorConversations, "target");
   const [row] = await getDb()
     .select({ one: sql`1` })
     .from(juniorConversations)
@@ -129,6 +133,14 @@ export async function leadPersonParticipates(args: {
           juniorConversationParticipants.rootConversationId,
           args.rootConversationId,
         ),
+      ),
+    )
+    .innerJoin(
+      target,
+      and(
+        eq(target.conversationId, args.rootConversationId),
+        // Rows from older deploys have no kind; decode them like other readers.
+        eq(conversationKindSql(target), "root"),
       ),
     )
     .where(

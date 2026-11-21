@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const logExceptionMock = vi.fn();
 const logInfoMock = vi.fn();
@@ -19,7 +19,7 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 
-import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { handleToolExecutionError } from "@/chat/tool-support/tool-error-handler";
 import { McpToolError } from "@/chat/mcp/errors";
 import {
   ToolActionRejectedError,

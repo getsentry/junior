@@ -13,7 +13,6 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import {
   createHarness,
   type DescribeEvalOptions,
@@ -24,7 +23,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const CONVERSATION_ID = "local:eval:tool-search";
@@ -99,11 +98,7 @@ async function buildAgentTools(): Promise<AgentTools> {
   // createApp registers the plugins as a host does. The database client it
   // makes does not connect.
   await createApp({
-    plugins: defineJuniorPlugins([
-      githubPlugin(),
-      memoryPlugin(),
-      trackerPlugin,
-    ]),
+    plugins: defineJuniorPlugins([githubPlugin(), trackerPlugin]),
   });
   return createPiAgentTools(
     createTools(
