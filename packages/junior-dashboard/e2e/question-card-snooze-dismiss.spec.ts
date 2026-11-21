@@ -39,6 +39,18 @@ for (const view of [desktop, mobile]) {
       page.getByRole("button", { name: "3 questions waiting" }),
     ).toBeVisible();
 
+    // A question with two fields keeps its actions on one row, with the
+    // progress under them.
+    const batchCard = card(page, "Choose the first migration batch");
+    await batchCard
+      .getByRole("button", { name: "Send" })
+      .scrollIntoViewIfNeeded();
+    await expect(batchCard).toContainText("0 of 2 answered");
+    await screenshot(page, "conversation-question-card-actions", {
+      lightTheme: true,
+      view: view.name,
+    });
+
     const windowCard = card(page, "Pick the billing migration window");
     await windowCard.scrollIntoViewIfNeeded();
     await windowCard.getByRole("button", { name: "Snooze" }).click();

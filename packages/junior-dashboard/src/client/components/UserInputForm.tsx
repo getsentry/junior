@@ -451,18 +451,31 @@ export function UserInputForm(props: {
             value={other}
           />
         ) : null}
-        {inbox ? null : <SendButton disabled={sending || empty} />}
-        {fieldCount > 1 ? (
-          <span
-            aria-live="polite"
-            className="text-xs text-dashboard-text-muted"
-          >
-            {answeredCount} of {fieldCount} answered
-          </span>
-        ) : null}
-        {secondary}
-        {inbox ? <SendButton disabled={sending || empty} /> : null}
+        {inbox ? (
+          // The actions stay on one row, also on a phone.
+          <div className="flex items-center gap-1">
+            {secondary}
+            <SendButton disabled={sending || empty} />
+          </div>
+        ) : (
+          <>
+            <SendButton disabled={sending || empty} />
+            {secondary}
+          </>
+        )}
       </div>
+      {/* Progress is not an action, so it goes under the actions row. */}
+      {fieldCount > 1 ? (
+        <p
+          aria-live="polite"
+          className={cn(
+            "m-0 -mt-1 text-xs text-dashboard-text-muted",
+            inbox && "text-right",
+          )}
+        >
+          {answeredCount} of {fieldCount} answered
+        </p>
+      ) : null}
       {failure}
     </form>
   );
