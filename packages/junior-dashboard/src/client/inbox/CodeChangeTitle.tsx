@@ -17,13 +17,16 @@ import type { CodeChangeHead } from "./codeChangeHead";
 import { ROW_ACTION_BUTTON_CLASS } from "./RowHoverActions";
 
 // A pill that sits in a line of text and wraps with it, so a wrapped title
-// starts its next line at the left edge.
+// starts its next line at the left edge. An inline-flex box takes its
+// baseline from its first item, which is the icon's bottom edge in a state
+// pill, so baseline alignment puts each pill at a different height.
+// `align-middle` centers every pill on the text instead.
 const INLINE_PILL_CLASS =
-  "inline-flex h-5 items-center gap-1 rounded-md border px-1.5 align-[0.125em] font-sans text-xs font-medium leading-none whitespace-nowrap";
+  "inline-flex h-5 items-center gap-1 rounded-md border px-1.5 align-middle font-sans text-xs font-medium leading-none whitespace-nowrap";
 
 /**
  * The first line of a code change row, as one run of text: the state pill,
- * the title, then the breaking mark, the type, and the scope. A closed row
+ * the title, then the breaking mark and the "type/scope" tag. A closed row
  * keeps it to two lines; an open one shows it in full.
  */
 export function CodeChangeTitle(props: {
@@ -31,6 +34,11 @@ export function CodeChangeTitle(props: {
   head: CodeChangeHead;
 }) {
   const { title } = props.head;
+  // The type and the scope read as one muted tag, as "fix/slack".
+  const category = [title.type, title.scope]
+    .filter(Boolean)
+    .join("/")
+    .toLowerCase();
   return (
     <span
       className={cn(
@@ -65,23 +73,12 @@ export function CodeChangeTitle(props: {
           <span className="sr-only">Breaking change</span>
         </span>
       ) : null}
-      {title.type ? (
-        <span
-          className={cn(
-            INLINE_PILL_CLASS,
-            "ml-1.5 border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
-          )}
-          data-code-change-type=""
-        >
-          {title.type}
-        </span>
-      ) : null}
-      {title.scope ? (
+      {category ? (
         <span
           className="ml-1.5 font-sans text-xs font-normal whitespace-nowrap text-dashboard-text-faint"
-          data-code-change-scope=""
+          data-code-change-type=""
         >
-          {title.scope}
+          {category}
         </span>
       ) : null}
     </span>

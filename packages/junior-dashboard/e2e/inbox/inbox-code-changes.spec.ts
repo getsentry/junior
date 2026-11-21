@@ -64,9 +64,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
     // The state is one word before the title. The title has no type prefix,
-    // and the breaking mark, the type, and the scope come after it.
+    // The breaking mark and one muted "type/scope" tag come after it.
     await expect(head.locator("[data-code-change-title]")).toHaveText(
-      "ReviewPin the release train!Breaking changeFeaturerelease",
+      "ReviewPin the release train!Breaking changefeature/release",
+    );
+    await expect(head.locator("[data-code-change-type]")).toHaveText(
+      "feature/release",
     );
     await expect(review.getByTitle("Review requested")).toHaveText("Review");
     await expect(review.getByTitle("Breaking change")).toBeVisible();
@@ -75,7 +78,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(head).not.toContainText("Review requested");
     await expect(head).not.toContainText("feat(release)");
 
-    // A title with no type prefix shows as it is, with no type pill.
+    // A title with no type prefix shows as it is, with no type tag.
     const merge = row(page, "Retry checkout writes after lock timeouts");
     await expect(merge.locator("[data-code-change-title]")).toHaveText(
       "MergeRetry checkout writes after lock timeouts",
