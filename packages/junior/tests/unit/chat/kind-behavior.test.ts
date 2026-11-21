@@ -125,6 +125,12 @@ describe("turnBehavior", () => {
     );
   });
 
+  it("runs no Turn on a lead before its behavior exists", () => {
+    expect(() => turnBehavior({ kind: "lead", personInput: true })).toThrow(
+      "A lead Conversation has no Turn behavior yet",
+    );
+  });
+
   it("counts only Slack and web input as a person's", () => {
     expect(
       ["slack", "web", "event", "local", undefined].map(isPersonInput),
