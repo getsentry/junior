@@ -54,7 +54,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
   });
 
-  test("a To-do row's quick actions are Open, Snooze, and Done", async ({
+  test("a To-do row's quick actions are Done and Snooze", async ({
     dashboard,
     page,
   }) => {
@@ -80,7 +80,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [todoForYou] });
     await page.goto(`${dashboard.baseURL}/`);
-    await rowHead(todo(page), checkout).hover();
+    await expandRow(rowHead(todo(page), checkout));
     await rowOf(page)
       .getByRole("link", { name: "Open conversation" })
       .first()
