@@ -134,7 +134,7 @@ describe("review again after a change request", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+          body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
@@ -222,7 +222,7 @@ describe("review again after a change request", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: expect.objectContaining({
-          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+          body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
           title: "Review requested · #946",
         }),
       };
@@ -298,7 +298,7 @@ describe("review again after a change request", () => {
           conversationId: "slack:C123:1712345.0001",
           kind: "upsert",
           notice: expect.objectContaining({
-            body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+            body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
             title: "Review requested · #946",
           }),
         },
@@ -430,6 +430,7 @@ describe("review again after a change request", () => {
           conversationId: "slack:C123:1712345.0001",
           kind: "upsert",
           notice: expect.objectContaining({
+            body: `Checks now pass, and every comment is handled.\n\n${PULL_URL}`,
             title: "Review requested · #946",
           }),
         },

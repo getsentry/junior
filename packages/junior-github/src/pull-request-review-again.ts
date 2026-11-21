@@ -330,3 +330,55 @@ export async function dropHeldGitHubReviewAsk(
   }
   await state.delete(heldAskKey(target));
 }
+
+/**
+ * Why Junior asked a reviewer again: `handled` when the last comment was
+ * marked and the checks already passed, `checks` when passing checks
+ * released a held ask.
+ */
+export type GitHubReviewAskReason = "checks" | "handled";
+
+// The tool asks on GitHub, and GitHub's review request webhook shows the
+// item. The mark only needs to outlive that delivery.
+const ASKED_TTL_MS = 60 * 60 * 1000;
+
+const askedSchema = z.object({
+  at: z.iso.datetime(),
+  reviewer: z.string().min(1),
+});
+
+/** A review that the feedback tool asked for, until the item shows it. */
+export type GitHubReviewAsked = z.output<typeof askedSchema>;
+
+function askedKey(target: {
+  number: number;
+  repositoryFullName: string;
+}): string {
+  return `pull-request-review-asked:${target.repositoryFullName.toLowerCase()}#${target.number}`;
+}
+
+/** Record that the feedback tool asked `reviewer` again on one pull request. */
+export async function markGitHubReviewAsked(
+  state: PluginState,
+  target: { number: number; repositoryFullName: string },
+  asked: GitHubReviewAsked,
+): Promise<void> {
+  await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
+}
+
+/** Return the review that the feedback tool asked for on one pull request. */
+export async function readGitHubReviewAsked(
+  state: PluginState,
+  target: { number: number; repositoryFullName: string },
+): Promise<GitHubReviewAsked | undefined> {
+  const saved = askedSchema.safeParse(await state.get(askedKey(target)));
+  return saved.success ? saved.data : undefined;
+}
+
+/** Drop the record of a review that the feedback tool asked for. */
+export async function dropGitHubReviewAsked(
+  state: PluginState,
+  target: { number: number; repositoryFullName: string },
+): Promise<void> {
+  await state.delete(askedKey(target));
+}

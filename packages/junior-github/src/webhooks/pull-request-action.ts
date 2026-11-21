@@ -16,9 +16,11 @@
  * passed at the last mark, the ask is held. A later webhook, such as a
  * completed check suite, then asks on GitHub once they pass, so GitHub
  * notifies the requester, and shows the item. A comment or review by the
- * reviewer after the hold drops it, because Junior acts next. One GitHub
- * read gives the state and each side's latest activity. A comment by
- * another person needs no read.
+ * reviewer after the hold drops it, because Junior acts next. The item text
+ * says why it asks: every comment is handled, or the checks now pass. Other
+ * review requests from GitHub get a general text. One GitHub read gives the
+ * state and each side's latest activity. A comment by another person needs
+ * no read.
  *
  * The requester takes one action, not both, so one item per pull request
  * shows it. Each webhook that can change one of these facts reads them
@@ -53,7 +55,10 @@ import {
 } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import {
+  dropGitHubReviewAsked,
   dropHeldGitHubReviewAsk,
+  type GitHubReviewAskReason,
+  readGitHubReviewAsked,
   readHeldGitHubReviewAsk,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
@@ -310,6 +315,12 @@ function closeReason(
   };
 }
 
+/** The item text that says why Junior asked for the review again. */
+const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
+  checks: "Checks now pass, and every comment is handled.",
+  handled: "Every comment on your change request is handled.",
+};
+
 async function showAction(
   items: PluginInboxItems,
   args: {
@@ -318,6 +329,7 @@ async function showAction(
     identityId: string;
     number: number;
     previous: GitHubPullRequestAction | undefined;
+    reason: GitHubReviewAskReason | undefined;
     state: GitHubPullRequestMergeState;
     titleParts: InboxItemSubjectTitleParts | undefined;
   },
@@ -333,7 +345,7 @@ async function showAction(
       body:
         action === "merge"
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
-          : `GitHub asks you to review #${number}.\n\n${state.url}`,
+          : `${args.reason ? REVIEW_AGAIN_TEXT[args.reason] : `GitHub asks you to review #${number}.`}\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {
@@ -462,6 +474,31 @@ async function askHeldReview(
   return held.reviewer;
 }
 
+/**
+ * Return why Junior asked the requester again, if it did: `checks` when this
+ * sync released their held ask, `handled` when the feedback tool asked them
+ * and they have not acted since.
+ */
+async function askReason(
+  state: PluginState,
+  target: GitHubPullRequestTarget,
+  args: {
+    asked: string | undefined;
+    requesterAt: Date | undefined;
+    requesterLogin: string | undefined;
+  },
+): Promise<GitHubReviewAskReason | undefined> {
+  if (args.asked !== undefined) {
+    return sameLogin(args.asked, args.requesterLogin) ? "checks" : undefined;
+  }
+  const asked = await readGitHubReviewAsked(state, target);
+  return asked &&
+    sameLogin(asked.reviewer, args.requesterLogin) &&
+    timeOf(args.requesterAt) <= Date.parse(asked.at)
+    ? "handled"
+    : undefined;
+}
+
 async function syncOne(
   args: {
     botEmail: string | undefined;
@@ -520,11 +557,16 @@ async function syncOne(
     );
     const activity = latestActivity(state.activity, requesterLogin);
     const asked = await askHeldReview(args, target, state);
+    const reason = await askReason(args.state, target, {
+      asked,
+      requesterAt: activity.requesterAt,
+      requesterLogin,
+    });
     const next = nextAction(
       state,
       {
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
-        askedAgain: asked !== undefined && sameLogin(asked, requesterLogin),
+        askedAgain: reason === "checks",
         login: requesterLogin,
       },
       previous,
@@ -540,6 +582,7 @@ async function syncOne(
         identityId: opener.identityId,
         number: target.number,
         previous,
+        reason,
         state,
         titleParts: next.action
           ? await loadGitHubTitleParts(
@@ -570,6 +613,9 @@ async function syncOne(
           })
         : undefined,
     ]);
+    if (changed && next.action === "review" && reason === "handled") {
+      await dropGitHubReviewAsked(args.state, target);
+    }
     if (!changed) return previous;
     // Save after the items change, so a failure leaves the old action and
     // the next event tries again.

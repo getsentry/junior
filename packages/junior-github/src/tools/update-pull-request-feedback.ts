@@ -29,6 +29,7 @@ import {
 import {
   dropHeldGitHubReviewAsk,
   holdGitHubReviewAsk,
+  markGitHubReviewAsked,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
@@ -376,6 +377,12 @@ async function askForReviewAgain(
     }
     await dropHeldGitHubReviewAsk(ctx.state, target, input.reviewer);
     if (readiness !== "ready") return;
+    // GitHub's review request webhook shows the item. This record gives it
+    // the reason.
+    await markGitHubReviewAsked(ctx.state, target, {
+      at: new Date().toISOString(),
+      reviewer: input.reviewer,
+    });
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.request_reviewers",
       method: "POST",

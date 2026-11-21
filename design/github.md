@@ -40,7 +40,8 @@ also wake a Conversation or run an Event automation.
   required checks pass. Pushes, merges of the base branch, comments, and
   replies do not ask. When the requester comments or reviews, Junior acts
   next, and the Inbox stops asking. A requester who approved since is not
-  asked.
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
