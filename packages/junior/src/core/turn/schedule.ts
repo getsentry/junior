@@ -21,11 +21,12 @@ type ScheduleOptions = {
   /**
    * Chooses the Turn of an input that is not a duplicate: join the open
    * Turn of the Conversation, or create a Turn with a priority. It runs
-   * under the Conversation lock, so `open` cannot change before the write.
+   * under the Conversation lock, so `openTurn` cannot change before the write.
+   * `openTurn` is the Conversation's queued or running Turn, if any.
    * It only picks the Turn; core writes the input.
    */
   assignTurn: (
-    open: Turn | undefined,
+    openTurn: Turn | undefined,
     input: ArrivingInput,
   ) => { join: string } | { create: { priority: number } };
 };
@@ -49,16 +50,16 @@ async function placeInput(
       publish: existing.state === "queued",
     };
   }
-  const open = await findOpenTurn(executor, input.conversationId);
-  const choice = assignTurn(open, input);
+  const openTurn = await findOpenTurn(executor, input.conversationId);
+  const choice = assignTurn(openTurn, input);
   if ("join" in choice) {
-    if (choice.join !== open?.turnId) {
+    if (choice.join !== openTurn?.turnId) {
       throw new Error(
-        `assignTurn joined Turn ${choice.join}, but the open Turn is ${open?.turnId ?? "none"}`,
+        `assignTurn joined Turn ${choice.join}, but the open Turn is ${openTurn?.turnId ?? "none"}`,
       );
     }
-    await addInput(executor, { ...inboxInput, turnId: open.turnId });
-    return { turnId: open.turnId, created: false, publish: false };
+    await addInput(executor, { ...inboxInput, turnId: openTurn.turnId });
+    return { turnId: openTurn.turnId, created: false, publish: false };
   }
   const turn = await createTurn(executor, {
     conversationId: input.conversationId,
