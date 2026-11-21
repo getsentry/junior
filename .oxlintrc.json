@@ -219,7 +219,6 @@
                 "allowTypeImports": true,
                 "allowImportNames": [
                   "calculateContextTokens",
-                  "createAssistantMessageEventStream",
                   "getInitialSystemMessage",
                   "getSystemMessageText",
                   "isRetryableAssistantError",

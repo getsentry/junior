@@ -7,28 +7,16 @@
 // replaces.
 import * as Sentry from "@sentry/node";
 
-/** A value that a span attribute accepts. */
-export type SpanAttributeValue = string | number | boolean | string[];
-
 /** Attribute values a span accepts. `undefined` values are not recorded. */
-export type SpanAttributes = Record<string, SpanAttributeValue | undefined>;
+export type SpanAttributes = Record<
+  string,
+  string | number | boolean | undefined
+>;
 
 /** The part of a span that core code may change. */
 export type Span = {
-  setAttribute(key: string, value: SpanAttributeValue): void;
+  setAttribute(key: string, value: string | number | boolean): void;
   setAttributes(attributes: SpanAttributes): void;
-};
-
-/**
- * A span that outlives the call that starts it, such as the span of a
- * streamed model reply. Its owner must call `end`.
- */
-export type OpenSpan = Span & {
-  /** Runs `run` with this span active, so work that `run` starts nests under it. */
-  activate<T>(run: () => T): T;
-  /** Sets the error status. */
-  fail(message: string): void;
-  end(): void;
 };
 
 /** The `sentry-trace` header of one span, as sent with work to another host. */
@@ -69,22 +57,6 @@ export function setActiveSpanAttributes(attributes: SpanAttributes): void {
 
 // OpenTelemetry status code for an error.
 const SPAN_STATUS_ERROR = 2;
-
-/** Starts a span that is not active. Its owner ends it. */
-export function openSpan(
-  name: string,
-  op: string,
-  attributes: SpanAttributes,
-): OpenSpan {
-  const span = Sentry.startInactiveSpan({ name, op, attributes });
-  return {
-    setAttribute: (key, value) => span.setAttribute(key, value),
-    setAttributes: (values) => span.setAttributes(values),
-    activate: (run) => Sentry.withActiveSpan(span, run),
-    fail: (message) => span.setStatus({ code: SPAN_STATUS_ERROR, message }),
-    end: () => span.end(),
-  };
-}
 
 /** Runs `run` in a span named `name`, which is also its op. */
 export function withSpan<T>(
