@@ -4,7 +4,7 @@
  * wait.
  */
 import { useMutation } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 
 import {
   conversationCatchUpSchema,
@@ -12,6 +12,7 @@ import {
   type ConversationDetailReport,
 } from "@sentry/junior/api/schema";
 import { post } from "../http";
+import { recordCatchUpOffered } from "../sentry";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
 /** Fewer unread Turns than this are quicker to read than a summary. */
@@ -104,12 +105,16 @@ export function useConversationCatchUp(input: {
   });
   // Once asked, keep the answer even if the loaded rows change.
   const asked = !mutation.isIdle;
-  if (
-    !unread ||
-    (!asked && (!input.events || !hasEnoughUnread(input.events, unread, input)))
-  ) {
-    return undefined;
-  }
+  const offered = Boolean(
+    unread &&
+    (asked || (input.events && hasEnoughUnread(input.events, unread, input))),
+  );
+  // Once per unread range: new rows move its end, not its start.
+  const offerKey = offered ? unread?.afterSeq : undefined;
+  useEffect(() => {
+    if (offerKey !== undefined) recordCatchUpOffered(input.conversationId);
+  }, [input.conversationId, offerKey]);
+  if (!unread || !offered) return undefined;
   return {
     data: mutation.data,
     error: mutation.isError,
