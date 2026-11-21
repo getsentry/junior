@@ -5,7 +5,7 @@
  *
  * Saved bodies are plaintext in plugin state. A breach of that store exposes
  * up to 6 hours of webhook reads: pull requests, their commits with author
- * names and emails, reviews, and collaborator roles. It exposes no token.
+ * names and emails, and collaborator roles. It exposes no token.
  */
 import { createHash } from "node:crypto";
 import type { PluginState } from "@sentry/junior-plugin-api";
